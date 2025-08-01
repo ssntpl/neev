@@ -4,6 +4,9 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
+use Mail;
+use Ssntpl\Neev\Mail\TeamInvitation;
+use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
@@ -20,16 +23,24 @@ class TeamController extends Controller
     
     public function members(Request $request, Team $team)
     {
+        $user = User::find($request->user()->id);
+        if (!$user->allTeams->find($team->id)) {
+            return response(null, 404);
+        }
         return view('neev::team.members', [
-            'user' => User::find($request->user()->id),
+            'user' => $user,
             'team' => $team,
         ]);
     }
     
     public function roles(Request $request, Team $team)
     {
+        $user = User::find($request->user()->id);
+        if (!$user->allTeams->find($team->id)) {
+            return response(null, 404);
+        }
         return view('neev::team.roles', [
-            'user' => User::find($request->user()->id),
+            'user' => $user,
             'team' => $team,
             'allPermissions' => Permission::orderBy('name')->get()
         ]);
@@ -37,8 +48,12 @@ class TeamController extends Controller
     
     public function settings(Request $request, Team $team)
     {
+        $user = User::find($request->user()->id);
+        if (!$user->allTeams->find($team->id)) {
+            return response(null, 404);
+        }
         return view('neev::team.settings', [
-            'user' => User::find($request->user()->id),
+            'user' => $user,
             'team' => $team,
         ]);
     }
@@ -118,11 +133,11 @@ class TeamController extends Controller
                 $team->users()->attach($member, ['role_id' => $request->role_id]);
             }
 
-            //email send
+            Mail::to($member->email)->send(new TeamInvitation($team->name, $member->name));
         } catch (Exception $e) {
             return back()->withErrors(['message' => 'Failed to invite member.']);
         }
-
+        
         return back()->with('status', 'Invite link sent successfully.');
     }
     
@@ -134,12 +149,12 @@ class TeamController extends Controller
             if ($user->id == $team->user_id) {
                 return back()->withErrors(['message' => 'You cannot leave from this team.']);
             }
-           
+            
             $team->users()->detach($user);
         } catch (Exception $e) {
             return back()->withErrors(['message' => 'Failed to leave from team.']);
         }
-
+        
         if ($request->user()->id == $request->user_id) {
             return redirect(route('account.teams'));
         }
@@ -163,7 +178,7 @@ class TeamController extends Controller
         } catch (Exception $e) {
             return back()->withErrors(['message' => 'Failed to Accept/Reject Request.']);
         }
-
+        
         return back()->with('status', 'Successfully');
     }
     
@@ -181,7 +196,8 @@ class TeamController extends Controller
                     if (!$team->allUsers->contains($user)) {
                         $team->allUsers()->attach($user, ['action' => 'request_from_user']);
                     }
-                    //send email to owner
+                    
+                    Mail::to($owner->email)->send(new TeamJoinRequest($team->name, $user->name, $owner->name, $team->id));
 
                     return back()->with('status', 'Request has been sent.');
                 }

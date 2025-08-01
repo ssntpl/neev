@@ -5,25 +5,25 @@
     <title>Team Invitation</title>
 </head>
 <body style="padding: 8px">
-    <h2>Hello {{ $username }},</h2>
+    <h2>Hello {{ $owner }},</h2>
 
     <p>
-        You have been invited to join the {{ $team }} team!
+        {{$username}} want to join the {{ $team }} team!
     </p>
 
     <p>
-        you may check this invitation by clicking the button below:
+        you may check this request by clicking the button below:
     </p>
 
     <p>
-        <a href="{{ env('APP_URL').'/account/teams' }}" style="
+        <a href="{{ env('APP_URL').'/teams'.'/'.$teamId.'/members' }}" style="
             background-color: #4CAF50;
             color: white;
             padding: 10px 20px;
             text-decoration: none;
             display: inline-block;
             border-radius: 5px;">
-            Check Invitation
+            Check Request
         </a>
     </p>
 
