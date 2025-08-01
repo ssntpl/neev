@@ -1,0 +1,47 @@
+{
+    "name": "ssntpl/neev",
+    "description": "Larave Package for user management.",
+    "version": "1.0.0",
+    "keywords": [
+        "laravel", 
+        "ssntpl", 
+        "neev", 
+        "user", 
+        "management", 
+        "auth",
+        "user-management"
+    ],
+    "homepage": "https://github.com/ssntpl/user-security",
+    "license": "",
+    "support": {
+        "issues": "https://github.com/ssntpl/neev/issues",
+        "source": "https://github.com/ssntpl/neev"
+    },
+    "autoload": {
+        "psr-4": {
+            "Ssntpl\\Neev\\": "src/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Ssntpl\\Neev\\NeevServiceProvider"
+            ]
+        }
+    },
+    "authors": [
+        {
+            "name": "Abhishek Sharma",
+            "email": "abhishek.sharma@ssntpl.in",
+            "homepage": "https://ssntpl.com"
+        }
+    ],
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "require": {
+        "php": "*",
+        "laravel/framework": "*",
+        "jenssegers/agent": "*",
+        "geoip2/geoip2": "*"
+    }
+}

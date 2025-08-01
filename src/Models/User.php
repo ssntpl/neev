@@ -1,0 +1,33 @@
+<?php
+
+namespace Ssntpl\Neev\Models;
+
+use App\Models\User as AppUser;
+use Ssntpl\Neev\Traits\HasTeams;
+
+class User extends AppUser
+{
+    use HasTeams;
+    
+    public function getProfilePhotoUrlAttribute()
+    {
+        if ($this->profile_photo_url ?? false) {
+            return $this->profile_photo_url;
+        }
+        return collect(explode(' ', $this->name))->map(fn($word) => strtoupper(substr($word, 0, 1)))->join('');;
+    }
+
+    public function loginHistory()
+    {
+        return $this->hasMany(LoginHistory::class);
+    }
+
+    public function OTP($method = null)
+    {
+        if ($method) {
+            return $this->hasMany(OTP::class)->where('method', $method)->first();
+        } else {
+            return $this->hasMany(OTP::class);
+        }
+    }
+}
