@@ -106,13 +106,16 @@
                                             </div>
                                         </td>
                                         <td class="px-4 py-2 text-center capitalize">
-                                            <div class="flex gap-2 items-center">
-                                                <x-label for="role" value="{{ __('Role') }}" />
-                                                <select name="role" id="role" class="w-full border rounded-md p-2">
-                                                    <option value="admin">Admin</option>
-                                                    <option value="editor" selected>Editor</option>
-                                                </select>
-                                            </div>
+                                            @if (config('neev.roles'))
+                                                <div class="flex gap-2 items-center">
+                                                    <x-label for="role_id" value="{{ __('Role') }}" />
+                                                    <select name="role_id" id="role_id" class="w-full border rounded-md p-2">
+                                                        @foreach ($team->roles as $role)
+                                                            <option value="{{$role->id}}">{{$role->name}}</option>
+                                                        @endforeach
+                                                    </select>
+                                                </div>
+                                            @endif
                                         </td>
                                         <td class="px-4 py-2 text-center">
                                             <div class="flex gap-4 justify-end">
@@ -157,8 +160,8 @@
                                     </td>
                                     <td class="px-4 py-2 text-center capitalize">
                                         @if ($team->user_id === $user->id)
-                                            <div class="text-start" x-data="{ show: false, role: @js($member->membership->role_id), userRole: @js($member->membership->role_id) }">
-                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->membership->role_id }}</button>
+                                            <div class="text-start" x-data="{ show: false, roleId: @js($member->membership->role->id ?? 0), userRoleId: @js($member->membership->role->id ?? 1) }">
+                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->membership->role->name ?? '--'}}</button>
                                                 <x-dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
                                                     <x-slot name="title">
                                                         {{ __('Change Role') }}
@@ -166,17 +169,18 @@
                                                     
                                                     <x-slot name="content">
                                                         <p>{{$member->name}}</p>
-                                                        <form method="POST" action="{{ route('teams.role.change') }}" x-ref="changeRoleForm" @keydown.enter.prevent="if (role !== userRole) { $refs.changeRoleForm.submit() }">
+                                                        <form method="POST" action="{{ route('teams.roles.change') }}" x-ref="changeRoleForm" @keydown.enter.prevent="if (roleId !== userRoleId) { $refs.changeRoleForm.submit() }">
                                                             @csrf
                                                             @method('PUT')
 
                                                             <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                             <input type="hidden" name="user_id" value="{{ $member->id }}">
                                                             <div class="mt-4 flex gap-2 items-center w-2/3">
-                                                                <x-label for="role" value="{{ __('Role') }}" />
-                                                                <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
-                                                                    <option value="admin" x-bind:selected="{{$member->membership->role_id == 'admin'}}">Admin</option>
-                                                                    <option value="editor" x-bind:selected="{{$member->membership->role_id == 'editor'}}">Editor</option>
+                                                                <x-label for="role_id" value="{{ __('Role') }}" />
+                                                                <select name="role_id" id="role_id" x-model="roleId" class="w-full border rounded-md p-2">
+                                                                    @foreach ($team->roles as $role)
+                                                                        <option value="{{$role->id}}" x-bind:selected="{{($member->membership->role->id ?? 0) === $role->id}}">{{$role->name}}</option>
+                                                                    @endforeach
                                                                 </select>
                                                             </div>
                                                         </form>
@@ -187,14 +191,14 @@
                                                             {{ __('Cancel') }}
                                                         </x-secondary-button>
 
-                                                        <x-button type="submit" x-bind:disabled="role === userRole" class="ms-3" @click.prevent="$refs.changeRoleForm.submit()">
+                                                        <x-button type="submit" x-bind:disabled="roleId === userRoleId" class="ms-3" @click.prevent="$refs.changeRoleForm.submit()">
                                                             {{ __('Change Role') }}
                                                         </x-button>
                                                     </x-slot>
                                                 </x-dialog-modal>
                                             </div>
                                         @else
-                                            {{ $member->membership->role_id }}
+                                            {{ $member->membership->role->name ?? '' }}
                                         @endif
                                     </td>
                                     <td class="px-4 py-2 text-center capitalize">
@@ -257,10 +261,46 @@
                                             <p class="text-sm">{{$member->email}}</p>
                                         </div>
                                     </td>
-                                    <td class="px-4 py-2 text-center capitalize">
-                                        {{ json_encode($member->membership) }}
-                                    </td>
                                     @if ($team->owner->id === $user->id)
+                                        <td class="px-4 py-2 text-center capitalize">
+                                            <div class="text-start" x-data="{ show: false, roleId: @js($member->membership->role->id ?? 0), userRoleId: @js($member->membership->role->id ?? 1) }">
+                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->membership->role->name ?? '--'}}</button>
+                                                <x-dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                                    <x-slot name="title">
+                                                        {{ __('Change Role') }}
+                                                    </x-slot>
+                                                    
+                                                    <x-slot name="content">
+                                                        <p>{{$member->name}}</p>
+                                                        <form method="POST" action="{{ route('teams.roles.change') }}" x-ref="changeRoleForm" @keydown.enter.prevent="if (roleId !== userRoleId) { $refs.changeRoleForm.submit() }">
+                                                            @csrf
+                                                            @method('PUT')
+
+                                                            <input type="hidden" name="team_id" value="{{ $team->id }}">
+                                                            <input type="hidden" name="user_id" value="{{ $member->id }}">
+                                                            <div class="mt-4 flex gap-2 items-center w-2/3">
+                                                                <x-label for="role_id" value="{{ __('Role') }}" />
+                                                                <select name="role_id" id="role_id" x-model="roleId" class="w-full border rounded-md p-2">
+                                                                    @foreach ($team->roles as $role)
+                                                                        <option value="{{$role->id}}" x-bind:selected="{{($member->membership->role->id ?? 0) === $role->id}}">{{$role->name}}</option>
+                                                                    @endforeach
+                                                                </select>
+                                                            </div>
+                                                        </form>
+                                                    </x-slot>
+
+                                                    <x-slot name="footer">
+                                                        <x-secondary-button @click="show = false">
+                                                            {{ __('Cancel') }}
+                                                        </x-secondary-button>
+
+                                                        <x-button type="submit" x-bind:disabled="roleId === userRoleId" class="ms-3" @click.prevent="$refs.changeRoleForm.submit()">
+                                                            {{ __('Change Role') }}
+                                                        </x-button>
+                                                    </x-slot>
+                                                </x-dialog-modal>
+                                            </div>
+                                        </td>
                                         <td class="px-4 py-2 text-center">
                                             <form method="POST" action="{{route('teams.invite')}}">
                                                 @csrf
@@ -274,7 +314,7 @@
                                             <form method="POST" action="{{ route('teams.leave') }}" x-data>
                                                 @csrf
                                                 @method('DELETE')
-
+                                                
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}"/>
                                                 <input type="hidden" name="user_id" value="{{ $member->id }}"/>
                                                 <x-danger-button
@@ -284,6 +324,10 @@
                                                     {{ __('Remove') }}
                                                 </x-danger-button>
                                             </form>
+                                        </td>
+                                    @else
+                                        <td class="px-4 py-2 text-center capitalize">
+                                            {{ $member->membership->role->name ?? ''}}
                                         </td>
                                     @endif
                                 </x-table-body-tr>

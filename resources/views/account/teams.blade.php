@@ -70,6 +70,8 @@
             </x-slot>
     
             <x-slot name="content">
+
+                {{-- Team Request --}}
                 @if (count($user->teamRequests) > 0)
                     <div class="flex justify-between">
                         <h1 class="font-bold">{{__('Team Requests')}}</h1>
@@ -89,7 +91,7 @@
                                         </a>
                                     </td>
                                     <td class="px-4 py-2 text-center capitalize">
-                                        {{$team->membership->role_id}}
+                                        {{$team->membership->role->name ?? ''}}
                                     </td>
                                     <td class="px-4 py-2 text-end">
                                         <form class="flex gap-4 justify-end" method="POST" action="{{ route('teams.invite.action') }}">
@@ -111,6 +113,7 @@
                     </x-table>
                 @endif
 
+                {{-- Your Teams --}}
                 @if (count($user->teams) > 0)
                     <div class="flex justify-between">
                         <h1 class="font-bold">{{__('Your Teams')}}</h1>
@@ -130,7 +133,7 @@
                                         </a>
                                     </td>
                                     <td class="px-4 py-2 text-center capitalize">
-                                        {{$team->membership->role_id}}
+                                        {{$team->membership->role->name ?? ''}}
                                     </td>
                                     <td class="px-4 py-2 text-center capitalize">
                                         {{$team->user_id === $user->id ? 'Owner' : 'Member'}}
@@ -156,6 +159,7 @@
                     </x-table>
                 @endif
 
+                {{-- Sent Requests --}}
                 @if (count($user->sendRequests) > 0)
                     <div class="flex justify-between">
                         <h1 class="font-bold">{{__('Request Sent')}}</h1>

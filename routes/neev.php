@@ -112,8 +112,8 @@ Route::middleware('web')->group(function () {
             ->name('teams.request.action');
         Route::put('/owner/change', [TeamController::class, 'ownerChange'])
             ->name('teams.owner.change');
-        Route::put('/role/change', [TeamController::class, 'roleChange'])
-            ->name('teams.role.change');
+        Route::put('/roles/change', [RoleController::class, 'roleChange'])
+            ->name('teams.roles.change');
         Route::post('/roles/store', [RoleController::class, 'store'])
             ->name('teams.roles.store');
         Route::delete('/roles', [RoleController::class, 'delete'])

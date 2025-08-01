@@ -234,23 +234,4 @@ class TeamController extends Controller
 
         return back()->withErrors(['message' => 'You cannot change owner.']);
     }
-
-    public function roleChange(Request $request)
-    {
-        $user = User::find($request->user()->id);
-        try {
-            $team = Team::find($request->team_id);
-            $member = User::find($request->user_id);
-            if ($team->owner->id === $user->id) {
-                $membership = $team->allUsers->where('id', $member->id)->first()->membership;
-                $membership->role_id = $request->role_id;
-                $membership->save();
-                return back()->with('status', 'Role has been changed.');
-            }
-        } catch (Exception $e) {
-            return back()->withErrors(['message' => 'Failed to proccess change role request.']);
-        }
-
-        return back()->withErrors(['message' => 'You cannot change role.']);
-    }
 }
