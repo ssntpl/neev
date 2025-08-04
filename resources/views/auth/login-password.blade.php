@@ -16,7 +16,7 @@
         <form method="POST" action="{{ route('login') }}">
             @csrf
             <div>
-                <x-input id="email" class="block mt-1 w-full" :disabled type="hidden" name="email" :value="$email" required />
+                <input type="hidden" name="email" value="{{$email}}" required />
             </div>
             <div>
                 <x-label for="password" value="{{ __('Password') }}" />

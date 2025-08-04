@@ -17,16 +17,17 @@ class NeevServiceProvider extends ServiceProvider
         ], 'neev-config');
 
         $this->publishes([
-            __DIR__ . '/../database/migrations/2025_07_04_112949_create_login_history_table.php' => database_path('migrations/2025_07_04_112949_create_login_history_table.php'),
-            __DIR__.'/../database/migrations/2025_07_11_115439_create_otp_table.php' => database_path('migrations/2025_07_11_115439_create_otp_table.php'),
+            __DIR__ . '/../database/migrations/create_login_history_table.php' => database_path('migrations/2025_01_01_000000_create_login_history_table.php'),
+            __DIR__.'/../database/migrations/create_otp_table.php' => database_path('migrations/2025_01_01_000001_create_otp_table.php'),
+            __DIR__.'/../database/migrations/create_emails_table.php' => database_path('migrations/2025_01_01_000004_create_emails_table.php'),
         ], 'neev-migrations');
 
         $this->publishes([
-            __DIR__.'/../database/migrations/2025_07_11_115437_create_teams_table.php' => database_path('migrations/2025_07_11_115437_create_teams_table.php'),
+            __DIR__.'/../database/migrations/create_teams_table.php' => database_path('migrations/2025_01_01_000002_create_teams_table.php'),
         ], 'neev-team-migrations');
         
         $this->publishes([
-            __DIR__.'/../database/migrations/2025_07_11_115438_create_roles_table.php' => database_path('migrations/2025_07_11_115438_create_role_table.php'),
+            __DIR__.'/../database/migrations/create_roles_table.php' => database_path('migrations/2025_01_01_000003_create_role_table.php'),
         ], 'neev-role-migrations');
 
         $this->loadRoutesFrom(__DIR__.'/../routes/neev.php');

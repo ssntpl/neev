@@ -2,7 +2,8 @@
     <x-slot name="leftsection">
         {{ view('neev::account.left-section', ['user' => $user]) }}
     </x-slot>
-
+    <x-validation-errors class="mb-4" />
+    <x-validation-status class="mb-4" />
     <x-card>
         <x-slot name="title">
             {{ __('Browser Sessions') }}
@@ -69,13 +70,6 @@
                     @endforeach
                 </div>
             @endif
-            
-            @if (session('logoutStatus'))
-                <div class="text-green-600 ms-4">
-                    {{ session('logoutStatus') }}
-                </div>
-            @endif
-            <x-input-error for="password" class="mt-2" />
 
             <div x-data="{ show: false }">
                 <x-button @click="show = true">

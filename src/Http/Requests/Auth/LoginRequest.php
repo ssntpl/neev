@@ -2,13 +2,14 @@
 
 namespace Ssntpl\Neev\Http\Requests\Auth;
 
+use Hash;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Models\Email;
 
 class LoginRequest extends FormRequest
 {
@@ -41,14 +42,17 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
+        $email = Email::where('email', $this->input('email'))->first();
+        if (!$email || !$email->verified_at || !Hash::check($this->input('password'), $email->user->password)) {
             RateLimiter::hit($this->throttleKey());
-
+    
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
             ]);
         }
-
+    
+        Auth::login($email->user, $this->boolean('remember'));
+        
         RateLimiter::clear($this->throttleKey());
     }
 
@@ -61,9 +65,10 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        $user = User::where('email', $this->input('email'))->first();
+        $email = Email::where('email', $this->input('email'))->first();
+        $user = $email?->user;
 
-        if (! $user) {
+        if (! $user || !$email->verified_at) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([

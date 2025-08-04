@@ -33,6 +33,9 @@ Route::middleware('web')->group(function () {
     Route::post('update-password', [UserAuthController::class, 'updatePasswordStore'])
         ->name('password.update');
 
+    });
+    
+Route::middleware('web')->group(function () {
     Route::get('/email/verify', [UserAuthController::class, 'emailVerifyCreate'])
         ->name('verification.notice');
     
@@ -41,9 +44,16 @@ Route::middleware('web')->group(function () {
     
     Route::get('/email/verify/{id}/{hash}', [UserAuthController::class, 'emailVerifyStore'])
         ->name('verification.verify');
-});
+    
+    Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
+        ->name('email.change');
+    
+    Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
+        ->name('email.change');
+    
+    Route::put('/email/change', [UserAuthController::class, 'emailChangeStore'])
+        ->name('email.update');
 
-Route::middleware('web')->group(function () {
     Route::post('/logout', [UserAuthController::class, 'destroy'])
         ->name('logout');
 
@@ -59,6 +69,8 @@ Route::middleware('web')->group(function () {
     Route::prefix('account')->group(function (){
         Route::get('/profile', [UserController::class, 'profile'])
             ->name('account.profile');
+        Route::get('/emails', [UserController::class, 'emails'])
+            ->name('account.emails');
         Route::get('/security', [UserController::class, 'security'])
             ->name('account.security');
         Route::get('/tokens', [UserController::class, 'tokens'])
@@ -74,6 +86,12 @@ Route::middleware('web')->group(function () {
             ->name('profile.update');
         Route::post('change-password', [UserController::class, 'changePassword'])
             ->name('password.change');
+        Route::post('emails', [UserController::class, 'addEmail'])
+            ->name('emails.add');
+        Route::delete('emails', [UserController::class, 'deleteEmail'])
+            ->name('emails.delete');
+        Route::put('emails', [UserController::class, 'primaryEmail'])
+            ->name('emails.primary');
         Route::delete('/accountDelete', [UserController::class, 'accountDelete'])
             ->name('account.delete');
         Route::post('/logoutSessions', [UserAuthController::class, 'destroyAll'])

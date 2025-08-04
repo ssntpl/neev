@@ -54,7 +54,7 @@
                                     <x-table-body-tr class="odd:bg-white even:bg-gray-50">
                                         <td class="px-6 py-4 text-start capitalize">{{ $user->name ?? '--' }}</td>
                                         <td class="px-6 py-4 text-center">{{ $user->email ?? '--' }}</td>
-                                        <td class="px-6 py-4 text-center">{{ $user->email_verified_at->diffForHumans() ?? '--' }}</td>
+                                        <td class="px-6 py-4 text-center">{{ $user->primaryEmail->verified_at->diffForHumans() ?? '--' }}</td>
                                         <td class="px-6 py-4 text-center">{{ $user->created_at->diffForHumans() ?? '--' }}</td>
                                         @if (config('neev.team'))
                                             <td class="px-6 py-4 text-center">{{ count($user->allTeams) ?? '--' }}</td>

@@ -22,6 +22,16 @@ class User extends AppUser
         return $this->hasMany(LoginHistory::class);
     }
 
+    public function emails()
+    {
+        return $this->hasMany(Email::class);
+    }
+
+    public function primaryEmail()
+    {
+        return $this->hasOne(Email::class)->where('email', $this->email);
+    }
+
     public function OTP($method = null)
     {
         if ($method) {
