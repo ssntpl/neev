@@ -1,17 +1,13 @@
 <x-app>
     <div class="w-1/3 flex justify-self-center items-center">
+        <x-validation-errors class="mb-4" />
+        <x-validation-status class="mb-4" />
         <x-card>
             <x-slot name="title">
                 {{__('Create New Team')}}
             </x-slot>
 
             <x-slot name="content">
-                @session('status')
-                    <div class="text-green-600">
-                        {{ session('status') }}
-                    </div>
-                @endsession
-                <x-input-error for="message" class="mt-2" />
                 <form class="flex flex-col gap-4" method="POST" action="{{ route('teams.store') }}">
                     @csrf
 

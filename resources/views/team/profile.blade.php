@@ -2,7 +2,8 @@
     <x-slot name="leftsection">
         {{ view('neev::team.left-section', ['team' => $team, 'user' => $user]) }}
     </x-slot>
-
+    <x-validation-errors class="mb-4" />
+    <x-validation-status class="mb-4" />
     <div  x-data="{ editing: false }">
         <x-card>
             <x-slot name="title">
@@ -35,12 +36,6 @@
                     <form id="updateTeamForm" class="flex flex-col gap-4" method="POST" action="{{ route('teams.update') }}">
                         @csrf
                         @method('PUT')
-                        @session('status')
-                            <div class="text-sm text-green-600 dark:text-green-400">
-                                {{ __(session('status')) }}
-                            </div>
-                        @endsession
-                        <x-input-error for="message"/>
 
                         <input type="hidden" name="team_id" value="{{ $team->id }}">
                         <div class="items-center">
