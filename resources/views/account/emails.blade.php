@@ -82,7 +82,7 @@
                                             @method('DELETE')
 
                                             <input type="hidden" name="email_id" value="{{$email->id}}">
-                                            <x-danger-button x-bind:disabled="{{$email->email === $user->email ? 'true' : 'false'}}" type="submit">{{ __('Delete') }}</x-danger-button>
+                                            <x-danger-button x-bind:disabled="{{$email->email === $user->email ? 'true' : 'false'}}" type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete the email?')}}')) $el.closest('form').submit();">{{ __('Delete') }}</x-danger-button>
                                         </form>
                                     </div>
                                 </td>

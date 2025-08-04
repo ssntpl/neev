@@ -58,6 +58,7 @@
             </x-slot>
         </x-card>
         
+        {{-- Two Factor Authentication? --}}
         <x-card>
             <x-slot name="title">
                 {{ __('Two Factor Authentication') }}
@@ -67,20 +68,97 @@
             </x-slot>
         </x-card>
         
-        <x-card>
+        {{-- Manage Passkeys --}}
+        <x-card x-data="{openPasskey: false}">
+            {{-- Title --}}
             <x-slot name="title">
-                {{ __('Passkeys') }}
+                {{ __('Manage Passkeys') }}
             </x-slot>
+
+            {{-- Action --}}
+            <x-slot name="action" class="flex">
+                <div>
+                    <div x-show="!openPasskey" x-on:click="openPasskey = true" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
+                            <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
+                        </svg>
+                    </div>
+
+                    <div x-show="openPasskey" x-on:click="openPasskey = false" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                </div>
+            </x-slot>
+
+            {{-- Content --}}
             <x-slot name="content">
-                
+                <p class="text-sm">Paaskeys allow for a more secure, seamless authentication experience on supported devices.</p>
+                <div class="flex flex-col gap-4">
+                    <form id="passkey-form" method="POST" class="flex gap-2 items-center justify-between" x-show="openPasskey" x-transition action="{{ route('passkeys.register') }}" class="flex flex-col gap-2">
+                        @csrf
+                        <input type="hidden" name="attestation" id="attestation-input">
+
+                        <div class="flex gap-2 items-center w-1/2">
+                            <x-label for="name" value="{{ __('Passkey Name') }}" class="w-1/3" />
+                            <x-input id="name" class="block w-2/3" type="text" name="name" required />
+                        </div>
+
+                        <div class="text-end">
+                            <x-button id="start" type="button">
+                                {{ __('Add Passkey') }}
+                            </x-button>
+                        </div>
+                    </form>
+                    @if (count($user->passkeys) > 0)
+                        <x-table>
+                            <x-slot name="head">
+                                <tr>
+                                    <th class="px-6 py-3 text-center font-bold tracking-wide">Name</th>
+                                    <th class="px-6 py-3 text-center font-bold tracking-wide">Location</th>
+                                    <th class="px-6 py-3 text-center font-bold tracking-wide">Last Used</th>
+                                    <th class="px-6 py-3 text-center font-bold tracking-wide">Added</th>
+                                    <th class="px-6 py-3 text-center font-bold tracking-wide"></th>
+                                </tr>
+                            </x-slot>
+                            <x-slot name="body">
+                                @foreach ($user->passkeys()->orderBy('created_at')->get() as $passkey)
+                                    <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                                        <td class="px-6 py-2 text-center">{{ $passkey->name }}</td>
+                                        <td class="px-6 py-2 text-center">{{ isset($passkey->location['city']) && isset($passkey->location['state']) && isset($passkey->location['country_iso']) ? $passkey->location['city'].', '.$passkey->location['state'].', '.$passkey->location['country_iso'] : '--' }}</td>
+                                        <td class="px-6 py-2 text-center">{{ $passkey->last_used?->diffForHumans() ?? '--' }}</td>
+                                        <td class="px-6 py-2 text-center">{{ $passkey->created_at?->diffForHumans() ?? '--' }}</td>
+                                        <td class="px-6 py-2 text-center">
+                                            <div class="flex gap-4 justify-center">
+                                                <form method="POST" action="{{route('passkeys.delete')}}">
+                                                    @csrf
+                                                    @method('DELETE')
+
+                                                    <input type="hidden" name="passkey_id" value="{{$passkey->id}}">
+                                                    <x-danger-button type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete the passkey?')}}')) $el.closest('form').submit();">{{ __('Delete') }}</x-danger-button>
+                                                </form>
+                                            </div>
+                                        </td>
+                                    </x-table-body-tr>
+                                @endforeach
+                            </x-slot>
+                        </x-table>
+                    @endif
+                </div>
             </x-slot>
         </x-card>
         
+        {{-- Danger Zone --}}
         <x-card class="border border-red-600">
+            {{-- Title --}}
             <x-slot name="title">
                 <p class="text-red-600">{{__('Danger Zone')}}</p>
             </x-slot>
+
+            {{-- Content --}}
             <x-slot name="content">
+                {{-- Delete Account --}}
                 <div x-data="{ show: false }">
                     <div class="flex justify-between gap-2">
                         <div>
@@ -129,3 +207,27 @@
         </x-card>
     </div>
 </x-app>
+<script src="https://unpkg.com/@simplewebauthn/browser/dist/bundle/index.es5.umd.min.js"></script>
+<script>
+    const { startRegistration } = SimpleWebAuthnBrowser;
+    document.getElementById('start').addEventListener('click', async () => {
+        const resp = await fetch('{{ route('passkeys.register.options') }}', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'Accept': 'application/json',
+            },
+        });
+        const res = await resp.json();
+
+        const attestation = await startRegistration({optionsJSON: res});
+
+        const attestationInput = document.getElementById('attestation-input');
+        attestationInput.value = JSON.stringify({
+            ...attestation,
+            challenge: res.challenge
+        });
+
+        document.getElementById('passkey-form').submit();
+    });
+</script>

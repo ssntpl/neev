@@ -40,4 +40,9 @@ class User extends AppUser
             return $this->hasMany(OTP::class);
         }
     }
+
+    public function passkeys()
+    {
+        return $this->hasMany(Passkey::class);
+    }
 }

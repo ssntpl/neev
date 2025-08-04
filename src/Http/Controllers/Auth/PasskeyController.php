@@ -2,10 +2,393 @@
 
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
+use Auth;
+use Exception;
+use Log;
+use Ssntpl\Neev\Models\Email;
+use Ssntpl\Neev\Models\LoginHistory;
+use Ssntpl\Neev\Models\Passkey;
+use Ssntpl\Neev\Models\User;
 use Illuminate\Http\Request;
+use ParagonIE\ConstantTime\Base64UrlSafe;
+use Symfony\Component\Uid\Uuid;
+use Webauthn\AttestationStatement\AttestationObjectLoader;
+use Webauthn\AttestationStatement\AttestationStatementSupportManager;
+use Webauthn\AttestationStatement\NoneAttestationStatementSupport;
+use Webauthn\AuthenticatorAssertionResponse;
+use Webauthn\AuthenticatorAttestationResponse;
+use Webauthn\AuthenticatorDataLoader;
+use Webauthn\AuthenticatorSelectionCriteria;
+use Webauthn\CeremonyStep\CeremonyStepManager;
+use Webauthn\CeremonyStep\CheckAlgorithm;
+use Webauthn\CeremonyStep\CheckAttestationFormatIsKnownAndValid;
+use Webauthn\CeremonyStep\CheckChallenge;
+use Webauthn\CeremonyStep\CheckCredentialId;
+use Webauthn\CeremonyStep\CheckHasAttestedCredentialData;
+use Webauthn\CeremonyStep\CheckOrigin;
+use Webauthn\CeremonyStep\CheckSignature;
+use Webauthn\CeremonyStep\CheckUserVerification;
+use Webauthn\CeremonyStep\CheckUserWasPresent;
+use Webauthn\CollectedClientData;
+use Webauthn\PublicKeyCredential;
+use Webauthn\PublicKeyCredentialCreationOptions;
+use Webauthn\PublicKeyCredentialParameters;
+use Webauthn\PublicKeyCredentialRpEntity;
+use Webauthn\PublicKeyCredentialSource;
+use Webauthn\PublicKeyCredentialUserEntity;
+use Webauthn\AuthenticatorAttestationResponseValidator;
+use Webauthn\AuthenticatorAssertionResponseValidator;
+use Webauthn\PublicKeyCredentialRequestOptions;
+use Webauthn\TrustPath\EmptyTrustPath;
+use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Http\Controllers\Controller;
-
 class PasskeyController extends Controller
 {
-    //
+    public function generateRegistrationOptions(Request $request)
+    {
+        $user = User::find($request->user()->id);
+
+        $rpName = env('APP_NAME', 'Neev');
+        $rpId = parse_url(config('neev.home_url'), PHP_URL_HOST);
+        $rpEntity = new PublicKeyCredentialRpEntity($rpName, $rpId);
+
+        $userId = strval($user->id);
+        $userEntity = new PublicKeyCredentialUserEntity(
+            id: $userId,
+            name: $user->email,
+            displayName: $user->name
+        );
+
+        $challenge = random_bytes(32);
+        $base64Challenge = Base64UrlSafe::encode($challenge);
+
+        $authenticatorSelection = new AuthenticatorSelectionCriteria(
+            residentKey: 'required',
+            userVerification: 'required'
+        );
+
+        $pubKeyCredParams = [
+            new PublicKeyCredentialParameters('public-key', -7),    // ES256
+            new PublicKeyCredentialParameters('public-key', -257),  // RS256
+        ];
+
+        $options = new PublicKeyCredentialCreationOptions(
+            rp: $rpEntity,
+            user: $userEntity,
+            challenge: $challenge,
+            excludeCredentials: [],
+            pubKeyCredParams: $pubKeyCredParams,
+            timeout: 120000,
+            authenticatorSelection: $authenticatorSelection,
+            attestation: 'none'
+        );
+
+        return response()->json([
+            'rp' => [
+                'name' => $rpName,
+                'id'   => $rpId,
+            ],
+            'user' => [
+                'id' => base64_encode($userId),
+                'name' => $user->email,
+                'displayName' => $user->name,
+            ],
+            'challenge' => $base64Challenge,
+            'pubKeyCredParams' => $pubKeyCredParams,
+            'authenticatorSelection' => [
+                // 'authenticatorAttachment' => $authenticatorSelection->authenticatorAttachment,
+                'residentKey' => $authenticatorSelection->residentKey,
+                'userVerification' => $authenticatorSelection->userVerification,
+            ],
+            'timeout' => 60000,
+            'excludeCredentials' => [],
+            'attestation' => 'none',
+            'extensions' => (object) [],
+        ]);
+    }
+
+    public function register(Request $request, GeoIP $geoIP)
+    {
+        $user = User::find($request->user()->id);
+        $input = json_decode($request->attestation, true);
+
+        $rpId = parse_url(config('neev.home_url'), PHP_URL_HOST);
+        $challenge = Base64UrlSafe::decode($input['challenge']);
+        if (!$challenge) {
+            return back()->withErrors(['message' => 'Passkey was not added.']);
+        }
+
+        $clientDataJson = $input['response']['clientDataJSON'];
+        $attestationObjectRaw = $input['response']['attestationObject'];
+        $rawId = $input['rawId'];
+        $type = $input['type'];
+
+        $collectedClientData = CollectedClientData::createFormJson($clientDataJson);
+
+        $attStmtSupportManager = new AttestationStatementSupportManager();
+        $attStmtSupportManager->add(new NoneAttestationStatementSupport());
+        $attestationLoader = new AttestationObjectLoader($attStmtSupportManager);
+        $attestationObject = $attestationLoader->load($attestationObjectRaw);
+
+        $response = new AuthenticatorAttestationResponse(
+            $collectedClientData,
+            $attestationObject,
+            $input['response']['transports'] ?? []
+        );
+        try {
+            $credential = new PublicKeyCredential(
+            $type,
+            $rawId,
+            $response,
+    );
+        } catch (\Throwable $e) {
+            return back()->withErrors(['message' => 'Passkey was not added.']);
+        }
+
+        // Rebuild PublicKeyCredentialCreationOptions
+        $rp = new PublicKeyCredentialRpEntity(
+            name: env('APP_URL', 'Neev'),
+            id: $rpId
+        );
+
+        $userEntity = new PublicKeyCredentialUserEntity(
+            id: strval($user->id),
+            name: $user->email,
+            displayName: $user->name
+        );
+
+        $pubKeyCredParams = [
+            new PublicKeyCredentialParameters('public-key', -7),
+            new PublicKeyCredentialParameters('public-key', -257),
+        ];
+
+        $options = new PublicKeyCredentialCreationOptions(
+            rp: $rp,
+            user: $userEntity,
+            challenge: $challenge,
+            excludeCredentials: [],
+            pubKeyCredParams: $pubKeyCredParams,
+            timeout: 120000,
+            authenticatorSelection: new AuthenticatorSelectionCriteria(
+                residentKey: 'required',
+                userVerification: 'required'
+            ),
+            attestation: 'none'
+        );
+
+        $attestationSupportManager = new AttestationStatementSupportManager();
+        try {
+            $ceremonySteps = new CeremonyStepManager([
+                new CheckChallenge(),
+                new CheckOrigin([$rpId]),
+                new CheckAlgorithm(),
+                new CheckSignature(),
+                new CheckCredentialId(),
+                new CheckUserWasPresent(),
+                new CheckUserVerification(),
+                new CheckHasAttestedCredentialData(),
+                new CheckAttestationFormatIsKnownAndValid($attestationSupportManager),
+            ]);
+
+            $validator = new AuthenticatorAttestationResponseValidator($ceremonySteps);
+
+            $response = $credential->response;
+
+            $credentialSource = $validator->check(
+                $response,
+                $options,
+                $rp->id
+            );
+        } catch (\Throwable $e) {
+            return back()->withErrors(['message' => 'Passkey was not added.']);
+        }
+
+        $passkey = $user->passkeys->where('aaguid', $credentialSource->aaguid->toRfc4122())->first();
+        if ($passkey) {
+            $passkey->name = $request->input('name', 'Default Device') ?? 'Default Device';
+            $passkey->credential_id = Base64UrlSafe::encode($credentialSource->publicKeyCredentialId);
+            $passkey->public_key = Base64UrlSafe::encode($credentialSource->credentialPublicKey);
+            $passkey->transports = $input['response']['transports'] ?? [];
+            $passkey->ip = $request->ip();
+            $passkey->location = $geoIP?->getLocation('157.49.181.239');
+            $passkey->save();
+        } else {
+            $passkey = $user->passkeys()->create([
+                'credential_id' => Base64UrlSafe::encode($credentialSource->publicKeyCredentialId),
+                'public_key' => Base64UrlSafe::encode($credentialSource->credentialPublicKey),
+                'name' => $request->input('name', 'Default Device') ?? 'Default Device',
+                'aaguid' => $credentialSource->aaguid->toRfc4122(),
+                'transports' => $input['response']['transports'] ?? [],
+                'ip' => $request->ip(),
+                'location' => $geoIP?->getLocation($request->ip()),
+            ]);
+        }
+
+        return back()->with('status', 'Passkey has been added.');
+    }
+    
+    public function deletePasskey(Request $request) {
+        $user = User::find($request->user()->id);
+        $passkey = Passkey::find($request->passkey_id);
+        if ($passkey->user_id != $user->id) {
+            return back()->withErrors([
+                'message' => 'Passkey was not deleted.'
+            ]);
+        }
+        $passkey->delete();
+        return back()->with('status', 'Passkey has been deleted.');
+    }
+    
+    public function updatePasskeyName(Request $request) {
+        $user = User::find($request->user()->id);
+        $passkey = Passkey::find($request->passkey_id);
+        if ($passkey->user_id != $user->id) {
+            return response()->json([
+                'status' => 'Failed'
+            ], 400);
+        }
+        $passkey->name = $request->name;
+        $passkey->save();
+        return response()->json([
+            'status' => 'Success',
+            'passkey' => $passkey
+        ]);
+    }
+
+    public function generateLoginOptions(Request $request)
+    {
+        $request->validate(['email' => 'required|email']);
+        $email = Email::where('email', $request->email)->first();
+        $user = $email->user;
+        $allowCredentials = [];
+
+        foreach ($user->passkeys as $passkey) {
+            $allowCredentials[] = [
+                'type' => 'public-key',
+                'id' => $passkey->credential_id,
+            ];
+        }
+
+        $rpId = parse_url(config('neev.home_url'), PHP_URL_HOST);
+        $challenge = random_bytes(32);
+        $base64Challenge = Base64UrlSafe::encode($challenge);
+        $options = new PublicKeyCredentialRequestOptions(
+            challenge: $challenge,
+            rpId: $rpId,
+            allowCredentials: $allowCredentials,
+            userVerification: 'required',
+            timeout: 120000,
+            extensions: []
+        );
+
+        return response()->json([
+            'challenge' => $base64Challenge,
+            'timeout' => $options->timeout,
+            'rpId' => $options->rpId,
+            'allowCredentials' => $options->allowCredentials,
+            'userVerification' => $options->userVerification,
+            'extensions' => [],
+        ]);
+    }
+
+    public function passkeyLogin(Request $request, GeoIP $geoIP)
+    {
+        $input = json_decode($request->assertion, true);
+        $rawId = $input['rawId'];
+        $type = $input['type'];
+        $authData = $input['response']['authenticatorData'];
+        $signature = Base64UrlSafe::decode($input['response']['signature']);
+
+        $authenticatorLoader = AuthenticatorDataLoader::create();
+        $authenticatorData = $authenticatorLoader->load(
+            Base64UrlSafe::decode($authData)
+        );
+
+        $response = new AuthenticatorAssertionResponse(
+            CollectedClientData::createFormJson($input['response']['clientDataJSON']),
+            $authenticatorData,
+            $signature,
+            $input['response']['userHandle'] ?? null
+        );
+
+        $credential = new PublicKeyCredential($type, $rawId, $response);
+
+        $rpId = parse_url(config('neev.home_url'), PHP_URL_HOST);
+        $challenge = Base64UrlSafe::decode($input['challenge']);
+
+        $options = new PublicKeyCredentialRequestOptions(
+            challenge: $challenge,
+            rpId: $rpId,
+            allowCredentials: [],
+            userVerification: 'required',
+            timeout: 120000
+        );
+
+        $email = Email::where('email', $request->email)->first();
+        $user = $email?->user;
+        $passkey = $user?->passkeys?->where('credential_id', Base64UrlSafe::encode(Base64UrlSafe::decode($rawId)))->first();
+
+        if (!$passkey || !$user || $user?->id != (int) base64_decode($input['response']['userHandle'])) {
+            return back()->withErrors(['message' => 'Wrong Credentials.']);
+        }
+
+        $data = Base64UrlSafe::decode($passkey->public_key);
+        $credentialSource = new PublicKeyCredentialSource(
+            publicKeyCredentialId: Base64UrlSafe::decode($passkey->credential_id),
+            type: 'public-key',
+            transports: $passkey->transports ?? [],
+            attestationType: 'none',
+            trustPath: new EmptyTrustPath(),
+            aaguid: new Uuid($passkey->aaguid),
+            credentialPublicKey: $data,
+            userHandle: $input['response']['userHandle'],
+            counter: $data['counter'] ?? 0
+        );
+
+        $validator = new AuthenticatorAssertionResponseValidator(
+            new CeremonyStepManager([
+                new CheckChallenge(),
+                new CheckOrigin([$rpId]),
+                new CheckAlgorithm(),
+                new CheckSignature(),
+                new CheckCredentialId(),
+                new CheckUserWasPresent(),
+                new CheckUserVerification(),
+            ])
+        );
+
+        $validator->check(
+            publicKeyCredentialSource: $credentialSource,
+            authenticatorAssertionResponse: $credential->response,
+            publicKeyCredentialRequestOptions: $options,
+            host: $rpId,
+            userHandle: $input['response']['userHandle'] ?? null
+        );
+
+        $this->login($request, $geoIP, $user, LoginHistory::Passkey);
+        
+        $passkey->last_used = now();
+        $passkey->save();
+
+        return redirect(config('neev.dashboard_url'));
+    }
+
+    public function login(Request $request, GeoIP $geoIP, $user, $method) 
+    {
+        Auth::login($user, false);
+
+        try {
+            $clientDetails = LoginHistory::getClientDetails($request);
+            $user->loginHistory()->create([
+                'method' => $method,
+                'location' => $geoIP?->getLocation($request->ip()),
+                'platform' => $clientDetails['platform'] ?? '',
+                'browser' => $clientDetails['browser'] ?? '',
+                'device' => $clientDetails['device'] ?? '',
+                'ip_address' => $request->ip(),
+            ]);
+        } catch (Exception $e) {
+            Log::error($e->getMessage());
+        }
+    }
 }

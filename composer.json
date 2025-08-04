@@ -42,6 +42,7 @@
         "php": "*",
         "laravel/framework": "*",
         "jenssegers/agent": "*",
-        "geoip2/geoip2": "*"
+        "geoip2/geoip2": "*",
+        "web-auth/webauthn-lib": "^5.2"
     }
 }

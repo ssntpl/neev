@@ -27,8 +27,6 @@ class UserAuthController extends Controller
     {
         $request->authenticate();
 
-        $request->session()->regenerate();
-
         try {
             $clientDetails = LoginHistory::getClientDetails($request);
             $user->loginHistory()->create([
