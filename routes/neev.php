@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Ssntpl\Neev\Http\Controllers\Auth\OAuthController;
 use Ssntpl\Neev\Http\Controllers\Auth\PasskeyController;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Http\Controllers\ManagementController;
@@ -20,6 +21,9 @@ Route::middleware('web')->group(function () {
     Route::put('/login', [UserAuthController::class, 'loginPassword'])
         ->name('login.password');
 
+    Route::get('/login/{id}/{hash}', [UserAuthController::class, 'loginUsingLink'])
+        ->name('login.link');
+
     Route::post('/login', [UserAuthController::class, 'loginStore']);
 
     Route::get('/forgot-password', [UserAuthController::class, 'forgotPasswordCreate'])
@@ -36,8 +40,15 @@ Route::middleware('web')->group(function () {
 
     Route::post('/passkeys/login/options',[PasskeyController::class,'generateLoginOptions'])
         ->name('passkeys.login.options');
+
     Route::post('/passkeys/login',[PasskeyController::class,'passkeyLogin'])
         ->name('passkeys.login');
+
+    //OAuth
+    Route::get('/oauth/{service}', [OAuthController::class, 'redirect'])
+        ->name('oauth.redirect');
+    Route::get('/oauth/{service}/callback', [OAuthController::class, 'callback'])
+        ->name('oauth.callback');
 
     });
     

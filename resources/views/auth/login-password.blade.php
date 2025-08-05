@@ -4,16 +4,47 @@
             <x-authentication-card-logo />
         </x-slot>
         <div class="flex flex-col gap-4">
-            <div class="border rounded-lg p-4 text-center">
+            <div class="flex flex-col gap-2 border rounded-lg p-4 text-center">
+                <div class="flex gap-2 justify-around flex-wrap">
+                    @if (config('neev.oauth.google'))
+                        {{-- Google --}}
+                        <form method="GET" action="{{ route('oauth.redirect', 'google') }}">
+                            <input type="hidden" name="email" value="{{$email}}" required>
+                            <x-secondary-button type="submit">{{ __('Google') }}</x-secondary-button>
+                        </form>
+                    @endif
+                    @if (config('neev.oauth.github'))
+                        {{-- Github --}}
+                        <form method="GET" action="{{ route('oauth.redirect', 'github') }}">
+                            <input type="hidden" name="email" value="{{$email}}" required>
+                            <x-secondary-button type="submit">{{ __('Github') }}</x-secondary-button>
+                        </form>
+                    @endif
+                    @if (config('neev.oauth.microsoft'))
+                        {{-- Microsoft --}}
+                        <form method="GET" action="{{ route('oauth.redirect', 'microsoft') }}">
+                            <input type="hidden" name="email" value="{{$email}}" required>
+                            <x-secondary-button type="submit">{{ __('Microsoft') }}</x-secondary-button>
+                        </form>
+                    @endif
+                    @if (config('neev.oauth.apple'))
+                        {{-- Apple --}}
+                        <form method="GET" action="{{ route('oauth.redirect', 'apple') }}">
+                            <input type="hidden" name="email" value="{{$email}}" required>
+                            <x-secondary-button type="submit">{{ __('Apple') }}</x-secondary-button>
+                        </form>
+                    @endif
+                </div>
+                {{-- Passkey --}}
                 <form id="login-form" method="POST" action="{{ route('passkeys.login') }}">
                     @csrf
                     <input id="email" type="hidden" name="email" value="{{$email}}" required />
 
                     <input type="hidden" name="assertion" id="assertion">
 
-                    <x-button type="button" id="login-button">
+                    <x-secondary-button type="button" id="login-button">
                         {{__('Login with Passkey')}}
-                    </x-button>
+                    </x-secondary-button>
                 </form>
             </div>
             <div class="border rounded-lg p-4">
@@ -53,6 +84,7 @@
         </div>
     </x-authentication-card>
 </x-guest>
+
 <script src="https://unpkg.com/@simplewebauthn/browser/dist/bundle/index.es5.umd.min.js"></script>
 <script>
     const { startAuthentication } = SimpleWebAuthnBrowser;

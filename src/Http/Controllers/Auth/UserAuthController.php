@@ -12,6 +12,7 @@ use Mail;
 use Session;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
+use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginHistory;
@@ -145,7 +146,41 @@ class UserAuthController extends Controller
     public function loginPassword(LoginRequest $request)
     {
         $request->checkEmail();
+
+        if ($request->action === 'link') {
+            $email = Email::where('email', $request->email)->first();
+            if (!$email || !$email->verified_at) {
+                return back()->withErrors('message', 'Credentials are wrong.');
+            }
+
+            $signedUrl = URL::temporarySignedRoute(
+                'login.link',
+                Carbon::now()->addMinutes(60),
+                ['id' => $email->id, 'hash' => sha1($email->email)]
+            );
+        
+            Mail::to($email->email)->send(new LoginUsingLink($signedUrl, 15));
+            
+            return back()->with('status', 'Login link has been sent.');
+        }
+
         return view('neev::auth.login-password', ['email' => $request->email]);
+    }
+
+    public function loginUsingLink(Request $request, $id, $hash, GeoIP $geoIP)
+    {
+        if (! $request->hasValidSignature()) {
+            return response()->json(['message' => 'Invalid or expired verification link.'], 403);
+        }
+
+        $email = Email::find($id);
+        if (sha1($email->email) !== $hash || !$email->verified_at) {
+            return redirect(route('login'));
+        }
+
+        PasskeyController::login($request, $geoIP, $email->user, LoginHistory::MagicAuth);
+
+        return redirect(config('neev.dashboard_url'));
     }
     
     /**

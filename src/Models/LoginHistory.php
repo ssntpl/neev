@@ -11,8 +11,7 @@ class LoginHistory extends Model
 
     public const Password = 'password';
     public const Passkey = 'passkey';
-    public const Github = 'github';
-    public const Google = 'google';
+    public const MagicAuth = 'magic auth';
 
     protected $fillable = [
         'user_id',

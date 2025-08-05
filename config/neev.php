@@ -11,6 +11,15 @@ return [
         'abhishek.sharma@ssntpl.in',
     ],
 
+    'oauth' => [
+        'google' => true,
+        'github' => true,
+        'microsoft' => false,
+        'apple' => false,
+    ],
+
+    'magicauth' => true,
+
     //Login History
     'last_login_history_in_days' => 30,
     'geo_ip_db' => 'app/geoip/GeoLite2-City.mmdb',

@@ -365,7 +365,7 @@ class PasskeyController extends Controller
             userHandle: $input['response']['userHandle'] ?? null
         );
 
-        $this->login($request, $geoIP, $user, LoginHistory::Passkey);
+        self::login($request, $geoIP, $user, LoginHistory::Passkey);
         
         $passkey->last_used = now();
         $passkey->save();
@@ -373,7 +373,7 @@ class PasskeyController extends Controller
         return redirect(config('neev.dashboard_url'));
     }
 
-    public function login(Request $request, GeoIP $geoIP, $user, $method) 
+    public static function login(Request $request, GeoIP $geoIP, $user, $method) 
     {
         Auth::login($user, false);
 
