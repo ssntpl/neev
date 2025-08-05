@@ -1,6 +1,8 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Ssntpl\Neev\Http\Controllers\Auth\OAuthController;
+use Ssntpl\Neev\Http\Controllers\Auth\PasskeyController;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Http\Controllers\ManagementController;
 use Ssntpl\Neev\Http\Controllers\RoleController;
@@ -8,31 +10,49 @@ use Ssntpl\Neev\Http\Controllers\TeamController;
 use Ssntpl\Neev\Http\Controllers\UserController;
 
 Route::middleware('web')->group(function () {
-    Route::get('register', [UserAuthController::class, 'registerCreate'])
+    Route::get('/register', [UserAuthController::class, 'registerCreate'])
         ->name('register');
 
-    Route::post('register', [UserAuthController::class, 'registerStore']);
+    Route::post('/register', [UserAuthController::class, 'registerStore']);
 
-    Route::get('login', [UserAuthController::class, 'loginCreate'])
+    Route::get('/login', [UserAuthController::class, 'loginCreate'])
         ->name('login');
     
-    Route::put('login', [UserAuthController::class, 'loginPassword'])
+    Route::put('/login', [UserAuthController::class, 'loginPassword'])
         ->name('login.password');
 
-    Route::post('login', [UserAuthController::class, 'loginStore']);
+    Route::get('/login/{id}/{hash}', [UserAuthController::class, 'loginUsingLink'])
+        ->name('login.link');
 
-    Route::get('forgot-password', [UserAuthController::class, 'forgotPasswordCreate'])
+    Route::post('/login', [UserAuthController::class, 'loginStore']);
+
+    Route::get('/forgot-password', [UserAuthController::class, 'forgotPasswordCreate'])
         ->name('password.request');
 
-    Route::post('forgot-password', [UserAuthController::class, 'forgotPasswordLink'])
+    Route::post('/forgot-password', [UserAuthController::class, 'forgotPasswordLink'])
         ->name('password.email');
     
-    Route::get('update-password/{id}/{hash}', [UserAuthController::class, 'updatePasswordCreate'])
+    Route::get('/update-password/{id}/{hash}', [UserAuthController::class, 'updatePasswordCreate'])
         ->name('reset.request');
     
-    Route::post('update-password', [UserAuthController::class, 'updatePasswordStore'])
+    Route::post('/update-password', [UserAuthController::class, 'updatePasswordStore'])
         ->name('password.update');
 
+    Route::post('/passkeys/login/options',[PasskeyController::class,'generateLoginOptions'])
+        ->name('passkeys.login.options');
+
+    Route::post('/passkeys/login',[PasskeyController::class,'passkeyLogin'])
+        ->name('passkeys.login');
+
+    //OAuth
+    Route::get('/oauth/{service}', [OAuthController::class, 'redirect'])
+        ->name('oauth.redirect');
+    Route::get('/oauth/{service}/callback', [OAuthController::class, 'callback'])
+        ->name('oauth.callback');
+
+    });
+    
+Route::middleware('web')->group(function () {
     Route::get('/email/verify', [UserAuthController::class, 'emailVerifyCreate'])
         ->name('verification.notice');
     
@@ -41,9 +61,16 @@ Route::middleware('web')->group(function () {
     
     Route::get('/email/verify/{id}/{hash}', [UserAuthController::class, 'emailVerifyStore'])
         ->name('verification.verify');
-});
+    
+    Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
+        ->name('email.change');
+    
+    Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
+        ->name('email.change');
+    
+    Route::put('/email/change', [UserAuthController::class, 'emailChangeStore'])
+        ->name('email.update');
 
-Route::middleware('web')->group(function () {
     Route::post('/logout', [UserAuthController::class, 'destroy'])
         ->name('logout');
 
@@ -59,6 +86,8 @@ Route::middleware('web')->group(function () {
     Route::prefix('account')->group(function (){
         Route::get('/profile', [UserController::class, 'profile'])
             ->name('account.profile');
+        Route::get('/emails', [UserController::class, 'emails'])
+            ->name('account.emails');
         Route::get('/security', [UserController::class, 'security'])
             ->name('account.security');
         Route::get('/tokens', [UserController::class, 'tokens'])
@@ -69,11 +98,24 @@ Route::middleware('web')->group(function () {
             ->name('account.sessions');
         Route::get('/loginHistory', [UserController::class, 'loginHistory'])
             ->name('account.loginHistory');
+
+        Route::post('/passkeys/register/options',[PasskeyController::class,'generateRegistrationOptions'])
+            ->name('passkeys.register.options');
+        Route::post('/passkeys/register',[PasskeyController::class,'register'])
+            ->name('passkeys.register');
+        Route::delete('/passkeys',[PasskeyController::class,'deletePasskey'])
+            ->name('passkeys.delete');
         
         Route::put('/profileUpdate', [UserController::class, 'profileUpdate'])
             ->name('profile.update');
-        Route::post('change-password', [UserController::class, 'changePassword'])
+        Route::post('/change-password', [UserController::class, 'changePassword'])
             ->name('password.change');
+        Route::post('/emails', [UserController::class, 'addEmail'])
+            ->name('emails.add');
+        Route::delete('/emails', [UserController::class, 'deleteEmail'])
+            ->name('emails.delete');
+        Route::put('/emails', [UserController::class, 'primaryEmail'])
+            ->name('emails.primary');
         Route::delete('/accountDelete', [UserController::class, 'accountDelete'])
             ->name('account.delete');
         Route::post('/logoutSessions', [UserAuthController::class, 'destroyAll'])

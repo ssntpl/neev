@@ -2,35 +2,32 @@
     <x-slot name="leftsection">
         {{ view('neev::team.left-section', ['team' => $team, 'user' => $user]) }}
     </x-slot>
-
-    <div class="flex flex-col gap-4" x-data="{ showForm: false }">
+    <x-validation-errors class="mb-4" />
+    <x-validation-status class="mb-4" />
+    <div class="flex flex-col gap-4">
         @if ($team->user_id === $user->id)
-            <x-card>
+            <x-card x-data="{memberOpen: false}">
                 <x-slot name="title">
                     {{__('Add Member')}}
                 </x-slot>
                 <x-slot name="action">
-                    @session('status')
-                        <div class="text-green-600">
-                            {{ session('status') }}
-                        </div>
-                    @endsession
-
-                    <x-input-error for="message"/>
-
                     <div>
-                        <x-button x-show="!showForm" x-on:click="showForm = true">
-                            {{ __('Add') }}
-                        </x-button>
+                        <div x-show="!memberOpen" x-on:click="memberOpen = true" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
+                            </svg>
+                        </div>
 
-                        <x-secondary-button x-show="showForm" x-on:click="showForm = false">
-                            {{ __('Close') }}
-                        </x-secondary-button>
+                        <div x-show="memberOpen" x-on:click="memberOpen = false" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
                     </div>
                 </x-slot>
 
                 <x-slot name="content">
-                    <div x-show="showForm" x-transition>
+                    <div x-show="memberOpen" x-transition>
                         <form method="POST" class="flex gap-2 mx-4 items-center justify-between" action="{{ route('teams.invite') }}">
                             @csrf
                             @method('PUT')

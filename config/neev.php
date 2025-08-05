@@ -5,9 +5,20 @@ return [
     'roles' => false,
     'email_verified' => false,
     'wrong_password_attempts' => 5,
-    'home_url' => 'http://localhost:8000',
-    'dashboard_url' => 'http://localhost:8000/dashboard',
-    'app_owner' => ['abhishek.sharma@ssntpl.in'],
+    'home_url' => env('APP_URL'),
+    'dashboard_url' => env('APP_URL').'/dashboard',
+    'app_owner' => [
+        'abhishek.sharma@ssntpl.in',
+    ],
+
+    'oauth' => [
+        'google' => true,
+        'github' => true,
+        'microsoft' => false,
+        'apple' => false,
+    ],
+
+    'magicauth' => true,
 
     //Login History
     'last_login_history_in_days' => 30,

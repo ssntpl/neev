@@ -39,7 +39,8 @@
          x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100"
          x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
          class="mb-6 bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-xl transform transition-all sm:w-full {{ $maxWidth }} sm:mx-auto"
-         x-trap.inert.noscroll="show">
+         {{-- x-trap.inert.noscroll="show" --}}
+         >
         {{ $slot }}
     </div>
 </div>

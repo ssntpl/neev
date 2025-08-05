@@ -2,21 +2,12 @@
     <x-slot name="leftsection">
         {{ view('neev::team.left-section', ['team' => $team, 'user' => $user]) }}
     </x-slot>
-
+    <x-validation-errors class="mb-4" />
+    <x-validation-status class="mb-4" />
     <div class="flex flex-col gap-4">
         <x-card>
            <x-slot name="title">
                 {{__('Settings')}}
-           </x-slot>
-           
-           <x-slot name="action">
-                @session('status')
-                    <div class="text-green-600">
-                        {{ session('status') }}
-                    </div>
-                @endsession
-
-                <x-input-error for="message"/>
            </x-slot>
            
            <x-slot name="content">
