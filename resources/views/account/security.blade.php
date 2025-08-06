@@ -58,15 +58,107 @@
             </x-slot>
         </x-card>
         
-        {{-- Two Factor Authentication? --}}
-        <x-card>
-            <x-slot name="title">
-                {{ __('Two Factor Authentication') }}
-            </x-slot>
-            <x-slot name="content">
-                
-            </x-slot>
-        </x-card>
+        {{-- Multi Factor Authentication? --}}
+        @if (count(config('neev.multi_factor_auth')))
+            <x-card>
+                <x-slot name="title">
+                    {{ __('Multi Factor Authentication') }}
+                </x-slot>
+                <x-slot name="content">
+                    <p class="text-sm">Multi-factor authentication adds an additional layer of security to your account by requiring more than just a password to log in</p>
+                    @if (count($user->multiFactorAuths))
+                        <div class="flex justify-between gap-2 items-center border shadow px-4 py-2 rounded-lg">
+                            <div>
+                                <h1 class="font-bold">Preferred MFA method</h1>
+                                <p class="text-sm">Set your preferred method to use for multi-factor authentication when login.</p>
+                            </div>
+                            <form method="POST" action="{{route('multi.prefered')}}">
+                                @csrf
+                                @method('PUT')
+                                <select name="auth_method" class="border rounded-md px-2 py-1" onchange="this.form.submit()">
+                                    @foreach ($user->multiFactorAuths as $method)
+                                        <option value="{{$method->method}}" {{ $method->id === $user->preferedMultiFactorAuth?->id ? 'selected' : '' }}>{{$method->method}}</option>
+                                    @endforeach
+                                </select>
+                            </form>
+                        </div>
+                    @endif
+
+                    <ul class="overflow-x-auto rounded-lg shadow border border-gray-200 dark:border-gray-700">
+                        @foreach (config('neev.multi_factor_auth') as $method)
+                            <li class="border odd:bg-white even:bg-gray-50">
+                                <div class="flex gap-2 py-2 px-4 items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                                    <div class="flex gap-2 items-center">
+                                        <p>{{Ssntpl\Neev\Models\MultiFactorAuth::UIName($method)}}</p>
+                                        @if ($user->multiFactorAuth($method))
+                                            <span class="border border-green-700 rounded-full text-xs font-medium leading-[18px] px-2 tracking-tight text-green-700">{{ 'Configured' }}</span>
+                                        @endif
+                                    </div>
+                                    <div class="flex gap-2 items-center">
+                                        @if ($user->multiFactorAuth($method))
+                                            <p>{{$user->multiFactorAuth($method)?->last_used?->diffForHumans()}}</p>
+                                        @endif
+                                    </div>
+                                    <div x-data class="text-end">
+                                        <form method="POST" action="{{route('multi.auth')}}" class="flex gap-4">
+                                            @csrf
+
+                                            <input type="hidden" name="auth_method" value="{{$method}}">
+                                            <input type="hidden" name="action" x-ref="action">
+                                            @if ($user->multiFactorAuth($method))
+                                                <x-secondary-button type="submit">{{ __('Edit') }}</x-secondary-button>
+                                                <x-danger-button type="submit" name="action" value="delete" @click.prevent="if (confirm('{{__('Are you sure you want to delete?')}}')) $refs.action.value = 'delete'; $el.closest('form').submit();">{{ __('Delete') }}</x-danger-button>
+                                            @else
+                                                <x-button>{{ __('Add') }}</x-button>
+                                            @endif
+                                        </form>
+                                    </div>
+                                </div>
+                                @if (session("qr_code") && $method === session("method"))
+                                    <div class="text-center items-center py-4">
+                                        <div class="mt-2">
+                                            <p class="mb-2">Scan this QR code with your authenticator app:</p>
+                                            <div class="flex justify-center">{!! session("qr_code") !!}</div>
+
+                                            <p class="mt-4">
+                                                Or manually enter this secret:
+                                            </p>
+                                            <code class="bg-gray-100 px-2 py-1 rounded select-all">{{ session('secret') }}</code>
+                                        </div>
+                                        <form method="POST" action="{{route('otp.mfa.store')}}" class="flex gap-2 justify-between mt-2 w-1/2 justify-self-center items-center p-4">
+                                            @csrf
+
+                                            <input type="hidden" name="auth_method" value="{{$method}}">
+                                            <input type="hidden" name="email" value="{{$user->email}}">
+                                            <div class="flex gap-2 items-center text-start w-2/3">
+                                                <x-label class="text-start" for="otp" value="{{ __('OTP') }}" class="w-1/4" />
+                                                <x-input id="otp" class="block w-3/4" type="text" name="otp" required />
+                                            </div>
+
+                                            <x-button name="action" value="verify">
+                                                {{ __('Verify') }}
+                                            </x-button>
+                                        </form>
+                                    </div>
+                                @endif
+                            </li>
+                        @endforeach
+                        <li class="border odd:bg-white even:bg-gray-50">
+                            <div class="flex gap-2 py-2 px-4 items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                                <div class="flex gap-2 items-center">
+                                    <p>{{ __('Recovery Codes') }}</p>
+                                </div>
+                                <div class="text-end">
+                                    <a href="{{route('recovery.codes')}}" target="_blank">
+                                        <x-secondary-button>{{ __('View') }}</x-secondary-button>
+                                    </a>
+                                </div>
+                            </div>
+                        </li>
+                    </ul>
+                </x-slot>
+            </x-card>
+        @endif
         
         {{-- Manage Passkeys --}}
         <x-card x-data="{openPasskey: false}">

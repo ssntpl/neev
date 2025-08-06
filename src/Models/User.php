@@ -3,11 +3,13 @@
 namespace Ssntpl\Neev\Models;
 
 use App\Models\User as AppUser;
+use Ssntpl\Neev\Traits\HasMultiAuth;
 use Ssntpl\Neev\Traits\HasTeams;
 
 class User extends AppUser
 {
     use HasTeams;
+    use HasMultiAuth;
     
     public function getProfilePhotoUrlAttribute()
     {

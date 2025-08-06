@@ -20,7 +20,7 @@
                     <x-slot name="head">
                         <tr>
                             <th class="px-6 py-3 text-center font-bold tracking-wide">Method</th>
-                            <th class="px-6 py-3 text-center font-bold tracking-wide">2FA</th>
+                            <th class="px-6 py-3 text-center font-bold tracking-wide">MFA</th>
                             <th class="px-6 py-3 text-center font-bold tracking-wide">Device</th>
                             <th class="px-6 py-3 text-center font-bold tracking-wide">Location</th>
                             <th class="px-6 py-3 text-center font-bold tracking-wide">Logged in at</th>
@@ -30,7 +30,7 @@
                         @foreach ($history as $login)
                             <x-table-body-tr class="odd:bg-white even:bg-gray-50">
                                 <td class="px-6 py-4 text-center capitalize">{{ $login->method ?? '--' }}</td>
-                                <td class="px-6 py-4 text-center">{{ $login->two_factor_method ?? '--' }}</td>
+                                <td class="px-6 py-4 text-center">{{ $login->multi_factor_method ?? '--' }}</td>
                                 <td class="px-6 py-4 text-center">
                                     <div class="flex gap-2 justify-self-center">
                                         @if ($login->device === 'Desktop')

@@ -24,6 +24,15 @@ Route::middleware('web')->group(function () {
     Route::get('/login/{id}/{hash}', [UserAuthController::class, 'loginUsingLink'])
         ->name('login.link');
 
+    Route::get('/otp/mfa/{method}', [UserAuthController::class, 'verifyMFAOTPCreate'])
+        ->name('otp.mfa.create');
+
+    Route::post('/otp/mfa', [UserAuthController::class, 'verifyMFAOTPStore'])
+        ->name('otp.mfa.store');
+
+    Route::post('/otp/mfa/send', [UserAuthController::class, 'emailOTPSend'])
+        ->name('otp.mfa.send');
+
     Route::post('/login', [UserAuthController::class, 'loginStore']);
 
     Route::get('/forgot-password', [UserAuthController::class, 'forgotPasswordCreate'])
@@ -98,6 +107,15 @@ Route::middleware('web')->group(function () {
             ->name('account.sessions');
         Route::get('/loginHistory', [UserController::class, 'loginHistory'])
             ->name('account.loginHistory');
+
+        Route::post('/multiFactorAuth', [UserController::class, 'addMultiFactorAuth'])
+            ->name('multi.auth');
+        Route::put('/multiFactorAuth', [UserController::class, 'preferedMultiFactorAuth'])
+            ->name('multi.prefered');
+        Route::get('/recovery/codes', [UserController::class, 'recoveryCodes'])
+            ->name('recovery.codes');
+        Route::post('/recovery/codes', [UserController::class, 'generateRecoveryCodes'])
+            ->name('recovery.generate');
 
         Route::post('/passkeys/register/options',[PasskeyController::class,'generateRegistrationOptions'])
             ->name('passkeys.register.options');

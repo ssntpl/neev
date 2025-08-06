@@ -33,7 +33,7 @@ class EmailOTP extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'Email OTP',
+            subject: 'Verification Code',
         );
     }
 

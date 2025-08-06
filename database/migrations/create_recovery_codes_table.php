@@ -11,15 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('login_history', function (Blueprint $table) {
+        Schema::create('recovery_codes', function (Blueprint $table) {
+            $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->string('method');
-            $table->string('multi_factor_method')->nullable();
-            $table->text('location')->nullable();
-            $table->string('platform')->nullable();
-            $table->string('browser')->nullable();
-            $table->string('device')->nullable();
-            $table->string('ip_address')->nullable();
+            $table->string('code');
             $table->timestamps();
         });
     }
@@ -29,6 +24,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('login_history');
+        Schema::dropIfExists('recovery_codes');
     }
 };

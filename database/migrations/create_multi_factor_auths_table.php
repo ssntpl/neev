@@ -11,16 +11,17 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('login_history', function (Blueprint $table) {
+        Schema::create('multi_factor_auths', function (Blueprint $table) {
+            $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('method');
-            $table->string('multi_factor_method')->nullable();
-            $table->text('location')->nullable();
-            $table->string('platform')->nullable();
-            $table->string('browser')->nullable();
-            $table->string('device')->nullable();
-            $table->string('ip_address')->nullable();
+            $table->text('secret')->nullable();
+            $table->integer('otp')->nullable();
+            $table->boolean('prefered')->default(false);
+            $table->timestamp('expires_at')->nullable();
+            $table->timestamp('last_used')->nullable();
             $table->timestamps();
+            $table->unique(['user_id', 'method']);
         });
     }
 
@@ -29,6 +30,6 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('login_history');
+        Schema::dropIfExists('multi_factor_auths');
     }
 };
