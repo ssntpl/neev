@@ -373,7 +373,7 @@ class PasskeyController extends Controller
         return redirect(config('neev.dashboard_url'));
     }
 
-    public static function login(Request $request, GeoIP $geoIP, $user, $method) 
+    public static function login(Request $request, GeoIP $geoIP, $user, $method, $mfa = null) 
     {
         Auth::login($user, false);
 
@@ -382,6 +382,7 @@ class PasskeyController extends Controller
             $user->loginHistory()->create([
                 'method' => $method,
                 'location' => $geoIP?->getLocation($request->ip()),
+                'multi_factor_method' => $mfa,
                 'platform' => $clientDetails['platform'] ?? '',
                 'browser' => $clientDetails['browser'] ?? '',
                 'device' => $clientDetails['device'] ?? '',

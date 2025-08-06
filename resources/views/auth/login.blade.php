@@ -20,9 +20,9 @@
                     {{ __('Have not registered?') }}
                 </a>
                 
-                <div class="flex items-center  justify-end">
+                <div class="flex items-center justify-end">
                     @if (config('neev.magicauth'))
-                        <x-button class="ms-2" name="action" value="link">
+                        <x-button type="button" class="ms-2" name="action" value="link">
                             {{ __('Send Login Link') }}
                         </x-button>
                     @endif

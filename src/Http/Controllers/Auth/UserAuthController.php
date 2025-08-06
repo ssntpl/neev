@@ -12,10 +12,12 @@ use Mail;
 use Session;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
+use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginHistory;
+use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\GeoIP;
@@ -24,7 +26,7 @@ use Log;
 
 class UserAuthController extends Controller
 {
-    public function login(LoginRequest $request, GeoIP $geoIP, $user, $method) 
+    public function login(LoginRequest $request, GeoIP $geoIP, $user, $method, $mfa = null) 
     {
         $request->authenticate();
 
@@ -33,6 +35,7 @@ class UserAuthController extends Controller
             $user->loginHistory()->create([
                 'method' => $method,
                 'location' => $geoIP?->getLocation($request->ip()),
+                'multi_factor_method' => $mfa,
                 'platform' => $clientDetails['platform'] ?? '',
                 'browser' => $clientDetails['browser'] ?? '',
                 'device' => $clientDetails['device'] ?? '',
@@ -155,7 +158,7 @@ class UserAuthController extends Controller
 
             $signedUrl = URL::temporarySignedRoute(
                 'login.link',
-                Carbon::now()->addMinutes(60),
+                Carbon::now()->addMinutes(15),
                 ['id' => $email->id, 'hash' => sha1($email->email)]
             );
         
@@ -194,6 +197,11 @@ class UserAuthController extends Controller
         }
         
         $user = $email->user;
+        if (count($user->multiFactorAuths) > 0) {
+            session(['email' => $email->email]);
+            return redirect(route('otp.mfa.create', $user->preferedMultiAuth?->method ?? $user->multiFactorAuths()->first()?->method));
+        }
+
         $this->login($request, $geoIP, $user, LoginHistory::Password);
         if (!$email->verified_at && config('neev.email_verified')) {
             return redirect(route('verification.notice'));
@@ -369,5 +377,64 @@ class UserAuthController extends Controller
         }
 
        return back()->with('logoutStatus', __('Logged out from other sessions.'));
+    }
+
+    public function verifyMFAOTPCreate($method)
+    {
+        $email = session('email');
+        if ($method === MultiFactorAuth::email()) {
+            $user = Email::where('email', $email)->first()?->user;
+            $auth = $user?->multiFactorAuth($method);
+            if (!$auth) {
+                return back()->withErrors(['message' => 'Inavlid Email.']);
+            }
+            if ($auth->expires_at && now()->lt($auth->expires_at)) {
+                $auth->expires_at = now()->addMinutes(15);
+                $auth->save();
+            } else {
+                $otp = rand(100000, 999999);
+                $auth->otp = $otp;
+                $auth->expires_at = now()->addMinutes(15);
+                $auth->save();
+                Mail::to($email)->send(new EmailOTP($user->name, $otp, 15));
+            }
+        }
+        return view('neev::auth.otp-mfa',  ['email' => $email, 'method' => $method]);
+    }
+
+    public function emailOTPSend()
+    {
+        $email = session('email');
+        $user = Email::where('email', $email)->first()?->user;
+        $auth = $user?->multiFactorAuth(MultiFactorAuth::email());
+        if (!$auth) {
+            return back()->withErrors(['message' => 'Inavlid Email.']);
+        }
+        $otp = rand(100000, 999999);
+        $auth->otp = $otp;
+        $auth->expires_at = now()->addMinutes(15);
+        $auth->save();
+        Mail::to($email)->send(new EmailOTP($user->name, $otp, 15));
+        return back()->with('status', 'Verification link has been sent.');
+    }
+
+    public function verifyMFAOTPStore(LoginRequest $request, GeoIP $geoIP) {
+        $email = Email::where('email', $request->email)->first();
+        $user = $email?->user ?? User::find($request->user()?->id);
+
+        if (!$user) {
+            return back()->withErrors(['message' => 'credentials are wrong.']);
+        }
+
+        if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
+            if ($request->action === 'verify') {
+                return back()->with('status', 'Code verified.');
+            } 
+
+            PasskeyController::login($request, $geoIP, $user, LoginHistory::Password, MultiFactorAuth::UIName($request->auth_method));
+            return redirect(config('neev.dashboard_url'));
+        }
+
+        return back()->withErrors(['message' => 'Code is invalid']);
     }
 }

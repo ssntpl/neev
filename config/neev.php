@@ -1,5 +1,7 @@
 <?php
 
+use Ssntpl\Neev\Models\MultiFactorAuth;
+
 return [
     'team' => false,
     'roles' => false,
@@ -10,6 +12,13 @@ return [
     'app_owner' => [
         'abhishek.sharma@ssntpl.in',
     ],
+
+    'multi_factor_auth' => [
+        MultiFactorAuth::authenticator(),
+        MultiFactorAuth::email(),
+    ],
+
+    'recovery_codes' => 16,
 
     'oauth' => [
         'google' => true,

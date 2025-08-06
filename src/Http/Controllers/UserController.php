@@ -162,4 +162,61 @@ class UserController extends Controller
         $user->delete();
         return redirect(route('login'));
     }
+
+    public function addMultiFactorAuth(Request $request)
+    {
+        $request->validate([
+            'auth_method' => ['required'],
+        ]);
+
+        $user = User::find($request->user()->id);
+        if ($request->action === 'delete') {
+            $auth = $user->multiFactorAuth($request->auth_method);
+            if (!$auth) {
+                return back()->withErrors(['message' => 'Auth was not deleted.']);
+            }
+
+            if ($auth->prefered && count($user->multiFactorAuths) > 0) {
+                $method = $user->multiFactorAuths[0];
+                $method->prefered = true;
+                $method->save();
+            }
+            $auth->delete();
+            return back()->with('status', 'Auth has been deleted.');
+        }
+        $res = $user->addMultiFactorAuth($request->auth_method);
+        return $res;
+    }
+
+    public function preferedMultiFactorAuth(Request $request)
+    {
+        $request->validate([
+            'auth_method' => ['required'],
+        ]);
+
+        $user = User::find($request->user()->id);
+        $auth = $user?->multiFactorAuth($request->auth_method);
+        if (!$user || !$auth) {
+            return back()->withErrors(['message' => 'Prefered auth was not updated.']);
+        }
+        $prefered = $user->preferedMultiFactorAuth;
+        $prefered->prefered = false;
+        $prefered->save();
+        $auth->prefered = true;
+        $auth->save();
+        return back()->with('status', 'Prefered auth has been updated.');
+    }
+
+    public function recoveryCodes(Request $request)
+    {
+        $user = User::find($request->user()->id);
+        return view('neev::account.recovery-codes', ['user' => $user]);
+    }
+
+    public function generateRecoveryCodes(Request $request)
+    {
+        $user = User::find($request->user()->id);
+        $user->generateRecoveryCodes();
+        return back()->with('status', 'New recovery codes are generated.');
+    }
 }

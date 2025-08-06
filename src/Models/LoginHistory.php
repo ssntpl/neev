@@ -16,7 +16,7 @@ class LoginHistory extends Model
     protected $fillable = [
         'user_id',
         'method',
-        'two_factor_method',
+        'multi_factor_method',
         'location',
         'platform',
         'browser',
