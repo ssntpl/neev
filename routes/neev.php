@@ -138,6 +138,14 @@ Route::middleware('web')->group(function () {
             ->name('account.delete');
         Route::post('/logoutSessions', [UserAuthController::class, 'destroyAll'])
             ->name('logout.sessions');
+        Route::post('/tokens/store', [UserController::class, 'tokenStore'])
+            ->name('tokens.store');
+        Route::delete('/tokens/delete', [UserController::class, 'tokenDelete'])
+            ->name('tokens.delete');
+        Route::delete('/tokens/deleteAll', [UserController::class, 'tokenDeleteAll'])
+            ->name('tokens.deleteAll');
+        Route::put('/tokens/update', [UserController::class, 'tokenUpdate'])
+            ->name('tokens.update');
     });
 
     Route::prefix('teams')->group(function (){

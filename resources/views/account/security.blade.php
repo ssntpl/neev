@@ -88,7 +88,7 @@
                         @foreach (config('neev.multi_factor_auth') as $method)
                             <li class="border odd:bg-white even:bg-gray-50">
                                 <div class="flex gap-2 py-2 px-4 items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition">
-                                    <div class="flex gap-2 items-center">
+                                    <div class="flex gap-2 items-center w-1/4">
                                         <p>{{Ssntpl\Neev\Models\MultiFactorAuth::UIName($method)}}</p>
                                         @if ($user->multiFactorAuth($method))
                                             <span class="border border-green-700 rounded-full text-xs font-medium leading-[18px] px-2 tracking-tight text-green-700">{{ 'Configured' }}</span>

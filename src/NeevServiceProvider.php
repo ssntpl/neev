@@ -23,6 +23,7 @@ class NeevServiceProvider extends ServiceProvider
             __DIR__.'/../database/migrations/create_passkeys_table.php' => database_path('migrations/2025_01_01_000005_create_passkeys_table.php'),
             __DIR__.'/../database/migrations/create_multi_factor_auths_table.php' => database_path('migrations/2025_01_01_000006_create_multi_factor_auths_table.php'),
             __DIR__.'/../database/migrations/create_recovery_codes_table.php' => database_path('migrations/2025_01_01_000007_create_recovery_codes_table.php'),
+            __DIR__.'/../database/migrations/create_access_tokens_table.php' => database_path('migrations/2025_01_01_000008_create_access_tokens_table.php'),
         ], 'neev-migrations');
 
         $this->publishes([
