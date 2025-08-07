@@ -8,6 +8,7 @@ use Jenssegers\Agent\Agent;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Models\Email;
+use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\User;
 
 class UserController extends Controller
@@ -29,7 +30,7 @@ class UserController extends Controller
 
     public function tokens(Request $request)
     {
-        return view('neev::account.tokens', ['user' => User::find($request->user()->id)]);
+        return view('neev::account.tokens', ['user' => User::find($request->user()->id), 'allPermissions' => Permission::all()]);
     }
 
     public function teams(Request $request)
@@ -218,5 +219,42 @@ class UserController extends Controller
         $user = User::find($request->user()->id);
         $user->generateRecoveryCodes();
         return back()->with('status', 'New recovery codes are generated.');
+    }
+
+    public function tokenStore(Request $request)
+    {
+        $user = User::find($request->user()->id);
+        $token = $user->createApiToken($request->name, $request->permissions, $request->expiry);
+        return back()->with('token', $token->plainTextToken);
+    }
+
+    public function tokenDelete(Request $request)
+    {
+        $user = User::find($request->user()->id);
+        $user->accessTokens->find($request->token_id)->delete();
+        return back()->with('status', 'Token has been deleted.');
+    }
+
+    public function tokenDeleteAll(Request $request)
+    {
+        $user = User::find($request->user()->id);
+        $user->apiTokens()->delete();
+        return back()->with('status', 'All tokens have been deleted.');
+    }
+
+    public function tokenUpdate(Request $request)
+    {
+        $user = User::find($request->user()->id);
+        $token = $user->accessTokens->find($request->token_id);
+        if (!$token) {
+            return back()->withErrors(['message' => 'Token was not updated.']);
+        }
+        
+        if (!empty($request->permissions)) {
+            $token->permissions = $request->permissions;
+        }
+        
+        $token->save();
+        return back()->with('status', 'Token has been updated.');
     }
 }

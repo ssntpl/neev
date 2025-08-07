@@ -6,7 +6,6 @@ use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
 use BaconQrCode\Writer;
-use Exception;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
 use Ssntpl\Neev\Models\MultiFactorAuth;
