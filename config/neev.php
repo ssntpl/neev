@@ -5,10 +5,12 @@ use Ssntpl\Neev\Models\MultiFactorAuth;
 return [
     'team' => false,
     'roles' => false,
+    'stack' => 'ui',
     'email_verified' => false,
-    'wrong_password_attempts' => 5,
+    
     'home_url' => env('APP_URL'),
     'dashboard_url' => env('APP_URL').'/dashboard',
+
     'app_owner' => [
         'abhishek.sharma@ssntpl.in',
     ],
@@ -34,4 +36,18 @@ return [
     'geo_ip_db' => 'app/geoip/GeoLite2-City.mmdb',
     'edition' => env('MAXMIND_EDITION', 'GeoLite2-City'),
     'maxmind_license_key' => env('MAXMIND_LICENSE_KEY'),
+
+    'password' => [
+        'min_length' => 4,
+        'max_length' => 8,
+        'combination_types' => ['number'], //['alphabet', 'number', 'symbols'],
+        'check_user_columns' => ['name', 'email'],
+        'old_passwords' => 5,
+        
+        'soft_fail_attempts' => 2,
+        'hard_fail_attempts' => 20,
+        'login_block_minutes' => 5,
+        'password_expiry_soft_days' => 60,
+        'password_expiry_hard_days' => 90,
+    ],
 ];

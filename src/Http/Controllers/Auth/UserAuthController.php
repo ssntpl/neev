@@ -20,29 +20,32 @@ use Ssntpl\Neev\Models\LoginHistory;
 use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Rules\PasswordCheck;
 use Ssntpl\Neev\Services\GeoIP;
 use URL;
 use Log;
 
 class UserAuthController extends Controller
 {
-    public function login(LoginRequest $request, GeoIP $geoIP, $user, $method, $mfa = null) 
+    public function login(LoginRequest $request, GeoIP $geoIP, $user, $method, $mfa = null, $loginHistory = true) 
     {
         $request->authenticate();
-
-        try {
-            $clientDetails = LoginHistory::getClientDetails($request);
-            $user->loginHistory()->create([
-                'method' => $method,
-                'location' => $geoIP?->getLocation($request->ip()),
-                'multi_factor_method' => $mfa,
-                'platform' => $clientDetails['platform'] ?? '',
-                'browser' => $clientDetails['browser'] ?? '',
-                'device' => $clientDetails['device'] ?? '',
-                'ip_address' => $request->ip(),
-            ]);
-        } catch (Exception $e) {
-            Log::error($e->getMessage());
+        $request->session()->regenerate();
+        if ($loginHistory) {
+            try {
+                $clientDetails = LoginHistory::getClientDetails($request);
+                $user->loginHistory()->create([
+                    'method' => $method,
+                    'location' => $geoIP?->getLocation($request->ip()),
+                    'multi_factor_method' => $mfa,
+                    'platform' => $clientDetails['platform'] ?? '',
+                    'browser' => $clientDetails['browser'] ?? '',
+                    'device' => $clientDetails['device'] ?? '',
+                    'ip_address' => $request->ip(),
+                ]);
+            } catch (Exception $e) {
+                Log::error($e->getMessage());
+            }
         }
     }
 
@@ -88,7 +91,7 @@ class UserAuthController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
-            'password' => ['required', 'confirmed'],
+            'password' => ['required', 'confirmed', new PasswordCheck],
         ]);
 
         $user = User::create([
@@ -130,8 +133,6 @@ class UserAuthController extends Controller
             return redirect(route('verification.notice'));
         }
 
-        
-
         return redirect(config('neev.dashboard_url'));
     }
 
@@ -152,7 +153,7 @@ class UserAuthController extends Controller
 
         if ($request->action === 'link') {
             $email = Email::where('email', $request->email)->first();
-            if (!$email || !$email->verified_at) {
+            if (!$email) {
                 return back()->withErrors('message', 'Credentials are wrong.');
             }
 
@@ -192,17 +193,18 @@ class UserAuthController extends Controller
     public function loginStore(LoginRequest $request, GeoIP $geoIP)
     {
         $email = Email::where('email', $request->email)->first();
-        if (!$email || !$email->verified_at) {
+        if (!$email) {
             return back()->withErrors('message', 'Credentials are wrong.');
         }
         
         $user = $email->user;
+        $this->login(request: $request, geoIP: $geoIP, user: $user, method: LoginHistory::Password, loginHistory: false);
+
         if (count($user->multiFactorAuths) > 0) {
             session(['email' => $email->email]);
             return redirect(route('otp.mfa.create', $user->preferedMultiAuth?->method ?? $user->multiFactorAuths()->first()?->method));
         }
 
-        $this->login($request, $geoIP, $user, LoginHistory::Password);
         if (!$email->verified_at && config('neev.email_verified')) {
             return redirect(route('verification.notice'));
         }
@@ -268,7 +270,7 @@ class UserAuthController extends Controller
     {
         $request->validate([
             'email' => 'required|string|email|max:255',
-            'password' => ['required', 'confirmed'],
+            'password' => ['required', 'confirmed', new PasswordCheck],
         ]);
 
         $email = Email::where('email', $request->email)->first();

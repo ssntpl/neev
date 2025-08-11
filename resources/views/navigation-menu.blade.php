@@ -92,7 +92,7 @@
                             
                             @if (in_array($user->email,config('neev.app_owner')))
                                 <x-dropdown-link href="{{ route('management.profile') }}">
-                                    {{ __('User Management') }}
+                                    {{ __('App Management') }}
                                 </x-dropdown-link>
                             @endif
 

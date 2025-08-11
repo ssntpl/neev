@@ -10,6 +10,7 @@ use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Rules\PasswordCheck;
 
 class UserController extends Controller
 {
@@ -135,7 +136,7 @@ class UserController extends Controller
     {
         $request->validate([
             'current_password' => ['required'],
-            'password' => ['required', 'confirmed'],
+            'password' => ['required', 'confirmed', new PasswordCheck],
         ]);
 
         $user = User::find($request->user()->id);

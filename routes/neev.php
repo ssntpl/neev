@@ -59,9 +59,9 @@ Route::middleware('web')->group(function () {
     Route::get('/oauth/{service}/callback', [OAuthController::class, 'callback'])
         ->name('oauth.callback');
 
-    });
+});
     
-Route::middleware('web')->group(function () {
+Route::middleware( ['web'])->group(function () {
     Route::get('/email/verify', [UserAuthController::class, 'emailVerifyCreate'])
         ->name('verification.notice');
     

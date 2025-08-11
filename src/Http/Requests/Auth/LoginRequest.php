@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Models\Email;
+use Ssntpl\Neev\Models\PasswordHistory;
 
 class LoginRequest extends FormRequest
 {
@@ -43,8 +44,17 @@ class LoginRequest extends FormRequest
         $this->ensureIsNotRateLimited();
 
         $email = Email::where('email', $this->input('email'))->first();
-        if (!$email || !$email->verified_at || !Hash::check($this->input('password'), $email->user->password)) {
-            RateLimiter::hit($this->throttleKey());
+        if (!$email || !Hash::check($this->input('password'), $email->user->password)) {
+            if (config('neev.password.soft_fail_attempts')) {
+                $currentPassword = PasswordHistory::where('user_id', $email->user_id)->orderByDesc('id')->first();
+                if ($currentPassword?->wrong_attempts >= config('neev.password.hard_fail_attempts')) {
+                    RateLimiter::hit($this->throttleKey(),  60 * 60 * 24 * 365);
+                } else {
+                    RateLimiter::hit($this->throttleKey(), (int) config('neev.password.soft_fail_attempts') * 60);
+                }
+                $currentPassword->wrong_attempts++;
+                $currentPassword->save();
+            }
     
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
@@ -68,15 +78,12 @@ class LoginRequest extends FormRequest
         $email = Email::where('email', $this->input('email'))->first();
         $user = $email?->user;
 
-        if (! $user || !$email->verified_at) {
-            RateLimiter::hit($this->throttleKey());
-
+        if (!$user ) {
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
             ]);
         }
 
-        RateLimiter::clear($this->throttleKey());
         return $user;
     }
 
@@ -87,7 +94,7 @@ class LoginRequest extends FormRequest
      */
     public function ensureIsNotRateLimited(): void
     {
-        if (! RateLimiter::tooManyAttempts($this->throttleKey(), config('neev.wrong_password_attempts'))) {
+        if (! RateLimiter::tooManyAttempts($this->throttleKey(), (int) config('neev.password.soft_fail_attempts', 5))) {
             return;
         }
 

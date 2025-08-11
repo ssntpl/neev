@@ -19,7 +19,7 @@ class InstallNeev extends Command implements PromptsForMissingInput
      */
     protected $signature = 'neev:install    {teams : Indicates if team support should be installed}
                                             {roles : Indicates if roles support should be installed}
-                                            {feature : Indicates if API support should be installed}
+                                            {stack : Indicates if API support should be installed}
                                             {verification : Indicates if email verification support should be installed}';
 
     /**
@@ -37,7 +37,7 @@ class InstallNeev extends Command implements PromptsForMissingInput
         $this->info('🔧 Installing with options:');
         $this->callSilent('vendor:publish', ['--tag' => 'neev-config', '--force' => true]);
         $this->callSilent('vendor:publish', ['--tag' => 'neev-migrations', '--force' => true]);
-
+        
         if ($this->argument('teams') === 'yes') {
             $this->installTeam();
             if ($this->argument('roles') === 'yes') {
@@ -45,9 +45,18 @@ class InstallNeev extends Command implements PromptsForMissingInput
             }
         }
         
+        $file = config_path('neev.php');
+        if ($stack = $this->argument('stack')) {
+
+            $this->replaceInFile(
+                "'stack' => '" . $this->getCurrentStackValue($file) . "',",
+                "'stack' => '{$stack}',",
+                $file
+            );
+        }
         
         if ($this->argument('verification') === 'yes') {
-            $this->replaceInFile("'email_verified' => false,", "'email_verified' => true,", config_path('neev.php'));
+            $this->replaceInFile("'email_verified' => false,", "'email_verified' => true,", $file);
         }
 
         $this->info('✅ Neev installed successfully!');
@@ -78,6 +87,17 @@ class InstallNeev extends Command implements PromptsForMissingInput
         file_put_contents($path, str_replace($search, $replace, file_get_contents($path)));
     }
 
+    protected function getCurrentStackValue($file)
+    {
+        $content = file_get_contents($file);
+
+        if (preg_match("/'stack'\s*=>\s*'([^']+)'/", $content, $matches)) {
+            return $matches[1];
+        }
+
+        return 'ui'; // default fallback
+    }
+
     /**
      * Prompt for missing input arguments using the returned questions.
      *
@@ -104,8 +124,8 @@ class InstallNeev extends Command implements PromptsForMissingInput
                 default: 'no'
             ),
 
-            'feature' => fn () => select(
-                label: 'Which feature would you like to install?',
+            'stack' => fn () => select(
+                label: 'Which stack would you like to install?',
                 options: [
                     'api' => 'API only',
                     'ui' => 'UI only',
