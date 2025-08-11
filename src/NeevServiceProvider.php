@@ -3,15 +3,21 @@
 namespace Ssntpl\Neev;
 
 use Blade;
+use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
 use Ssntpl\Neev\Commands\CleanupOldLoginHistory;
+use Ssntpl\Neev\Commands\CreatePermission;
 use Ssntpl\Neev\Commands\DownloadGeoLiteDb;
 use Ssntpl\Neev\Commands\InstallNeev;
+use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
 
 class NeevServiceProvider extends ServiceProvider
 {
     public function boot()
     {
+        $router = $this->app->make(Router::class);
+        $router->aliasMiddleware('neev', NeevMiddleware::class);
+
         $this->publishes([
             __DIR__.'/../config/neev.php' => config_path('neev.php'),
         ], 'neev-config');
@@ -24,6 +30,7 @@ class NeevServiceProvider extends ServiceProvider
             __DIR__.'/../database/migrations/create_multi_factor_auths_table.php' => database_path('migrations/2025_01_01_000006_create_multi_factor_auths_table.php'),
             __DIR__.'/../database/migrations/create_recovery_codes_table.php' => database_path('migrations/2025_01_01_000007_create_recovery_codes_table.php'),
             __DIR__.'/../database/migrations/create_access_tokens_table.php' => database_path('migrations/2025_01_01_000008_create_access_tokens_table.php'),
+            __DIR__.'/../database/migrations/create_password_histories_table.php' => database_path('migrations/2025_01_01_000009_create_password_histories_table.php'),
         ], 'neev-migrations');
 
         $this->publishes([
@@ -44,6 +51,6 @@ class NeevServiceProvider extends ServiceProvider
     public function register()
     {
         $this->mergeConfigFrom(__DIR__.'/../config/neev.php', 'neev');
-        $this->commands([InstallNeev::class, DownloadGeoLiteDb::class, CleanupOldLoginHistory::class]);
+        $this->commands([InstallNeev::class, DownloadGeoLiteDb::class, CleanupOldLoginHistory::class, CreatePermission::class]);
     }
 }

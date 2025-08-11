@@ -376,7 +376,7 @@ class PasskeyController extends Controller
     public static function login(Request $request, GeoIP $geoIP, $user, $method, $mfa = null) 
     {
         Auth::login($user, false);
-
+        $request->session()->regenerate();
         try {
             $clientDetails = LoginHistory::getClientDetails($request);
             $user->loginHistory()->create([
