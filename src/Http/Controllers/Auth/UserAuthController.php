@@ -29,6 +29,11 @@ class UserAuthController extends Controller
 {
     public function login(LoginRequest $request, GeoIP $geoIP, $user, $method, $mfa = null, $loginHistory = true) 
     {
+        if (!$user->active) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'email' => 'Your account is deactivated, please contact your admin to activate your account.',
+            ]);
+        }
         $request->authenticate();
         $request->session()->regenerate();
         if ($loginHistory) {
@@ -106,11 +111,16 @@ class UserAuthController extends Controller
 
         if (config('neev.team')) {
             try {
-                $team = Team::forceCreate([
-                    'name' => explode(' ', $user->name, 2)[0]."'s Team",
-                    'user_id' => $user->id,
-                    'is_public' => false,
-                ]);
+                $emailDomain = substr(strrchr($request->email, "@"), 1);
+
+                $team = Team::where('federated_domain', $emailDomain)->first();
+                if (!$team?->domain_verified_at) {
+                    $team = Team::forceCreate([
+                        'name' => explode(' ', $user->name, 2)[0]."'s Team",
+                        'user_id' => $user->id,
+                        'is_public' => false,
+                    ]);
+                }
 
                 $team->users()->attach($user, ['joined' => true]);
             } catch (Exception $e) {
@@ -167,8 +177,20 @@ class UserAuthController extends Controller
             
             return back()->with('status', 'Login link has been sent.');
         }
-
-        return view('neev::auth.login-password', ['email' => $request->email]);
+        $rules = [];
+        $isDomainFederated = false;
+        if (config('neev.domain_federation')) {
+            $emailDomain = substr(strrchr($request->email, "@"), 1);
+            
+            $team = Team::where('federated_domain', $emailDomain)->first();
+            if ($team?->domain_verified_at) {
+                $isDomainFederated = true;
+                $rules['passkey'] = $team->rule('passkey')->value;
+                $rules['oauth'] = json_decode($team->rule('oauth')->value, true) ?? [];
+            }
+        }
+        
+        return view('neev::auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules]);
     }
 
     public function loginUsingLink(Request $request, $id, $hash, GeoIP $geoIP)

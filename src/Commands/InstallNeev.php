@@ -2,12 +2,8 @@
 
 namespace Ssntpl\Neev\Commands;
 
-use Artisan;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\PromptsForMissingInput;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Output\OutputInterface;
-use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\select;
 
 class InstallNeev extends Command implements PromptsForMissingInput
@@ -20,7 +16,8 @@ class InstallNeev extends Command implements PromptsForMissingInput
     protected $signature = 'neev:install    {teams : Indicates if team support should be installed}
                                             {roles : Indicates if roles support should be installed}
                                             {stack : Indicates if API support should be installed}
-                                            {verification : Indicates if email verification support should be installed}';
+                                            {verification : Indicates if email verification support should be installed}
+                                            {domain_federation : Indicates if domain federation support should be installed}';
 
     /**
      * The console command description.
@@ -57,6 +54,11 @@ class InstallNeev extends Command implements PromptsForMissingInput
         
         if ($this->argument('verification') === 'yes') {
             $this->replaceInFile("'email_verified' => false,", "'email_verified' => true,", $file);
+        }
+        
+        if ($this->argument('domain_federation') === 'yes') {
+            $this->replaceInFile("'domain_federation' => false,", "'domain_federation' => true,", $file);
+            $this->callSilent('vendor:publish', ['--tag' => 'neev-domain-federation-migrations', '--force' => true]);
         }
 
         $this->info('✅ Neev installed successfully!');
@@ -136,6 +138,12 @@ class InstallNeev extends Command implements PromptsForMissingInput
 
             'verification' => fn () => select(
                 label: 'Would you like to enable email verification?',
+                options: ['yes' => 'Yes', 'no' => 'No'],
+                default: 'no'
+            ),
+
+            'domain_federation' => fn () => select(
+                label: 'Would you like to enable domain federation?',
                 options: ['yes' => 'Yes', 'no' => 'No'],
                 default: 'no'
             ),

@@ -1,13 +1,30 @@
 <?php
 
+use Ssntpl\Neev\Models\DomainRule;
 use Ssntpl\Neev\Models\MultiFactorAuth;
+use Ssntpl\Neev\Models\User;
 
 return [
     'team' => false,
     'roles' => false,
     'stack' => 'ui',
     'email_verified' => false,
+    'domain_federation' => false,
     
+    'domain_rules' => [
+        DomainRule::mfa(),
+        DomainRule::passkey(),
+        DomainRule::oauth(),
+        DomainRule::pass_min_len(),
+        DomainRule::pass_max_len(),
+        DomainRule::pass_old(),
+        DomainRule::pass_soft_fail_attempts(),
+        DomainRule::pass_block_user_mins(),
+        DomainRule::pass_hard_fail_attempts(),
+        DomainRule::pass_combinations(),
+        DomainRule::pass_columns(),
+    ],
+
     'home_url' => env('APP_URL'),
     'dashboard_url' => env('APP_URL').'/dashboard',
 
@@ -23,10 +40,8 @@ return [
     'recovery_codes' => 16,
 
     'oauth' => [
-        'google' => true,
-        'github' => true,
-        'microsoft' => false,
-        'apple' => false,
+        User::google(),
+        User::github(),
     ],
 
     'magicauth' => true,
@@ -45,8 +60,8 @@ return [
         'old_passwords' => 5,
         
         'soft_fail_attempts' => 2,
-        'hard_fail_attempts' => 20,
-        'login_block_minutes' => 5,
+        'hard_fail_attempts' => 5,
+        'login_block_minutes' => 1,
         'password_expiry_soft_days' => 60,
         'password_expiry_hard_days' => 90,
     ],

@@ -7,8 +7,10 @@ use Carbon\Carbon;
 use Hash;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
+use Ssntpl\Neev\Models\DomainRule;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\PasswordHistory;
+use Ssntpl\Neev\Models\Team;
 use Str;
 
 class PasswordCheck implements ValidationRule 
@@ -16,13 +18,26 @@ class PasswordCheck implements ValidationRule
     public function validate(string $attribute, mixed $value, Closure $fail): void 
     {
         $user = Auth::user();
+        $password = config('neev.password');
         $email = request()->input('email');
         if ($email) {
             $email = Email::where('email', $email)->first();
             $user = $email?->user;
         }
 
-        $password = config('neev.password');
+        if ($user && config('neev.domain_federation')) {
+            $emailDomain = substr(strrchr($user->email, "@"), 1);
+
+            $team = Team::where('federated_domain', $emailDomain)->first();
+            if ($team?->domain_verified_at) {
+                $password['min_length'] = $team->rule(DomainRule::pass_min_len())->value;
+                $password['max_length'] = $team->rule(DomainRule::pass_max_len())->value;
+                $password['old_passwords'] = $team->rule(DomainRule::pass_old())->value;
+                $password['combination_types'] = json_decode($team->rule(DomainRule::pass_combinations())->value);
+                $password['check_user_columns'] = json_decode($team->rule(DomainRule::pass_columns())->value);
+            }
+        }
+
         if (isset($password['min_length']) && $password['min_length']) {
             if (strlen($value) < $password['min_length']) {
                 $fail('Password must be at least '.$password['min_length'].' characters.');
@@ -66,11 +81,6 @@ class PasswordCheck implements ValidationRule
         }
 
         if (isset($password['old_passwords']) && $password['old_passwords'] && $user) {
-            // $currentPassword = PasswordHistory::where('user_id', $user->id)->orderByDesc('id')->first();
-            // if ($currentPassword &&!Hash::check($user->password, (string) $currentPassword)) {
-            //     $currentPassword->delete();
-            // }
-
             $oldPasswords = PasswordHistory::where('user_id', $user->id)->orderByDesc('id')->limit($password['old_passwords'])->get();
             foreach ($oldPasswords ?? [] as $oldPassword) {
                 if (Hash::check($value, (string) $oldPassword->password)) {
@@ -78,11 +88,11 @@ class PasswordCheck implements ValidationRule
                     return;
                 }
             }
-            PasswordHistory::create([
-                'user_id' => $user->id,
-                'password' => $value,
-            ]);
         }
+        PasswordHistory::create([
+            'user_id' => $user->id,
+            'password' => $value,
+        ]);
         
         return;
     }

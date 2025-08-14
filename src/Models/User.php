@@ -49,4 +49,36 @@ class User extends AppUser
     {
         return $this->hasMany(Passkey::class);
     }
+
+    public function activate()
+    {
+        $this->active = true;
+        return $this->save();
+    }
+
+    public function deactivate()
+    {
+        $this->active = false;
+        return $this->save();
+    }
+    
+    public static function google()
+    {
+        return 'google';
+    }
+    
+    public static function github()
+    {
+        return 'github';
+    }
+    
+    public static function microsoft()
+    {
+        return 'microsoft';
+    }
+    
+    public static function apple()
+    {
+        return 'apple';
+    }
 }

@@ -15,6 +15,14 @@ class NeevMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
+        if (!$request->user()) {
+            return redirect(route('login'));
+        }
+
+        if (!$request->user()?->active) {
+            return redirect(route('login'))->withErrors(['message' => 'Your account is deactivated, please contact your admin to activate your account.']);
+        }
+        
         return $next($request);
     }
 }

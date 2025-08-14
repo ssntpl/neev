@@ -13,6 +13,12 @@
             class="block px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 {{ request()->routeIs('teams.roles') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : '' }}">
                 Roles
             </a>
+            @if (config('neev.domain_federation'))
+                <a href="{{ route('teams.domain', $team->id) }}"
+                class="block px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 {{ request()->routeIs('teams.domain') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : '' }}">
+                    Domain Federation
+                </a>
+            @endif
         @endif
         <a href="{{ route('teams.settings', $team->id) }}"
         class="block px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 {{ request()->routeIs('teams.settings') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : '' }}">

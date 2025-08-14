@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Permission;
+use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Rules\PasswordCheck;
 
@@ -21,12 +22,28 @@ class UserController extends Controller
 
     public function emails(Request $request)
     {
-        return view('neev::account.emails', ['user' => User::find($request->user()->id)]);
+        $user = User::find($request->user()->id);
+        $emailDomain = substr(strrchr($user->email, "@"), 1);
+
+        $addEmail = true;
+        $team = Team::where('federated_domain', $emailDomain)->first();
+        if ($team?->domain_verified_at && $team->users->contains($user)) {
+            $addEmail = false;
+        }
+        return view('neev::account.emails', ['user' => $user, 'add_email' => $addEmail]);
     }
 
     public function security(Request $request)
     {
-        return view('neev::account.security', ['user' => User::find($request->user()->id)]);
+        $user = User::find($request->user()->id);
+        $emailDomain = substr(strrchr($user->email, "@"), 1);
+
+        $deleteAccount = true;
+        $team = Team::where('federated_domain', $emailDomain)->first();
+        if ($team?->domain_verified_at && $team->users->contains($user)) {
+            $deleteAccount = false;
+        }
+        return view('neev::account.security', ['user' => $user, 'delete_account' => $deleteAccount]);
     }
 
     public function tokens(Request $request)
@@ -37,7 +54,14 @@ class UserController extends Controller
     public function teams(Request $request)
     {
         $user = User::find($request->user()->id);
-        return view('neev::account.teams', ['user' => $user]);
+        $emailDomain = substr(strrchr($user->email, "@"), 1);
+
+        $join_team = true;
+        $team = Team::where('federated_domain', $emailDomain)->first();
+        if ($team?->domain_verified_at) {
+            $join_team = false;
+        }
+        return view('neev::account.teams', ['user' => $user, 'join_team' => $join_team]);
     }
 
     public function sessions(Request $request)
@@ -178,12 +202,17 @@ class UserController extends Controller
                 return back()->withErrors(['message' => 'Auth was not deleted.']);
             }
 
-            if ($auth->prefered && count($user->multiFactorAuths) > 0) {
-                $method = $user->multiFactorAuths[0];
+            if ($auth->prefered && count($user->multiFactorAuths) > 1) {
+                $method = $user->multiFactorAuths()->whereNot('method', $auth->method)->first();
                 $method->prefered = true;
                 $method->save();
             }
             $auth->delete();
+
+            if (count($user->multiFactorAuths) <= 1) {
+                $user->recoveryCodes()->delete();
+            }
+
             return back()->with('status', 'Auth has been deleted.');
         }
         $res = $user->addMultiFactorAuth($request->auth_method);
@@ -212,12 +241,18 @@ class UserController extends Controller
     public function recoveryCodes(Request $request)
     {
         $user = User::find($request->user()->id);
+        if (count($user->multiFactorAuths) === 0) {
+            return back()->withErrors(['message' => 'Enable MFA first.']);
+        }
         return view('neev::account.recovery-codes', ['user' => $user]);
     }
 
     public function generateRecoveryCodes(Request $request)
     {
         $user = User::find($request->user()->id);
+        if (count($user->multiFactorAuths) === 0) {
+            return back()->withErrors(['message' => 'Enable MFA first.']);
+        }
         $user->generateRecoveryCodes();
         return back()->with('status', 'New recovery codes are generated.');
     }

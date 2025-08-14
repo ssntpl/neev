@@ -11,10 +11,17 @@ class Team extends Model
         'user_id',
         'name',
         'is_public',
+        'enforce_domain',
+        'domain_federated',
+        'domain_verified_at',
+        'domain_verification_token',
     ];
 
     protected $casts = [
-        'is_public' => 'bool'
+        'is_public' => 'bool',
+        'enforce_domain' => 'bool',
+        'domain_verified_at' => 'datetime',
+        'domain_verification_token' => 'hashed',
     ];
 
     public function owner()
@@ -72,5 +79,15 @@ class Team extends Model
     public function roles()
     {
         return $this->hasMany(Role::class);
+    }
+
+    public function rules()
+    {
+        return $this->hasMany(DomainRule::class);
+    }
+
+    public function rule($name)
+    {
+        return $this->hasMany(DomainRule::class)->where('name', $name)->first();
     }
 }

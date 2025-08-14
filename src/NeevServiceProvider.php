@@ -34,6 +34,10 @@ class NeevServiceProvider extends ServiceProvider
         ], 'neev-migrations');
 
         $this->publishes([
+            __DIR__.'/../database/migrations/create_domain_rules_table.php' => database_path('migrations/2025_01_01_000010_create_domain_rules_table.php'),
+        ], 'neev-domain-federation-migrations');
+
+        $this->publishes([
             __DIR__.'/../database/migrations/create_teams_table.php' => database_path('migrations/2025_01_01_000002_create_teams_table.php'),
         ], 'neev-team-migrations');
         

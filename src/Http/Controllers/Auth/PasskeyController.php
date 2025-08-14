@@ -375,6 +375,11 @@ class PasskeyController extends Controller
 
     public static function login(Request $request, GeoIP $geoIP, $user, $method, $mfa = null) 
     {
+        if (!$user->active) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'email' => 'Your account is deactivated, please contact your admin to activate your account.',
+            ]);
+        }
         Auth::login($user, false);
         $request->session()->regenerate();
         try {
