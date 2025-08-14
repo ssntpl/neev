@@ -107,7 +107,7 @@
                                             <input type="hidden" name="action" x-ref="action">
                                             @if ($user->multiFactorAuth($method))
                                                 <x-secondary-button type="submit">{{ __('Edit') }}</x-secondary-button>
-                                                <x-danger-button type="submit" name="action" value="delete" @click.prevent="if (confirm('{{__('Are you sure you want to delete?')}}')) $refs.action.value = 'delete'; $el.closest('form').submit();">{{ __('Delete') }}</x-danger-button>
+                                                <x-danger-button type="submit" name="action" @click.prevent="if (confirm('{{__('Are you sure you want to delete?')}}')) {$refs.action.value = 'delete'; $el.closest('form').submit();}">{{ __('Delete') }}</x-danger-button>
                                             @else
                                                 <x-button>{{ __('Add') }}</x-button>
                                             @endif
@@ -143,18 +143,20 @@
                                 @endif
                             </li>
                         @endforeach
-                        <li class="border odd:bg-white even:bg-gray-50">
-                            <div class="flex gap-2 py-2 px-4 items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition">
-                                <div class="flex gap-2 items-center">
-                                    <p>{{ __('Recovery Codes') }}</p>
+                        @if (count($user->multiFactorAuths) > 0)
+                            <li class="border odd:bg-white even:bg-gray-50">
+                                <div class="flex gap-2 py-2 px-4 items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition">
+                                    <div class="flex gap-2 items-center">
+                                        <p>{{ __('Recovery Codes') }}</p>
+                                    </div>
+                                    <div class="text-end">
+                                        <a href="{{route('recovery.codes')}}" target="_blank">
+                                            <x-secondary-button>{{ __('View') }}</x-secondary-button>
+                                        </a>
+                                    </div>
                                 </div>
-                                <div class="text-end">
-                                    <a href="{{route('recovery.codes')}}" target="_blank">
-                                        <x-secondary-button>{{ __('View') }}</x-secondary-button>
-                                    </a>
-                                </div>
-                            </div>
-                        </li>
+                            </li>
+                        @endif
                     </ul>
                 </x-slot>
             </x-card>
@@ -251,50 +253,52 @@
             {{-- Content --}}
             <x-slot name="content">
                 {{-- Delete Account --}}
-                <div x-data="{ show: false }">
-                    <div class="flex justify-between gap-2">
-                        <div>
-                            <p class="font-medium text-lg">Delete Account</p>
-                            <p class="text-sm">Once deleted, it will be gone forever. Please be certain.</p>
-                        </div>
-                        <x-danger-button class="cursor-pointer h-10" @click="show = true">
-                            {{ __('Delete Account') }}
-                        </x-danger-button>
-                    </div>
-
-                    <x-dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
-                        <x-slot name="title">
-                            {{ __('Delete Account') }}
-                        </x-slot>
-                        
-                        <x-slot name="content">
-                            {{ __('Please enter your password to confirm you would like to delete of your account.') }}
-                            
-                            <form method="POST" action="{{ route('account.delete') }}" x-ref="deleteAccountForm">
-                                @csrf
-                                @method('DELETE')
-                                <div class="mt-4">
-                                    <x-input type="password"
-                                        name="password"
-                                        class="mt-1 block w-3/4"
-                                        autocomplete="password"
-                                        placeholder="{{ __('Password') }}"
-                                        x-ref="password" />
-                                </div>
-                            </form>
-                        </x-slot>
-
-                        <x-slot name="footer">
-                            <x-secondary-button class="cursor-pointer" @click="show = false">
-                                {{ __('Cancel') }}
-                            </x-secondary-button>
-
-                            <x-danger-button type="submit" class="ms-3 cursor-pointer" @click.prevent="$refs.deleteAccountForm.submit()">
+                @if ($delete_account)
+                    <div x-data="{ show: false }">
+                        <div class="flex justify-between gap-2">
+                            <div>
+                                <p class="font-medium text-lg">Delete Account</p>
+                                <p class="text-sm">Once deleted, it will be gone forever. Please be certain.</p>
+                            </div>
+                            <x-danger-button class="cursor-pointer h-10" @click="show = true">
                                 {{ __('Delete Account') }}
                             </x-danger-button>
-                        </x-slot>
-                    </x-dialog-modal>
-                </div>
+                        </div>
+
+                        <x-dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                            <x-slot name="title">
+                                {{ __('Delete Account') }}
+                            </x-slot>
+                            
+                            <x-slot name="content">
+                                {{ __('Please enter your password to confirm you would like to delete of your account.') }}
+                                
+                                <form method="POST" action="{{ route('account.delete') }}" x-ref="deleteAccountForm">
+                                    @csrf
+                                    @method('DELETE')
+                                    <div class="mt-4">
+                                        <x-input type="password"
+                                            name="password"
+                                            class="mt-1 block w-3/4"
+                                            autocomplete="password"
+                                            placeholder="{{ __('Password') }}"
+                                            x-ref="password" />
+                                    </div>
+                                </form>
+                            </x-slot>
+
+                            <x-slot name="footer">
+                                <x-secondary-button class="cursor-pointer" @click="show = false">
+                                    {{ __('Cancel') }}
+                                </x-secondary-button>
+
+                                <x-danger-button type="submit" class="ms-3 cursor-pointer" @click.prevent="$refs.deleteAccountForm.submit()">
+                                    {{ __('Delete Account') }}
+                                </x-danger-button>
+                            </x-slot>
+                        </x-dialog-modal>
+                    </div>
+                @endif
             </x-slot>
         </x-card>
     </div>

@@ -10,6 +10,7 @@ use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
+use Str;
 
 class TeamController extends Controller
 {
@@ -43,6 +44,29 @@ class TeamController extends Controller
             'user' => $user,
             'team' => $team,
             'allPermissions' => Permission::orderBy('name')->get()
+        ]);
+    }
+    
+    public function domain(Request $request, Team $team)
+    {
+        $user = User::find($request->user()->id);
+        if (!$user->allTeams->find($team->id) || $team->user_id !== $user->id || !config('neev.domain_federation')) {
+            return response(null, 404);
+        }
+
+        $count = 0;
+        if ($team->enforce_domain && $team->domain_verified_at) {
+            foreach ($team->users ?? [] as $member) {
+                if (!str_ends_with(strtolower($member->email), '@' . strtolower($team->federated_domain))) {
+                    $count++;
+                }
+            }
+        }
+
+        return view('neev::team.domain-federation', [
+            'user' => $user,
+            'team' => $team,
+            'outside_members' => $count,
         ]);
     }
     
@@ -120,7 +144,7 @@ class TeamController extends Controller
         $user = User::find($request->user()->id);
         try {
             $team = Team::find($request->team_id);
-            if ($user->id != $team->user_id) {
+            if ($user->id != $team->user_id || ($team->enforce_domain && $team->domain_verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->federated_domain)))) {
                 return back()->withErrors(['message' => 'You cannot invite member in this team.']);
             }
             $member = User::where('email', $request->email)->first();
@@ -150,6 +174,16 @@ class TeamController extends Controller
                 return back()->withErrors(['message' => 'You cannot leave from this team.']);
             }
             
+            if ($team->domain_verified_at && str_ends_with(strtolower($user->email), '@' . strtolower($team->federated_domain))) {
+                if ($user->active) {
+                    $user->deactivate();
+                    return back()->with('status', 'User Deactivated Successfully');
+                } else {
+                    $user->activate();
+                    return back()->with('status', 'User Activated Successfully');
+                }
+            }
+
             $team->users()->detach($user);
         } catch (Exception $e) {
             return back()->withErrors(['message' => 'Failed to leave from team.']);
@@ -189,7 +223,7 @@ class TeamController extends Controller
             $owner = User::where('email', $request->email)->first();
             if ($owner) {
                 $team = Team::where(['name' => $request->team, 'user_id' => $owner->id])->first();
-                if ($team) {
+                if ($team && !$team->enforce_domain && !$team->domain_verified_at) {
                     if ($team->users->contains($user)) {
                         return back()->with('status', 'Already Added.');
                     }
@@ -249,5 +283,116 @@ class TeamController extends Controller
         }
 
         return back()->withErrors(['message' => 'You cannot change owner.']);
+    }
+    
+    public function federateDomain(Request $request, Team $team)
+    {
+        $user = User::find($request->user()->id);
+        if ($team->user_id !== $user->id || !str_ends_with(strtolower($user->email), '@' . strtolower($request->domain))) {
+            return back()->withErrors(['message' => 'You have not required permissions to federate domain.']);
+        }
+        try {
+            $token = Str::random(32);
+            $team->federated_domain = $request->domain;
+            $team->enforce_domain = (bool) $request->enforce;
+            $team->domain_verification_token = $token;
+            $team->save();
+            return back()->with('token', $token);
+        } catch (Exception $e) {
+            return back()->withErrors(['message' => 'Failed to federate domain.']);
+        }
+    }
+    
+    public function updateDomain(Request $request, Team $team)
+    {
+        $user = User::find($request->user()->id);
+        if ($team->user_id !== $user->id) {
+            return back()->withErrors(['message' => 'You have not required permissions to update domain.']);
+        }
+        try {
+            if ($request->verify) {
+                $res = $this->verify($team);
+                if ($res) {
+                    foreach (config('neev.domain_rules') ?? [] as $rule) {
+                        $team->rules()->create([
+                            'name' => $rule,
+                        ]);
+                    }
+                    return back()->with('status', 'Domain verified successfully!');
+                }
+                return back()->withErrors(['message' => 'DNS record not found. Please try again later.']);
+            }
+
+            if ($request->token) {
+                $token = Str::random(32);
+                $team->domain_verification_token = $token;
+                $team->save();
+                return back()->with('token', $token);
+            }
+            
+            $team->enforce_domain = (bool) $request->enforce;
+            $team->save();
+            return back()->with('status', 'domain has been updated.');
+        } catch (Exception $e) {
+            return back()->withErrors(['message' => 'Failed to update domain.']);
+        }
+    }
+
+    public function verify($team)
+    {
+        $records = dns_get_record($team->federated_domain, DNS_TXT);
+        $verified = collect($records)->pluck('txt')->contains($team->domain_verification_token);
+
+        if ($verified) {
+            $team->domain_verified_at = now();
+            $team->save();
+            return true;
+        }
+
+        return false;
+    }
+    
+    public function deleteDomain(Request $request, Team $team)
+    {
+        $user = User::find($request->user()->id);
+        if ($team->user_id !== $user->id) {
+            return back()->withErrors(['message' => 'You have not required permissions to delete domain.']);
+        }
+        try {
+            $team->federated_domain = null;
+            $team->enforce_domain = false;
+            $team->domain_verification_token = null;
+            $team->domain_verified_at = null;
+            $team->save();
+            $team->rules()->delete();
+            return back()->with('status', 'Domain has been delete.');
+        } catch (Exception $e) {
+            return back()->withErrors(['message' => 'Failed to delete domain.']);
+        }
+    }
+    
+    public function updateDomainRule(Request $request, Team $team)
+    {
+        $user = User::find($request->user()->id);
+        if ($team->user_id !== $user->id) {
+            return back()->withErrors(['message' => 'You have not required permissions to update domain.']);
+        }
+        try {
+            foreach ($team->rules ?? [] as $rule) {
+                if ($rule->ruleType($rule->name) === 'bool') {
+                    $rule->value = (bool) $request->{$rule->name};
+                } elseif ($rule->ruleType($rule->name) === 'number') {
+                    $rule->value = (int) $request->{$rule->name};
+                } else {
+                    $rule->value = $request->{$rule->name};
+                }
+
+                $rule->save();
+            }
+            
+            return back()->with('status', 'Domain Rules have been updated.');
+        } catch (Exception $e) {
+            return back()->withErrors(['message' => 'Failed to update domain rules.']);
+        }
     }
 }

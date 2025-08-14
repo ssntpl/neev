@@ -5,50 +5,52 @@
     <x-validation-errors class="mb-4" />
     <x-validation-status class="mb-4" />
     <div class="flex flex-col gap-4" x-data="{ showForm: false }">
-        <x-card x-data="{joinTeamOpen: false}">
-            <x-slot name="title">
-                {{__('Join Team')}}
-            </x-slot>
-            <x-slot name="action" class="flex">
-                <div>
-                    <div x-show="!joinTeamOpen" x-on:click="joinTeamOpen = true" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
-                            <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
-                        </svg>
-                    </div>
-
-                    <div x-show="joinTeamOpen" x-on:click="joinTeamOpen = false" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
-                        <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
-                            <path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd" />
-                        </svg>
-                    </div>
-                </div>
-            </x-slot>
-
-            <x-slot name="content">
-                <div x-show="joinTeamOpen" x-transition>
-                    <form method="POST" class="flex gap-2 mx-4 items-center justify-between" action="{{ route('teams.request') }}">
-                        @csrf
-
-                        <div class="flex gap-4 justify-between w-full">
-                            <div class="flex gap-2 items-center w-2/3">
-                                <x-label for="team" value="{{ __('Team') }}" />
-                                <x-input id="team" class="block w-full" type="text" name="team" required autofocus />
-                            </div>
-                            <div class="flex gap-2 items-center w-2/3">
-                                <x-label for="email" value="{{ __('Owner Email') }}" />
-                                <x-input id="email" class="block w-full" type="email" name="email" required autofocus />
-                            </div>
+        @if ($join_team)
+            <x-card x-data="{joinTeamOpen: false}">
+                <x-slot name="title">
+                    {{__('Join Team')}}
+                </x-slot>
+                <x-slot name="action" class="flex">
+                    <div>
+                        <div x-show="!joinTeamOpen" x-on:click="joinTeamOpen = true" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
+                            </svg>
                         </div>
-                        <div class="w-1/2 text-end">
-                            <x-button>
-                                {{__('Send Request')}}
-                            </x-button>
+
+                        <div x-show="joinTeamOpen" x-on:click="joinTeamOpen = false" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd" />
+                            </svg>
                         </div>
-                    </form>
-                </div>
-            </x-slot>
-        </x-card>
+                    </div>
+                </x-slot>
+
+                <x-slot name="content">
+                    <div x-show="joinTeamOpen" x-transition>
+                        <form method="POST" class="flex gap-2 mx-4 items-center justify-between" action="{{ route('teams.request') }}">
+                            @csrf
+
+                            <div class="flex gap-4 justify-between w-full">
+                                <div class="flex gap-2 items-center w-2/3">
+                                    <x-label for="team" value="{{ __('Team') }}" />
+                                    <x-input id="team" class="block w-full" type="text" name="team" required autofocus />
+                                </div>
+                                <div class="flex gap-2 items-center w-2/3">
+                                    <x-label for="email" value="{{ __('Owner Email') }}" />
+                                    <x-input id="email" class="block w-full" type="email" name="email" required autofocus />
+                                </div>
+                            </div>
+                            <div class="w-1/2 text-end">
+                                <x-button>
+                                    {{__('Send Request')}}
+                                </x-button>
+                            </div>
+                        </form>
+                    </div>
+                </x-slot>
+            </x-card>
+        @endif
 
         <x-card>
             <x-slot name="title">
@@ -136,7 +138,7 @@
                                         {{$team->user_id === $user->id ? 'Owner' : 'Member'}}
                                     </td>
                                     <td class="px-4 py-2 text-end">
-                                        @if ($team->user_id !== $user->id)
+                                        @if ($team->user_id !== $user->id && !$team->domain_verified_at)
                                             <form method="POST" action="{{ route('teams.leave') }}" x-data>
                                                 @csrf
                                                 @method('DELETE')

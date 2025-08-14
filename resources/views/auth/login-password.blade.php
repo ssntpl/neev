@@ -6,52 +6,41 @@
         <div class="flex flex-col gap-4">
             <div class="flex flex-col gap-2 border rounded-lg p-4 text-center">
                 <div class="flex gap-2 justify-around flex-wrap">
-                    @if (config('neev.oauth.google'))
-                        {{-- Google --}}
-                        <form method="GET" action="{{ route('oauth.redirect', 'google') }}">
-                            <input type="hidden" name="email" value="{{$email}}" required>
-                            <x-secondary-button type="submit">{{ __('Google') }}</x-secondary-button>
-                        </form>
-                    @endif
-                    @if (config('neev.oauth.github'))
-                        {{-- Github --}}
-                        <form method="GET" action="{{ route('oauth.redirect', 'github') }}">
-                            <input type="hidden" name="email" value="{{$email}}" required>
-                            <x-secondary-button type="submit">{{ __('Github') }}</x-secondary-button>
-                        </form>
-                    @endif
-                    @if (config('neev.oauth.microsoft'))
-                        {{-- Microsoft --}}
-                        <form method="GET" action="{{ route('oauth.redirect', 'microsoft') }}">
-                            <input type="hidden" name="email" value="{{$email}}" required>
-                            <x-secondary-button type="submit">{{ __('Microsoft') }}</x-secondary-button>
-                        </form>
-                    @endif
-                    @if (config('neev.oauth.apple'))
-                        {{-- Apple --}}
-                        <form method="GET" action="{{ route('oauth.redirect', 'apple') }}">
-                            <input type="hidden" name="email" value="{{$email}}" required>
-                            <x-secondary-button type="submit">{{ __('Apple') }}</x-secondary-button>
-                        </form>
+                    @if (($isDomainFederated && count($rules['oauth']) > 0))
+                        @foreach ($rules['oauth'] as $oauth)
+                            <form method="GET" action="{{ route('oauth.redirect', $oauth) }}">
+                                <input type="hidden" name="email" value="{{$email}}" required>
+                                <x-secondary-button type="submit">{{ __($oauth) }}</x-secondary-button>
+                            </form>
+                        @endforeach
+                    @elseif (!$isDomainFederated)
+                        @foreach (config('neev.oauth') as $oauth)
+                            <form method="GET" action="{{ route('oauth.redirect', $oauth) }}">
+                                <input type="hidden" name="email" value="{{$email}}" required>
+                                <x-secondary-button type="submit">{{ __($oauth) }}</x-secondary-button>
+                            </form>
+                        @endforeach
                     @endif
                 </div>
-                {{-- Passkey --}}
-                <form id="login-form" method="POST" action="{{ route('passkeys.login') }}">
-                    @csrf
-                    <input id="email" type="hidden" name="email" value="{{$email}}" required />
 
-                    <input type="hidden" name="assertion" id="assertion">
+                @if (($isDomainFederated && $rules['passkey']) || !$isDomainFederated)
+                    {{-- Passkey --}}
+                    <form id="login-form" method="POST" action="{{ route('passkeys.login') }}">
+                        @csrf
+                        <input id="email" type="hidden" name="email" value="{{$email}}" required />
 
-                    <x-secondary-button type="button" id="login-button">
-                        {{__('Login with Passkey')}}
-                    </x-secondary-button>
-                </form>
+                        <input type="hidden" name="assertion" id="assertion">
+
+                        <x-secondary-button type="button" id="login-button">
+                            {{__('Login with Passkey')}}
+                        </x-secondary-button>
+                    </form>
+                @endif
             </div>
             <div class="border rounded-lg p-4">
                 <div class="mb-4 text-sm text-gray-600 dark:text-gray-400">
                     {{ __("Email: $email") }}
                 </div>
-
 
                 <form method="POST" action="{{ route('login') }}">
                     @csrf

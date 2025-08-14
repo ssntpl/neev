@@ -61,7 +61,7 @@ Route::middleware('web')->group(function () {
 
 });
     
-Route::middleware( ['web'])->group(function () {
+Route::middleware( ['web', 'neev'])->group(function () {
     Route::get('/email/verify', [UserAuthController::class, 'emailVerifyCreate'])
         ->name('verification.notice');
     
@@ -159,6 +159,8 @@ Route::middleware( ['web'])->group(function () {
             ->name('teams.members');
         Route::get('/{team}/roles', [TeamController::class, 'roles'])
             ->name('teams.roles');
+        Route::get('/{team}/domain', [TeamController::class, 'domain'])
+            ->name('teams.domain');
         Route::get('/{team}/settings', [TeamController::class, 'settings'])
             ->name('teams.settings');
 
@@ -188,5 +190,13 @@ Route::middleware( ['web'])->group(function () {
             ->name('teams.roles.delete');
         Route::put('/roles/permissions/update', [RoleController::class, 'updatePermission'])
             ->name('roles.permissions.update');
+        Route::post('/{team}/domain', [TeamController::class, 'federateDomain'])
+            ->name('teams.domain');
+        Route::put('/{team}/domain', [TeamController::class, 'updateDomain'])
+            ->name('teams.domain');
+        Route::delete('/{team}/domain', [TeamController::class, 'deleteDomain'])
+            ->name('teams.domain');
+        Route::put('/{team}/domain/rules', [TeamController::class, 'updateDomainRule'])
+            ->name('domain.rules');
     });
 });
