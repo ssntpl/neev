@@ -15,7 +15,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
      */
     protected $signature = 'neev:install    {teams : Indicates if team support should be installed}
                                             {roles : Indicates if roles support should be installed}
-                                            {stack : Indicates if API support should be installed}
                                             {verification : Indicates if email verification support should be installed}
                                             {domain_federation : Indicates if domain federation support should be installed}';
 
@@ -124,16 +123,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
                     'no' => 'No'
                 ],
                 default: 'no'
-            ),
-
-            'stack' => fn () => select(
-                label: 'Which stack would you like to install?',
-                options: [
-                    'api' => 'API only',
-                    'ui' => 'UI only',
-                    'both' => 'Both API and UI',
-                ],
-                default: 'ui'
             ),
 
             'verification' => fn () => select(

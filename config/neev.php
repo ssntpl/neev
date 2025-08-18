@@ -7,7 +7,6 @@ use Ssntpl\Neev\Models\User;
 return [
     'team' => false,
     'roles' => false,
-    'stack' => 'ui',
     'email_verified' => false,
     'domain_federation' => false,
     

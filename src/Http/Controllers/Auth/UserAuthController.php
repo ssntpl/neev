@@ -220,7 +220,7 @@ class UserAuthController extends Controller
         }
         
         $user = $email->user;
-        $this->login(request: $request, geoIP: $geoIP, user: $user, method: LoginHistory::Password, loginHistory: false);
+        $this->login(request: $request, geoIP: $geoIP, user: $user, method: LoginHistory::Password, loginHistory: count($user->multiFactorAuths) === 0);
 
         if (count($user->multiFactorAuths) > 0) {
             session(['email' => $email->email]);

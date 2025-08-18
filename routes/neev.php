@@ -82,15 +82,6 @@ Route::middleware( ['web', 'neev'])->group(function () {
 
     Route::post('/logout', [UserAuthController::class, 'destroy'])
         ->name('logout');
-
-    Route::prefix('management')->group(function (){
-        Route::get('/profile', [ManagementController::class, 'profile'])
-            ->name('management.profile');
-        Route::delete('/permissions', [RoleController::class, 'deletePermission'])
-            ->name('permissions.delete');
-        Route::post('/permissions', [RoleController::class, 'storePermission'])
-            ->name('permissions.store');
-    });
     
     Route::prefix('account')->group(function (){
         Route::get('/profile', [UserController::class, 'profile'])

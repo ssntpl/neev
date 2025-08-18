@@ -89,12 +89,6 @@
                                     {{ __('Team Settings') }}
                                 </x-dropdown-link>
                             @endif
-                            
-                            @if (in_array($user->email,config('neev.app_owner')))
-                                <x-dropdown-link href="{{ route('management.profile') }}">
-                                    {{ __('App Management') }}
-                                </x-dropdown-link>
-                            @endif
 
                             <div class="border-t border-gray-200 dark:border-gray-600"></div>
 
