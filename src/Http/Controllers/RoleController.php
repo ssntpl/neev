@@ -90,11 +90,17 @@ class RoleController extends Controller
         $user = User::find($request->user()->id);
         try {
             $team = Team::find($request->team_id);
-            $member = User::find($request->user_id);
             if ($team->owner->id === $user->id) {
-                $membership = $team->allUsers->where('id', $member->id)->first()->membership;
-                $membership->role_id = $request->role_id;
-                $membership->save();
+                if ($request->user_id) {
+                    $member = User::find($request->user_id);
+                    $membership = $team->allUsers->where('id', $member->id)->first()->membership;
+                    $membership->role_id = $request->role_id;
+                    $membership->save();
+                } else if ($request->invitation_id) {
+                    $invitation = $team->invitations()->find($request->invitation_id);
+                    $invitation->role_id = $request->role_id;
+                    $invitation->save();
+                }
                 return back()->with('status', 'Role has been changed.');
             }
         } catch (Exception $e) {

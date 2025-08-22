@@ -30,11 +30,11 @@ class PasswordCheck implements ValidationRule
 
             $team = Team::where('federated_domain', $emailDomain)->first();
             if ($team?->domain_verified_at) {
-                $password['min_length'] = $team->rule(DomainRule::pass_min_len())->value;
-                $password['max_length'] = $team->rule(DomainRule::pass_max_len())->value;
-                $password['old_passwords'] = $team->rule(DomainRule::pass_old())->value;
-                $password['combination_types'] = json_decode($team->rule(DomainRule::pass_combinations())->value);
-                $password['check_user_columns'] = json_decode($team->rule(DomainRule::pass_columns())->value);
+                $password['min_length'] = $team->rule(DomainRule::pass_min_len())->value ?? null;
+                $password['max_length'] = $team->rule(DomainRule::pass_max_len())->value ?? null;
+                $password['old_passwords'] = $team->rule(DomainRule::pass_old())->value ?? null;
+                $password['combination_types'] = json_decode($team->rule(DomainRule::pass_combinations())->value ?? '[]');
+                $password['check_user_columns'] = json_decode($team->rule(DomainRule::pass_columns())->value ?? '[]');
             }
         }
 

@@ -18,7 +18,7 @@
                 <!-- Teams Dropdown -->
                 @if (config('neev.team'))
                     @php
-                        $teamId = request()->route('team') ?? $user->teams[0]->id;
+                        $teamId = request()->route('team') ?? $user->teams[0]->id ?? null;
                     @endphp
                     <div class="ms-3 relative">
                         <x-dropdown align="right" width="48">
@@ -84,7 +84,7 @@
                                 {{ __('My Account') }}
                             </x-dropdown-link>
                             
-                            @if (config('neev.team'))
+                            @if (config('neev.team') && $teamId)
                                 <x-dropdown-link href="{{ route('teams.profile', $teamId) }}">
                                     {{ __('Team Settings') }}
                                 </x-dropdown-link>

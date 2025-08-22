@@ -12,18 +12,22 @@
     </p>
 
     <p>
-        you may check this invitation by clicking the button below:
+    @if ($userExist)
+        you may check this invitation by clicking the button below:    
+    @else
+        To accept the invitation, please create an account using the link below. This invitation link will expires at {{ $expiry }}.
+    @endif
     </p>
 
     <p>
-        <a href="{{ env('APP_URL').'/account/teams' }}" style="
+        <a href="{{ $url ?? env('APP_URL').'/account/teams' }}" style="
             background-color: #4CAF50;
             color: white;
             padding: 10px 20px;
             text-decoration: none;
             display: inline-block;
             border-radius: 5px;">
-            Check Invitation
+            {{$userExist ? ($url ? "Accept Invitation" : "Check Invitation") : "Create Account"}}
         </a>
     </p>
 

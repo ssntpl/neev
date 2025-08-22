@@ -27,10 +27,6 @@ return [
     'home_url' => env('APP_URL'),
     'dashboard_url' => env('APP_URL').'/dashboard',
 
-    'app_owner' => [
-        'abhishek.sharma@ssntpl.in',
-    ],
-
     'multi_factor_auth' => [
         MultiFactorAuth::authenticator(),
         MultiFactorAuth::email(),

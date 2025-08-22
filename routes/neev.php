@@ -4,7 +4,6 @@ use Illuminate\Support\Facades\Route;
 use Ssntpl\Neev\Http\Controllers\Auth\OAuthController;
 use Ssntpl\Neev\Http\Controllers\Auth\PasskeyController;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
-use Ssntpl\Neev\Http\Controllers\ManagementController;
 use Ssntpl\Neev\Http\Controllers\RoleController;
 use Ssntpl\Neev\Http\Controllers\TeamController;
 use Ssntpl\Neev\Http\Controllers\UserController;
@@ -59,6 +58,8 @@ Route::middleware('web')->group(function () {
     Route::get('/oauth/{service}/callback', [OAuthController::class, 'callback'])
         ->name('oauth.callback');
 
+    Route::get('/email/verify/{id}/{hash}', [UserAuthController::class, 'emailVerifyStore'])
+        ->name('verification.verify');
 });
     
 Route::middleware( ['web', 'neev'])->group(function () {
@@ -67,9 +68,6 @@ Route::middleware( ['web', 'neev'])->group(function () {
     
     Route::get('/email/send', [UserAuthController::class, 'emailVerifySend'])
         ->name('verification.send');
-    
-    Route::get('/email/verify/{id}/{hash}', [UserAuthController::class, 'emailVerifyStore'])
-        ->name('verification.verify');
     
     Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
         ->name('email.change');
