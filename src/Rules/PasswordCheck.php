@@ -88,11 +88,11 @@ class PasswordCheck implements ValidationRule
                     return;
                 }
             }
+            PasswordHistory::create([
+                'user_id' => $user->id,
+                'password' => $value,
+            ]);
         }
-        PasswordHistory::create([
-            'user_id' => $user->id,
-            'password' => $value,
-        ]);
         
         return;
     }
