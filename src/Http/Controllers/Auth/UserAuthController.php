@@ -19,6 +19,7 @@ use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginHistory;
 use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Rules\PasswordCheck;
 use Ssntpl\Neev\Services\GeoIP;
@@ -57,8 +58,18 @@ class UserAuthController extends Controller
     /**
      * Show the register page.
     */
-    public function registerCreate()
+    public function registerCreate(Request $request)
     {
+        if ($request->id || $request->hash) {
+            if (! request()->hasValidSignature()) {
+                return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
+            }
+            $invitation = TeamInvitation::find(request()->id);
+            if (!$invitation || sha1($invitation?->email) !== request()->hash) {
+                return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
+            }
+            return view('neev::auth.register', ['id' => $request->id, 'hash' => $request->hash, 'email' => $invitation->email ?? null]);
+        }
         return view('neev::auth.register');
     }
 
@@ -106,24 +117,37 @@ class UserAuthController extends Controller
         ]);
         $user = User::find($user->id);
 
-        $user->emails()->create([
+        $email = $user->emails()->create([
             'email' => $request->email
         ]);
 
         if (config('neev.team')) {
             try {
-                $emailDomain = substr(strrchr($request->email, "@"), 1);
-
-                $team = Team::where('federated_domain', $emailDomain)->first();
-                if (!$team?->domain_verified_at) {
-                    $team = Team::forceCreate([
-                        'name' => explode(' ', $user->name, 2)[0]."'s Team",
-                        'user_id' => $user->id,
-                        'is_public' => false,
-                    ]);
+                if ($request->invitation_id) {
+                    $invitation = TeamInvitation::find($request->invitation_id);
+                    if (!$invitation || sha1($invitation?->email) !== $request->hash) {
+                        $user->delete();
+                        return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
+                    }
+                    $email->verified_at = now();
+                    $email->save();
+                    $team = $invitation->team;
+                    $invitation->delete();
+                    $team->users()->attach($user, ['role_id' => $invitation->role_id, 'joined' => true]);
+                } else {
+                    $emailDomain = substr(strrchr($request->email, "@"), 1);
+    
+                    $team = Team::where('federated_domain', $emailDomain)->first();
+                    if (!$team?->domain_verified_at) {
+                        $team = Team::forceCreate([
+                            'name' => explode(' ', $user->name, 2)[0]."'s Team",
+                            'user_id' => $user->id,
+                            'is_public' => false,
+                        ]);
+                    }
+                    $team->users()->attach($user, ['joined' => true]);
                 }
 
-                $team->users()->attach($user, ['joined' => true]);
             } catch (Exception $e) {
                 $user->delete();
                 return back()->withErrors(['message' => 'Unable to create team']);
@@ -132,7 +156,7 @@ class UserAuthController extends Controller
 
         $this->login($request, $geoIP, $user, LoginHistory::Password);
 
-        if (config('neev.email_verified')) {
+        if (config('neev.email_verified') && !$email->verified_at) {
             $signedUrl = URL::temporarySignedRoute(
                 'verification.verify',
                 Carbon::now()->addMinutes(60),
@@ -339,10 +363,10 @@ class UserAuthController extends Controller
         return back()->with('status', __('verification-link-sent'));
     }
 
-    public function emailVerifyStore(Request $request, $id, $hash) {
+    public function emailVerifyStore(Request $request, $id, $hash, GeoIP $geoIP) {
         $user = User::findOrFail($id);
     
-        if (! $request->hasValidSignature()) {
+        if (!$request->hasValidSignature() || !$user) {
             return response()->json(['message' => 'Invalid or expired verification link.'], 403);
         }
     
@@ -355,6 +379,7 @@ class UserAuthController extends Controller
                 $email->verified_at = now();
                 $email->save();
             }
+            PasskeyController::login($request, $geoIP, $email->user, LoginHistory::Password);
             return redirect(config('neev.dashboard_url'));
         }
         

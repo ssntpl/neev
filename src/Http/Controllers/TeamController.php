@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Http\Controllers;
 
+use Carbon\Carbon;
 use Exception;
 use Illuminate\Http\Request;
 use Mail;
@@ -11,6 +12,7 @@ use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Str;
+use URL;
 
 class TeamController extends Controller
 {
@@ -149,7 +151,25 @@ class TeamController extends Controller
             }
             $member = User::where('email', $request->email)->first();
             if (!$member) {
-                return back()->withErrors(['message' => 'User not found.']);
+                $expiry = Carbon::now()->addDays(7);
+
+                $invitation = $team->invitations()->updateOrCreate(
+                    ['email' => $request->email],
+                    ['role_id' => $request->role_id, 'expires_at' => $expiry]
+                );
+
+                if(!$invitation) {
+                    return back()->withErrors(['message' => 'Failed to create invitation.']);
+                }
+
+                $signedUrl = URL::temporarySignedRoute(
+                    'register',
+                    $expiry,
+                    ['id' => $invitation->id, 'hash' => sha1($request->email)]
+                );
+
+                Mail::to($request->email)->send(new TeamInvitation($team->name, 'there', $signedUrl, $expiry, false));
+                return back()->with('status', 'Invite link sent successfully.');
             } 
             if ($team->users->contains($member)) {
                 return back()->with(['status' => 'User already added.']);
@@ -170,6 +190,14 @@ class TeamController extends Controller
         $user = User::find($request->user_id ?? $request->user()->id);
         try {
             $team = Team::find($request->team_id);
+            if ($request->has('invitation_id')) {
+                $invitation = $team->invitations()->find($request->invitation_id);
+                if ($invitation) {
+                    $invitation->delete();
+                    return back()->with('status', 'Invitation Revoked Successfully');
+                }
+                return back()->withErrors(['message' => 'Invitation not found.']);
+            }
             if ($user->id == $team->user_id) {
                 return back()->withErrors(['message' => 'You cannot leave from this team.']);
             }

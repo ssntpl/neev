@@ -90,4 +90,9 @@ class Team extends Model
     {
         return $this->hasMany(DomainRule::class)->where('name', $name)->first();
     }
+
+    public function invitations()
+    {
+        return $this->hasMany(TeamInvitation::class);
+    }
 }

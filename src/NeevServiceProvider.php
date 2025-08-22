@@ -39,6 +39,7 @@ class NeevServiceProvider extends ServiceProvider
 
         $this->publishes([
             __DIR__.'/../database/migrations/create_teams_table.php' => database_path('migrations/2025_01_01_000002_create_teams_table.php'),
+            __DIR__.'/../database/migrations/create_team_invitations_table.php' => database_path('migrations/2025_01_01_000002_create_team_invitations_table.php'),
         ], 'neev-team-migrations');
         
         $this->publishes([

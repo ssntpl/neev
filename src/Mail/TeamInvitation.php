@@ -14,14 +14,20 @@ class TeamInvitation extends Mailable
 
     public $username;
     public $team;
+    public $url;
+    public $expiry;
+    public $userExist;
 
     /**
      * Create a new message instance.
      */
-    public function __construct($team, $username)
+    public function __construct($team, $username, $url = null, $expiry = null, $userExist = true)
     {
         $this->team = $team;
         $this->username = $username;
+        $this->url = $url;
+        $this->expiry = $expiry;
+        $this->userExist = $userExist;
     }
 
     /**

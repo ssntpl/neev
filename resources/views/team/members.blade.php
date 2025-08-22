@@ -247,7 +247,7 @@
                 @endif
 
                 {{-- Invited Users --}}
-                @if (count($team->invitedUsers) > 0)
+                @if (count($team->invitedUsers) > 0 || $team->invitations->count() > 0)
                     <div class="flex justify-between">
                         <h1 class="font-bold">{{__('Invited Members')}}</h1>
                         <span>
@@ -335,6 +335,97 @@
                                     @else
                                         <td class="px-4 py-2 text-center capitalize">
                                             {{ $member->membership->role->name ?? ''}}
+                                        </td>
+                                    @endif
+                                </x-table-body-tr>
+                            @endforeach
+                            @foreach ($team->invitations as $invitation)
+                                <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                                    <td class="flex gap-2 px-4 py-2">
+                                        <div class="w-10 h-10 bg-blue-100 text-blue-500 text-xl rounded-full flex items-center justify-center font-medium">
+                                            {{ $invitation->profile_photo_url }}
+                                        </div>
+                                        <div class="flex justify-center items-center">
+                                            <p class="text-sm">{{$invitation->email}}</p>
+                                        </div>
+                                    </td>
+                                    @if ($team->owner->id === $user->id)
+                                        <td class="px-4 py-2 text-center capitalize">
+                                            <div class="text-start" x-data="{ show: false, roleId: @js($invitation->role->id ?? 0), userRoleId: @js($invitation->role->id ?? 1) }">
+                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $invitation->role->name ?? '--'}}</button>
+                                                <x-dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                                    <x-slot name="title">
+                                                        {{ __('Change Role') }}
+                                                    </x-slot>
+                                                    
+                                                    <x-slot name="content">
+                                                        <p>{{$member->name}}</p>
+                                                        <form method="POST" action="{{ route('teams.roles.change') }}" x-ref="changeRoleForm" @keydown.enter.prevent="if (roleId !== userRoleId) { $refs.changeRoleForm.submit() }">
+                                                            @csrf
+                                                            @method('PUT')
+
+                                                            <input type="hidden" name="team_id" value="{{ $team->id }}">
+                                                            <input type="hidden" name="invitation_id" value="{{ $invitation->id }}">
+                                                            <div class="mt-4 flex gap-2 items-center w-2/3">
+                                                                <x-label for="role_id" value="{{ __('Role') }}" />
+                                                                <select name="role_id" id="role_id" x-model="roleId" class="w-full border rounded-md p-2">
+                                                                    @foreach ($team->roles as $role)
+                                                                        <option value="{{$role->id}}" x-bind:selected="{{($invitation->role->id ?? 0) === $role->id}}">{{$role->name}}</option>
+                                                                    @endforeach
+                                                                </select>
+                                                            </div>
+                                                        </form>
+                                                    </x-slot>
+
+                                                    <x-slot name="footer">
+                                                        <x-secondary-button @click="show = false">
+                                                            {{ __('Cancel') }}
+                                                        </x-secondary-button>
+
+                                                        <x-button type="submit" x-bind:disabled="roleId === userRoleId" class="ms-3" @click.prevent="$refs.changeRoleForm.submit()">
+                                                            {{ __('Change Role') }}
+                                                        </x-button>
+                                                    </x-slot>
+                                                </x-dialog-modal>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-2">
+                                            <div class="flex justify-center items-center">
+                                                 <p>Expire in {{ $invitation->expires_at->diffForHumans() }}</p>
+                                            </div>
+                                        </td>
+                                        <td class="px-4 py-2 text-center">
+                                            <form method="POST" action="{{route('teams.invite')}}">
+                                                @csrf
+                                                @method('PUT')
+                                                <input type="hidden" name="team_id" value="{{ $team->id }}">
+                                                <input type="hidden" name="email" value="{{ $invitation->email }}">
+                                                <x-button>{{__('Invite')}}</x-button>
+                                            </form>
+                                        </td>
+                                        <td class="px-4 py-2 text-center">
+                                            <form method="POST" action="{{ route('teams.leave') }}" x-data>
+                                                @csrf
+                                                @method('DELETE')
+                                                
+                                                <input type="hidden" name="team_id" value="{{ $team->id }}"/>
+                                                <input type="hidden" name="invitation_id" value="{{ $invitation->id }}"/>
+                                                <x-danger-button
+                                                    type="submit"
+                                                    class="w-2/3" 
+                                                    @click.prevent="if (confirm('{{ __('Are you sure you want to remove user from the team?') }}')) $el.closest('form').submit();">
+                                                    {{ __('Remove') }}
+                                                </x-danger-button>
+                                            </form>
+                                        </td>
+                                    @else
+                                        <td class="px-4 py-2 text-center capitalize">
+                                            {{ $invitation->role->name ?? ''}}
+                                        </td>
+                                        <td class="px-4 py-2">
+                                            <div class="flex justify-center items-center">
+                                                <p class="text-sm">{{$invitation->expires_at}}</p>
+                                            </div>
                                         </td>
                                     @endif
                                 </x-table-body-tr>
