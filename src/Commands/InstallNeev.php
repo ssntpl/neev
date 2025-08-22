@@ -42,14 +42,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
         }
         
         $file = config_path('neev.php');
-        if ($stack = $this->argument('stack')) {
-
-            $this->replaceInFile(
-                "'stack' => '" . $this->getCurrentStackValue($file) . "',",
-                "'stack' => '{$stack}',",
-                $file
-            );
-        }
         
         if ($this->argument('verification') === 'yes') {
             $this->replaceInFile("'email_verified' => false,", "'email_verified' => true,", $file);
@@ -86,17 +78,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
     protected function replaceInFile($search, $replace, $path)
     {
         file_put_contents($path, str_replace($search, $replace, file_get_contents($path)));
-    }
-
-    protected function getCurrentStackValue($file)
-    {
-        $content = file_get_contents($file);
-
-        if (preg_match("/'stack'\s*=>\s*'([^']+)'/", $content, $matches)) {
-            return $matches[1];
-        }
-
-        return 'ui'; // default fallback
     }
 
     /**
