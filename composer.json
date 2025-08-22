@@ -1,6 +1,6 @@
 {
     "name": "ssntpl/neev",
-    "description": "Larave Package for user management.",
+    "description": "Larave Starter Kit for user management.",
     "version": "1.0.0",
     "keywords": [
         "laravel", 
@@ -11,7 +11,7 @@
         "auth",
         "user-management"
     ],
-    "homepage": "https://github.com/ssntpl/user-security",
+    "homepage": "https://github.com/ssntpl/neev",
     "license": "",
     "support": {
         "issues": "https://github.com/ssntpl/neev/issues",
