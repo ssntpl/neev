@@ -104,6 +104,7 @@ class UserAuthController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
         ]);
+        $user = User::find($user->id);
 
         $user->emails()->create([
             'email' => $request->email
