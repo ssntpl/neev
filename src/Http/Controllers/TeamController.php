@@ -156,11 +156,16 @@ class TeamController extends Controller
 
                 $invitation = $team->invitations()->updateOrCreate(
                     ['email' => $request->email],
-                    ['role_id' => $request->role_id, 'expires_at' => $expiry]
+                    ['expires_at' => $expiry]
                 );
 
                 if(!$invitation) {
                     return back()->withErrors(['message' => 'Failed to create invitation.']);
+                }
+
+                if (config('neev.roles')) {
+                    $invitation->role_id = $request->role_id;
+                    $invitation->save();
                 }
 
                 $signedUrl = URL::temporarySignedRoute(

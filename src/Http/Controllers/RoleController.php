@@ -4,7 +4,6 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
-use Log;
 use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\Role;
 use Ssntpl\Neev\Models\Team;

@@ -25,7 +25,7 @@ class PasswordLogic implements ValidationRule
             $user = $email?->user;
         }
 
-        if ($user && config('neev.domain_federation')) {
+        if ($user && config('neev.team') && config('neev.domain_federation')) {
             $emailDomain = substr(strrchr($user->email, "@"), 1);
 
             $team = Team::where('federated_domain', $emailDomain)->first();

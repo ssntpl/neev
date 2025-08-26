@@ -13,7 +13,7 @@ class PasswordValidate implements ValidationRule
     {
         $password = config('neev.password');
 
-        if (config('neev.domain_federation')) {
+        if (config('neev.team') && config('neev.domain_federation')) {
             $emailDomain = substr(strrchr(request()->input('email'), "@"), 1);
 
             $team = Team::where('federated_domain', $emailDomain)->first();

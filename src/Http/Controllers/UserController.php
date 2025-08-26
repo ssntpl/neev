@@ -27,9 +27,11 @@ class UserController extends Controller
         $emailDomain = substr(strrchr($user->email, "@"), 1);
 
         $addEmail = true;
-        $team = Team::where('federated_domain', $emailDomain)->first();
-        if ($team?->domain_verified_at && $team->users->contains($user)) {
-            $addEmail = false;
+        if (config('neev.team') && config('neev.domain_federation')) {
+            $team = Team::where('federated_domain', $emailDomain)->first();
+            if ($team?->domain_verified_at && $team->users->contains($user)) {
+                $addEmail = false;
+            }
         }
         return view('neev::account.emails', ['user' => $user, 'add_email' => $addEmail]);
     }
@@ -40,9 +42,11 @@ class UserController extends Controller
         $emailDomain = substr(strrchr($user->email, "@"), 1);
 
         $deleteAccount = true;
-        $team = Team::where('federated_domain', $emailDomain)->first();
-        if ($team?->domain_verified_at && $team->users->contains($user)) {
-            $deleteAccount = false;
+        if (config('neev.team') && config('neev.domain_federation')) {
+            $team = Team::where('federated_domain', $emailDomain)->first();
+            if ($team?->domain_verified_at && $team->users->contains($user)) {
+                $deleteAccount = false;
+            }
         }
         return view('neev::account.security', ['user' => $user, 'delete_account' => $deleteAccount]);
     }
@@ -58,9 +62,11 @@ class UserController extends Controller
         $emailDomain = substr(strrchr($user->email, "@"), 1);
 
         $join_team = true;
-        $team = Team::where('federated_domain', $emailDomain)->first();
-        if ($team?->domain_verified_at) {
-            $join_team = false;
+        if (config('neev.domain_federation')) {
+            $team = Team::where('federated_domain', $emailDomain)->first();
+            if ($team?->domain_verified_at) {
+                $join_team = false;
+            }
         }
         return view('neev::account.teams', ['user' => $user, 'join_team' => $join_team]);
     }

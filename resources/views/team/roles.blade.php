@@ -5,7 +5,7 @@
     <x-validation-errors class="mb-4" />
     <x-validation-status class="mb-4" />
     <div class="flex flex-col gap-4">
-        @if ($team->user_id === $user->id)
+        @if ($team->user_id === $user->id && config('neev.roles'))
             <x-card x-data="{roleOpen: false}">
                 <x-slot name="title">
                     {{__('Add Role')}}
