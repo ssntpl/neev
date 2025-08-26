@@ -61,7 +61,7 @@ class UserAuthController extends Controller
     */
     public function registerCreate(Request $request)
     {
-        if ($request->id || $request->hash) {
+        if (config('neev.team') && ($request->id || $request->hash)) {
             if (! request()->hasValidSignature()) {
                 return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
             }
@@ -130,22 +130,33 @@ class UserAuthController extends Controller
                         $user->delete();
                         return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
                     }
+
                     $email->verified_at = now();
                     $email->save();
+
                     $team = $invitation->team;
+                    $team->users()->attach($user, ['role_id' => $invitation->role_id ?? 0, 'joined' => true]);
+                    
                     $invitation->delete();
-                    $team->users()->attach($user, ['role_id' => $invitation->role_id, 'joined' => true]);
                 } else {
-                    $emailDomain = substr(strrchr($request->email, "@"), 1);
-    
-                    $team = Team::where('federated_domain', $emailDomain)->first();
-                    if (!$team?->domain_verified_at) {
+                    if (config('neev.domain_federation')) {
+                        $emailDomain = substr(strrchr($request->email, "@"), 1);
+                        $team = Team::where('federated_domain', $emailDomain)->first();
+                        if (!$team?->domain_verified_at) {
+                            $team = Team::forceCreate([
+                                'name' => explode(' ', $user->name, 2)[0]."'s Team",
+                                'user_id' => $user->id,
+                                'is_public' => false,
+                            ]);
+                        }
+                    } else {
                         $team = Team::forceCreate([
                             'name' => explode(' ', $user->name, 2)[0]."'s Team",
                             'user_id' => $user->id,
                             'is_public' => false,
                         ]);
                     }
+                    
                     $team->users()->attach($user, ['joined' => true]);
                 }
 
@@ -205,7 +216,7 @@ class UserAuthController extends Controller
         }
         $rules = [];
         $isDomainFederated = false;
-        if (config('neev.domain_federation')) {
+        if (config('neev.team') && config('neev.domain_federation')) {
             $emailDomain = substr(strrchr($request->email, "@"), 1);
             
             $team = Team::where('federated_domain', $emailDomain)->first();

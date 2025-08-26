@@ -14,7 +14,9 @@ return new class extends Migration
         Schema::create('team_invitations', function (Blueprint $table) {
             $table->id();
             $table->foreignId('team_id')->constrained()->onDelete('cascade');
-            $table->unsignedBigInteger('role_id')->nullable();
+            if (config('neev.roles')) {
+                $table->unsignedBigInteger('role_id')->nullable();
+            }
             $table->string('email');
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
