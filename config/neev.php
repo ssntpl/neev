@@ -49,15 +49,15 @@ return [
 
     'password' => [
         'min_length' => 4,
-        'max_length' => 8,
+        'max_length' => 16,
         'combination_types' => ['number'], //['alphabet', 'number', 'symbols'],
         'check_user_columns' => ['name', 'email'],
         'old_passwords' => 5,
         
-        'soft_fail_attempts' => 2,
-        'hard_fail_attempts' => 5,
+        'soft_fail_attempts' => 5,
+        'hard_fail_attempts' => 20,
         'login_block_minutes' => 1,
-        'password_expiry_soft_days' => 60,
+        'password_expiry_soft_days' => 30,
         'password_expiry_hard_days' => 90,
     ],
 ];

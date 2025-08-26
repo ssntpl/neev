@@ -34,6 +34,19 @@ class DomainRule extends Model
         'pass_columns' => 'User columns should not contain in password',
     ];
     
+    private static $ruleConfigKey = [
+        'oauth' => 'oauth',
+        'mfa' => 'multi_factor_auth',
+        'pass_min_len' => 'password.min_length',
+        'pass_max_len' => 'password.max_length',
+        'pass_old' => 'password.old_passwords',
+        'pass_soft_fail_attempts' => 'password.soft_fail_attempts',
+        'pass_hard_fail_attempts' => 'password.hard_fail_attempts',
+        'pass_block_user_mins' => 'password.login_block_minutes',
+        'pass_combinations' => 'password.combination_types',
+        'pass_columns' => 'password.check_user_columns',
+    ];
+    
     protected $fillable = [
         'team_id',
         'name',
@@ -103,5 +116,24 @@ class DomainRule extends Model
 
     public static function ruleTypeUI($name) {
         return self::$ruleTypesUI[$name];
+    }
+
+    public static function ruleDefaultValue($name) {
+        if ($name === self::passkey()) {
+            return true;
+        }
+        $key = self::$ruleConfigKey[$name];
+        $value = config("neev.$key") ?? null;
+        if ($value === null) {
+            return null;
+        }
+        if ($value && self::ruleType($name) === 'bool') {
+            $value = (bool) $value;
+        } elseif ($value && self::ruleType($name) === 'number') {
+            $value = (int) $value;
+        } else {
+            $value = json_encode($value);
+        }
+        return $value;
     }
 }

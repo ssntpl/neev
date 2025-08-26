@@ -13,7 +13,7 @@ use Ssntpl\Neev\Models\PasswordHistory;
 use Ssntpl\Neev\Models\Team;
 use Str;
 
-class PasswordCheck implements ValidationRule 
+class PasswordLogic implements ValidationRule 
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void 
     {
@@ -30,51 +30,15 @@ class PasswordCheck implements ValidationRule
 
             $team = Team::where('federated_domain', $emailDomain)->first();
             if ($team?->domain_verified_at) {
-                $password['min_length'] = $team->rule(DomainRule::pass_min_len())->value ?? null;
-                $password['max_length'] = $team->rule(DomainRule::pass_max_len())->value ?? null;
                 $password['old_passwords'] = $team->rule(DomainRule::pass_old())->value ?? null;
-                $password['combination_types'] = json_decode($team->rule(DomainRule::pass_combinations())->value ?? '[]');
                 $password['check_user_columns'] = json_decode($team->rule(DomainRule::pass_columns())->value ?? '[]');
             }
         }
 
-        if (isset($password['min_length']) && $password['min_length']) {
-            if (strlen($value) < $password['min_length']) {
-                $fail('Password must be at least '.$password['min_length'].' characters.');
-                return;
-            }
-        }
-        
-        if (isset($password['max_length']) && $password['max_length']) {
-            if (strlen($value) > $password['max_length']) {
-                $fail('Password must be less than '.$password['max_length'].' characters.');
-                return;
-            }
-        }
-        
-        if (isset($password['combination_types']) && $password['combination_types']) {
-            foreach ($password['combination_types'] ?? [] as $type) {
-                if ($type == 'alphabet' && !preg_match('/[a-zA-Z]/', $value)) {
-                    $fail('Password must be contain '.$type);
-                    return;
-                }
-
-                if ($type == 'number' && !preg_match('/\d/', $value)) {
-                    $fail('Password must be contain '.$type);
-                    return;
-                }
-
-                if ($type == 'symbols' && !preg_match('/[^a-zA-Z\d]/', $value)) {
-                    $fail('Password must be contain '.$type);
-                    return;
-                }
-            }
-        }
-       
         if (isset($password['check_user_columns']) && $password['check_user_columns'] && $user) {
             foreach ($password['check_user_columns'] ?? [] as $column) {
                 if (str_contains(Str::lower($value), Str::lower($user->{$column})) || str_contains(Str::lower($user->{$column}), Str::lower($value))) {
-                    $fail('Password should not be contain '.$column);
+                    $fail("Password should not be contain $column");
                     return;
                 }
             }
@@ -88,12 +52,8 @@ class PasswordCheck implements ValidationRule
                     return;
                 }
             }
-            PasswordHistory::create([
-                'user_id' => $user->id,
-                'password' => $value,
-            ]);
         }
-        
+
         return;
     }
 
@@ -102,6 +62,7 @@ class PasswordCheck implements ValidationRule
         if ($user || $password) {
             return false;
         }
+
         $currentPassword = PasswordHistory::where('user_id', $user->id)->orderByDesc('id')->first();
         if ($currentPassword && isset($password['password_expiry_soft_days']) && $password['password_expiry_soft_days']) {
             $softLimit = Carbon::parse($currentPassword->created_at)->addDays((int) $password['password_expiry_soft_days']);
@@ -115,6 +76,7 @@ class PasswordCheck implements ValidationRule
                 ];
             }
         }
+
         return false;
     }
 
@@ -123,6 +85,7 @@ class PasswordCheck implements ValidationRule
         if ($user || $password) {
             return;
         }
+
         $currentPassword = PasswordHistory::where('user_id', $user->id)->orderByDesc('id')->first();
         if ($currentPassword && isset($password['password_expiry_hard_days']) && $password['password_expiry_hard_days']) {
             $hardLimit = Carbon::parse($currentPassword->created_at)->addDays((int) $password['password_expiry_hard_days']);
@@ -130,6 +93,7 @@ class PasswordCheck implements ValidationRule
                 return true;
             }
         }
+
         return false;
     }
 }

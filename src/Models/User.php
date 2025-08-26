@@ -21,6 +21,25 @@ class User extends AppUser
         return collect(explode(' ', $this->name))->map(fn($word) => strtoupper(substr($word, 0, 1)))->join('');;
     }
 
+    protected static function booted()
+    {
+        static::created(function ($user) {
+            PasswordHistory::create([
+                'user_id' => $user->id ?? null,
+                'password' => $user->password,
+            ]);
+        });
+
+        static::updated(function ($user) {
+            if ($user->isDirty('password')) {
+                PasswordHistory::create([
+                'user_id' => $user->id,
+                'password' => $user->password,
+            ]);
+            }
+        });
+    }
+
     public function loginHistory()
     {
         return $this->hasMany(LoginHistory::class);

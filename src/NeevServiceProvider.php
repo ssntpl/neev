@@ -5,7 +5,8 @@ namespace Ssntpl\Neev;
 use Blade;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
-use Ssntpl\Neev\Commands\CleanupOldLoginHistory;
+use Ssntpl\Neev\Commands\CleanOldLoginHistory;
+use Ssntpl\Neev\Commands\CleanOldPasswords;
 use Ssntpl\Neev\Commands\CreatePermission;
 use Ssntpl\Neev\Commands\DownloadGeoLiteDb;
 use Ssntpl\Neev\Commands\InstallNeev;
@@ -56,6 +57,6 @@ class NeevServiceProvider extends ServiceProvider
     public function register()
     {
         $this->mergeConfigFrom(__DIR__.'/../config/neev.php', 'neev');
-        $this->commands([InstallNeev::class, DownloadGeoLiteDb::class, CleanupOldLoginHistory::class, CreatePermission::class]);
+        $this->commands([InstallNeev::class, DownloadGeoLiteDb::class, CleanOldLoginHistory::class, CreatePermission::class, CleanOldPasswords::class]);
     }
 }

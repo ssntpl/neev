@@ -51,7 +51,9 @@ class InstallNeev extends Command implements PromptsForMissingInput
             $this->replaceInFile("'domain_federation' => false,", "'domain_federation' => true,", $file);
             $this->callSilent('vendor:publish', ['--tag' => 'neev-domain-federation-migrations', '--force' => true]);
         }
-
+        
+        // $this->call('migrate');
+        
         $this->info('✅ Neev installed successfully!');
     }
 

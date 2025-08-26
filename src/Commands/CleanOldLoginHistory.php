@@ -6,10 +6,10 @@ use Illuminate\Console\Command;
 use Ssntpl\Neev\Models\LoginHistory;
 use Illuminate\Support\Carbon;
 
-class CleanupOldLoginHistory extends Command
+class CleanOldLoginHistory extends Command
 {
-    protected $signature = 'neev:cleanup-logins';
-    protected $description = 'Delete login history older then given days in confg.';
+    protected $signature = 'neev:clean-login-history';
+    protected $description = 'Delete login history older then given days in config.';
 
     public function handle()
     {
