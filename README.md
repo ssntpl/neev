@@ -197,7 +197,7 @@ For issues and feature requests, please use the [GitHub issue tracker](https://g
 
 ## License
 
-This package is currently unlicensed. Please contact the author for licensing information.
+
 
 ## Credits
 
