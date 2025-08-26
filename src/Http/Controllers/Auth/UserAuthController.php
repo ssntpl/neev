@@ -21,7 +21,8 @@ use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
-use Ssntpl\Neev\Rules\PasswordCheck;
+use Ssntpl\Neev\Rules\PasswordLogic;
+use Ssntpl\Neev\Rules\PasswordValidate;
 use Ssntpl\Neev\Services\GeoIP;
 use URL;
 use Log;
@@ -107,7 +108,7 @@ class UserAuthController extends Controller
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
-            'password' => ['required', 'confirmed', new PasswordCheck],
+            'password' => ['required', 'confirmed', new PasswordValidate, new PasswordLogic],
         ]);
 
         $user = User::create([
@@ -153,7 +154,7 @@ class UserAuthController extends Controller
                 return back()->withErrors(['message' => 'Unable to create team']);
             }
         }
-
+        
         $this->login($request, $geoIP, $user, LoginHistory::Password);
 
         if (config('neev.email_verified') && !$email->verified_at) {
@@ -317,7 +318,7 @@ class UserAuthController extends Controller
     {
         $request->validate([
             'email' => 'required|string|email|max:255',
-            'password' => ['required', 'confirmed', new PasswordCheck],
+            'password' => ['required', 'confirmed', new PasswordValidate, new PasswordLogic],
         ]);
 
         $email = Email::where('email', $request->email)->first();
