@@ -10,7 +10,7 @@ use Ssntpl\Neev\Models\User;
 class CleanOldPasswords extends Command
 {
     protected $signature = 'neev:clean-passwords';
-    protected $description = 'Delete passwords older then given in config.';
+    protected $description = 'Delete passwords older than given in config.';
 
     public function handle()
     {

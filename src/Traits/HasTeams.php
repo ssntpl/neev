@@ -35,12 +35,18 @@ trait HasTeams
             ->as('membership');
     }
 
+    /**
+     * Get all teams the user is a member of (joined teams only).
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
+     */
     public function teams()
     {
         return $this->belongsToMany(Team::class, Membership::class)
             ->withPivot(['role_id', 'joined'])
             ->withTimestamps()
-            ->as('membership')->where('joined', true);
+            ->as('membership')
+            ->where('joined', true);
     }
     
     public function teamRequests()

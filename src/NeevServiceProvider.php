@@ -57,6 +57,12 @@ class NeevServiceProvider extends ServiceProvider
     public function register()
     {
         $this->mergeConfigFrom(__DIR__.'/../config/neev.php', 'neev');
-        $this->commands([InstallNeev::class, DownloadGeoLiteDb::class, CleanOldLoginHistory::class, CreatePermission::class, CleanOldPasswords::class]);
+        $this->commands([
+            InstallNeev::class,
+            DownloadGeoLiteDb::class,
+            CleanOldLoginHistory::class,
+            CreatePermission::class,
+            CleanOldPasswords::class,
+        ]);
     }
 }
