@@ -9,7 +9,7 @@ use Illuminate\Support\Carbon;
 class CleanOldLoginHistory extends Command
 {
     protected $signature = 'neev:clean-login-history';
-    protected $description = 'Delete login history older then given days in config.';
+    protected $description = 'Delete login history older than given days in config.';
 
     public function handle()
     {
