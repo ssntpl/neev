@@ -237,7 +237,7 @@ class UserAuthController extends Controller
         }
 
         $email = Email::find($id);
-        if (sha1($email->email) !== $hash || !$email->verified_at) {
+        if (sha1($email->email) !== $hash || (config('neev.email_verified') && !$email->verified_at)) {
             return redirect(route('login'));
         }
 
@@ -289,7 +289,7 @@ class UserAuthController extends Controller
 
         $user = User::where('email', $request->email)->first();
         $email = $user?->primaryEmail;
-        if (!$user || !$email || !$email->verified_at) {
+        if (!$user || !$email || (config('neev.email_verified') && !$email->verified_at)) {
             return back()->withErrors([
                 'message' => __('User not registered or wrong email.'),
             ]);
@@ -315,7 +315,7 @@ class UserAuthController extends Controller
         }
 
         foreach ($user->emails as $email) {
-            if (sha1($email->email) !== $hash || !$email->verified_at) {
+            if (sha1($email->email) !== $hash || (config('neev.email_verified') && !$email->verified_at)) {
                 continue;
             }
             
@@ -333,7 +333,7 @@ class UserAuthController extends Controller
         ]);
 
         $email = Email::where('email', $request->email)->first();
-        if (!$email || !$email->verified_at) {
+        if (!$email || (config('neev.email_verified') && !$email->verified_at)) {
             return back()->withErrors('message', 'Failed to update password.');
         }
         $user = $email->user;

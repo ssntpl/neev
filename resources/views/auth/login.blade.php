@@ -21,15 +21,15 @@
                 </a>
                 
                 <div class="flex items-center justify-end">
+                    <x-button type="submit" class="ms-2">
+                        {{ __('Continue') }}
+                    </x-button>
+                    
                     @if (config('neev.magicauth'))
-                        <x-button type="button" class="ms-2" name="action" value="link">
+                        <x-button type="submit" class="ms-2" name="action" value="link">
                             {{ __('Send Login Link') }}
                         </x-button>
                     @endif
-
-                    <x-button class="ms-2">
-                        {{ __('Continue') }}
-                    </x-button>
                 </div>
             </div>
         </form>
