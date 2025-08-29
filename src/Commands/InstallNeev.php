@@ -33,6 +33,8 @@ class InstallNeev extends Command implements PromptsForMissingInput
         $this->info('🔧 Installing with options:');
         $this->callSilent('vendor:publish', ['--tag' => 'neev-config', '--force' => true]);
         $this->callSilent('vendor:publish', ['--tag' => 'neev-migrations', '--force' => true]);
+        $this->callSilent('vendor:publish', ['--tag' => 'neev-views', '--force' => true]);
+        $this->callSilent('vendor:publish', ['--tag' => 'neev-routes', '--force' => true]);
         
         $file = config_path('neev.php');
 

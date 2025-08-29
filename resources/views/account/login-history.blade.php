@@ -1,6 +1,6 @@
 <x-app>
     <x-slot name="leftsection">
-        {{ view('neev::account.left-section', ['user' => $user]) }}
+        {{ view('neev.account.left-section', ['user' => $user]) }}
     </x-slot>
     
     <x-card>
