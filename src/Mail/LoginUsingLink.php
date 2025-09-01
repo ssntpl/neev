@@ -41,7 +41,7 @@ class LoginUsingLink extends Mailable
     public function content(): Content
     {
         return new Content(
-            view: 'neev::emails.login-link',
+            view: 'neev.emails.login-link',
         );
     }
 

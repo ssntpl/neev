@@ -41,7 +41,6 @@
     "require": {
         "php": "*",
         "laravel/framework": "*",
-        "jenssegers/agent": "*",
         "geoip2/geoip2": "*",
         "web-auth/webauthn-lib": "^5.2",
         "laravel/socialite": "^5.23",

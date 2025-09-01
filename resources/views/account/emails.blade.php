@@ -1,10 +1,10 @@
-<x-app>
+<x-neev-layout::app>
     <x-slot name="leftsection">
         {{ view('neev.account.left-section', ['user' => $user]) }}
     </x-slot>
-    <x-validation-errors class="mb-4" />
-    <x-validation-status class="mb-4" />
-    <x-card x-data="{addEmailOpen: false}" class="select-none">
+    <x-neev-component::validation-errors class="mb-4" />
+    <x-neev-component::validation-status class="mb-4" />
+    <x-neev-component::card x-data="{addEmailOpen: false}" class="select-none">
         {{-- Title --}}
         <x-slot name="title">
             Emails
@@ -36,20 +36,20 @@
                     @csrf
 
                     <div class="flex gap-2 items-center w-1/2">
-                        <x-label for="email" value="{{ __('New Email Address') }}" class="w-1/3" />
-                        <x-input id="email" class="block w-2/3" type="email" name="email" required />
+                        <x-neev-component::label for="email" value="{{ __('New Email Address') }}" class="w-1/3" />
+                        <x-neev-component::input id="email" class="block w-2/3" type="email" name="email" required />
                     </div>
 
                     <div class="text-end">
-                        <x-button>
+                        <x-neev-component::button>
                             {{ __('Add') }}
-                        </x-button>
+                        </x-neev-component::button>
                     </div>
                 </form>
-                <x-table>
+                <x-neev-component::table>
                     <x-slot name="body">
                         @foreach ($user->emails()->orderBy('created_at')->get() as $email)
-                            <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                            <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                 <td class="px-6 py-2 text-start">
                                     <div class="flex gap-2">
                                         <p>{{ $email->email ?? '--' }}</p>
@@ -64,7 +64,7 @@
                                         @endif
                                     </div>
                                 </td>
-                                <td class="px-6 py-2 text-center">{{ $email->created_at->diffForHumans() ?? '--' }}</td>
+                                <td class="px-6 py-2 text-center">{{ $email->created_at?->diffForHumans() ?? '--' }}</td>
                                 <td class="px-6 py-2 text-end">
                                     <div class="flex gap-4 justify-end">
                                         @if (!$email->verified_at)
@@ -72,9 +72,9 @@
                                                 @csrf
                                                 <input type="hidden" name="email" value="{{$email->email}}">
                                                 <div>
-                                                    <x-button>
+                                                    <x-neev-component::button>
                                                         {{ __('Verify Email') }}
-                                                    </x-button>
+                                                    </x-neev-component::button>
                                                 </div>
                                             </form>
                                         @endif
@@ -84,14 +84,14 @@
                                             @method('DELETE')
 
                                             <input type="hidden" name="email_id" value="{{$email->id}}">
-                                            <x-danger-button x-bind:disabled="{{$email->email === $user->email ? 'true' : 'false'}}" type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete the email?')}}')) $el.closest('form').submit();">{{ __('Delete') }}</x-danger-button>
+                                            <x-neev-component::danger-button x-bind:disabled="{{$email->email === $user->email ? 'true' : 'false'}}" type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete the email?')}}')) $el.closest('form').submit();">{{ __('Delete') }}</x-neev-component::danger-button>
                                         </form>
                                     </div>
                                 </td>
-                            </x-table-body-tr>
+                            </x-neev-component::table-body-tr>
                         @endforeach
                     </x-slot>
-                </x-table>
+                </x-neev-component::table>
                 <div class="flex justify-between gap-2 items-center border shadow px-4 py-2 rounded-lg">
                     <div>
                         <h1 class="font-bold">Primary email address</h1>
@@ -109,5 +109,5 @@
                 </div>
             </div>
        </x-slot>
-    </x-card>
-</x-app>
+    </x-neev-component::card>
+</x-neev-layout::app>

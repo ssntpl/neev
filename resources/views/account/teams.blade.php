@@ -1,13 +1,13 @@
-<x-app>
+<x-neev-layout::app>
     <x-slot name="leftsection">
         {{ view('neev.account.left-section', ['user' => $user]) }}
     </x-slot>
-    <x-validation-errors class="mb-4" />
-    <x-validation-status class="mb-4" />
+    <x-neev-component::validation-errors class="mb-4" />
+    <x-neev-component::validation-status class="mb-4" />
     @if (config('neev.team'))
         <div class="flex flex-col gap-4" x-data="{ showForm: false }">
             @if ($join_team)
-                <x-card x-data="{joinTeamOpen: false}">
+                <x-neev-component::card x-data="{joinTeamOpen: false}">
                     <x-slot name="title">
                         {{__('Join Team')}}
                     </x-slot>
@@ -34,26 +34,26 @@
 
                                 <div class="flex gap-4 justify-between w-full">
                                     <div class="flex gap-2 items-center w-2/3">
-                                        <x-label for="team" value="{{ __('Team') }}" />
-                                        <x-input id="team" class="block w-full" type="text" name="team" required autofocus />
+                                        <x-neev-component::label for="team" value="{{ __('Team') }}" />
+                                        <x-neev-component::input id="team" class="block w-full" type="text" name="team" required autofocus />
                                     </div>
                                     <div class="flex gap-2 items-center w-2/3">
-                                        <x-label for="email" value="{{ __('Owner Email') }}" />
-                                        <x-input id="email" class="block w-full" type="email" name="email" required autofocus />
+                                        <x-neev-component::label for="email" value="{{ __('Owner Email') }}" />
+                                        <x-neev-component::input id="email" class="block w-full" type="email" name="email" required autofocus />
                                     </div>
                                 </div>
                                 <div class="w-1/2 text-end">
-                                    <x-button>
+                                    <x-neev-component::button>
                                         {{__('Send Request')}}
-                                    </x-button>
+                                    </x-neev-component::button>
                                 </div>
                             </form>
                         </div>
                     </x-slot>
-                </x-card>
+                </x-neev-component::card>
             @endif
 
-            <x-card>
+            <x-neev-component::card>
                 <x-slot name="title">
                     {{ __('Teams') }}
                 </x-slot>
@@ -65,7 +65,7 @@
                     </span>
         
                     <button onclick="location.reload();" class="cursor-pointer">
-                        <x-refresh-button/>
+                        <x-neev-component::refresh-button/>
                     </button>
                 </x-slot>
         
@@ -80,10 +80,10 @@
                                 <span class="font-bold">{{ __(count($user->teamRequests)) }}</span>
                             </span>
                         </div>
-                        <x-table>
+                        <x-neev-component::table>
                             <x-slot name="body">
                                 @foreach ($user->teamRequests as $team)
-                                    <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                                    <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                         <td class="flex gap-2 px-4 py-2">
                                             <a href="{{route('teams.profile', $team->id)}}" class="flex gap-1 items-center">
                                                 <p class="text-lg hover:underline">{{$team->name}}</p>
@@ -101,18 +101,18 @@
                                                 @method('PUT')
         
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
-                                                <x-button name="action" value="accept">
+                                                <x-neev-component::button name="action" value="accept">
                                                     {{ __('Accept') }}
-                                                </x-button>
-                                                <x-danger-button type="submit" name="action" value="reject">
+                                                </x-neev-component::button>
+                                                <x-neev-component::danger-button type="submit" name="action" value="reject">
                                                     {{ __('Reject') }}
-                                                </x-danger-button>
+                                                </x-neev-component::danger-button>
                                             </form>
                                         </td>
-                                    </x-table-body-tr>
+                                    </x-neev-component::table-body-tr>
                                 @endforeach
                             </x-slot>
-                        </x-table>
+                        </x-neev-component::table>
                     @endif
 
                     {{-- Your Teams --}}
@@ -124,10 +124,10 @@
                                 <span class="font-bold">{{ __(count($user->teams)) }}</span>
                             </span>
                         </div>
-                        <x-table>
+                        <x-neev-component::table>
                             <x-slot name="body">
                                 @foreach ($user->teams as $team)
-                                    <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                                    <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                         <td class="flex gap-2 px-4 py-2">
                                             <a href="{{route('teams.profile', $team->id)}}" class="flex gap-1 items-center">
                                                 <p class="text-lg hover:underline">{{$team->name}}</p>
@@ -149,18 +149,18 @@
                                                     @method('DELETE')
         
                                                     <input type="hidden" name="team_id" value="{{ $team->id }}"/>
-                                                    <x-danger-button
+                                                    <x-neev-component::danger-button
                                                         type="submit"
                                                         @click.prevent="if (confirm('{{ __('Are you sure you want to leave the team?') }}')) $el.closest('form').submit();">
                                                         {{ __('Leave') }}
-                                                    </x-danger-button>
+                                                    </x-neev-component::danger-button>
                                                 </form>
                                             @endif
                                         </td>
-                                    </x-table-body-tr>
+                                    </x-neev-component::table-body-tr>
                                 @endforeach
                             </x-slot>
-                        </x-table>
+                        </x-neev-component::table>
                     @endif
 
                     {{-- Sent Requests --}}
@@ -172,10 +172,10 @@
                                 <span class="font-bold">{{ __(count($user->sendRequests)) }}</span>
                             </span>
                         </div>
-                        <x-table>
+                        <x-neev-component::table>
                             <x-slot name="body">
                                 @foreach ($user->sendRequests as $team)
-                                    <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                                    <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                         <td class="flex gap-2 px-4 py-2">
                                             <a href="{{route('teams.profile', $team->id)}}" class="flex gap-1 items-center">
                                                 <p class="text-lg hover:underline">{{$team->name}}</p>
@@ -186,33 +186,33 @@
                                             <div class="flex gap-4 justify-end">
                                                 <form method="POST" action="{{ route('teams.request') }}">
                                                     @csrf
-            
-                                                    <x-input type="hidden" name="team" value="{{ $team->name }}" />
-                                                    <x-input type="hidden" name="email" value="{{ $team->owner->email }}" />
-                                                    <x-button>
+
+                                                    <x-neev-component::input type="hidden" name="team" value="{{ $team->name }}" />
+                                                    <x-neev-component::input type="hidden" name="email" value="{{ $team->owner->email }}" />
+                                                    <x-neev-component::button>
                                                         {{__('Send Request')}}
-                                                    </x-button>
+                                                    </x-neev-component::button>
                                                 </form>
                                                 <form method="POST" action="{{ route('teams.leave') }}" x-data>
                                                     @csrf
                                                     @method('DELETE')
 
                                                     <input type="hidden" name="team_id" value="{{ $team->id }}"/>
-                                                    <x-danger-button
+                                                    <x-neev-component::danger-button
                                                         type="submit"
                                                         @click.prevent="if (confirm('{{ __('Are you sure you want to cancel the request?') }}')) $el.closest('form').submit();">
                                                         {{ __('Revoke') }}
-                                                    </x-danger-button>
+                                                    </x-neev-component::danger-button>
                                                 </form>
                                             </div>
                                         </td>
-                                    </x-table-body-tr>
+                                    </x-neev-component::table-body-tr>
                                 @endforeach
                             </x-slot>
-                        </x-table>
+                        </x-neev-component::table>
                     @endif
                 </x-slot>
-            </x-card>
+            </x-neev-component::card>
         </div>
     @endif
-</x-app>
+</x-neev-layout::app>

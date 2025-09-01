@@ -55,8 +55,12 @@ class NeevServiceProvider extends ServiceProvider
             __DIR__.'/../routes/neev.php' => base_path('/routes/neev.php'),
         ], 'neev-routes');
 
-        $this->loadRoutesFrom(base_path('routes/neev.php'));
-        
+        $this->loadRoutesFrom(
+            file_exists(base_path('routes/neev.php'))
+                ? base_path('routes/neev.php')
+                : __DIR__ . '/../routes/neev.php'
+        );
+
         Blade::anonymousComponentPath(resource_path('views/neev/components'), 'neev-component');
         Blade::anonymousComponentPath(resource_path('views/neev/layouts'), 'neev-layout');
     }

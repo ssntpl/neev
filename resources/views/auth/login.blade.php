@@ -1,18 +1,18 @@
-<x-guest>
-    <x-authentication-card>
+<x-neev-layout::guest>
+    <x-neev-component::authentication-card>
         <x-slot name="logo">
-            <x-authentication-card-logo />
+            <x-neev-component::authentication-card-logo />
         </x-slot>
 
-        <x-validation-errors class="mb-4" />
-        <x-validation-status class="mb-4" />
+        <x-neev-component::validation-errors class="mb-4" />
+        <x-neev-component::validation-status class="mb-4" />
 
         <form method="POST" action="{{ route('login.password') }}">
             @csrf
             @method('PUT')
             <div>
-                <x-label for="email" value="{{ __('Email') }}" />
-                <x-input id="email" class="block mt-1 w-full" type="email" name="email" :value="old('email')" required autofocus autocomplete="username" />
+                <x-neev-component::label for="email" value="{{ __('Email') }}" />
+                <x-neev-component::input id="email" class="block mt-1 w-full" type="email" name="email" :value="old('email')" required autofocus autocomplete="username" />
             </div>
 
             <div class="flex flex-col gap-2 mt-4">
@@ -21,17 +21,17 @@
                 </a>
                 
                 <div class="flex items-center justify-end">
-                    <x-button type="submit" class="ms-2">
+                    <x-neev-component::button type="submit" class="ms-2">
                         {{ __('Continue') }}
-                    </x-button>
-                    
+                    </x-neev-component::button>
+
                     @if (config('neev.magicauth'))
-                        <x-button type="submit" class="ms-2" name="action" value="link">
+                        <x-neev-component::button type="submit" class="ms-2" name="action" value="link">
                             {{ __('Send Login Link') }}
-                        </x-button>
+                        </x-neev-component::button>
                     @endif
                 </div>
             </div>
         </form>
-    </x-authentication-card>
-</x-guest>
+    </x-neev-component::authentication-card>
+</x-neev-layout::guest>

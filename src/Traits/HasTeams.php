@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Traits;
 
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
 
@@ -35,12 +36,7 @@ trait HasTeams
             ->as('membership');
     }
 
-    /**
-     * Get all teams the user is a member of (joined teams only).
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
-     */
-    public function teams()
+    public function teams(): BelongsToMany
     {
         return $this->belongsToMany(Team::class, Membership::class)
             ->withPivot(['role_id', 'joined'])
