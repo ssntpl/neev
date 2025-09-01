@@ -46,12 +46,19 @@ class NeevServiceProvider extends ServiceProvider
         $this->publishes([
             __DIR__.'/../database/migrations/create_roles_table.php' => database_path('migrations/2025_01_01_000003_create_role_table.php'),
         ], 'neev-role-migrations');
-
-        $this->loadRoutesFrom(__DIR__.'/../routes/neev.php');
         
-        $this->loadViewsFrom(__DIR__.'/../resources/views', 'neev');
-        Blade::anonymousComponentPath(__DIR__.'/../resources/views/components', 'neev-component');
-        Blade::anonymousComponentPath(__DIR__.'/../resources/views/layouts', 'neev-layout');
+        $this->publishes([
+            __DIR__.'/../resources/views' => resource_path('views/neev'),
+        ], 'neev-views');
+        
+        $this->publishes([
+            __DIR__.'/../routes/neev.php' => base_path('/routes/neev.php'),
+        ], 'neev-routes');
+
+        $this->loadRoutesFrom(base_path('routes/neev.php'));
+        
+        Blade::anonymousComponentPath(resource_path('views/neev/components'), 'neev-component');
+        Blade::anonymousComponentPath(resource_path('views/neev/layouts'), 'neev-layout');
     }
 
     public function register()
