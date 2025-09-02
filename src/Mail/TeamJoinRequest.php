@@ -44,7 +44,7 @@ class TeamJoinRequest extends Mailable
     public function content(): Content
     {
         return new Content(
-            view: 'neev::emails.team-join-request',
+            view: 'neev.emails.team-join-request',
         );
     }
 

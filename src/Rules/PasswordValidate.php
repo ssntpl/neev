@@ -16,7 +16,7 @@ class PasswordValidate implements ValidationRule
         if (config('neev.team') && config('neev.domain_federation')) {
             $emailDomain = substr(strrchr(request()->input('email'), "@"), 1);
 
-            $team = Team::where('federated_domain', $emailDomain)->first();
+            $team = Team::model()->where('federated_domain', $emailDomain)->first();
             if ($team?->domain_verified_at) {
                 $password['min_length'] = $team->rule(DomainRule::pass_min_len())->value ?? null;
                 $password['max_length'] = $team->rule(DomainRule::pass_max_len())->value ?? null;

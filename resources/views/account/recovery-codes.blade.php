@@ -1,7 +1,7 @@
-<x-app>
-    <x-validation-errors class="mb-4" />
-    <x-validation-status class="mb-4" />
-    <x-card>
+<x-neev-layout::app>
+    <x-neev-component::validation-errors class="mb-4" />
+    <x-neev-component::validation-status class="mb-4" />
+    <x-neev-component::card>
         <x-slot name="title">
             {{__('Multi-factor Recovery Codes')}}
         </x-slot>
@@ -28,9 +28,9 @@
                             @endforeach
                         </ul>
                         <div class="flex gap-4 justify-center mt-6">
-                            <x-secondary-button @click="downloadCodes" class="hover:underline">Download</x-secondary-button>
-                            <x-secondary-button @click="printCodes" class="hover:underline">Print</x-secondary-button>
-                            <x-secondary-button @click="copyCodes" class="hover:underline">Copy</x-secondary-button>
+                            <x-neev-component::secondary-button @click="downloadCodes" class="hover:underline">Download</x-neev-component::secondary-button>
+                            <x-neev-component::secondary-button @click="printCodes" class="hover:underline">Print</x-neev-component::secondary-button>
+                            <x-neev-component::secondary-button @click="copyCodes" class="hover:underline">Copy</x-neev-component::secondary-button>
                         </div>
                         <!-- Hidden Printable Section -->
                         <div id="printable-area" class="hidden print:block">
@@ -55,12 +55,12 @@
                 <p>When you generate new recovery codes, you must download or print the new codes. Your old codes won't work anymore.</p>
                 <form method="POST" action="{{route('recovery.generate')}}">
                     @csrf
-                    <x-secondary-button type="submit">{{ __('Generate new recovery codes') }}</x-secondary-button>
+                    <x-neev-component::secondary-button type="submit">{{ __('Generate new recovery codes') }}</x-neev-component::secondary-button>
                 </form>
             </div>
         </x-slot>
-    </x-card>
-</x-app>
+    </x-neev-component::card>
+</x-neev-layout::app>
 <script>
     function recoveryCodesHandler(appName) {
         return {

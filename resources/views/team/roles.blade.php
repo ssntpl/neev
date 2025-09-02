@@ -1,12 +1,12 @@
-<x-app>
+<x-neev-layout::app>
     <x-slot name="leftsection">
         {{ view('neev.team.left-section', ['team' => $team, 'user' => $user]) }}
     </x-slot>
-    <x-validation-errors class="mb-4" />
-    <x-validation-status class="mb-4" />
+    <x-neev-component::validation-errors class="mb-4" />
+    <x-neev-component::validation-status class="mb-4" />
     <div class="flex flex-col gap-4">
         @if ($team->user_id === $user->id && config('neev.roles'))
-            <x-card x-data="{roleOpen: false}">
+            <x-neev-component::card x-data="{roleOpen: false}">
                 <x-slot name="title">
                     {{__('Add Role')}}
                 </x-slot>
@@ -34,22 +34,22 @@
                             <input type="hidden" name="team_id" value="{{ $team->id }}">
                             <div class="flex gap-4 justify-between w-full">
                                 <div class="flex gap-2 items-center w-2/3">
-                                    <x-label for="name" value="{{ __('Name') }}" />
-                                    <x-input id="name" class="block w-full" type="text" name="name" required autofocus />
+                                    <x-neev-component::label for="name" value="{{ __('Name') }}" />
+                                    <x-neev-component::input id="name" class="block w-full" type="text" name="name" required autofocus />
                                 </div>
                             </div>
                             <div class="w-1/2 text-end">
-                                <x-button>
+                                <x-neev-component::button>
                                     {{__('create')}}
-                                </x-button>
+                                </x-neev-component::button>
                             </div>
                         </form>
                     </div>
                 </x-slot>
-            </x-card>
+            </x-neev-component::card>
         @endif
 
-        <x-card>
+        <x-neev-component::card>
            <x-slot name="title">
                 {{__('Roles')}}
            </x-slot>
@@ -90,9 +90,9 @@
                                             @method('DELETE')
                                             <input type="hidden" name="team_id" value="{{$team->id}}">
                                             <input type="hidden" name="role_id" value="{{$role->id}}">
-                                            <x-danger-button
+                                            <x-neev-component::danger-button
                                                 @click.prevent="if (confirm('{{ __('Are you sure you want to delete role from the team?') }}')) $el.closest('form').submit();"
-                                                type="submit">{{__('Delete Role')}}</x-danger-button>
+                                                type="submit">{{__('Delete Role')}}</x-neev-component::danger-button>
                                         </form>
                                     </div>
                                     <form method="POST" action="{{ route('roles.permissions.update') }}" class="mt-2 px-4">
@@ -123,8 +123,8 @@
                                         </template>
 
                                         <div class="mt-4 flex justify-end gap-4">
-                                            <x-secondary-button type="button" @click="reset">{{ __('Reset') }}</x-secondary-button>
-                                            <x-button>{{ __('Save') }}</x-button>
+                                            <x-neev-component::secondary-button type="button" @click="reset">{{ __('Reset') }}</x-neev-component::secondary-button>
+                                            <x-neev-component::button>{{ __('Save') }}</x-neev-component::button>
                                         </div>
                                     </form>
                                 </div>
@@ -133,9 +133,9 @@
                     </ul>
                 @endif
            </x-slot>
-        </x-card>
+        </x-neev-component::card>
     </div>
-</x-app>
+</x-neev-layout::app>
 
 <script>
     function permissionManager(selectedPermissions, unselectedPermissions) {

@@ -1,7 +1,7 @@
-<x-guest>
-    <x-authentication-card>
+<x-neev-layout::guest>
+    <x-neev-component::authentication-card>
         <x-slot name="logo">
-            <x-authentication-card-logo />
+            <x-neev-component::authentication-card-logo />
         </x-slot>
         <div class="flex flex-col gap-4">
             <div class="flex flex-col gap-2 border rounded-lg p-4 text-center">
@@ -10,14 +10,14 @@
                         @foreach ($rules['oauth'] as $oauth)
                             <form method="GET" action="{{ route('oauth.redirect', $oauth) }}">
                                 <input type="hidden" name="email" value="{{$email}}" required>
-                                <x-secondary-button type="submit">{{ __($oauth) }}</x-secondary-button>
+                                <x-neev-component::secondary-button type="submit">{{ __($oauth) }}</x-neev-component::secondary-button>
                             </form>
                         @endforeach
                     @elseif (!$isDomainFederated)
                         @foreach (config('neev.oauth') as $oauth)
                             <form method="GET" action="{{ route('oauth.redirect', $oauth) }}">
                                 <input type="hidden" name="email" value="{{$email}}" required>
-                                <x-secondary-button type="submit">{{ __($oauth) }}</x-secondary-button>
+                                <x-neev-component::secondary-button type="submit">{{ __($oauth) }}</x-neev-component::secondary-button>
                             </form>
                         @endforeach
                     @endif
@@ -31,9 +31,9 @@
 
                         <input type="hidden" name="assertion" id="assertion">
 
-                        <x-secondary-button type="button" id="login-button">
+                        <x-neev-component::secondary-button type="button" id="login-button">
                             {{__('Login with Passkey')}}
-                        </x-secondary-button>
+                        </x-neev-component::secondary-button>
                     </form>
                 @endif
             </div>
@@ -48,13 +48,13 @@
                         <input type="hidden" name="email" value="{{$email}}" required />
                     </div>
                     <div>
-                        <x-label for="password" value="{{ __('Password') }}" />
-                        <x-input id="password" class="block mt-1 w-full" type="password" name="password" required autocomplete="current-password" autofocus />
+                        <x-neev-component::label for="password" value="{{ __('Password') }}" />
+                        <x-neev-component::input id="password" class="block mt-1 w-full" type="password" name="password" required autocomplete="current-password" autofocus />
                     </div>
-                    <x-validation-errors class="mb-4" />
+                    <x-neev-component::validation-errors class="mb-4" />
                     <div class="block mt-4 flex justify-between">
                         <label for="remember_me" class="flex items-center">
-                            <x-checkbox id="remember_me" name="remember" />
+                            <x-neev-component::checkbox id="remember_me" name="remember" />
                             <span class="ms-2 text-sm text-gray-600 dark:text-gray-400">{{ __('Remember me') }}</span>
                         </label>
                     </div>
@@ -64,15 +64,15 @@
                             {{ __('Forgot Password?') }}
                         </a>
 
-                        <x-button class="ms-4">
+                        <x-neev-component::button class="ms-4">
                             {{ __('Log In') }}
-                        </x-button>
+                        </x-neev-component::button>
                     </div>
                 </form>
             </div>
         </div>
-    </x-authentication-card>
-</x-guest>
+    </x-neev-component::authentication-card>
+</x-neev-layout::guest>
 
 <script src="https://unpkg.com/@simplewebauthn/browser/dist/bundle/index.es5.umd.min.js"></script>
 <script>

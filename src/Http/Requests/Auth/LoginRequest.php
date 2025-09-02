@@ -59,7 +59,7 @@ class LoginRequest extends FormRequest
             if (config('neev.team') && config('neev.domain_federation')) {
                 $emailDomain = substr(strrchr($email->email, "@"), 1);
                 
-                $team = Team::where('federated_domain', $emailDomain)->first();
+                $team = Team::model()->where('federated_domain', $emailDomain)->first();
                 if ($team?->domain_verified_at) {
                     $isDomainfederated = true;
                     if ($team->rule(DomainRule::pass_hard_fail_attempts())->value > 0 && $currentPassword?->wrong_attempts >= (int) $team->rule(DomainRule::pass_hard_fail_attempts())->value) {

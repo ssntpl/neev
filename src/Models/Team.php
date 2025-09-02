@@ -7,6 +7,15 @@ use Illuminate\Database\Eloquent\Model;
 
 class Team extends Model
 {
+    public static function model() {
+        $class = config('neev.team_model', Team::class);
+        return new $class;
+    }
+    
+    public static function getClass() {
+        return config('neev.team_model', Team::class);
+    }
+
     protected $fillable = [
         'user_id',
         'name',
@@ -94,5 +103,10 @@ class Team extends Model
     public function invitations()
     {
         return $this->hasMany(TeamInvitation::class);
+    }
+
+    public function hasUser($user): bool
+    {
+        return $this->users->contains($user);
     }
 }

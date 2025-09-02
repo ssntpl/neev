@@ -115,7 +115,7 @@ class TeamController extends Controller
     public function update(Request $request)
     {
         try {
-            $team = Team::find($request->team_id);
+            $team = Team::model()->find($request->team_id);
             $team->name = $request->name;
             $team->is_public = (bool) $request->public;
             $team->save();
@@ -130,7 +130,7 @@ class TeamController extends Controller
     {
         $user = User::find($request->user()->id);
         try {
-            $team = Team::find($request->team_id);
+            $team = Team::model()->find($request->team_id);
             if ($user->id != $team->user_id || count($user->ownedTeams) < 2) {
                 return back()->withErrors(['message' => 'You cannot delete this team.']);
             }
@@ -146,7 +146,7 @@ class TeamController extends Controller
     {
         $user = User::find($request->user()->id);
         try {
-            $team = Team::find($request->team_id);
+            $team = Team::model()->find($request->team_id);
             if ($user->id != $team->user_id || ($team->enforce_domain && $team->domain_verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->federated_domain)))) {
                 return back()->withErrors(['message' => 'You cannot invite member in this team.']);
             }
@@ -195,7 +195,7 @@ class TeamController extends Controller
     {
         $user = User::find($request->user_id ?? $request->user()->id);
         try {
-            $team = Team::find($request->team_id);
+            $team = Team::model()->find($request->team_id);
             if ($request->has('invitation_id')) {
                 $invitation = $team->invitations()->find($request->invitation_id);
                 if ($invitation) {
@@ -233,7 +233,7 @@ class TeamController extends Controller
     {
         $user = User::find($request->user()->id);
         try {
-            $team = Team::find($request->team_id);
+            $team = Team::model()->find($request->team_id);
             if ($request->action == 'reject') {
                 $team->allUsers()->detach($user);
                 return back()->with('status', 'Rejected Successfully');
@@ -256,7 +256,7 @@ class TeamController extends Controller
         try {
             $owner = User::where('email', $request->email)->first();
             if ($owner) {
-                $team = Team::where(['name' => $request->team, 'user_id' => $owner->id])->first();
+                $team = Team::model()->where(['name' => $request->team, 'user_id' => $owner->id])->first();
                 if ($team && !$team->enforce_domain && !$team->domain_verified_at) {
                     if ($team->users->contains($user)) {
                         return back()->with('status', 'Already Added.');
@@ -282,7 +282,7 @@ class TeamController extends Controller
     {
         $user = User::find($request->user()->id);
         try {
-            $team = Team::find($request->team_id);
+            $team = Team::model()->find($request->team_id);
             $member = User::find($request->user_id);
             if ($request->action == 'reject') {
                 $team->allUsers()->detach($member);
@@ -305,7 +305,7 @@ class TeamController extends Controller
     {
         $user = User::find($request->user()->id);
         try {
-            $team = Team::find($request->team_id);
+            $team = Team::model()->find($request->team_id);
             $member = User::find($request->user_id);
             if ($team->owner->id === $user->id) {
                 $team->user_id = $member->id;

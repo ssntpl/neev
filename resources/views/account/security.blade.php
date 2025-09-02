@@ -1,12 +1,12 @@
-<x-app>
+<x-neev-layout::app>
     <x-slot name="leftsection">
         {{ view('neev.account.left-section', ['user' => $user]) }}
     </x-slot>
-    <x-validation-errors class="mb-4" />
-    <x-validation-status class="mb-4" />
+    <x-neev-component::validation-errors class="mb-4" />
+    <x-neev-component::validation-status class="mb-4" />
     <div class="flex flex-col gap-4">
         {{-- Change Password --}}
-        <x-card x-data="{changePasswordOpen: false}">
+        <x-neev-component::card x-data="{changePasswordOpen: false}">
             {{-- title --}}
             <x-slot name="title">
                 {{ __('Change Password') }}
@@ -35,32 +35,32 @@
                     @csrf
 
                     <div class="flex gap-4 justify-between items-center w-2/3">
-                        <x-label for="current-password" value="{{ __('Current Password') }}" class="w-1/3" />
-                        <x-input id="current-password" class="block w-5/6" type="password" name="current_password" required autocomplete="current-password" />
+                        <x-neev-component::label for="current-password" value="{{ __('Current Password') }}" class="w-1/3" />
+                        <x-neev-component::input id="current-password" class="block w-5/6" type="password" name="current_password" required autocomplete="current-password" />
                     </div>
 
                     <div class="flex gap-4 justify-between items-center w-2/3">
-                        <x-label for="password" value="{{ __('New Password') }}" class="w-1/3" />
-                        <x-input id="password" class="block w-5/6" type="password" name="password" required autocomplete="off" />
+                        <x-neev-component::label for="password" value="{{ __('New Password') }}" class="w-1/3" />
+                        <x-neev-component::input id="password" class="block w-5/6" type="password" name="password" required autocomplete="off" />
                     </div>
 
                     <div class="flex gap-4 justify-between items-center w-2/3">
-                        <x-label for="password_confirmation" value="{{ __('New Confirm Password') }}" class="w-1/3" />
-                        <x-input id="password_confirmation" class="block w-5/6" type="password" name="password_confirmation" required autocomplete="off" />
+                        <x-neev-component::label for="password_confirmation" value="{{ __('New Confirm Password') }}" class="w-1/3" />
+                        <x-neev-component::input id="password_confirmation" class="block w-5/6" type="password" name="password_confirmation" required autocomplete="off" />
                     </div>
 
                     <div class="relative flex items-center justify-end">
-                        <x-button>
+                        <x-neev-component::button>
                             {{ __('Update Password') }}
-                        </x-button>
+                        </x-neev-component::button>
                     </div>
                 </form>
             </x-slot>
-        </x-card>
-        
+        </x-neev-component::card>
+
         {{-- Multi Factor Authentication? --}}
         @if (count(config('neev.multi_factor_auth')))
-            <x-card>
+            <x-neev-component::card>
                 <x-slot name="title">
                     {{ __('Multi Factor Authentication') }}
                 </x-slot>
@@ -106,10 +106,10 @@
                                             <input type="hidden" name="auth_method" value="{{$method}}">
                                             <input type="hidden" name="action" x-ref="action">
                                             @if ($user->multiFactorAuth($method))
-                                                <x-secondary-button type="submit">{{ __('Edit') }}</x-secondary-button>
-                                                <x-danger-button type="submit" name="action" @click.prevent="if (confirm('{{__('Are you sure you want to delete?')}}')) {$refs.action.value = 'delete'; $el.closest('form').submit();}">{{ __('Delete') }}</x-danger-button>
+                                                <x-neev-component::secondary-button type="submit">{{ __('Edit') }}</x-neev-component::secondary-button>
+                                                <x-neev-component::danger-button type="submit" name="action" @click.prevent="if (confirm('{{__('Are you sure you want to delete?')}}')) {$refs.action.value = 'delete'; $el.closest('form').submit();}">{{ __('Delete') }}</x-neev-component::danger-button>
                                             @else
-                                                <x-button>{{ __('Add') }}</x-button>
+                                                <x-neev-component::button>{{ __('Add') }}</x-neev-component::button>
                                             @endif
                                         </form>
                                     </div>
@@ -131,13 +131,13 @@
                                             <input type="hidden" name="auth_method" value="{{$method}}">
                                             <input type="hidden" name="email" value="{{$user->email}}">
                                             <div class="flex gap-2 items-center text-start w-2/3">
-                                                <x-label class="text-start" for="otp" value="{{ __('OTP') }}" class="w-1/4" />
-                                                <x-input id="otp" class="block w-3/4" type="text" name="otp" required />
+                                                <x-neev-component::label class="text-start" for="otp" value="{{ __('OTP') }}" class="w-1/4" />
+                                                <x-neev-component::input id="otp" class="block w-3/4" type="text" name="otp" required />
                                             </div>
 
-                                            <x-button name="action" value="verify">
+                                            <x-neev-component::button name="action" value="verify">
                                                 {{ __('Verify') }}
-                                            </x-button>
+                                            </x-neev-component::button>
                                         </form>
                                     </div>
                                 @endif
@@ -151,7 +151,7 @@
                                     </div>
                                     <div class="text-end">
                                         <a href="{{route('recovery.codes')}}" target="_blank">
-                                            <x-secondary-button>{{ __('View') }}</x-secondary-button>
+                                            <x-neev-component::secondary-button>{{ __('View') }}</x-neev-component::secondary-button>
                                         </a>
                                     </div>
                                 </div>
@@ -159,11 +159,11 @@
                         @endif
                     </ul>
                 </x-slot>
-            </x-card>
+            </x-neev-component::card>
         @endif
         
         {{-- Manage Passkeys --}}
-        <x-card x-data="{openPasskey: false}">
+        <x-neev-component::card x-data="{openPasskey: false}">
             {{-- Title --}}
             <x-slot name="title">
                 {{ __('Manage Passkeys') }}
@@ -195,18 +195,18 @@
                         <input type="hidden" name="attestation" id="attestation-input">
 
                         <div class="flex gap-2 items-center w-1/2">
-                            <x-label for="name" value="{{ __('Passkey Name') }}" class="w-1/3" />
-                            <x-input id="name" class="block w-2/3" type="text" name="name" required />
+                            <x-neev-component::label for="name" value="{{ __('Passkey Name') }}" class="w-1/3" />
+                            <x-neev-component::input id="name" class="block w-2/3" type="text" name="name" required />
                         </div>
 
                         <div class="text-end">
-                            <x-button id="start" type="button">
+                            <x-neev-component::button id="start" type="button">
                                 {{ __('Add Passkey') }}
-                            </x-button>
+                            </x-neev-component::button>
                         </div>
                     </form>
                     @if (count($user->passkeys) > 0)
-                        <x-table>
+                        <x-neev-component::table>
                             <x-slot name="head">
                                 <tr>
                                     <th class="px-6 py-3 text-center font-bold tracking-wide">Name</th>
@@ -218,7 +218,7 @@
                             </x-slot>
                             <x-slot name="body">
                                 @foreach ($user->passkeys()->orderBy('created_at')->get() as $passkey)
-                                    <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                                    <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                         <td class="px-6 py-2 text-center">{{ $passkey->name }}</td>
                                         <td class="px-6 py-2 text-center">{{ isset($passkey->location['city']) && isset($passkey->location['state']) && isset($passkey->location['country_iso']) ? $passkey->location['city'].', '.$passkey->location['state'].', '.$passkey->location['country_iso'] : '--' }}</td>
                                         <td class="px-6 py-2 text-center">{{ $passkey->last_used?->diffForHumans() ?? '--' }}</td>
@@ -230,21 +230,21 @@
                                                     @method('DELETE')
 
                                                     <input type="hidden" name="passkey_id" value="{{$passkey->id}}">
-                                                    <x-danger-button type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete the passkey?')}}')) $el.closest('form').submit();">{{ __('Delete') }}</x-danger-button>
+                                                    <x-neev-component::danger-button type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete the passkey?')}}')) $el.closest('form').submit();">{{ __('Delete') }}</x-neev-component::danger-button>
                                                 </form>
                                             </div>
                                         </td>
-                                    </x-table-body-tr>
+                                    </x-neev-component::table-body-tr>
                                 @endforeach
                             </x-slot>
-                        </x-table>
+                        </x-neev-component::table>
                     @endif
                 </div>
             </x-slot>
-        </x-card>
-        
+        </x-neev-component::card>
+
         {{-- Danger Zone --}}
-        <x-card class="border border-red-600">
+        <x-neev-component::card class="border border-red-600">
             {{-- Title --}}
             <x-slot name="title">
                 <p class="text-red-600">{{__('Danger Zone')}}</p>
@@ -260,12 +260,12 @@
                                 <p class="font-medium text-lg">Delete Account</p>
                                 <p class="text-sm">Once deleted, it will be gone forever. Please be certain.</p>
                             </div>
-                            <x-danger-button class="cursor-pointer h-10" @click="show = true">
+                            <x-neev-component::danger-button class="cursor-pointer h-10" @click="show = true">
                                 {{ __('Delete Account') }}
-                            </x-danger-button>
+                            </x-neev-component::danger-button>
                         </div>
 
-                        <x-dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                        <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
                             <x-slot name="title">
                                 {{ __('Delete Account') }}
                             </x-slot>
@@ -277,7 +277,7 @@
                                     @csrf
                                     @method('DELETE')
                                     <div class="mt-4">
-                                        <x-input type="password"
+                                        <x-neev-component::input type="password"
                                             name="password"
                                             class="mt-1 block w-3/4"
                                             autocomplete="password"
@@ -288,21 +288,21 @@
                             </x-slot>
 
                             <x-slot name="footer">
-                                <x-secondary-button class="cursor-pointer" @click="show = false">
+                                <x-neev-component::secondary-button class="cursor-pointer" @click="show = false">
                                     {{ __('Cancel') }}
-                                </x-secondary-button>
+                                </x-neev-component::secondary-button>
 
-                                <x-danger-button type="submit" class="ms-3 cursor-pointer" @click.prevent="$refs.deleteAccountForm.submit()">
+                                <x-neev-component::danger-button type="submit" class="ms-3 cursor-pointer" @click.prevent="$refs.deleteAccountForm.submit()">
                                     {{ __('Delete Account') }}
-                                </x-danger-button>
+                                </x-neev-component::danger-button>
                             </x-slot>
-                        </x-dialog-modal>
+                        </x-neev-component::dialog-modal>
                     </div>
                 @endif
             </x-slot>
-        </x-card>
+        </x-neev-component::card>
     </div>
-</x-app>
+</x-neev-layout::app>
 <script src="https://unpkg.com/@simplewebauthn/browser/dist/bundle/index.es5.umd.min.js"></script>
 <script>
     const { startRegistration } = SimpleWebAuthnBrowser;

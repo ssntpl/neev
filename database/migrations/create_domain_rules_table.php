@@ -13,11 +13,15 @@ return new class extends Migration
     {
         Schema::create('domain_rules', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('team_id')->constrained()->onDelete('cascade');
-            $table->string('name');
+            if (config('neev.team')) {
+                $table->foreignId('team_id')->constrained()->onDelete('cascade');
+                $table->string('name');
+                $table->unique(['name', 'team_id']);
+            } else {
+                $table->string('name')->unique();
+            }
             $table->string('value')->nullable();
             $table->timestamps();
-            $table->unique(['name', 'team_id']);
         });
     }
 

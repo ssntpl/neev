@@ -1,12 +1,12 @@
-<x-app>
+<x-neev-layout::app>
     <x-slot name="leftsection">
         {{ view('neev.team.left-section', ['team' => $team, 'user' => $user]) }}
     </x-slot>
-    <x-validation-errors class="mb-4" />
-    <x-validation-status class="mb-4" />
+    <x-neev-component::validation-errors class="mb-4" />
+    <x-neev-component::validation-status class="mb-4" />
     <div class="flex flex-col gap-4">
         @if ($team->user_id === $user->id)
-            <x-card x-data="{memberOpen: false}">
+            <x-neev-component::card x-data="{memberOpen: false}">
                 <x-slot name="title">
                     {{__('Add Member')}}
                 </x-slot>
@@ -35,12 +35,12 @@
                             <input type="hidden" name="team_id" value="{{ $team->id }}">
                             <div class="flex gap-4 justify-between w-full">
                                 <div class="flex gap-2 items-center w-2/3">
-                                    <x-label for="email" value="{{ __('Email') }}" />
-                                    <x-input id="email" class="block w-full" type="email" name="email" required autofocus />
+                                    <x-neev-component::label for="email" value="{{ __('Email') }}" />
+                                    <x-neev-component::input id="email" class="block w-full" type="email" name="email" required autofocus />
                                 </div>
                                 @if (config('neev.roles'))
                                     <div class="flex gap-2 items-center w-1/3">
-                                        <x-label for="role_id" value="{{ __('Role') }}" />
+                                        <x-neev-component::label for="role_id" value="{{ __('Role') }}" />
                                         <select name="role_id" id="role_id" class="w-full border rounded-md p-2">
                                             @foreach ($team->roles as $role)
                                                 <option value="{{$role->id}}">{{$role->name}}</option>
@@ -50,17 +50,17 @@
                                 @endif
                             </div>
                             <div class="w-1/2 text-end">
-                                <x-button>
+                                <x-neev-component::button>
                                     {{__('Invite')}}
-                                </x-button>
+                                </x-neev-component::button>
                             </div>
                         </form>
                     </div>
                 </x-slot>
-            </x-card>
+            </x-neev-component::card>
         @endif
 
-        <x-card>
+        <x-neev-component::card>
             <x-slot name="title">
                 {{__('Members')}}
             </x-slot>
@@ -71,7 +71,7 @@
                 </span>
 
                 <button onclick="location.reload();" class="cursor-pointer ml-4">
-                    <x-refresh-button/>
+                    <x-neev-component::refresh-button/>
                 </button>
             </x-slot>
 
@@ -86,10 +86,10 @@
                             <span class="font-bold">{{ __(count($team->joinRequests)) }}</span>
                         </span>
                     </div>
-                    <x-table>
+                    <x-neev-component::table>
                         <x-slot name="body">
                             @foreach ($team->joinRequests as $member)
-                            <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                            <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                     <form method="POST" action="{{ route('teams.request.action') }}">
                                          @csrf
                                         @method('PUT')
@@ -105,7 +105,7 @@
                                         <td class="px-4 py-2 text-center capitalize">
                                             @if (config('neev.roles'))
                                                 <div class="flex gap-2 items-center">
-                                                    <x-label for="role_id" value="{{ __('Role') }}" />
+                                                    <x-neev-component::label for="role_id" value="{{ __('Role') }}" />
                                                     <select name="role_id" id="role_id" class="w-full border rounded-md p-2">
                                                         @foreach ($team->roles as $role)
                                                             <option value="{{$role->id}}">{{$role->name}}</option>
@@ -118,19 +118,19 @@
                                             <div class="flex gap-4 justify-end">
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                 <input type="hidden" name="user_id" value="{{ $member->id }}">
-                                                <x-button name="action" value="accept">
+                                                <x-neev-component::button name="action" value="accept">
                                                     {{ __('Accept') }}
-                                                </x-button>
-                                                <x-danger-button type="submit" name="action" value="reject">
+                                                </x-neev-component::button>
+                                                <x-neev-component::danger-button type="submit" name="action" value="reject">
                                                     {{ __('Reject') }}
-                                                </x-danger-button>
+                                                </x-neev-component::danger-button>
                                             </div>
                                         </td>
                                     </form>
-                                </x-table-body-tr>
+                                </x-neev-component::table-body-tr>
                             @endforeach
                         </x-slot>
-                    </x-table>
+                    </x-neev-component::table>
                 @endif
 
                 {{-- Team Members --}}
@@ -142,10 +142,10 @@
                             <span class="font-bold">{{ __(count($team->users)) }}</span>
                         </span>
                     </div>
-                    <x-table>
+                    <x-neev-component::table>
                         <x-slot name="body">
                             @foreach ($team->users as $member)
-                                <x-table-body-tr class="odd:bg-white even:bg-gray-50 {{$team->enforce_domain && $team->domain_verified_at && !str_ends_with(strtolower($member->email), '@' . strtolower($team->federated_domain)) ? 'text-red-400' : ''}}">
+                                <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50 {{$team->enforce_domain && $team->domain_verified_at && !str_ends_with(strtolower($member->email), '@' . strtolower($team->federated_domain)) ? 'text-red-400' : ''}}">
                                     <td class="flex gap-2 px-4 py-2">
                                         <div class="w-10 h-10 bg-blue-100 text-blue-500 text-xl rounded-full flex items-center justify-center font-medium">
                                             {{ $member->profile_photo_url }}
@@ -160,7 +160,7 @@
                                             @if ($team->user_id === $user->id)
                                                 <div class="text-start" x-data="{ show: false, roleId: @js($member->membership->role->id ?? 0), userRoleId: @js($member->membership->role->id ?? 1) }">
                                                     <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->membership->role->name ?? '--'}}</button>
-                                                    <x-dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                                    <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
                                                         <x-slot name="title">
                                                             {{ __('Change Role') }}
                                                         </x-slot>
@@ -174,7 +174,7 @@
                                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                                 <input type="hidden" name="user_id" value="{{ $member->id }}">
                                                                 <div class="mt-4 flex gap-2 items-center w-2/3">
-                                                                    <x-label for="role_id" value="{{ __('Role') }}" />
+                                                                    <x-neev-component::label for="role_id" value="{{ __('Role') }}" />
                                                                     <select name="role_id" id="role_id" x-model="roleId" class="w-full border rounded-md p-2">
                                                                         @foreach ($team->roles as $role)
                                                                             <option value="{{$role->id}}" x-bind:selected="{{($member->membership->role->id ?? 0) === $role->id}}">{{$role->name}}</option>
@@ -185,15 +185,15 @@
                                                         </x-slot>
 
                                                         <x-slot name="footer">
-                                                            <x-secondary-button @click="show = false">
+                                                            <x-neev-component::secondary-button @click="show = false">
                                                                 {{ __('Cancel') }}
-                                                            </x-secondary-button>
+                                                            </x-neev-component::secondary-button>
 
-                                                            <x-button type="submit" x-bind:disabled="roleId === userRoleId" class="ms-3" @click.prevent="$refs.changeRoleForm.submit()">
+                                                            <x-neev-component::button type="submit" x-bind:disabled="roleId === userRoleId" class="ms-3" @click.prevent="$refs.changeRoleForm.submit()">
                                                                 {{ __('Change Role') }}
-                                                            </x-button>
+                                                            </x-neev-component::button>
                                                         </x-slot>
-                                                    </x-dialog-modal>
+                                                    </x-neev-component::dialog-modal>
                                                 </div>
                                             @else
                                                 {{ $member->membership->role->name ?? '' }}
@@ -212,7 +212,7 @@
                                                 @method('PUT')
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                 <input type="hidden" name="email" value="{{ $member->email }}">
-                                                <x-button>{{__('Invite')}}</x-button>
+                                                <x-neev-component::button>{{__('Invite')}}</x-neev-component::button>
                                             </form>
                                         @endif
                                     </td>
@@ -224,28 +224,28 @@
                                             <input type="hidden" name="team_id" value="{{ $team->id }}"/>
                                             <input type="hidden" name="user_id" value="{{ $member->id }}"/>
                                             @if (!$member->active && $team->domain_verified_at && $user->id !== $member->id)
-                                                <x-button
+                                                <x-neev-component::button
                                                     type="submit"
                                                     class="w-2/3" 
                                                     x-bind:disabled="{{$team->user_id === $member->id || ($team->domain_verified_at && $member->id === $user->id)}}"
                                                     @click.prevent="if (confirm('{{ __('Are you sure you want to activate the user?') }}')) $el.closest('form').submit();">
                                                     {{ __('Activate') }}
-                                                </x-button>
+                                                </x-neev-component::button>
                                             @else
-                                                <x-danger-button
+                                                <x-neev-component::danger-button
                                                     type="submit"
                                                     class="w-2/3" 
                                                     x-bind:disabled="{{$team->user_id === $member->id || ($team->domain_verified_at && $member->id === $user->id)}}"
                                                     @click.prevent="if (confirm('{{ $user->id === $member->id ? __('Are you sure you want to leave the team?') : __('Are you sure you want to remove/deactivate user from the team?') }}')) $el.closest('form').submit();">
                                                     {{ $user->id === $member->id ? __('Leave') : ($team->domain_verified_at && str_ends_with(strtolower($member->email), '@' . strtolower($team->federated_domain)) ? __('Deactivate') : __('Remove')) }}
-                                                </x-danger-button>
+                                                </x-neev-component::danger-button>
                                             @endif
                                         </form>
                                     </td>
-                                </x-table-body-tr>
+                                </x-neev-component::table-body-tr>
                             @endforeach
                         </x-slot>
-                    </x-table>
+                    </x-neev-component::table>
                 @endif
 
                 {{-- Invited Users --}}
@@ -257,10 +257,10 @@
                             <span class="font-bold">{{ __(count($team->invitedUsers)) }}</span>
                         </span>
                     </div>
-                    <x-table>
+                    <x-neev-component::table>
                         <x-slot name="body">
                             @foreach ($team->invitedUsers as $member)
-                                <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                                <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                     <td class="flex gap-2 px-4 py-2">
                                         <div class="w-10 h-10 bg-blue-100 text-blue-500 text-xl rounded-full flex items-center justify-center font-medium">
                                             {{ $member->profile_photo_url }}
@@ -275,7 +275,7 @@
                                             <td class="px-4 py-2 text-center capitalize">
                                                 <div class="text-start" x-data="{ show: false, roleId: @js($member->membership->role->id ?? 0), userRoleId: @js($member->membership->role->id ?? 1) }">
                                                     <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->membership->role->name ?? '--'}}</button>
-                                                    <x-dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                                    <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
                                                         <x-slot name="title">
                                                             {{ __('Change Role') }}
                                                         </x-slot>
@@ -289,7 +289,7 @@
                                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                                 <input type="hidden" name="user_id" value="{{ $member->id }}">
                                                                 <div class="mt-4 flex gap-2 items-center w-2/3">
-                                                                    <x-label for="role_id" value="{{ __('Role') }}" />
+                                                                    <x-neev-component::label for="role_id" value="{{ __('Role') }}" />
                                                                     <select name="role_id" id="role_id" x-model="roleId" class="w-full border rounded-md p-2">
                                                                         @foreach ($team->roles as $role)
                                                                             <option value="{{$role->id}}" x-bind:selected="{{($member->membership->role->id ?? 0) === $role->id}}">{{$role->name}}</option>
@@ -300,15 +300,15 @@
                                                         </x-slot>
 
                                                         <x-slot name="footer">
-                                                            <x-secondary-button @click="show = false">
+                                                            <x-neev-component::secondary-button @click="show = false">
                                                                 {{ __('Cancel') }}
-                                                            </x-secondary-button>
+                                                            </x-neev-component::secondary-button>
 
-                                                            <x-button type="submit" x-bind:disabled="roleId === userRoleId" class="ms-3" @click.prevent="$refs.changeRoleForm.submit()">
+                                                            <x-neev-component::button type="submit" x-bind:disabled="roleId === userRoleId" class="ms-3" @click.prevent="$refs.changeRoleForm.submit()">
                                                                 {{ __('Change Role') }}
-                                                            </x-button>
+                                                            </x-neev-component::button>
                                                         </x-slot>
-                                                    </x-dialog-modal>
+                                                    </x-neev-component::dialog-modal>
                                                 </div>
                                             </td>
                                         @endif
@@ -318,7 +318,7 @@
                                                 @method('PUT')
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                 <input type="hidden" name="email" value="{{ $member->email }}">
-                                                <x-button>{{__('Invite')}}</x-button>
+                                                <x-neev-component::button>{{__('Invite')}}</x-neev-component::button>
                                             </form>
                                         </td>
                                         <td class="px-4 py-2 text-center">
@@ -328,12 +328,12 @@
                                                 
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}"/>
                                                 <input type="hidden" name="user_id" value="{{ $member->id }}"/>
-                                                <x-danger-button
+                                                <x-neev-component::danger-button
                                                     type="submit"
                                                     class="w-2/3" 
                                                     @click.prevent="if (confirm('{{ __('Are you sure you want to remove user from the team?') }}')) $el.closest('form').submit();">
                                                     {{ __('Remove') }}
-                                                </x-danger-button>
+                                                </x-neev-component::danger-button>
                                             </form>
                                         </td>
                                     @elseif (config('neev.roles'))
@@ -341,10 +341,10 @@
                                             {{ $member->membership->role->name ?? ''}}
                                         </td>
                                     @endif
-                                </x-table-body-tr>
+                                </x-neev-component::table-body-tr>
                             @endforeach
                             @foreach ($team->invitations as $invitation)
-                                <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                                <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                     <td class="flex gap-2 px-4 py-2">
                                         <div class="w-10 h-10 bg-blue-100 text-blue-500 text-xl rounded-full flex items-center justify-center font-medium">
                                             {{ $invitation->profile_photo_url }}
@@ -358,7 +358,7 @@
                                             <td class="px-4 py-2 text-center capitalize">
                                                 <div class="text-start" x-data="{ show: false, roleId: @js($invitation->role->id ?? 0), userRoleId: @js($invitation->role->id ?? 1) }">
                                                     <button class="capitalize underline cursor-pointer" @click="show = true">{{ $invitation->role->name ?? '--'}}</button>
-                                                    <x-dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                                    <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
                                                         <x-slot name="title">
                                                             {{ __('Change Role') }}
                                                         </x-slot>
@@ -372,7 +372,7 @@
                                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                                 <input type="hidden" name="invitation_id" value="{{ $invitation->id }}">
                                                                 <div class="mt-4 flex gap-2 items-center w-2/3">
-                                                                    <x-label for="role_id" value="{{ __('Role') }}" />
+                                                                    <x-neev-component::label for="role_id" value="{{ __('Role') }}" />
                                                                     <select name="role_id" id="role_id" x-model="roleId" class="w-full border rounded-md p-2">
                                                                         @foreach ($team->roles as $role)
                                                                             <option value="{{$role->id}}" x-bind:selected="{{($invitation->role->id ?? 0) === $role->id}}">{{$role->name}}</option>
@@ -383,15 +383,15 @@
                                                         </x-slot>
 
                                                         <x-slot name="footer">
-                                                            <x-secondary-button @click="show = false">
+                                                            <x-neev-component::secondary-button @click="show = false">
                                                                 {{ __('Cancel') }}
-                                                            </x-secondary-button>
+                                                            </x-neev-component::secondary-button>
 
-                                                            <x-button type="submit" x-bind:disabled="roleId === userRoleId" class="ms-3" @click.prevent="$refs.changeRoleForm.submit()">
+                                                            <x-neev-component::button type="submit" x-bind:disabled="roleId === userRoleId" class="ms-3" @click.prevent="$refs.changeRoleForm.submit()">
                                                                 {{ __('Change Role') }}
-                                                            </x-button>
+                                                            </x-neev-component::button>
                                                         </x-slot>
-                                                    </x-dialog-modal>
+                                                    </x-neev-component::dialog-modal>
                                                 </div>
                                             </td>
                                         @endif
@@ -406,7 +406,7 @@
                                                 @method('PUT')
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                 <input type="hidden" name="email" value="{{ $invitation->email }}">
-                                                <x-button>{{__('Invite')}}</x-button>
+                                                <x-neev-component::button>{{__('Invite')}}</x-neev-component::button>
                                             </form>
                                         </td>
                                         <td class="px-4 py-2 text-center">
@@ -416,12 +416,12 @@
                                                 
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}"/>
                                                 <input type="hidden" name="invitation_id" value="{{ $invitation->id }}"/>
-                                                <x-danger-button
+                                                <x-neev-component::danger-button
                                                     type="submit"
                                                     class="w-2/3" 
                                                     @click.prevent="if (confirm('{{ __('Are you sure you want to remove user from the team?') }}')) $el.closest('form').submit();">
                                                     {{ __('Remove') }}
-                                                </x-danger-button>
+                                                </x-neev-component::danger-button>
                                             </form>
                                         </td>
                                     @else
@@ -436,12 +436,12 @@
                                             </div>
                                         </td>
                                     @endif
-                                </x-table-body-tr>
+                                </x-neev-component::table-body-tr>
                             @endforeach
                         </x-slot>
-                    </x-table>
+                    </x-neev-component::table>
                 @endif
             </x-slot>
-        </x-card>
+        </x-neev-component::card>
     </div>
-</x-app>
+</x-neev-layout::app>

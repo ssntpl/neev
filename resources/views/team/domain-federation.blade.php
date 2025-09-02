@@ -1,13 +1,13 @@
-<x-app>
+<x-neev-layout::app>
     <x-slot name="leftsection">
         {{ view('neev.team.left-section', ['team' => $team, 'user' => $user]) }}
     </x-slot>
-    <x-validation-errors class="mb-4" />
-    <x-validation-status class="mb-4" />
+    <x-neev-component::validation-errors class="mb-4" />
+    <x-neev-component::validation-status class="mb-4" />
     @if (config('neev.domain_federation') && $team)
         <div x-data="{show: {{session('token') ? 'true' : 'false'}} }" class="flex flex-col gap-4">
             {{-- Domain Federation --}}
-            <x-card>
+            <x-neev-component::card>
                 <x-slot name="title">
                     {{__('Domain Federation')}}
                 </x-slot>
@@ -18,15 +18,15 @@
                             @csrf
 
                             <div class="flex gap-4 items-center">
-                                <x-label for="domain" value="{{ __('Domain') }}" />
-                                <x-input id="domain" class="block mt-1 w-1/2" type="text" name="domain" required autofocus />
+                                <x-neev-component::label for="domain" value="{{ __('Domain') }}" />
+                                <x-neev-component::input id="domain" class="block mt-1 w-1/2" type="text" name="domain" required autofocus />
                                 <label for="enforce" class="flex items-center">
-                                    <x-checkbox id="enforce" name="enforce" checked/>
+                                    <x-neev-component::checkbox id="enforce" name="enforce" checked/>
                                     <span class="ms-2 text-sm text-gray-600 dark:text-gray-400">{{ __('Enforce Domain') }}</span>
                                 </label>
                             </div>
                             <div class="flex gap-4 justify-end">
-                                <x-button>{{__('Federate Domain')}}</x-button>
+                                <x-neev-component::button>{{__('Federate Domain')}}</x-neev-component::button>
                             </div>
                         </form>
                     @else
@@ -38,7 +38,7 @@
                                     @csrf
                                     @method('PUT')
                                     <label for="enforce" class="flex items-center">
-                                        <x-checkbox onchange="this.form.submit()" id="enforce" name="enforce" x-bind:checked="{{$team->enforce_domain}}"/>
+                                        <x-neev-component::checkbox onchange="this.form.submit()" id="enforce" name="enforce" x-bind:checked="{{$team->enforce_domain}}"/>
                                         <span class="ms-2 text-sm text-gray-600 dark:text-gray-400">{{ __('Enforce Domain') }}</span>
                                     </label>
                                 </form>
@@ -46,13 +46,13 @@
                                     <form method="POST" action="{{route('teams.domain', $team->id)}}">
                                         @csrf
                                         @method('PUT')
-                                        <x-button name="token" value="token">{{__('Get Verification Token')}}</x-button>
+                                        <x-neev-component::button name="token" value="token">{{__('Get Verification Token')}}</x-neev-component::button>
                                     </form>
                                 @endif
                                 <form method="POST" action="{{route('teams.domain', $team->id)}}">
                                     @csrf
                                     @method('DELETE')
-                                    <x-danger-button type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete the domain?')}}')) $el.closest('form').submit();">{{__('Delete')}}</x-danger-button>
+                                    <x-neev-component::danger-button type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete the domain?')}}')) $el.closest('form').submit();">{{__('Delete')}}</x-neev-component::danger-button>
                                 </form>
                             </div>
                         </div>
@@ -65,16 +65,16 @@
                         </div>
                     @endif
                 </x-slot>
-            </x-card>
+            </x-neev-component::card>
             
             {{-- Domain Rules --}}
-            <x-card>
+            <x-neev-component::card>
                 <x-slot name="title">
                     {{__('Domain Rules')}}
                 </x-slot>
                 
                 <x-slot name="action">
-                    <x-button form="updateDomainRulesForm">{{__('Save')}}</x-button>
+                    <x-neev-component::button form="updateDomainRulesForm">{{__('Save')}}</x-neev-component::button>
                 </x-slot>
 
                 <x-slot name="content">
@@ -82,17 +82,17 @@
                         <form id="updateDomainRulesForm" method="POST" action="{{route('domain.rules', $team->id)}}">
                             @csrf
                             @method('PUT')
-                            <x-table>
+                            <x-neev-component::table>
                                 <x-slot name="body">
                                     @foreach ($team->rules as $rule)
-                                        <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                                        <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                             <td class="px-4 py-2 w-1/2 text-start">
                                                 {{ $rule->ruleTypeUI($rule->name) }}
                                             </td>
                                             <td class="px-4 py-2 text-start">
                                                 @if ($rule->ruleType($rule->name) === 'bool')
                                                     <label for="{{$rule->name}}">
-                                                        <x-checkbox id="{{$rule->name}}" name="{{$rule->name}}" x-bind:checked="{{$rule->value ?? 0}}"/>
+                                                        <x-neev-component::checkbox id="{{$rule->name}}" name="{{$rule->name}}" x-bind:checked="{{$rule->value ?? 0}}"/>
                                                     </label>
                                                 @elseif ($rule->ruleType($rule->name) === 'text')
                                                     <input type="text" name="{{$rule->name}}" value="{{$rule->value}}" class="px-2 py-1 border shadow rounded bg-white">
@@ -169,16 +169,16 @@
                                                     </div>
                                                 @endif
                                             </td>
-                                        </x-table-body-tr>
+                                        </x-neev-component::table-body-tr>
                                     @endforeach
                                 </x-slot>
-                            </x-table>
+                            </x-neev-component::table>
                         </form>
                     @endif
                 </x-slot>
-            </x-card>
+            </x-neev-component::card>
 
-            <x-dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+            <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
                 <x-slot name="title">
                     {{ __('DNS Token') }}
                 </x-slot>
@@ -193,9 +193,9 @@
                             class="bg-transparent border-0 px-1 w-full text-sm"
                             value="{{ session('token') }}"
                         >
-                        <x-button type="button" @click="navigator.clipboard.writeText($refs.newTokenInput.value)">
+                        <x-neev-component::button type="button" @click="navigator.clipboard.writeText($refs.newTokenInput.value)">
                             {{ __('Copy') }}
-                        </x-button>
+                        </x-neev-component::button>
                     </div>
                 </x-slot>
 
@@ -203,12 +203,12 @@
                     <form method="POST" action="{{route('teams.domain', $team->id)}}">
                         @csrf
                         @method('PUT')
-                        <x-button name="verify" value="verify">
+                        <x-neev-component::button name="verify" value="verify">
                             {{ __('Verify') }}
-                        </x-button>
+                        </x-neev-component::button>
                     </form>
                 </x-slot>
-            </x-dialog-modal>
+            </x-neev-component::dialog-modal>
         </div>
     @endif
-</x-app>
+</x-neev-layout::app>

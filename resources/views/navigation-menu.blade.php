@@ -21,7 +21,7 @@
                         $teamId = request()->route('team') ?? $user->teams[0]->id ?? null;
                     @endphp
                     <div class="ms-3 relative">
-                        <x-dropdown align="right" width="48">
+                        <x-neev-component::dropdown align="right" width="48">
                             <x-slot name="trigger">
                                 <span class="hidden sm:inline-flex rounded-md">
                                     <button type="button" class="cursor-pointer inline-flex items-center py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none focus:bg-gray-50 dark:focus:bg-gray-700 active:bg-gray-50 dark:active:bg-gray-700 transition ease-in-out duration-150">
@@ -39,20 +39,20 @@
                                     {{ __('Switch Teams') }}
                                 </div>
                                 @foreach ($user->teams ?? [] as $team)
-                                    <x-switchable-team :team="$team" />
+                                    <x-neev-component::switchable-team :team="$team" />
                                 @endforeach
                                 <div class="border-t border-gray-200 dark:border-gray-600"></div>
-                                <x-dropdown-link href="{{ route('teams.create') }}">
+                                <x-neev-component::dropdown-link href="{{ route('teams.create') }}">
                                     {{ __('Create New Team') }}
-                                </x-dropdown-link>
+                                </x-neev-component::dropdown-link>
                             </x-slot>
-                        </x-dropdown>
+                        </x-neev-component::dropdown>
                     </div>
                 @endif
 
                 <!-- Settings Dropdown -->
                 <div class="ms-3 relative">
-                    <x-dropdown align="right" width="48">
+                    <x-neev-component::dropdown align="right" width="48">
                         <x-slot name="trigger">
                             <span class="hidden sm:inline-flex rounded-md">
                                 <button type="button" class="cursor-pointer inline-flex items-center py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 hover:text-gray-700 dark:hover:text-gray-300 focus:outline-none focus:bg-gray-50 dark:focus:bg-gray-700 active:bg-gray-50 dark:active:bg-gray-700 transition ease-in-out duration-150">
@@ -80,14 +80,14 @@
                                 {{ __('Manage Account') }}
                             </div>
 
-                            <x-dropdown-link href="{{ route('account.profile') }}">
+                            <x-neev-component::dropdown-link href="{{ route('account.profile') }}">
                                 {{ __('My Account') }}
-                            </x-dropdown-link>
+                            </x-neev-component::dropdown-link>
                             
                             @if (config('neev.team') && $teamId)
-                                <x-dropdown-link href="{{ route('teams.profile', $teamId) }}">
+                                <x-neev-component::dropdown-link href="{{ route('teams.profile', $teamId) }}">
                                     {{ __('Team Settings') }}
-                                </x-dropdown-link>
+                                </x-neev-component::dropdown-link>
                             @endif
 
                             <div class="border-t border-gray-200 dark:border-gray-600"></div>
@@ -101,7 +101,7 @@
                                 </button>
                             </form>
                         </x-slot>
-                    </x-dropdown>
+                    </x-neev-component::dropdown>
                 </div>
             </div>
         </div>

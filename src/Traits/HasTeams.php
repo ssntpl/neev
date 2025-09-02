@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Traits;
 
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
 
@@ -24,25 +25,20 @@ trait HasTeams
 
     public function ownedTeams()
     {
-        return $this->hasMany(Team::class);
+        return $this->hasMany(Team::getClass());
     }
 
     public function allTeams()
     {
-        return $this->belongsToMany(Team::class, Membership::class)
+        return $this->belongsToMany(Team::getClass(), Membership::class)
             ->withPivot(['role_id', 'joined'])
             ->withTimestamps()
             ->as('membership');
     }
 
-    /**
-     * Get all teams the user is a member of (joined teams only).
-     *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsToMany
-     */
-    public function teams()
+    public function teams(): BelongsToMany
     {
-        return $this->belongsToMany(Team::class, Membership::class)
+        return $this->belongsToMany(Team::getClass(), Membership::class)
             ->withPivot(['role_id', 'joined'])
             ->withTimestamps()
             ->as('membership')
@@ -51,7 +47,7 @@ trait HasTeams
     
     public function teamRequests()
     {
-        return $this->belongsToMany(Team::class, Membership::class)
+        return $this->belongsToMany(Team::getClass(), Membership::class)
             ->withPivot(['role_id', 'joined', 'action'])
             ->withTimestamps()
             ->as('membership')->where([
@@ -62,7 +58,7 @@ trait HasTeams
     
     public function sendRequests()
     {
-        return $this->belongsToMany(Team::class, Membership::class)
+        return $this->belongsToMany(Team::getClass(), Membership::class)
             ->withPivot(['role_id', 'joined', 'action'])
             ->withTimestamps()
             ->as('membership')->where([

@@ -1,9 +1,9 @@
-<x-guest>
-    <x-authentication-card>
+<x-neev-layout::guest>
+    <x-neev-component::authentication-card>
         <x-slot name="logo">
-            <x-authentication-card-logo />
+            <x-neev-component::authentication-card-logo />
         </x-slot>
-        <x-validation-errors class="mb-4" />
+        <x-neev-component::validation-errors class="mb-4" />
         <div class="mb-4 text-sm text-gray-600 dark:text-gray-400">
             {{ __('Before continuing, could you verify your email address by clicking on the link we just emailed to you? If you didn\'t receive the email, we will gladly send you another.') }}
         </div>
@@ -32,9 +32,9 @@
                 @csrf
 
                 <div>
-                    <x-button type="submit">
+                    <x-neev-component::button type="submit">
                         {{ __('Resend Verification Email') }}
-                    </x-button>
+                    </x-neev-component::button>
                 </div>
             </form>
 
@@ -42,12 +42,12 @@
                 <form method="POST" action="{{ route('logout') }}" class="inline">
                     @csrf
 
-                    <x-button type="submit">
+                    <x-neev-component::button type="submit">
                         {{ __('Log Out') }}
-                    </x-button>
+                    </x-neev-component::button>
                 </div>
                 </form>
             </div>
         </div>
-    </x-authentication-card>
-</x-guest>
+    </x-neev-component::authentication-card>
+</x-neev-layout::guest>

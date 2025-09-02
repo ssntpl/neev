@@ -1,8 +1,8 @@
-<x-app>
-    <x-validation-errors class="mb-4" />
-    <x-validation-status class="mb-4" />
+<x-neev-layout::app>
+    <x-neev-component::validation-errors class="mb-4" />
+    <x-neev-component::validation-status class="mb-4" />
     <div class="w-1/3 flex justify-self-center items-center">
-        <x-card>
+        <x-neev-component::card>
             <x-slot name="title">
                 {{__('Create New Team')}}
             </x-slot>
@@ -12,18 +12,18 @@
                     @csrf
 
                     <div>
-                        <x-label for="name" value="{{ __('Team Name') }}" />
-                        <x-input id="name" class="block mt-1 w-full" type="text" name="name" required autofocus />
+                        <x-neev-component::label for="name" value="{{ __('Team Name') }}" />
+                        <x-neev-component::input id="name" class="block mt-1 w-full" type="text" name="name" required autofocus />
                     </div>
                     <div class="flex gap-4 justify-between">
                         <label for="public" class="flex items-center">
-                            <x-checkbox id="public" name="public" />
+                            <x-neev-component::checkbox id="public" name="public" />
                             <span class="ms-2 text-sm text-gray-600 dark:text-gray-400">{{ __('Public Team') }}</span>
                         </label>
-                        <x-button>{{__('Create Team')}}</x-button>
+                        <x-neev-component::button>{{__('Create Team')}}</x-neev-component::button>
                     </div>
                 </form>
             </x-slot>
-        </x-card>
+        </x-neev-component::card>
     </div>
-</x-app>
+</x-neev-layout::app>

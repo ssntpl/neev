@@ -4,10 +4,10 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Hash;
 use Illuminate\Http\Request;
-use Jenssegers\Agent\Agent;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Models\Email;
+use Ssntpl\Neev\Models\LoginHistory;
 use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
@@ -28,7 +28,7 @@ class UserController extends Controller
 
         $addEmail = true;
         if (config('neev.team') && config('neev.domain_federation')) {
-            $team = Team::where('federated_domain', $emailDomain)->first();
+            $team = Team::model()->where('federated_domain', $emailDomain)->first();
             if ($team?->domain_verified_at && $team->users->contains($user)) {
                 $addEmail = false;
             }
@@ -43,7 +43,7 @@ class UserController extends Controller
 
         $deleteAccount = true;
         if (config('neev.team') && config('neev.domain_federation')) {
-            $team = Team::where('federated_domain', $emailDomain)->first();
+            $team = Team::model()->where('federated_domain', $emailDomain)->first();
             if ($team?->domain_verified_at && $team->users->contains($user)) {
                 $deleteAccount = false;
             }
@@ -53,7 +53,7 @@ class UserController extends Controller
 
     public function tokens(Request $request)
     {
-        return view('neev.account.tokens', ['user' => User::find($request->user()->id), 'allPermissions' => Permission::all()]);
+        return view('neev.account.tokens', ['user' => User::find($request->user()->id), 'allPermissions' => config('neev.roles') ? Permission::all() : []]);
     }
 
     public function teams(Request $request)
@@ -63,7 +63,7 @@ class UserController extends Controller
 
         $join_team = true;
         if (config('neev.domain_federation')) {
-            $team = Team::where('federated_domain', $emailDomain)->first();
+            $team = Team::model()->where('federated_domain', $emailDomain)->first();
             if ($team?->domain_verified_at) {
                 $join_team = false;
             }
@@ -78,8 +78,7 @@ class UserController extends Controller
             ->orderBy('last_activity', 'desc')
             ->get()
             ->map(function ($session) {
-                $agent = new Agent();
-                $agent->setUserAgent($session->user_agent);
+                $agent = LoginHistory::getClientDetails(userAgent: $session->user_agent);
 
                 return (object)[
                     'id' => $session->id,

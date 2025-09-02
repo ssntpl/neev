@@ -1,9 +1,9 @@
-<x-app>
+<x-neev-layout::app>
     <x-slot name="leftsection">
         {{ view('neev.account.left-section', ['user' => $user]) }}
     </x-slot>
-    <x-validation-errors class="mb-4" />
-    <x-card x-data="{edit: false}">
+    <x-neev-component::validation-errors class="mb-4" />
+    <x-neev-component::card x-data="{edit: false}">
         <x-slot name="title">
             User Information
         </x-slot>
@@ -19,17 +19,17 @@
                     </div>
                 @endif
 
-                <x-button x-show="!edit" id="editButton" @click="edit = true">
+                <x-neev-component::button x-show="!edit" id="editButton" @click="edit = true">
                     {{ __('Edit') }}
-                </x-button>
+                </x-neev-component::button>
             </div>
             <div x-show="edit" class="save-profile flex gap-4">
-                <x-button id="saveButton" type="submit" form="updateProfileForm">
+                <x-neev-component::button id="saveButton" type="submit" form="updateProfileForm">
                     {{ __('Save') }}
-                </x-button>
-                <x-secondary-button id="cancelButton" @click="edit = false">
+                </x-neev-component::button>
+                <x-neev-component::secondary-button id="cancelButton" @click="edit = false">
                     {{ __('Cancel') }}
-                </x-secondary-button>
+                </x-neev-component::secondary-button>
             </div>
         </x-slot>
         <x-slot name="content" >
@@ -46,5 +46,5 @@
                 </div>
             </form>
        </x-slot>
-    </x-card>
-</x-app>
+    </x-neev-component::card>
+</x-neev-layout::app>

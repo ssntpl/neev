@@ -1,12 +1,12 @@
-<x-app>
+<x-neev-layout::app>
     <x-slot name="leftsection">
         {{ view('neev.account.left-section', ['user' => $user]) }}
     </x-slot>
-    <x-validation-errors class="mb-4" />
-    <x-validation-status class="mb-4" />
+    <x-neev-component::validation-errors class="mb-4" />
+    <x-neev-component::validation-status class="mb-4" />
     <div x-data="permissonManager(@js($allPermissions))">
         {{-- Add API Token --}}
-        <x-card>
+        <x-neev-component::card>
             {{-- title --}}
             <x-slot name="title">
                 {{ __('API Tokens') }}
@@ -36,12 +36,12 @@
 
                     <div class="flex gap-4 justify-between">
                         <div class="flex gap-4 justify-start items-center w-1/2">
-                            <x-label for="name" value="{{ __('Token Name') }}" class="w-1/3" />
-                            <x-input id="name" class="block w-5/6" type="text" name="name" autocomplete="off" />
+                            <x-neev-component::label for="name" value="{{ __('Token Name') }}" class="w-1/3" />
+                            <x-neev-component::input id="name" class="block w-5/6" type="text" name="name" autocomplete="off" />
                         </div>
                         
                         <div class="flex gap-4 justify-center items-center w-1/4">
-                            <x-label for="expiry" value="{{ __('Expiration') }}" />
+                            <x-neev-component::label for="expiry" value="{{ __('Expiration') }}" />
                             <select name="expiry" class="border rounded-md px-2 py-1 w-2/3">
                                 <option value="10080" selected>7 Days</option>
                                 <option value="43200">30 Days</option>
@@ -63,14 +63,14 @@
                     </div>
 
                     <div class="relative flex items-center justify-end">
-                        <x-button>
+                        <x-neev-component::button>
                             {{ __('Create') }}
-                        </x-button>
+                        </x-neev-component::button>
                     </div>
                 </form>
                 @if (count($user->apiTokens ?? []) > 0)
                     <div>
-                        <x-table>
+                        <x-neev-component::table>
                             <x-slot name="head">
                                 <tr>
                                     <th class="px-6 py-3 text-center font-bold tracking-wide">Name</th>
@@ -81,14 +81,14 @@
                                         <form method="POST" action="{{route('tokens.deleteAll')}}">
                                             @csrf
                                             @method('DELETE')
-                                            <x-danger-button type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete all api tokens?')}}')) $el.closest('form').submit();">{{ __('Delete All') }}</x-danger-button>
+                                            <x-neev-component::danger-button type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete all api tokens?')}}')) $el.closest('form').submit();">{{ __('Delete All') }}</x-neev-component::danger-button>
                                         </form>
                                     </th>
                                 </tr>
                             </x-slot>
                             <x-slot name="body">
                                 @foreach ($user->apiTokens()->orderByDesc('created_at')->get() as $token)
-                                    <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                                    <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                         <td class="px-6 py-4 text-center capitalize">{{ $token->name ?? '--' }}</td>
                                         <td class="px-6 py-4 text-center">{{ $token->last_used?->diffForHumans() ?? '--' }}</td>
                                         <td class="px-6 py-2 text-center">
@@ -107,20 +107,20 @@
                                             <form method="POST" action="{{route('tokens.delete')}}">
                                                 @csrf
                                                 @method('DELETE')
-                                                <input type="hidden" name="token_id", value="{{$token->id}}">
-                                                <x-danger-button type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete api token?')}}')) $el.closest('form').submit();">{{ __('Delete') }}</x-danger-button>
+                                                <input type="hidden" name="token_id" value="{{$token->id}}">
+                                                <x-neev-component::danger-button type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete api token?')}}')) $el.closest('form').submit();">{{ __('Delete') }}</x-neev-component::danger-button>
                                             </form>
                                         </td>
-                                    </x-table-body-tr>
+                                    </x-neev-component::table-body-tr>
                                 @endforeach
                             </x-slot>
-                        </x-table>
+                        </x-neev-component::table>
                     </div>
                 @endif
             </x-slot>
-        </x-card>
+        </x-neev-component::card>
         @if (session('token'))
-            <x-dialog-modal x-show="show" x-cloak @keydown.escape.window="closeModal" @click.away="closeModal">
+            <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="closeModal" @click.away="closeModal">
                 <x-slot name="title">
                     {{ __('New Token') }}
                 </x-slot>
@@ -135,20 +135,20 @@
                             class="bg-transparent border-0 px-1 w-full text-sm"
                             value="{{ session('token') }}"
                         >
-                        <x-button type="button" @click="navigator.clipboard.writeText($refs.newTokenInput.value)">
+                        <x-neev-component::button type="button" @click="navigator.clipboard.writeText($refs.newTokenInput.value)">
                             {{ __('Copy') }}
-                        </x-button>
+                        </x-neev-component::button>
                      </div>
                 </x-slot>
 
                 <x-slot name="footer">
-                    <x-secondary-button @click="closeModal()">
+                    <x-neev-component::secondary-button @click="closeModal()">
                         {{ __('Done') }}
-                    </x-secondary-button>
+                    </x-neev-component::secondary-button>
                 </x-slot>
-            </x-dialog-modal>
+            </x-neev-component::dialog-modal>
         @else
-            <x-dialog-modal x-show="show" x-cloak @keydown.escape.window="closeModal" @click.away="closeModal">
+            <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="closeModal" @click.away="closeModal">
                 <x-slot name="title">
                     {{ __('API Token Permissions') }}
                 </x-slot>
@@ -194,26 +194,26 @@
 
                 <x-slot name="footer">
                     <template x-if="tokenId === 0">
-                        <x-secondary-button @click="closeModal()">
+                        <x-neev-component::secondary-button @click="closeModal()">
                             {{ __('Done') }}
-                        </x-secondary-button>
+                        </x-neev-component::secondary-button>
                     </template>
 
                     <template x-if="tokenId !== 0">
                         <div class="flex gap-2 justify-end w-full">
-                            <x-secondary-button @click="closeModal()">
+                            <x-neev-component::secondary-button @click="closeModal()">
                                 {{ __('Cancel') }}
-                            </x-secondary-button>
-                            <x-button @click.prevent="$refs.changePermissionForm.submit()">
+                            </x-neev-component::secondary-button>
+                            <x-neev-component::button @click.prevent="$refs.changePermissionForm.submit()">
                                 {{ __('Save') }}
-                            </x-button>
+                            </x-neev-component::button>
                         </div>
                     </template>
                 </x-slot>
-            </x-dialog-modal>
+            </x-neev-component::dialog-modal>
         @endif
     </div>
-</x-app>
+</x-neev-layout::app>
 <script>
     function permissonManager(permissions) {
         return {

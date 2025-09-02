@@ -10,6 +10,8 @@ return [
     'email_verified' => false,
     'domain_federation' => false,
     
+    'team_model' => Ssntpl\Neev\Models\Team::class,
+    'support_username' => false,
     'domain_rules' => [
         DomainRule::mfa(),
         DomainRule::passkey(),

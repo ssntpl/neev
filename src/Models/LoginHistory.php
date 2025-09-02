@@ -33,9 +33,9 @@ class LoginHistory extends Model
         return $this->belongsTo(User::class,'user_id');
     }
     
-    public static function getClientDetails(Request $request): array
+    public static function getClientDetails(Request $request = null, $userAgent = null): array
     {
-        $userAgent = $request->header('User-Agent');
+        $userAgent = $userAgent ?? $request->header('User-Agent');
         // Detect browser
         $browser = '';
         if (stripos($userAgent, 'Chrome') !== false) $browser = 'Chrome';

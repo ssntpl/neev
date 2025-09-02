@@ -1,22 +1,22 @@
-<x-app>
+<x-neev-layout::app>
     <x-slot name="leftsection">
         {{ view('neev.account.left-section', ['user' => $user]) }}
     </x-slot>
-    
-    <x-card>
+
+    <x-neev-component::card>
         <x-slot name="title">
             {{ __('Login History') }}
         </x-slot>
 
         <x-slot name="action">
             <button onclick="location.reload();" class="cursor-pointer ml-4">
-                <x-refresh-button/>
+                <x-neev-component::refresh-button/>
             </button>
         </x-slot>
 
         <x-slot name="content">
             @if (count($history ?? []) > 0)
-                <x-table>
+                <x-neev-component::table>
                     <x-slot name="head">
                         <tr>
                             <th class="px-6 py-3 text-center font-bold tracking-wide">Method</th>
@@ -28,7 +28,7 @@
                     </x-slot>
                     <x-slot name="body">
                         @foreach ($history as $login)
-                            <x-table-body-tr class="odd:bg-white even:bg-gray-50">
+                            <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                 <td class="px-6 py-4 text-center capitalize">{{ $login->method ?? '--' }}</td>
                                 <td class="px-6 py-4 text-center">{{ $login->multi_factor_method ?? '--' }}</td>
                                 <td class="px-6 py-4 text-center">
@@ -58,11 +58,11 @@
                                     @endif
                                 </td>
                                 <td class="px-6 py-4 text-center">{{ $login->created_at->diffForHumans() ?? '--' }}</td>
-                            </x-table-body-tr>
+                            </x-neev-component::table-body-tr>
                         @endforeach
                     </x-slot>
-                </x-table>
+                </x-neev-component::table>
             @endif
         </x-slot>
-    </x-card>
-</x-app>
+    </x-neev-component::card>
+</x-neev-layout::app>
