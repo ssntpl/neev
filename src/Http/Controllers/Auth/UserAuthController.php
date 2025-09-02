@@ -9,6 +9,7 @@ use Exception;
 use Hash;
 use Illuminate\Http\Request;
 use Mail;
+use Schema;
 use Session;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
@@ -167,7 +168,11 @@ class UserAuthController extends Controller
                             ]);
                         }
                         
-                        $team->users()->attach($user, ['joined' => true]);
+                        if (Schema::hasColumn('team_user', 'role')) {
+                            $team->users()->attach($user, ['joined' => true, 'role' => 'admin']);
+                        } else {
+                            $team->users()->attach($user, ['joined' => true]);
+                        }
                     }
 
                 } catch (Exception $e) {
@@ -361,6 +366,9 @@ class UserAuthController extends Controller
     public function emailVerifyCreate(Request $request)
     {
         $user = User::find($request->user()->id);
+        if (!$user) {
+            return redirect(route('login'));
+        }
         if ($user->primaryEmail->verified_at) {
             return redirect(config('neev.dashboard_url'));
         }

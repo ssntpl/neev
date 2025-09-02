@@ -72,9 +72,6 @@ Route::middleware( ['web', 'neev'])->group(function () {
     Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
         ->name('email.change');
     
-    Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
-        ->name('email.change');
-    
     Route::put('/email/change', [UserAuthController::class, 'emailChangeStore'])
         ->name('email.update');
 
