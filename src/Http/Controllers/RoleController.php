@@ -16,7 +16,7 @@ class RoleController extends Controller
         $user = $request->user();
         try {
                 $user = User::find($user->id);
-                $team = Team::find($request->team_id);
+                $team = Team::model()->find($request->team_id);
                 $team->roles()->updateOrCreate([
                     'name' => $request->name
                 ], [
@@ -32,7 +32,7 @@ class RoleController extends Controller
     public function delete(Request $request)
     {
         try {
-            $team = Team::find($request->team_id);
+            $team = Team::model()->find($request->team_id);
             $role = $team->roles()->find($request->role_id);
             if (!$role) {
                 return back()->withErrors(['message' => 'Role not found.']);
@@ -88,7 +88,7 @@ class RoleController extends Controller
     {
         $user = User::find($request->user()->id);
         try {
-            $team = Team::find($request->team_id);
+            $team = Team::model()->find($request->team_id);
             if ($team->owner->id === $user->id) {
                 if ($request->user_id) {
                     $member = User::find($request->user_id);

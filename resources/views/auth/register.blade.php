@@ -26,6 +26,13 @@
                 <x-neev-component::input id="email" class="block mt-1 w-full" type="email" name="email" :value="$email ?? old('email')" required autocomplete="username" />
             </div>
 
+            @if (config('neev.support_username'))
+                <div class="mt-4">
+                    <x-neev-component::label for="username" value="{{ __('Username') }}" />
+                    <x-neev-component::input id="username" class="block mt-1 w-full" type="text" name="username" :value="old('username')" required autocomplete="username" />
+                </div>
+            @endif
+
             <div class="mt-4">
                 <x-neev-component::label for="password" value="{{ __('Password') }}" />
                 <x-neev-component::input id="password" class="block mt-1 w-full" type="password" name="password" required autocomplete="new-password" />

@@ -28,7 +28,7 @@ class PasswordLogic implements ValidationRule
         if ($user && config('neev.team') && config('neev.domain_federation')) {
             $emailDomain = substr(strrchr($user->email, "@"), 1);
 
-            $team = Team::where('federated_domain', $emailDomain)->first();
+            $team = Team::model()->where('federated_domain', $emailDomain)->first();
             if ($team?->domain_verified_at) {
                 $password['old_passwords'] = $team->rule(DomainRule::pass_old())->value ?? null;
                 $password['check_user_columns'] = json_decode($team->rule(DomainRule::pass_columns())->value ?? '[]');

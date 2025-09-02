@@ -111,76 +111,89 @@ class UserAuthController extends Controller
             'password' => ['required', 'confirmed', new PasswordValidate, new PasswordLogic],
         ]);
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-        ]);
-        $user = User::find($user->id);
+        try {
+            if (config('neev.support_username')) {
+                $user = User::create([
+                    'name' => $request->name,
+                    'email' => $request->email,
+                    'username' => $request->username,
+                    'password' => Hash::make($request->password),
+                ]);
+            } else {
+                $user = User::create([
+                    'name' => $request->name,
+                    'email' => $request->email,
+                    'password' => Hash::make($request->password),
+                ]);
+            } 
+            $user = User::find($user->id);
 
-        $email = $user->emails()->create([
-            'email' => $request->email
-        ]);
+            $email = $user->emails()->create([
+                'email' => $request->email
+            ]);
 
-        if (config('neev.team')) {
-            try {
-                if ($request->invitation_id) {
-                    $invitation = TeamInvitation::find($request->invitation_id);
-                    if (!$invitation || sha1($invitation?->email) !== $request->hash) {
-                        $user->delete();
-                        return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
-                    }
+            if (config('neev.team')) {
+                try {
+                    if ($request->invitation_id) {
+                        $invitation = TeamInvitation::find($request->invitation_id);
+                        if (!$invitation || sha1($invitation?->email) !== $request->hash) {
+                            $user->delete();
+                            return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
+                        }
 
-                    $email->verified_at = now();
-                    $email->save();
+                        $email->verified_at = now();
+                        $email->save();
 
-                    $team = $invitation->team;
-                    $team->users()->attach($user, ['role_id' => $invitation->role_id ?? 0, 'joined' => true]);
-                    
-                    $invitation->delete();
-                } else {
-                    if (config('neev.domain_federation')) {
-                        $emailDomain = substr(strrchr($request->email, "@"), 1);
-                        $team = Team::where('federated_domain', $emailDomain)->first();
-                        if (!$team?->domain_verified_at) {
-                            $team = Team::forceCreate([
+                        $team = $invitation->team;
+                        $team->users()->attach($user, ['role_id' => $invitation->role_id ?? 0, 'joined' => true]);
+                        
+                        $invitation->delete();
+                    } else {
+                        if (config('neev.domain_federation')) {
+                            $emailDomain = substr(strrchr($request->email, "@"), 1);
+                            $team = Team::model()->where('federated_domain', $emailDomain)->first();
+                            if (!$team?->domain_verified_at) {
+                                $team = Team::model()->forceCreate([
+                                    'name' => explode(' ', $user->name, 2)[0]."'s Team",
+                                    'user_id' => $user->id,
+                                    'is_public' => false,
+                                ]);
+                            }
+                        } else {
+                            $team = Team::model()->forceCreate([
                                 'name' => explode(' ', $user->name, 2)[0]."'s Team",
                                 'user_id' => $user->id,
                                 'is_public' => false,
                             ]);
                         }
-                    } else {
-                        $team = Team::forceCreate([
-                            'name' => explode(' ', $user->name, 2)[0]."'s Team",
-                            'user_id' => $user->id,
-                            'is_public' => false,
-                        ]);
+                        
+                        $team->users()->attach($user, ['joined' => true]);
                     }
-                    
-                    $team->users()->attach($user, ['joined' => true]);
+
+                } catch (Exception $e) {
+                    $user->delete();
+                    return back()->withErrors(['message' => 'Unable to create team']);
                 }
-
-            } catch (Exception $e) {
-                $user->delete();
-                return back()->withErrors(['message' => 'Unable to create team']);
             }
-        }
         
-        $this->login($request, $geoIP, $user, LoginHistory::Password);
+            $this->login($request, $geoIP, $user, LoginHistory::Password);
 
-        if (config('neev.email_verified') && !$email->verified_at) {
-            $signedUrl = URL::temporarySignedRoute(
-                'verification.verify',
-                Carbon::now()->addMinutes(60),
-                ['id' => $user->id, 'hash' => sha1($user->email)]
-            );
-        
-            Mail::to($user->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email', 60));
+            if (config('neev.email_verified') && !$email->verified_at) {
+                $signedUrl = URL::temporarySignedRoute(
+                    'verification.verify',
+                    Carbon::now()->addMinutes(60),
+                    ['id' => $user->id, 'hash' => sha1($user->email)]
+                );
             
-            return redirect(route('verification.notice'));
-        }
+                Mail::to($user->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email', 60));
+                
+                return redirect(route('verification.notice'));
+            }
 
-        return redirect(config('neev.dashboard_url'));
+            return redirect(config('neev.dashboard_url'));
+        } catch (Exception $e) {
+            return back()->withErrors(['message' => 'Unable to register user.']);
+        }
     }
 
     /**
@@ -219,7 +232,7 @@ class UserAuthController extends Controller
         if (config('neev.team') && config('neev.domain_federation')) {
             $emailDomain = substr(strrchr($request->email, "@"), 1);
             
-            $team = Team::where('federated_domain', $emailDomain)->first();
+            $team = Team::model()->where('federated_domain', $emailDomain)->first();
             if ($team?->domain_verified_at) {
                 $isDomainFederated = true;
                 $rules['passkey'] = $team->rule('passkey')->value;

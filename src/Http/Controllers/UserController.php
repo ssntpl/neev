@@ -28,7 +28,7 @@ class UserController extends Controller
 
         $addEmail = true;
         if (config('neev.team') && config('neev.domain_federation')) {
-            $team = Team::where('federated_domain', $emailDomain)->first();
+            $team = Team::model()->where('federated_domain', $emailDomain)->first();
             if ($team?->domain_verified_at && $team->users->contains($user)) {
                 $addEmail = false;
             }
@@ -43,7 +43,7 @@ class UserController extends Controller
 
         $deleteAccount = true;
         if (config('neev.team') && config('neev.domain_federation')) {
-            $team = Team::where('federated_domain', $emailDomain)->first();
+            $team = Team::model()->where('federated_domain', $emailDomain)->first();
             if ($team?->domain_verified_at && $team->users->contains($user)) {
                 $deleteAccount = false;
             }
@@ -63,7 +63,7 @@ class UserController extends Controller
 
         $join_team = true;
         if (config('neev.domain_federation')) {
-            $team = Team::where('federated_domain', $emailDomain)->first();
+            $team = Team::model()->where('federated_domain', $emailDomain)->first();
             if ($team?->domain_verified_at) {
                 $join_team = false;
             }

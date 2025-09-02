@@ -7,7 +7,7 @@
     <!-- Hidden Team ID -->
     <input type="hidden" name="team_id" value="{{ $team->id }}">
 
-    <x-neev-component::dynamic-component :component="$component" href="#" x-on:click.prevent="$root.submit();">
+    <x-dynamic-component :component="$component" href="#" x-on:click.prevent="$root.submit();">
         <div class="flex justify-between gap-2 items-center">
             <div class="truncate">{{ $team->name }}</div>
             @if ($team->id === request()->route('team')?->id)
@@ -16,5 +16,5 @@
                 </svg>
             @endif
         </div>
-    </x-neev-component::dynamic-component>
+    </x-dynamic-component>
 </form>
