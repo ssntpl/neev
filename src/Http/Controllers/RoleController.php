@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
+use Schema;
 use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\Role;
 use Ssntpl\Neev\Models\Team;
@@ -93,11 +94,19 @@ class RoleController extends Controller
                 if ($request->user_id) {
                     $member = User::find($request->user_id);
                     $membership = $team->allUsers->where('id', $member->id)->first()->membership;
-                    $membership->role_id = $request->role_id;
+                    if (config('neev.roles')) {
+                        $membership->role_id = $request->role_id;
+                    } else if (Schema::hasColumn('team_user', 'role')) {
+                        $membership->role = $request->role;
+                    }
                     $membership->save();
                 } else if ($request->invitation_id) {
                     $invitation = $team->invitations()->find($request->invitation_id);
-                    $invitation->role_id = $request->role_id;
+                    if (config('neev.roles')) {
+                        $invitation->role_id = $request->role_id;
+                    } else if (Schema::hasColumn('team_invitations', 'role')) {
+                        $invitation->role = $request->role;
+                    }
                     $invitation->save();
                 }
                 return back()->with('status', 'Role has been changed.');

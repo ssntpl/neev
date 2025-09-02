@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Exception;
 use Illuminate\Http\Request;
 use Mail;
+use Schema;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Models\DomainRule;
@@ -166,6 +167,9 @@ class TeamController extends Controller
                 if (config('neev.roles')) {
                     $invitation->role_id = $request->role_id;
                     $invitation->save();
+                } else if (Schema::hasColumn('team_invitations', 'role')) {
+                    $invitation->role = $request->role;
+                    $invitation->save();
                 }
 
                 $signedUrl = URL::temporarySignedRoute(
@@ -180,7 +184,13 @@ class TeamController extends Controller
             if ($team->users->contains($member)) {
                 return back()->with(['status' => 'User already added.']);
             } else if (!$team->allUsers->contains($member)) {
-                $team->users()->attach($member, ['role_id' => $request->role_id]);
+                if (config('neev.roles')) {
+                    $team->users()->attach($member, ['role_id' => $request->role_id]);
+                } else if (Schema::hasColumn('team_user', 'role')) {
+                    $team->users()->attach($member, ['role' => $request->role]);
+                } else {
+                    $team->users()->attach($member);
+                }
             }
 
             Mail::to($member->email)->send(new TeamInvitation($team->name, $member->name));
@@ -290,7 +300,11 @@ class TeamController extends Controller
             } elseif ($request->action == 'accept') {
                 $membership = $team->joinRequests->where('id', $member->id)->first()->membership;
                 $membership->joined = true;
-                $membership->role_id = $request->role_id;
+                if (config('neev.roles')) {
+                    $membership->role_id = $request->role_id;
+                } else if (Schema::hasColumn('team_user', 'role')) {
+                    $membership->role = $request->role;
+                }
                 $membership->save();
                 return back()->with('status', 'Request Accepted');
             }

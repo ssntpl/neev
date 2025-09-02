@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Models;
 
 use Exception;
 use Illuminate\Database\Eloquent\Model;
+use Schema;
 
 class Team extends Model
 {
@@ -40,40 +41,64 @@ class Team extends Model
 
     public function allUsers()
     {
-        return $this->belongsToMany(User::class, Membership::class)
+        $relation = $this->belongsToMany(User::class, Membership::class)
             ->withPivot(['role_id', 'joined'])
             ->withTimestamps()
             ->as('membership');
+
+        if (Schema::hasColumn('team_user', 'role')) {
+            $relation->withPivot('role');
+        }
+
+        return $relation;
     }
 
     public function users()
     {
-        return $this->belongsToMany(User::class, Membership::class)
+        $relation = $this->belongsToMany(User::class, Membership::class)
             ->withPivot(['role_id', 'joined'])
             ->withTimestamps()
             ->as('membership')->where('joined', true);
+        
+        if (Schema::hasColumn('team_user', 'role')) {
+            $relation->withPivot('role');
+        }
+
+        return $relation;
     }
     
     public function joinRequests()
     {
-        return $this->belongsToMany(User::class, Membership::class)
+        $relation = $this->belongsToMany(User::class, Membership::class)
             ->withPivot(['role_id', 'joined', 'action'])
             ->withTimestamps()
             ->as('membership')->where([
                 'joined' => false,
                 'action' => 'request_from_user'
             ]);
+
+        if (Schema::hasColumn('team_user', 'role')) {
+            $relation->withPivot('role');
+        }
+
+        return $relation;
     }
     
     public function invitedUsers()
     {
-        return $this->belongsToMany(User::class, Membership::class)
+        $relation = $this->belongsToMany(User::class, Membership::class)
             ->withPivot(['role_id', 'joined', 'action'])
             ->withTimestamps()
             ->as('membership')->where([
                 'joined' => false,
                 'action' => 'request_to_user'
             ]);
+
+        if (Schema::hasColumn('team_user', 'role')) {
+            $relation->withPivot('role');
+        }
+
+        return $relation;
     }
 
     public function removeUser($user)

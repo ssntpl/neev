@@ -146,7 +146,12 @@ class UserAuthController extends Controller
                         $email->save();
 
                         $team = $invitation->team;
-                        $team->users()->attach($user, ['role_id' => $invitation->role_id ?? 0, 'joined' => true]);
+                        if (Schema::hasColumn('team_user', 'role') && Schema::hasColumn('team_invitations', 'role')) {  
+                            $team->users()->attach($user, ['role_id' => $invitation->role_id ?? 0, 'role' => $invitation->role ?? '', 'joined' => true]);
+                        } else {
+                            $team->users()->attach($user, ['role_id' => $invitation->role_id ?? 0, 'joined' => true]);
+                        }
+
                         
                         $invitation->delete();
                     } else {
