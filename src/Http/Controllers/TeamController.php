@@ -152,7 +152,11 @@ class TeamController extends Controller
         $user = User::find($request->user()->id);
         try {
             $team = Team::model()->find($request->team_id);
-            if ($user->id != $team->user_id || ($team->enforce_domain && $team->domain_verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->federated_domain)))) {
+            if (Schema::hasColumn('team_user', 'role')) {
+                if ($user->teams->find($team->id)->membership->role !== 'admin') {
+                    return back()->withErrors(['message' => 'You cannot invite member in this team.']);
+                }
+            } else if ($user->id != $team->user_id || ($team->enforce_domain && $team->domain_verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->federated_domain)))) {
                 return back()->withErrors(['message' => 'You cannot invite member in this team.']);
             }
             $member = User::where('email', $request->email)->first();

@@ -5,7 +5,7 @@
     <x-neev-component::validation-errors class="mb-4" />
     <x-neev-component::validation-status class="mb-4" />
     <div class="flex flex-col gap-4">
-        @if ($team->user_id === $user->id)
+        @if ($team->user_id === $user->id || (Schema::hasColumn('team_user', 'role') && $user->teams->find($team->id)->membership->role === 'admin'))
             <x-neev-component::card x-data="{memberOpen: false}">
                 <x-slot name="title">
                     {{__('Add Member')}}
@@ -78,7 +78,7 @@
             <x-slot name="content">
                 
                 {{-- Join Requests --}}
-                @if (count($team->joinRequests) > 0 && $team->owner->id === $user->id)
+                @if (count($team->joinRequests) > 0 && ($team->owner->id === $user->id || (Schema::hasColumn('team_user', 'role') && $user->teams->find($team->id)->membership->role === 'admin')))
                     <div class="flex justify-between">
                         <h1 class="font-bold">{{__('Join Requests')}}</h1>
                         <span>
@@ -157,7 +157,7 @@
                                     </td>
                                     @if (config('neev.roles'))
                                         <td class="px-4 py-2 text-center capitalize">
-                                            @if ($team->user_id === $user->id)
+                                            @if ($team->user_id === $user->id || (Schema::hasColumn('team_user', 'role') && $user->teams->find($team->id)->membership->role === 'admin'))
                                                 <div class="text-start" x-data="{ show: false, roleId: @js($member->membership->role->id ?? 0), userRoleId: @js($member->membership->role->id ?? 1) }">
                                                     <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->membership->role->name ?? '--'}}</button>
                                                     <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
@@ -227,7 +227,7 @@
                                                 <x-neev-component::button
                                                     type="submit"
                                                     class="w-2/3" 
-                                                    x-bind:disabled="{{$team->user_id === $member->id || ($team->domain_verified_at && $member->id === $user->id)}}"
+                                                    x-bind:disabled="{{$team->user_id === $member->id || ($team->user_id !== $user->id && $user->id !== $member->id) || ($team->domain_verified_at && $member->id === $user->id)}}"
                                                     @click.prevent="if (confirm('{{ __('Are you sure you want to activate the user?') }}')) $el.closest('form').submit();">
                                                     {{ __('Activate') }}
                                                 </x-neev-component::button>
@@ -235,7 +235,7 @@
                                                 <x-neev-component::danger-button
                                                     type="submit"
                                                     class="w-2/3" 
-                                                    x-bind:disabled="{{$team->user_id === $member->id || ($team->domain_verified_at && $member->id === $user->id)}}"
+                                                    x-bind:disabled="{{$team->user_id === $member->id || ($team->user_id !== $user->id && $user->id !== $member->id) || ($team->domain_verified_at && $member->id === $user->id)}}"
                                                     @click.prevent="if (confirm('{{ $user->id === $member->id ? __('Are you sure you want to leave the team?') : __('Are you sure you want to remove/deactivate user from the team?') }}')) $el.closest('form').submit();">
                                                     {{ $user->id === $member->id ? __('Leave') : ($team->domain_verified_at && str_ends_with(strtolower($member->email), '@' . strtolower($team->federated_domain)) ? __('Deactivate') : __('Remove')) }}
                                                 </x-neev-component::danger-button>
@@ -270,7 +270,7 @@
                                             <p class="text-sm">{{$member->email}}</p>
                                         </div>
                                     </td>
-                                    @if ($team->owner->id === $user->id)
+                                    @if ($team->owner->id === $user->id || (Schema::hasColumn('team_user', 'role') && $user->teams->find($team->id)->membership->role === 'admin'))
                                         @if (config('neev.roles'))
                                             <td class="px-4 py-2 text-center capitalize">
                                                 <div class="text-start" x-data="{ show: false, roleId: @js($member->membership->role->id ?? 0), userRoleId: @js($member->membership->role->id ?? 1) }">
@@ -354,7 +354,7 @@
                                             <p class="text-sm">{{$invitation->email}}</p>
                                         </div>
                                     </td>
-                                    @if ($team->owner->id === $user->id)
+                                    @if ($team->owner->id === $user->id || (Schema::hasColumn('team_user', 'role') && $user->teams->find($team->id)->membership->role === 'admin'))
                                         @if (config('neev.roles'))
                                             <td class="px-4 py-2 text-center capitalize">
                                                 <div class="text-start" x-data="{ show: false, roleId: @js($invitation->role->id ?? 0), userRoleId: @js($invitation->role->id ?? 1) }">

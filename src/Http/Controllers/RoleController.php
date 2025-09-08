@@ -90,7 +90,7 @@ class RoleController extends Controller
         $user = User::find($request->user()->id);
         try {
             $team = Team::model()->find($request->team_id);
-            if ($team->owner->id === $user->id) {
+            if ($team->owner->id === $user->id || (Schema::hasColumn('team_user', 'role') && $user->teams->find($team->id)->membership->role === 'admin')) {
                 if ($request->user_id) {
                     $member = User::find($request->user_id);
                     $membership = $team->allUsers->where('id', $member->id)->first()->membership;
