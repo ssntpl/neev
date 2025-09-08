@@ -100,12 +100,16 @@ class TeamController extends Controller
     {
         $user = $request->user();
         try {
-                $user = User::find($user->id);
-                $team = $user->ownedTeams()->forceCreate([
-                    'name' => $request->name,
-                    'is_public' => (bool) $request->public,
-                ]);
+            $user = User::find($user->id);
+            $team = $user->ownedTeams()->forceCreate([
+                'name' => $request->name,
+                'is_public' => (bool) $request->public,
+            ]);
+            if (Schema::hasColumn('team_invitations', 'role')) {
+                $team->users()->attach($user, ['joined' => true, 'role' => 'admin']);
+            } else {
                 $team->users()->attach($user, ['joined' => true]);
+            }
         } catch (Exception $e) {
             return back()->withErrors(['message' => 'Failed to create team.']);
         }

@@ -37,12 +37,19 @@
                 @csrf
                 @method('PUT')
 
-                <div id="userInfo">
+                <div id="userInfo" class="flex flex-col gap-4">
                     <div class="flex justify-between items-center">
                         <label class="font-medium">Name</label>
-                        <p x-show="!edit" data-field="name">{{ $user['name'] }}</p>
-                        <input x-show="edit" class="w-1/3 text-center border px-2 py-1 rounded-md" type="text" name="name" value="{{ $user['name'] }}">
+                        <p x-show="!edit" data-field="name">{{ $user->name }}</p>
+                        <input x-show="edit" class="w-1/3 text-center border px-2 py-1 rounded-md" type="text" name="name" value="{{ $user->name }}">
                     </div>
+                    @if (config('neev.support_username'))
+                        <div class="flex justify-between items-center">
+                            <label class="font-medium">Username</label>
+                            <p x-show="!edit" data-field="username">{{ $user->username }}</p>
+                            <input x-show="edit" class="w-1/3 text-center border px-2 py-1 rounded-md" type="text" name="username" value="{{ $user->username }}">
+                        </div>
+                    @endif
                 </div>
             </form>
        </x-slot>

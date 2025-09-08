@@ -39,13 +39,16 @@
             </div>
             <div class="border rounded-lg p-4">
                 <div class="mb-4 text-sm text-gray-600 dark:text-gray-400">
-                    {{ __("Email: $email") }}
+                    {{ __((config('neev.support_username') && ($username ?? false)) ? "Username: $username" : "Email: $email") }}
                 </div>
 
                 <form method="POST" action="{{ route('login') }}">
                     @csrf
                     <div>
                         <input type="hidden" name="email" value="{{$email}}" required />
+                        @if (config('neev.support_username') && ($username ?? false))
+                            <input type="hidden" name="username" value="{{$username}}" required />
+                        @endif
                     </div>
                     <div>
                         <x-neev-component::label for="password" value="{{ __('Password') }}" />

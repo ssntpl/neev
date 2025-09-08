@@ -109,6 +109,9 @@ class UserController extends Controller
     {
         $user = User::find($request->user()->id);
         $user->name = $request->name;
+        if (config('neev.support_username')) {
+            $user->username = $request->username;
+        }
         $user->save();
         return back()->with(['status' => 'Account has been updated.']);
     }

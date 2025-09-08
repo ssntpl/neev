@@ -312,6 +312,7 @@
                                                 </div>
                                             </td>
                                         @endif
+                                        <td class="px-4 py-2"></td>
                                         <td class="px-4 py-2 text-center">
                                             <form method="POST" action="{{route('teams.invite')}}">
                                                 @csrf

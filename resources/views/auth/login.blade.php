@@ -11,8 +11,8 @@
             @csrf
             @method('PUT')
             <div>
-                <x-neev-component::label for="email" value="{{ __('Email') }}" />
-                <x-neev-component::input id="email" class="block mt-1 w-full" type="email" name="email" :value="old('email')" required autofocus autocomplete="username" />
+                <x-neev-component::label for="email" value="{{ __(config('neev.support_username') ? 'Email or Username' : 'Email') }}" />
+                <x-neev-component::input id="email" class="block mt-1 w-full" type="text" name="email" :value="old('email')" required autofocus autocomplete="username" />
             </div>
 
             <div class="flex flex-col gap-2 mt-4">

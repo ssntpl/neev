@@ -219,6 +219,13 @@ class UserAuthController extends Controller
     */
     public function loginPassword(LoginRequest $request)
     {
+        if (config('neev.support_username') && !preg_match('/^[\w.%+\-]+@[\w.\-]+\.[A-Za-z]{2,}$/', $request->email)) {
+            $user = User::where('username', $request->email)->first();
+            if ($user) {
+                $request->merge(['username' => $user->username]);
+                $request->merge(['email' => $user->email]);
+            }
+        }
         $request->checkEmail();
 
         if ($request->action === 'link') {
@@ -250,6 +257,9 @@ class UserAuthController extends Controller
             }
         }
         
+        if (config('neev.support_username') && !empty($request->username)) {
+            return view('neev.auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules]);
+        }
         return view('neev.auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules]);
     }
 
