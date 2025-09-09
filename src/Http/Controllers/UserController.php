@@ -18,7 +18,7 @@ class UserController extends Controller
 {
     public function profile(Request $request)
     {
-        return view('neev.account.profile', ['user' => User::find($request->user()->id)]);
+        return view('neev::account.profile', ['user' => User::find($request->user()->id)]);
     }
 
     public function emails(Request $request)
@@ -33,7 +33,7 @@ class UserController extends Controller
                 $addEmail = false;
             }
         }
-        return view('neev.account.emails', ['user' => $user, 'add_email' => $addEmail]);
+        return view('neev::account.emails', ['user' => $user, 'add_email' => $addEmail]);
     }
 
     public function security(Request $request)
@@ -48,12 +48,12 @@ class UserController extends Controller
                 $deleteAccount = false;
             }
         }
-        return view('neev.account.security', ['user' => $user, 'delete_account' => $deleteAccount]);
+        return view('neev::account.security', ['user' => $user, 'delete_account' => $deleteAccount]);
     }
 
     public function tokens(Request $request)
     {
-        return view('neev.account.tokens', ['user' => User::find($request->user()->id), 'allPermissions' => config('neev.roles') ? Permission::all() : []]);
+        return view('neev::account.tokens', ['user' => User::find($request->user()->id), 'allPermissions' => config('neev.roles') ? Permission::all() : []]);
     }
 
     public function teams(Request $request)
@@ -68,7 +68,7 @@ class UserController extends Controller
                 $join_team = false;
             }
         }
-        return view('neev.account.teams', ['user' => $user, 'join_team' => $join_team]);
+        return view('neev::account.teams', ['user' => $user, 'join_team' => $join_team]);
     }
 
     public function sessions(Request $request)
@@ -89,7 +89,7 @@ class UserController extends Controller
                 ];
             });
 
-        return view('neev.account.sessions', [
+        return view('neev::account.sessions', [
             'user' => User::find($request->user()->id),
             'sessions' => $sessions
         ]);
@@ -99,7 +99,7 @@ class UserController extends Controller
     {
         $user = User::find($request->user()->id);
         $history = User::find($user->id)?->loginHistory()?->orderBy('created_at', 'desc')?->get();
-        return view('neev.account.login-history', [
+        return view('neev::account.login-history', [
             'user' => $user,
             'history' => $history,
         ]);
@@ -253,7 +253,7 @@ class UserController extends Controller
         if (count($user->multiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
-        return view('neev.account.recovery-codes', ['user' => $user]);
+        return view('neev::account.recovery-codes', ['user' => $user]);
     }
 
     public function generateRecoveryCodes(Request $request)

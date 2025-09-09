@@ -210,7 +210,7 @@ class PasskeyController extends Controller
             $passkey->public_key = Base64UrlSafe::encode($credentialSource->credentialPublicKey);
             $passkey->transports = $input['response']['transports'] ?? [];
             $passkey->ip = $request->ip();
-            $passkey->location = $geoIP?->getLocation('157.49.181.239');
+            $passkey->location = $geoIP?->getLocation($request->ip());
             $passkey->save();
         } else {
             $passkey = $user->passkeys()->create([

@@ -70,15 +70,15 @@ class UserAuthController extends Controller
             if (!$invitation || sha1($invitation?->email) !== request()->hash) {
                 return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
             }
-            return view('neev.auth.register', ['id' => $request->id, 'hash' => $request->hash, 'email' => $invitation->email ?? null]);
+            return view('neev::auth.register', ['id' => $request->id, 'hash' => $request->hash, 'email' => $invitation->email ?? null]);
         }
-        return view('neev.auth.register');
+        return view('neev::auth.register');
     }
 
     public function emailChangeCreate(Request $request)
     {
         $user = User::find($request->user()->id);
-        return view('neev.auth.change-email', ['email' => $user->email]);
+        return view('neev::auth.change-email', ['email' => $user->email]);
     }
 
     public function emailChangeStore(Request $request)
@@ -211,7 +211,7 @@ class UserAuthController extends Controller
     */
     public function loginCreate()
     {
-        return view('neev.auth.login');
+        return view('neev::auth.login');
     }
 
     /**
@@ -258,9 +258,9 @@ class UserAuthController extends Controller
         }
         
         if (config('neev.support_username') && !empty($request->username)) {
-            return view('neev.auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules]);
+            return view('neev::auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules]);
         }
-        return view('neev.auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules]);
+        return view('neev::auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules]);
     }
 
     public function loginUsingLink(Request $request, $id, $hash, GeoIP $geoIP)
@@ -308,7 +308,7 @@ class UserAuthController extends Controller
     */
     public function forgotPasswordCreate()
     {
-        return view('neev.auth.forgot-password');
+        return view('neev::auth.forgot-password');
     }
 
     /**
@@ -352,7 +352,7 @@ class UserAuthController extends Controller
                 continue;
             }
             
-            return view('neev.auth.reset-password', ['email' => $email->email]);
+            return view('neev::auth.reset-password', ['email' => $email->email]);
         }
 
         return response()->json(['message' => 'Invalid verification link.'], 403);
@@ -387,7 +387,7 @@ class UserAuthController extends Controller
         if ($user->primaryEmail->verified_at) {
             return redirect(config('neev.dashboard_url'));
         }
-        return view('neev.auth.verify-email', ['email' => $user->email]);
+        return view('neev::auth.verify-email', ['email' => $user->email]);
     }
 
     /**
@@ -497,7 +497,7 @@ class UserAuthController extends Controller
                 Mail::to($email)->send(new EmailOTP($user->name, $otp, 15));
             }
         }
-        return view('neev.auth.otp-mfa',  ['email' => $email, 'method' => $method]);
+        return view('neev::auth.otp-mfa',  ['email' => $email, 'method' => $method]);
     }
 
     public function emailOTPSend()

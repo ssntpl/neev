@@ -43,7 +43,7 @@ class EmailOTP extends Mailable
     public function content(): Content
     {
         return new Content(
-            view: 'neev.emails.email-otp',
+            view: 'neev::emails.email-otp',
         );
     }
 

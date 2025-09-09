@@ -20,7 +20,7 @@ class TeamController extends Controller
 {
     public function profile(Request $request, Team $team)
     {
-        return view('neev.team.profile', [
+        return view('neev::team.profile', [
             'user' => User::find($request->user()->id),
             'team' => $team,
         ]);
@@ -32,7 +32,7 @@ class TeamController extends Controller
         if (!$user->allTeams->find($team->id)) {
             return response(null, 404);
         }
-        return view('neev.team.members', [
+        return view('neev::team.members', [
             'user' => $user,
             'team' => $team,
         ]);
@@ -44,7 +44,7 @@ class TeamController extends Controller
         if (!$user->allTeams->find($team->id)) {
             return response(null, 404);
         }
-        return view('neev.team.roles', [
+        return view('neev::team.roles', [
             'user' => $user,
             'team' => $team,
             'allPermissions' => Permission::orderBy('name')->get()
@@ -67,7 +67,7 @@ class TeamController extends Controller
             }
         }
 
-        return view('neev.team.domain-federation', [
+        return view('neev::team.domain-federation', [
             'user' => $user,
             'team' => $team,
             'outside_members' => $count,
@@ -80,7 +80,7 @@ class TeamController extends Controller
         if (!$user->allTeams->find($team->id)) {
             return response(null, 404);
         }
-        return view('neev.team.settings', [
+        return view('neev::team.settings', [
             'user' => $user,
             'team' => $team,
         ]);
@@ -93,7 +93,7 @@ class TeamController extends Controller
 
     public function create(Request $request)
     {
-        return view('neev.team.create', ['user' => $request->user()]);
+        return view('neev::team.create', ['user' => $request->user()]);
     }
     
     public function store(Request $request)

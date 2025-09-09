@@ -19,7 +19,7 @@
     <body class="font-sans antialiased">
         <div class="h-screen flex flex-col bg-gray-100 dark:bg-gray-900">
             <header class="bg-white dark:bg-gray-800 shadow px-2">
-                {{ view('neev.navigation-menu') }}
+                {{ view('neev::navigation-menu') }}
             </header>
 
             <div class="flex flex-1 overflow-hidden">
