@@ -46,7 +46,7 @@ class TeamInvitation extends Mailable
     public function content(): Content
     {
         return new Content(
-            view: 'neev.emails.team-invitation',
+            view: 'neev::emails.team-invitation',
         );
     }
 

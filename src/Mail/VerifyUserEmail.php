@@ -45,7 +45,7 @@ class VerifyUserEmail extends Mailable
     public function content(): Content
     {
         return new Content(
-            view: 'neev.emails.email-verify',
+            view: 'neev::emails.email-verify',
         );
     }
 

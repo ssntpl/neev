@@ -1,6 +1,6 @@
 <x-neev-layout::app>
     <x-slot name="leftsection">
-        {{ view('neev.account.left-section', ['user' => $user]) }}
+        {{ view('neev::account.left-section', ['user' => $user]) }}
     </x-slot>
     <x-neev-component::validation-errors class="mb-4" />
     <x-neev-component::card x-data="{edit: false}">

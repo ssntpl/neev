@@ -48,7 +48,7 @@ class NeevServiceProvider extends ServiceProvider
         ], 'neev-role-migrations');
         
         $this->publishes([
-            __DIR__.'/../resources/views' => resource_path('views/neev'),
+            __DIR__.'/../resources/views' => resource_path('views/vendor/neev'),
         ], 'neev-views');
         
         $this->publishes([
@@ -61,8 +61,13 @@ class NeevServiceProvider extends ServiceProvider
                 : __DIR__ . '/../routes/neev.php'
         );
 
-        Blade::anonymousComponentPath(resource_path('views/neev/components'), 'neev-component');
-        Blade::anonymousComponentPath(resource_path('views/neev/layouts'), 'neev-layout');
+        $this->loadViewsFrom(__DIR__.'/../resources/views', 'neev');
+
+        Blade::anonymousComponentPath(resource_path('views/vendor/neev/components'), 'neev-component');
+        Blade::anonymousComponentPath(resource_path('views/vendor/neev/layouts'), 'neev-layout');
+        
+        Blade::anonymousComponentPath(__DIR__.'/../resources/views/components', 'neev-component');
+        Blade::anonymousComponentPath(__DIR__.'/../resources/views/layouts','neev-layout');
     }
 
     public function register()
