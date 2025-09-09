@@ -254,7 +254,7 @@
                         <h1 class="font-bold">{{__('Invited Members')}}</h1>
                         <span>
                             {{__('Total Invited')}}
-                            <span class="font-bold">{{ __(count($team->invitedUsers)) }}</span>
+                            <span class="font-bold">{{ __(count($team->invitedUsers) + count($team->invitations)) }}</span>
                         </span>
                     </div>
                     <x-neev-component::table>
@@ -319,6 +319,9 @@
                                                 @method('PUT')
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                 <input type="hidden" name="email" value="{{ $member->email }}">
+                                                @if (Schema::hasColumn('team_user', 'role'))
+                                                    <input type="hidden" name="role" value="{{ $member->role }}">
+                                                @endif
                                                 <x-neev-component::button>{{__('Invite')}}</x-neev-component::button>
                                             </form>
                                         </td>
@@ -407,6 +410,9 @@
                                                 @method('PUT')
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                 <input type="hidden" name="email" value="{{ $invitation->email }}">
+                                                @if (Schema::hasColumn('team_invitations', 'role'))
+                                                    <input type="hidden" name="role" value="{{ $invitation->role }}">
+                                                @endif
                                                 <x-neev-component::button>{{__('Invite')}}</x-neev-component::button>
                                             </form>
                                         </td>

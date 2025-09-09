@@ -72,12 +72,12 @@
                 <x-slot name="content">
 
                     {{-- Team Request --}}
-                    @if (count($user->teamRequests) > 0)
+                    @if (count($user->teamRequests) > 0 || count(Ssntpl\Neev\Models\TeamInvitation::where('email', $user->email)->get() ))
                         <div class="flex justify-between">
                             <h1 class="font-bold">{{__('Team Requests')}}</h1>
                             <span>
                                 {{__('Total Requests')}}
-                                <span class="font-bold">{{ __(count($user->teamRequests)) }}</span>
+                                <span class="font-bold">{{ __(count($user->teamRequests) + count(Ssntpl\Neev\Models\TeamInvitation::where('email', $user->email)->get() )) }}</span>
                             </span>
                         </div>
                         <x-neev-component::table>
@@ -101,6 +101,35 @@
                                                 @method('PUT')
         
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
+                                                <x-neev-component::button name="action" value="accept">
+                                                    {{ __('Accept') }}
+                                                </x-neev-component::button>
+                                                <x-neev-component::danger-button type="submit" name="action" value="reject">
+                                                    {{ __('Reject') }}
+                                                </x-neev-component::danger-button>
+                                            </form>
+                                        </td>
+                                    </x-neev-component::table-body-tr>
+                                @endforeach
+                                @foreach (Ssntpl\Neev\Models\TeamInvitation::where('email', $user->email)->get() as $invitation)
+                                    <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
+                                        <td class="flex gap-2 px-4 py-2">
+                                            <a href="{{route('teams.profile', $invitation->team->id)}}" class="flex gap-1 items-center">
+                                                <p class="text-lg hover:underline">{{$invitation->team->name}}</p>
+                                                <p class="text-xs font-semibold text-gray-400 border rounded-full px-1">{{$invitation->team->is_public ? 'Public' : 'Private'}}</p>
+                                            </a>
+                                        </td>
+                                        @if (config('neev.roles'))
+                                            <td class="px-4 py-2 text-center capitalize">
+                                                {{$invitation->role->name ?? ''}}
+                                            </td>
+                                        @endif
+                                        <td class="px-4 py-2 text-end">
+                                            <form class="flex gap-4 justify-end" method="POST" action="{{ route('teams.invite.action') }}">
+                                                @csrf
+                                                @method('PUT')
+        
+                                                <input type="hidden" name="invitation_id" value="{{ $invitation->team->id }}">
                                                 <x-neev-component::button name="action" value="accept">
                                                     {{ __('Accept') }}
                                                 </x-neev-component::button>

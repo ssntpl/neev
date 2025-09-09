@@ -201,6 +201,11 @@ class TeamController extends Controller
                 }
             }
 
+            $invitation =$team->invitations()->where('email', $request->email)->first();
+            if ($invitation) {
+                $invitation->delete();
+            }
+
             Mail::to($member->email)->send(new TeamInvitation($team->name, $member->name));
         } catch (Exception $e) {
             return back()->withErrors(['message' => 'Failed to invite member.']);
@@ -251,15 +256,37 @@ class TeamController extends Controller
     {
         $user = User::find($request->user()->id);
         try {
-            $team = Team::model()->find($request->team_id);
-            if ($request->action == 'reject') {
-                $team->allUsers()->detach($user);
-                return back()->with('status', 'Rejected Successfully');
-            } elseif ($request->action == 'accept') {
-                $membership = $team->invitedUsers->where('id', $user->id)->first()->membership;
-                $membership->joined = true;
-                $membership->save();
-                return back()->with('status', 'Request Accepted');
+            if ($request->invitation_id) {
+                $invitation = \Ssntpl\Neev\Models\TeamInvitation::find($request->invitation_id);
+                $team = $invitation->team;
+                if ($request->action == 'reject') {
+                    $invitation->delete();
+                    return back()->with('status', 'Invitation Revoked Successfully');
+                } elseif ($request->action == 'accept') {
+                    if ($team->users->contains($user)) {
+                        return back()->with('status', 'Already Added.');
+                    }
+                    if (!$team->allUsers->contains($user)) {
+                        if (config('neev.roles')) {
+                            $team->allUsers()->attach($user, ['joined' => true, 'role_id' => $invitation->role_id]);
+                        } else if (Schema::hasColumn('team_user', 'role')) {
+                            $team->allUsers()->attach($user, ['joined' => true, 'role' => $invitation->role]);
+                        }
+                    }
+                    $invitation->delete();
+                    return back()->with('status', 'Invitation Accepted');
+                }
+            } else {
+                $team = Team::model()->find($request->team_id);
+                if ($request->action == 'reject') {
+                    $team->allUsers()->detach($user);
+                    return back()->with('status', 'Rejected Successfully');
+                } elseif ($request->action == 'accept') {
+                    $membership = $team->invitedUsers->where('id', $user->id)->first()->membership;
+                    $membership->joined = true;
+                    $membership->save();
+                    return back()->with('status', 'Request Accepted');
+                }
             }
         } catch (Exception $e) {
             return back()->withErrors(['message' => 'Failed to Accept/Reject Request.']);
