@@ -6,12 +6,14 @@ use App\Models\User as AppUser;
 use Ssntpl\Neev\Traits\HasAccessToken;
 use Ssntpl\Neev\Traits\HasMultiAuth;
 use Ssntpl\Neev\Traits\HasTeams;
+use Ssntpl\Neev\Traits\VerifyEmail;
 
 class User extends AppUser
 {
     use HasTeams;
     use HasMultiAuth;
     use HasAccessToken;
+    use VerifyEmail;
     
     public function getProfilePhotoUrlAttribute()
     {
