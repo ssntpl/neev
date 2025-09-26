@@ -187,9 +187,9 @@
                                                                 <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
                                                                     @foreach ($team->roles() as $role)
                                                                         @if (config('neev.roles'))
-                                                                            <option value="{{$role->name}}" x-bind:selected="{{($member->role($team)->first()?->role?->name ?? '') === $role->name}}">{{$role->name}}</option>
+                                                                            <option value="{{$role->name}}" x-bind:selected="role === '{{$role->name}}'">{{$role->name}}</option>
                                                                         @else
-                                                                            <option value="{{$role}}" x-bind:selected="{{($membership->role ?? '') === $role}}">{{$role}}</option>
+                                                                            <option value="{{$role}}" x-bind:selected="role === '{{$role}}'">{{$role}}</option>
                                                                         @endif
                                                                     @endforeach
                                                                 </select>
@@ -308,9 +308,9 @@
                                                                     <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
                                                                         @foreach ($team->roles() as $role)
                                                                             @if (config('neev.roles'))
-                                                                                <option value="{{$role->name}}" x-bind:selected="{{($member->role($team)->first()?->role?->name ?? '') === $role->name}}">{{$role->name}}</option>
+                                                                                <option value="{{$role->name}}" x-bind:selected="role === '{{$role->name}}'">{{$role->name}}</option>
                                                                             @else
-                                                                                <option value="{{$role}}" x-bind:selected="{{($membership->role ?? '') === $role}}">{{$role}}</option>
+                                                                                <option value="{{$role}}" x-bind:selected="role === '{{$role}}'">{{$role}}</option>
                                                                             @endif
                                                                         @endforeach
                                                                     </select>
@@ -396,9 +396,9 @@
                                                                 <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
                                                                     @foreach ($team->roles() as $role)
                                                                         @if (config('neev.roles'))
-                                                                            <option value="{{$role->name}}" x-bind:selected="{{($invitation->role ?? '') === $role->name}}">{{$role->name}}</option>
+                                                                            <option value="{{$role->name}}" x-bind:selected="role === '{{$role->name}}'">{{$role->name}}</option>
                                                                         @else
-                                                                            <option value="{{$role}}" x-bind:selected="{{($invitation->role ?? '') === $role}}">{{$role}}</option>
+                                                                            <option value="{{$role}}" x-bind:selected="role === '{{$role}}'">{{$role}}</option>
                                                                         @endif
                                                                     @endforeach
                                                                 </select>
