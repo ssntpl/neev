@@ -16,7 +16,7 @@ class CleanOldPasswords extends Command
     {
         $oldPasswords = config('neev.password.old_passwords');
         $domainFederation = config('neev.domain_federation');
-        $users = User::all();
+        $users = User::model()->all();
         if (!$users) {
             $this->info('No users found.');
             return;

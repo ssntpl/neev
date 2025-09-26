@@ -11,6 +11,7 @@ return [
     'domain_federation' => false,
     
     'team_model' => Ssntpl\Neev\Models\Team::class,
+    'user_model' => Ssntpl\Neev\Models\User::class,
     'support_username' => false,
     'domain_rules' => [
         DomainRule::mfa(),
@@ -52,7 +53,7 @@ return [
     'password' => [
         'min_length' => 4,
         'max_length' => 16,
-        'combination_types' => ['number'], //['alphabet', 'number', 'symbols'],
+        'combination_types' => [], //['alphabet', 'number', 'symbols'],
         'check_user_columns' => ['name', 'email'],
         'old_passwords' => 5,
         

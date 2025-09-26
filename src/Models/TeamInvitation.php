@@ -2,14 +2,13 @@
 
 namespace Ssntpl\Neev\Models;
 
-use Exception;
 use Illuminate\Database\Eloquent\Model;
 
 class TeamInvitation extends Model
 {
     protected $fillable = [
         'team_id',
-        'role_id',
+        'role',
         'email',
         'expires_at'
     ];
@@ -26,10 +25,5 @@ class TeamInvitation extends Model
     public function team()
     {
         return $this->belongsTo(Team::getClass(),  'team_id');
-    }
-
-    public function role()
-    {
-        return $this->belongsTo(Role::class,  'role_id');
     }
 }

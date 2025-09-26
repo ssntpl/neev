@@ -63,11 +63,11 @@ class UserAuthController extends Controller
     public function registerCreate(Request $request)
     {
         if (config('neev.team') && ($request->id || $request->hash)) {
-            if (! request()->hasValidSignature()) {
+            if (!$request->hasValidSignature()) {
                 return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
             }
-            $invitation = TeamInvitation::find(request()->id);
-            if (!$invitation || sha1($invitation?->email) !== request()->hash) {
+            $invitation = TeamInvitation::find($request->id);
+            if (!$invitation || sha1($invitation?->email) !== $request->hash) {
                 return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
             }
             return view('neev::auth.register', ['id' => $request->id, 'hash' => $request->hash, 'email' => $invitation->email ?? null]);
@@ -77,13 +77,13 @@ class UserAuthController extends Controller
 
     public function emailChangeCreate(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         return view('neev::auth.change-email', ['email' => $user->email]);
     }
 
     public function emailChangeStore(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $email = $user->primaryEmail;
         $email->email = $request->email;
         $email->save();
@@ -108,26 +108,26 @@ class UserAuthController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
+            'email' => 'required|string|lowercase|email|max:255|unique:'.User::getClass(),
             'password' => ['required', 'confirmed', new PasswordValidate, new PasswordLogic],
         ]);
 
         try {
             if (config('neev.support_username')) {
-                $user = User::create([
+                $user = User::model()->create([
                     'name' => $request->name,
                     'email' => $request->email,
                     'username' => $request->username,
                     'password' => Hash::make($request->password),
                 ]);
             } else {
-                $user = User::create([
+                $user = User::model()->create([
                     'name' => $request->name,
                     'email' => $request->email,
                     'password' => Hash::make($request->password),
                 ]);
             } 
-            $user = User::find($user->id);
+            $user = User::model()->find($user->id);
 
             $email = $user->emails()->create([
                 'email' => $request->email
@@ -146,13 +146,10 @@ class UserAuthController extends Controller
                         $email->save();
 
                         $team = $invitation->team;
-                        if (Schema::hasColumn('team_user', 'role') && Schema::hasColumn('team_invitations', 'role')) {  
-                            $team->users()->attach($user, ['role_id' => $invitation->role_id ?? 0, 'role' => $invitation->role ?? '', 'joined' => true]);
-                        } else {
-                            $team->users()->attach($user, ['role_id' => $invitation->role_id ?? 0, 'joined' => true]);
+                        $team->users()->attach($user, ['role' => $invitation->role ?? '', 'joined' => true]);
+                        if (config('neev.roles')) {
+                            $user->assignRole($invitation->role, $team);
                         }
-
-                        
                         $invitation->delete();
                     } else {
                         if (config('neev.domain_federation')) {
@@ -172,11 +169,9 @@ class UserAuthController extends Controller
                                 'is_public' => false,
                             ]);
                         }
-                        
-                        if (Schema::hasColumn('team_user', 'role')) {
-                            $team->users()->attach($user, ['joined' => true, 'role' => 'admin']);
-                        } else {
-                            $team->users()->attach($user, ['joined' => true]);
+                        $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
+                        if (config('neev.roles')) {
+                            $user->assignRole($team->default_role ?? '', $team);
                         }
                     }
 
@@ -220,7 +215,7 @@ class UserAuthController extends Controller
     public function loginPassword(LoginRequest $request)
     {
         if (config('neev.support_username') && !preg_match('/^[\w.%+\-]+@[\w.\-]+\.[A-Za-z]{2,}$/', $request->email)) {
-            $user = User::where('username', $request->email)->first();
+            $user = User::model()->where('username', $request->email)->first();
             if ($user) {
                 $request->merge(['username' => $user->username]);
                 $request->merge(['email' => $user->email]);
@@ -320,7 +315,7 @@ class UserAuthController extends Controller
             'email' => 'required|string|email|max:255|',
         ]);
 
-        $user = User::where('email', $request->email)->first();
+        $user = User::model()->where('email', $request->email)->first();
         $email = $user?->primaryEmail;
         if (!$user || !$email || (config('neev.email_verified') && !$email->verified_at)) {
             return back()->withErrors([
@@ -341,7 +336,7 @@ class UserAuthController extends Controller
     
     public function updatePasswordCreate(Request $request, $id, $hash)
     {
-        $user = User::findOrFail($id);
+        $user = User::model()->findOrFail($id);
     
         if (! $request->hasValidSignature()) {
             return response()->json(['message' => 'Invalid or expired verification link.'], 403);
@@ -380,7 +375,7 @@ class UserAuthController extends Controller
     */
     public function emailVerifyCreate(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         if (!$user) {
             return redirect(route('login'));
         }
@@ -395,7 +390,7 @@ class UserAuthController extends Controller
     */
     public function emailVerifySend(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $email = $request->email ? Email::where('email', $request->email)->firstOrFail() : $user->primaryEmail;
         if ($email->verified_at) {
             return back()->with('status', __('Email already verified.'));
@@ -412,26 +407,24 @@ class UserAuthController extends Controller
     }
 
     public function emailVerifyStore(Request $request, $id, $hash, GeoIP $geoIP) {
-        $user = User::findOrFail($id);
-    
-        if (!$request->hasValidSignature() || !$user) {
-            return response()->json(['message' => 'Invalid or expired verification link.'], 403);
-        }
-    
-        foreach ($user->emails as $email) {
-            if (sha1($email->email) !== $hash) {
-                continue;
+        $user = User::model()->findOrFail($id);
+        $email = null;
+        foreach ($user->emails as $item) {
+            if (sha1($item->email) == $hash) {
+                $email = $item;
+                break;
             }
-            
-            if (!$email->verified_at) {
-                $email->verified_at = now();
-                $email->save();
-            }
-            PasskeyController::login($request, $geoIP, $email->user, LoginHistory::Password);
-            return redirect(config('neev.dashboard_url'));
         }
         
-        return response()->json(['message' => 'Invalid verification hash.'], 403);
+        if (!$email || $email->verified_at) {
+            return redirect(config('neev.dashboard_url'));
+        } else if ($email && $request->hasValidSignature()) {
+            $email->verified_at = now();
+            $email->save();
+            return redirect(config('neev.dashboard_url'));
+        }
+
+        return response()->json(['message' => 'Invalid or expired verification link.'], 403);
     }
 
     /**
@@ -448,7 +441,7 @@ class UserAuthController extends Controller
 
     public function destroyAll(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         
         if (!$request->session_id) {
             if (! Hash::check($request->password, $user->password)) {
@@ -518,7 +511,7 @@ class UserAuthController extends Controller
 
     public function verifyMFAOTPStore(LoginRequest $request, GeoIP $geoIP) {
         $email = Email::where('email', $request->email)->first();
-        $user = $email?->user ?? User::find($request->user()?->id);
+        $user = $email?->user ?? User::model()->find($request->user()?->id);
 
         if (!$user) {
             return back()->withErrors(['message' => 'credentials are wrong.']);

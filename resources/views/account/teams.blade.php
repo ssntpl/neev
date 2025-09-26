@@ -90,11 +90,9 @@
                                                 <p class="text-xs font-semibold text-gray-400 border rounded-full px-1">{{$team->is_public ? 'Public' : 'Private'}}</p>
                                             </a>
                                         </td>
-                                        @if (config('neev.roles'))
-                                            <td class="px-4 py-2 text-center capitalize">
-                                                {{$team->membership->role->name ?? ''}}
-                                            </td>
-                                        @endif
+                                        <td class="px-4 py-2 text-center capitalize">
+                                            {{$team->membership->role ?? ''}}
+                                        </td>
                                         <td class="px-4 py-2 text-end">
                                             <form class="flex gap-4 justify-end" method="POST" action="{{ route('teams.invite.action') }}">
                                                 @csrf
@@ -119,11 +117,9 @@
                                                 <p class="text-xs font-semibold text-gray-400 border rounded-full px-1">{{$invitation->team->is_public ? 'Public' : 'Private'}}</p>
                                             </a>
                                         </td>
-                                        @if (config('neev.roles'))
-                                            <td class="px-4 py-2 text-center capitalize">
-                                                {{$invitation->role->name ?? ''}}
-                                            </td>
-                                        @endif
+                                        <td class="px-4 py-2 text-center capitalize">
+                                            {{$invitation->role ?? ''}}
+                                        </td>
                                         <td class="px-4 py-2 text-end">
                                             <form class="flex gap-4 justify-end" method="POST" action="{{ route('teams.invite.action') }}">
                                                 @csrf
@@ -163,11 +159,9 @@
                                                 <p class="text-xs font-semibold text-gray-400 border rounded-full px-1">{{$team->is_public ? 'Public' : 'Private'}}</p>
                                             </a>
                                         </td>
-                                        @if (config('neev.roles'))
-                                            <td class="px-4 py-2 text-center capitalize">
-                                                {{$team->membership->role->name ?? ''}}
-                                            </td>
-                                        @endif
+                                        <td class="px-4 py-2 text-center capitalize">
+                                            {{$team->membership->role ?? ''}}
+                                        </td>
                                         <td class="px-4 py-2 text-center capitalize">
                                             {{$team->user_id === $user->id ? 'Owner' : 'Member'}}
                                         </td>

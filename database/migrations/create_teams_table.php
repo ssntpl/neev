@@ -30,7 +30,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('team_id')->constrained()->onDelete('cascade');
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->unsignedBigInteger('role_id')->nullable();
+            $table->string('role')->nullable();
             $table->boolean('joined')->default(false);
             $table->enum('action', ['request_to_user', 'request_from_user'])->default('request_to_user');
             $table->timestamps();
@@ -43,7 +43,7 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('teams');
         Schema::dropIfExists('team_user');
+        Schema::dropIfExists('teams');
     }
 };

@@ -2,7 +2,6 @@
 
 namespace Ssntpl\Neev\Models;
 
-use Exception;
 use Illuminate\Database\Eloquent\Model;
 
 class Email extends Model
@@ -19,6 +18,6 @@ class Email extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class, 'user_id');
+        return $this->belongsTo(User::getClass(), 'user_id');
     }
 }

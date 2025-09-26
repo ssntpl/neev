@@ -8,9 +8,13 @@ use Illuminate\Support\ServiceProvider;
 use Ssntpl\Neev\Commands\CleanOldLoginHistory;
 use Ssntpl\Neev\Commands\CleanOldPasswords;
 use Ssntpl\Neev\Commands\CreatePermission;
+use Ssntpl\Neev\Commands\CreateRole;
 use Ssntpl\Neev\Commands\DownloadGeoLiteDb;
 use Ssntpl\Neev\Commands\InstallNeev;
 use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
+use Ssntpl\Neev\Http\Middleware\PermissionMiddleware;
+use Ssntpl\Neev\Http\Middleware\RoleMiddleware;
+use Ssntpl\Neev\Http\Middleware\RoleOrPermissionMiddleware;
 
 class NeevServiceProvider extends ServiceProvider
 {
@@ -18,6 +22,9 @@ class NeevServiceProvider extends ServiceProvider
     {
         $router = $this->app->make(Router::class);
         $router->aliasMiddleware('neev', NeevMiddleware::class);
+        $router->aliasMiddleware('role', RoleMiddleware::class);
+        $router->aliasMiddleware('permission', PermissionMiddleware::class);
+        $router->aliasMiddleware('roleOrPermission', RoleOrPermissionMiddleware::class);
 
         $this->publishes([
             __DIR__.'/../config/neev.php' => config_path('neev.php'),
@@ -63,11 +70,17 @@ class NeevServiceProvider extends ServiceProvider
 
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'neev');
 
-        Blade::anonymousComponentPath(resource_path('views/vendor/neev/components'), 'neev-component');
-        Blade::anonymousComponentPath(resource_path('views/vendor/neev/layouts'), 'neev-layout');
-        
-        Blade::anonymousComponentPath(__DIR__.'/../resources/views/components', 'neev-component');
-        Blade::anonymousComponentPath(__DIR__.'/../resources/views/layouts','neev-layout');
+        Blade::anonymousComponentPath(
+            file_exists(resource_path('views/vendor/neev/components')) 
+                ? resource_path('views/vendor/neev/components')
+                : __DIR__.'/../resources/views/components', 
+            'neev-component');
+
+        Blade::anonymousComponentPath(
+            file_exists(resource_path('views/vendor/neev/layouts'))
+                ? resource_path('views/vendor/neev/layouts')
+                : __DIR__.'/../resources/views/layouts', 
+            'neev-layout');
     }
 
     public function register()
@@ -79,6 +92,7 @@ class NeevServiceProvider extends ServiceProvider
             CleanOldLoginHistory::class,
             CreatePermission::class,
             CleanOldPasswords::class,
+            CreateRole::class,
         ]);
     }
 }
