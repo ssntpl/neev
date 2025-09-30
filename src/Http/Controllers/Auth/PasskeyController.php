@@ -46,7 +46,7 @@ class PasskeyController extends Controller
 {
     public function generateRegistrationOptions(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
 
         $rpName = env('APP_NAME', 'Neev');
         $rpId = parse_url(config('neev.home_url'), PHP_URL_HOST);
@@ -109,7 +109,7 @@ class PasskeyController extends Controller
 
     public function register(Request $request, GeoIP $geoIP)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $input = json_decode($request->attestation, true);
 
         $rpId = parse_url(config('neev.home_url'), PHP_URL_HOST);
@@ -228,7 +228,7 @@ class PasskeyController extends Controller
     }
     
     public function deletePasskey(Request $request) {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $passkey = Passkey::find($request->passkey_id);
         if ($passkey->user_id != $user->id) {
             return back()->withErrors([
@@ -240,7 +240,7 @@ class PasskeyController extends Controller
     }
     
     public function updatePasskeyName(Request $request) {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $passkey = Passkey::find($request->passkey_id);
         if ($passkey->user_id != $user->id) {
             return response()->json([

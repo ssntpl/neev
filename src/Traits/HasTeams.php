@@ -3,7 +3,6 @@
 namespace Ssntpl\Neev\Traits;
 
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Schema;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
 
@@ -32,13 +31,9 @@ trait HasTeams
     public function allTeams()
     {
         $relation = $this->belongsToMany(Team::getClass(), Membership::class)
-            ->withPivot(['role_id', 'joined'])
+            ->withPivot(['role', 'joined'])
             ->withTimestamps()
             ->as('membership');
-        
-        if (Schema::hasColumn('team_user', 'role')) {
-            $relation->withPivot('role');
-        }
 
         return $relation;
     }
@@ -46,14 +41,10 @@ trait HasTeams
     public function teams(): BelongsToMany
     {
         $relation = $this->belongsToMany(Team::getClass(), Membership::class)
-            ->withPivot(['role_id', 'joined'])
+            ->withPivot(['role', 'joined'])
             ->withTimestamps()
             ->as('membership')
             ->where('joined', true);
-
-        if (Schema::hasColumn('team_user', 'role')) {
-            $relation->withPivot('role');
-        }
 
         return $relation;
     }
@@ -61,16 +52,12 @@ trait HasTeams
     public function teamRequests()
     {
         $relation = $this->belongsToMany(Team::getClass(), Membership::class)
-            ->withPivot(['role_id', 'joined', 'action'])
+            ->withPivot(['role', 'joined', 'action'])
             ->withTimestamps()
             ->as('membership')->where([
                 'joined' => false,
                 'action' => 'request_to_user'
             ]);
-
-        if (Schema::hasColumn('team_user', 'role')) {
-            $relation->withPivot('role');
-        }
 
         return $relation;
     }
@@ -78,16 +65,12 @@ trait HasTeams
     public function sendRequests()
     {
         $relation = $this->belongsToMany(Team::getClass(), Membership::class)
-            ->withPivot(['role_id', 'joined', 'action'])
+            ->withPivot(['role', 'joined', 'action'])
             ->withTimestamps()
             ->as('membership')->where([
                 'joined' => false,
                 'action' => 'request_from_user'
             ]);
-        
-        if (Schema::hasColumn('team_user', 'role')) {
-            $relation->withPivot('role');
-        }
 
         return $relation;
     }

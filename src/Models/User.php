@@ -2,19 +2,45 @@
 
 namespace Ssntpl\Neev\Models;
 
-use App\Models\User as AppUser;
+use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Notifications\Notifiable;
 use Ssntpl\Neev\Traits\HasAccessToken;
 use Ssntpl\Neev\Traits\HasMultiAuth;
+use Ssntpl\Neev\Traits\HasRoles;
 use Ssntpl\Neev\Traits\HasTeams;
 use Ssntpl\Neev\Traits\VerifyEmail;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 
-class User extends AppUser
+class User extends Authenticatable
 {
+    use HasFactory, Notifiable;
     use HasTeams;
+    use HasRoles;
     use HasMultiAuth;
     use HasAccessToken;
     use VerifyEmail;
     
+    public static function model() {
+        $class = config('neev.user_model', User::class);
+        return new $class;
+    }
+    
+    public static function getClass() {
+        return config('neev.user_model', User::class);
+    }
+
+    protected $fillable = [
+        'name',
+        'email',
+        'password',
+        'active',
+    ];
+
+    protected $hidden = [
+        'password',
+        'remember_token',
+    ];
+
     public function getProfilePhotoUrlAttribute()
     {
         if ($this->profile_photo_url ?? false) {

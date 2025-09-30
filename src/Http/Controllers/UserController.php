@@ -18,12 +18,12 @@ class UserController extends Controller
 {
     public function profile(Request $request)
     {
-        return view('neev::account.profile', ['user' => User::find($request->user()->id)]);
+        return view('neev::account.profile', ['user' => User::model()->find($request->user()->id)]);
     }
 
     public function emails(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $emailDomain = substr(strrchr($user->email, "@"), 1);
 
         $addEmail = true;
@@ -38,7 +38,7 @@ class UserController extends Controller
 
     public function security(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $emailDomain = substr(strrchr($user->email, "@"), 1);
 
         $deleteAccount = true;
@@ -53,12 +53,12 @@ class UserController extends Controller
 
     public function tokens(Request $request)
     {
-        return view('neev::account.tokens', ['user' => User::find($request->user()->id), 'allPermissions' => config('neev.roles') ? Permission::all() : []]);
+        return view('neev::account.tokens', ['user' => User::model()->find($request->user()->id), 'allPermissions' => config('neev.roles') ? Permission::all() : []]);
     }
 
     public function teams(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $emailDomain = substr(strrchr($user->email, "@"), 1);
 
         $join_team = true;
@@ -90,15 +90,15 @@ class UserController extends Controller
             });
 
         return view('neev::account.sessions', [
-            'user' => User::find($request->user()->id),
+            'user' => User::model()->find($request->user()->id),
             'sessions' => $sessions
         ]);
     }
 
     public function loginHistory(Request $request)
     {
-        $user = User::find($request->user()->id);
-        $history = User::find($user->id)?->loginHistory()?->orderBy('created_at', 'desc')?->get();
+        $user = User::model()->find($request->user()->id);
+        $history = User::model()->find($user->id)?->loginHistory()?->orderBy('created_at', 'desc')?->get();
         return view('neev::account.login-history', [
             'user' => $user,
             'history' => $history,
@@ -107,7 +107,7 @@ class UserController extends Controller
 
     public function profileUpdate(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $user->name = $request->name;
         if (config('neev.support_username')) {
             $user->username = $request->username;
@@ -118,7 +118,7 @@ class UserController extends Controller
 
     public function addEmail(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         if (Email::where('email', $request->email)->first()) {
             return back()->withErrors(['message' => 'Email already exist.']);
         }
@@ -135,7 +135,7 @@ class UserController extends Controller
 
     public function deleteEmail(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
 
         $email = $user->emails->find($request->email_id);
         if (!$email) {
@@ -153,7 +153,7 @@ class UserController extends Controller
 
     public function primaryEmail(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
 
         if (!$user || !$user->emails->where('email', $request->email)->first()?->verified_at) {
             return back()->withErrors(['message' => 'Your primary email was not changed.']);
@@ -172,7 +172,7 @@ class UserController extends Controller
             'password' => ['required', 'confirmed', new PasswordValidate, new PasswordLogic],
         ]);
 
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         if (!Hash::check($request->current_password, $user->password)) {
             return back()->withErrors([
                 'message' => 'Current Password is Wrong.'
@@ -188,7 +188,7 @@ class UserController extends Controller
         $request->validate([
             'password' => ['required'],
         ]);
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         if (!Hash::check($request->password, $user->password)) {
             return back()->withErrors([
                 'message' => 'Password is Wrong.'
@@ -204,7 +204,7 @@ class UserController extends Controller
             'auth_method' => ['required'],
         ]);
 
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         if ($request->action === 'delete') {
             $auth = $user->multiFactorAuth($request->auth_method);
             if (!$auth) {
@@ -234,7 +234,7 @@ class UserController extends Controller
             'auth_method' => ['required'],
         ]);
 
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $auth = $user?->multiFactorAuth($request->auth_method);
         if (!$user || !$auth) {
             return back()->withErrors(['message' => 'Prefered auth was not updated.']);
@@ -249,7 +249,7 @@ class UserController extends Controller
 
     public function recoveryCodes(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         if (count($user->multiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
@@ -258,7 +258,7 @@ class UserController extends Controller
 
     public function generateRecoveryCodes(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         if (count($user->multiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
@@ -268,28 +268,28 @@ class UserController extends Controller
 
     public function tokenStore(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $token = $user->createApiToken($request->name, $request->permissions, $request->expiry);
         return back()->with('token', $token->plainTextToken);
     }
 
     public function tokenDelete(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $user->accessTokens->find($request->token_id)->delete();
         return back()->with('status', 'Token has been deleted.');
     }
 
     public function tokenDeleteAll(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $user->apiTokens()->delete();
         return back()->with('status', 'All tokens have been deleted.');
     }
 
     public function tokenUpdate(Request $request)
     {
-        $user = User::find($request->user()->id);
+        $user = User::model()->find($request->user()->id);
         $token = $user->accessTokens->find($request->token_id);
         if (!$token) {
             return back()->withErrors(['message' => 'Token was not updated.']);

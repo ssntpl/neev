@@ -2,20 +2,15 @@
 
 namespace Ssntpl\Neev\Models;
 
-use Exception;
 use Illuminate\Database\Eloquent\Model;
+use InvalidArgumentException;
 
 class Role extends Model
 {
     protected $fillable = [
         'name',
-        'team_id'
+        'resource_type'
     ];
-
-    public function team()
-    {
-        return $this->belongsTo(Team::getClass(), 'team_id');
-    }
 
     public function permissions()
     {
@@ -24,8 +19,22 @@ class Role extends Model
                 ->as('grant');
     }
 
-    public function syncPermissions(array $permissionIds)
+    public function syncPermissions($permissions)
     {
+        $permissionIds = $permissions?->map(fn ($permission) => $permission->getKey())->toArray();
         return $this->permissions()->sync($permissionIds);
+    }
+
+    public static function findResource($resourceType = '', $id)
+    {
+        if ((!$resourceType || $resourceType == 'Team')) {
+            return Team::model()->find($id)->first();
+        }
+        $class = "App\\Models\\{$resourceType}";
+        if (! class_exists($class)) {
+            throw new InvalidArgumentException("Model class not found: {$class}");
+        }
+
+        return $class::find($id)->first();
     }
 }

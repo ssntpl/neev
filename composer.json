@@ -1,7 +1,6 @@
 {
     "name": "ssntpl/neev",
     "description": "Larave Starter Kit for user management.",
-    "version": "1.0.0",
     "keywords": [
         "laravel", 
         "ssntpl", 

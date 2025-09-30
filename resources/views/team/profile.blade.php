@@ -11,7 +11,7 @@
             </x-slot>
 
             <x-slot name="action">
-                @if ($user->id === $team->user_id || (Schema::hasColumn('team_user', 'role') && $user->teams->find($team->id)->membership->role === 'admin'))
+                @if ($user->id === $team->user_id)
                     <div class="flex items-center gap-4">
                         <div x-show="!editing" class="flex gap-4">
                             <x-neev-component::button x-on:click="editing = true">

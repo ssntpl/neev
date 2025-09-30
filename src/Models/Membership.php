@@ -19,9 +19,4 @@ class Membership extends Pivot
      * @var bool
      */
     public $incrementing = true;
-
-    public function role()
-    {
-        return $this->belongsTo(Role::class);
-    }
 }

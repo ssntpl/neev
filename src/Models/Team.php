@@ -4,10 +4,12 @@ namespace Ssntpl\Neev\Models;
 
 use Exception;
 use Illuminate\Database\Eloquent\Model;
-use Schema;
+use Ssntpl\Neev\Traits\HasRoles;
 
 class Team extends Model
 {
+    use HasRoles;
+
     public static function model() {
         $class = config('neev.team_model', Team::class);
         return new $class;
@@ -36,67 +38,51 @@ class Team extends Model
 
     public function owner()
     {
-        return $this->belongsTo(User::class, 'user_id');
+        return $this->belongsTo(User::getClass(), 'user_id');
     }
 
     public function allUsers()
     {
-        $relation = $this->belongsToMany(User::class, Membership::class)
-            ->withPivot(['role_id', 'joined'])
+        $relation = $this->belongsToMany(User::getClass(), Membership::class)
+            ->withPivot(['role', 'joined'])
             ->withTimestamps()
             ->as('membership');
-
-        if (Schema::hasColumn('team_user', 'role')) {
-            $relation->withPivot('role');
-        }
 
         return $relation;
     }
 
     public function users()
     {
-        $relation = $this->belongsToMany(User::class, Membership::class)
-            ->withPivot(['role_id', 'joined'])
+        $relation = $this->belongsToMany(User::getClass(), Membership::class)
+            ->withPivot(['role', 'joined'])
             ->withTimestamps()
             ->as('membership')->where('joined', true);
-        
-        if (Schema::hasColumn('team_user', 'role')) {
-            $relation->withPivot('role');
-        }
 
         return $relation;
     }
     
     public function joinRequests()
     {
-        $relation = $this->belongsToMany(User::class, Membership::class)
-            ->withPivot(['role_id', 'joined', 'action'])
+        $relation = $this->belongsToMany(User::getClass(), Membership::class)
+            ->withPivot(['role', 'joined', 'action'])
             ->withTimestamps()
             ->as('membership')->where([
                 'joined' => false,
                 'action' => 'request_from_user'
             ]);
 
-        if (Schema::hasColumn('team_user', 'role')) {
-            $relation->withPivot('role');
-        }
-
         return $relation;
     }
     
     public function invitedUsers()
     {
-        $relation = $this->belongsToMany(User::class, Membership::class)
-            ->withPivot(['role_id', 'joined', 'action'])
+        $relation = $this->belongsToMany(User::getClass(), Membership::class)
+            ->withPivot(['role', 'joined', 'action'])
             ->withTimestamps()
             ->as('membership')->where([
                 'joined' => false,
                 'action' => 'request_to_user'
             ]);
-
-        if (Schema::hasColumn('team_user', 'role')) {
-            $relation->withPivot('role');
-        }
 
         return $relation;
     }
@@ -108,11 +94,6 @@ class Team extends Model
         }
 
         $this->users()->detach($user);
-    }
-
-    public function roles()
-    {
-        return $this->hasMany(Role::class);
     }
 
     public function rules()

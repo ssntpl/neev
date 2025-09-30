@@ -1,6 +1,6 @@
 <nav x-data="{ open: false }" class="bg-white dark:bg-gray-800 border-b border-gray-100 dark:border-gray-700">
     @php
-        $user = \Ssntpl\Neev\Models\User::find(Auth::user()->id);
+        $user = \Ssntpl\Neev\Models\User::model()->find(Auth::user()->id);
     @endphp
     <!-- Primary Navigation Menu -->
     <div class="px-6 mx-auto">
@@ -8,7 +8,7 @@
             <div class="flex">
                 <!-- Logo -->
                 <div class="shrink-0 flex items-center">
-                    <a href="{{ route('dashboard') }}">
+                    <a href="{{ config('neev.dashboard_url') }}">
                         <x-application-mark class="block h-9 w-auto" />
                     </a>
                 </div>

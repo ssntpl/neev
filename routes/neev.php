@@ -7,6 +7,12 @@ use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Http\Controllers\RoleController;
 use Ssntpl\Neev\Http\Controllers\TeamController;
 use Ssntpl\Neev\Http\Controllers\UserController;
+use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Models\User;
+
+Route::bind('user', fn($value) => User::model()->findOrFail($value));
+
+Route::bind('team', fn($value) => Team::model()->findOrFail($value));
 
 Route::middleware('web')->group(function () {
     Route::get('/register', [UserAuthController::class, 'registerCreate'])
@@ -143,8 +149,6 @@ Route::middleware( ['web', 'neev'])->group(function () {
             ->name('teams.create');
         Route::get('/{team}/members', [TeamController::class, 'members'])
             ->name('teams.members');
-        Route::get('/{team}/roles', [TeamController::class, 'roles'])
-            ->name('teams.roles');
         Route::get('/{team}/domain', [TeamController::class, 'domain'])
             ->name('teams.domain');
         Route::get('/{team}/settings', [TeamController::class, 'settings'])
@@ -160,6 +164,8 @@ Route::middleware( ['web', 'neev'])->group(function () {
             ->name('teams.invite');
         Route::delete('/members/leave', [TeamController::class, 'leave'])
             ->name('teams.leave');
+        Route::put('/roles/change', [RoleController::class, 'roleChange'])
+            ->name('teams.roles.change');
         Route::put('/members/invite/action', [TeamController::class, 'inviteAction'])
             ->name('teams.invite.action');
         Route::post('/members/request', [TeamController::class, 'request'])
@@ -168,20 +174,9 @@ Route::middleware( ['web', 'neev'])->group(function () {
             ->name('teams.request.action');
         Route::put('/owner/change', [TeamController::class, 'ownerChange'])
             ->name('teams.owner.change');
-        Route::put('/roles/change', [RoleController::class, 'roleChange'])
-            ->name('teams.roles.change');
-        Route::post('/roles/store', [RoleController::class, 'store'])
-            ->name('teams.roles.store');
-        Route::delete('/roles', [RoleController::class, 'delete'])
-            ->name('teams.roles.delete');
-        Route::put('/roles/permissions/update', [RoleController::class, 'updatePermission'])
-            ->name('roles.permissions.update');
-        Route::post('/{team}/domain', [TeamController::class, 'federateDomain'])
-            ->name('teams.domain');
-        Route::put('/{team}/domain', [TeamController::class, 'updateDomain'])
-            ->name('teams.domain');
-        Route::delete('/{team}/domain', [TeamController::class, 'deleteDomain'])
-            ->name('teams.domain');
+        Route::post('/{team}/domain', [TeamController::class, 'federateDomain']);
+        Route::put('/{team}/domain', [TeamController::class, 'updateDomain']);
+        Route::delete('/{team}/domain', [TeamController::class, 'deleteDomain']);
         Route::put('/{team}/domain/rules', [TeamController::class, 'updateDomainRule'])
             ->name('domain.rules');
     });

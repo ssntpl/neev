@@ -30,7 +30,7 @@ class LoginHistory extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::class,'user_id');
+        return $this->belongsTo(User::getClass(),'user_id');
     }
     
     public static function getClientDetails(Request $request = null, $userAgent = null): array
