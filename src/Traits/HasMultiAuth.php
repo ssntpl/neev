@@ -36,15 +36,15 @@ trait HasMultiAuth
 
     public function addMultiFactorAuth($method) {
         switch ($method) {
-            case MultiFactorAuth::authenticator():
-                $auth = $this->multiFactorAuth(MultiFactorAuth::authenticator());
+            case 'authenticator':
+                $auth = $this->multiFactorAuth($method);
                 $secret = $auth?->secret ?? Base32::encodeUpper(random_bytes(32));
                 $totp = TOTP::create($secret);
                 $totp->setLabel($this->email);
                 $totp->setIssuer(env('APP_NAME', 'Neev')); 
                 if (!$auth) {
                     $this->multiFactorAuths()->create([
-                        'method' => MultiFactorAuth::authenticator(),
+                        'method' => $method,
                         'prefered' => !$this->preferedMultiFactorAuth?->prefered,
                         'secret' => $totp->getSecret(),
                     ]);
@@ -67,14 +67,14 @@ trait HasMultiAuth
                     'method' => $method,
                 ]);
                 
-            case MultiFactorAuth::email():
-                $auth = $this->multiFactorAuth(MultiFactorAuth::email());
+            case 'email':
+                $auth = $this->multiFactorAuth($method);
                 if ($auth) {
                     return back()->withErrors(['message' => 'Email already Configured.']);
                 }
                 
                 $this->multiFactorAuths()->create([
-                    'method' => MultiFactorAuth::email(),
+                    'method' => $method,
                     'prefered' => !$this->preferedMultiFactorAuth?->prefered,
                 ]);
 
@@ -95,13 +95,13 @@ trait HasMultiAuth
         }
 
         switch ($auth?->method ?? $method) {
-            case MultiFactorAuth::authenticator():
+            case 'authenticator':
                 $totp = TOTP::create(secret: $auth->secret);
                 $auth->last_used = now();
                 $auth->save();
                 return $totp->verify(otp: $otp, timestamp: null, leeway: 29);
 
-            case MultiFactorAuth::email():
+            case 'email':
                 if ($auth->otp == $otp && now()->lt($auth->expires_at)) {
                     $auth->otp = null;
                     $auth->expires_at = null;

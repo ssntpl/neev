@@ -50,16 +50,14 @@
                             </select>
                         </div>
                         
-                        @if (config('neev.roles'))
-                            <div class="flex px-4 justify-start text-start items-center w-1/4" >
-                                <template x-for="permission in newSelected" x-bind:key="permission">
-                                    <input type="hidden" name="permissions[]" x-bind:value="permission">
-                                </template>
-                                <div @click="openModal(0)" class="underline cursor-pointer hover:text-gray-500">
-                                    Permissions (<span x-text="newSelected.length"></span>)
-                                </div>
+                        <div class="flex px-4 justify-start text-start items-center w-1/4" >
+                            <template x-for="permission in newSelected" x-bind:key="permission">
+                                <input type="hidden" name="permissions[]" x-bind:value="permission">
+                            </template>
+                            <div @click="openModal(0)" class="underline cursor-pointer hover:text-gray-500">
+                                Permissions (<span x-text="newSelected.length"></span>)
                             </div>
-                        @endif
+                        </div>
                     </div>
 
                     <div class="relative flex items-center justify-end">
@@ -101,9 +99,7 @@
                                         </td>
                                         <td class="px-6 py-4 text-center">{{ $token->created_at?->diffForHumans() ?? '--' }}</td>
                                         <td class="px-6 py-4 flex gap-4 items-center justify-end">
-                                            @if (config('neev.roles'))
-                                                <div @click="openModal('{{$token->id}}', @js($token->permissions))" class="underline cursor-pointer">Permissions (<span>{{in_array('*', $token->permissions) ? '*' : count($token->permissions)}}</span>)</div>
-                                            @endif
+                                            <div @click="openModal('{{$token->id}}', @js($token->permissions))" class="underline cursor-pointer">Permissions (<span>{{in_array('*', $token->permissions) ? '*' : count($token->permissions)}}</span>)</div>
                                             <form method="POST" action="{{route('tokens.delete')}}">
                                                 @csrf
                                                 @method('DELETE')

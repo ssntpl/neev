@@ -20,10 +20,6 @@ class RoleOrPermissionMiddleware
 
         $user = User::model()->find($user?->id);
 
-        if (!config('neev.roles')) {
-            return $next($request);
-        }
-
         $resourceId = $request->route('team') ?? $request->resource_id;
         if (!$resourceId) {
             return response()->json(['message' => 'Resource not found'], 404);

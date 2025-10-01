@@ -9,9 +9,9 @@
                 {{__('Multi-factor authentication')}}
             </div>
             <p>
-                @if ($method === Ssntpl\Neev\Models\MultiFactorAuth::authenticator())
+                @if ($method === 'authenticator')
                     {{ __('Enter the code from your multi-factor authentication app or browser extension below.') }}
-                @elseif ($method === Ssntpl\Neev\Models\MultiFactorAuth::email())
+                @elseif ($method === 'email')
                     {{ __('We’ve sent a code to your email address. Enter it below.') }}
                 @endif
             </p>
@@ -53,7 +53,7 @@
                 @endphp
                 <div x-show="openMethod" x-transition class="flex flex-col gap-4 mt-4">
                     <div class="border-t border border-4 border-gray-200 dark:border-gray-700"></div>
-                    @if ($method === Ssntpl\Neev\Models\MultiFactorAuth::email())
+                    @if ($method === 'email')
                         <form method="POST" action="{{ route('otp.mfa.send') }}">
                             @csrf
 
@@ -66,7 +66,7 @@
                     @endif
                     @foreach ($user?->multiFactorAuths()->whereNot('method', $method)->get() as $auth)
                         <a href="{{route('otp.mfa.create', $auth->method)}}">
-                            <x-neev-component::secondary-button class="w-full flex justify-center">{{Ssntpl\Neev\Models\MultiFactorAuth::UIName($auth->method)}}</x-neev-component::secondary-button>
+                            <x-neev-component::secondary-button class="w-full flex justify-center">{{$auth->method}}</x-neev-component::secondary-button>
                         </a>
                     @endforeach
                     <a href="{{route('otp.mfa.create', 'recovery')}}">

@@ -42,7 +42,7 @@
                                     <x-neev-component::label for="role" value="{{ __('Role') }}" />
                                     <select name="role" id="role" class="w-full border rounded-md p-2">
                                         @foreach ($team->roles() ?? [] as $role)
-                                            @if (config('neev.roles'))
+                                            @if ($role?->name)
                                                 <option value="{{$role->name}}">{{$role->name}}</option>
                                             @else
                                                 <option value="{{$role}}">{{$role}}</option>
@@ -109,7 +109,7 @@
                                                 <x-neev-component::label for="role" value="{{ __('Role') }}" />
                                                 <select name="role" id="role" class="w-full border rounded-md p-2">
                                                     @foreach ($team->roles() as $role)
-                                                        @if (config('neev.roles'))
+                                                        @if ($role?->name)
                                                             <option value="{{$role->name}}">{{$role->name}}</option>
                                                         @else
                                                             <option value="{{$role}}">{{$role}}</option>
@@ -122,9 +122,7 @@
                                             <div class="flex gap-4 justify-end">
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                 <input type="hidden" name="user_id" value="{{ $member->id }}">
-                                                @if (config('neev.roles'))
-                                                    <input type="hidden" name="resource_type" value="{{ class_basename(Ssntpl\Neev\Models\Team::class) }}">
-                                                @endif
+                                                <input type="hidden" name="resource_type" value="{{ class_basename(Ssntpl\Neev\Models\Team::class) }}">
                                                 <x-neev-component::button name="action" value="accept">
                                                     {{ __('Accept') }}
                                                 </x-neev-component::button>
@@ -179,14 +177,12 @@
 
                                                             <input type="hidden" name="resource_id" value="{{ $team->id }}">
                                                             <input type="hidden" name="user_id" value="{{ $member->id }}">
-                                                            @if (config('neev.roles'))
-                                                                <input type="hidden" name="resource_type" value="{{ class_basename(Ssntpl\Neev\Models\Team::class) }}">
-                                                            @endif
+                                                            <input type="hidden" name="resource_type" value="{{ class_basename(Ssntpl\Neev\Models\Team::class) }}">
                                                             <div class="mt-4 flex gap-2 items-center w-2/3">
                                                                 <x-neev-component::label for="role" value="{{ __('Role') }}" />
                                                                 <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
                                                                     @foreach ($team->roles() as $role)
-                                                                        @if (config('neev.roles'))
+                                                                        @if ($role?->name)
                                                                             <option value="{{$role->name}}" x-bind:selected="role === '{{$role->name}}'">{{$role->name}}</option>
                                                                         @else
                                                                             <option value="{{$role}}" x-bind:selected="role === '{{$role}}'">{{$role}}</option>
@@ -283,54 +279,50 @@
                                         </div>
                                     </td>
                                     @if ($team->owner->id === $user->id)
-                                        @if (config('neev.roles'))
-                                            <td class="px-4 py-2 text-center capitalize">
-                                                <div class="text-start" x-data="{ show: false, role: @js($member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '')), userRole: @js($member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '')) }">
-                                                    <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '--')}}</button>
-                                                    <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
-                                                        <x-slot name="title">
+                                        <td class="px-4 py-2 text-center capitalize">
+                                            <div class="text-start" x-data="{ show: false, role: @js($member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '')), userRole: @js($member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '')) }">
+                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '--')}}</button>
+                                                <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                                    <x-slot name="title">
+                                                        {{ __('Change Role') }}
+                                                    </x-slot>
+                                                    
+                                                    <x-slot name="content">
+                                                        <p>{{$member->name}}</p>
+                                                        <form method="POST" action="{{ route('teams.roles.change') }}" x-ref="changeRoleForm" @keydown.enter.prevent="if (role !== userRole) { $refs.changeRoleForm.submit() }">
+                                                            @csrf
+                                                            @method('PUT')
+
+                                                            <input type="hidden" name="resource_id" value="{{ $team->id }}">
+                                                            <input type="hidden" name="user_id" value="{{ $member->id }}">
+                                                            <input type="hidden" name="resource_type" value="{{ class_basename(Ssntpl\Neev\Models\Team::class) }}">
+                                                            <div class="mt-4 flex gap-2 items-center w-2/3">
+                                                                <x-neev-component::label for="role" value="{{ __('Role') }}" />
+                                                                <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
+                                                                    @foreach ($team->roles() as $role)
+                                                                        @if ($role?->name)
+                                                                            <option value="{{$role->name}}" x-bind:selected="role === '{{$role->name}}'">{{$role->name}}</option>
+                                                                        @else
+                                                                            <option value="{{$role}}" x-bind:selected="role === '{{$role}}'">{{$role}}</option>
+                                                                        @endif
+                                                                    @endforeach
+                                                                </select>
+                                                            </div>
+                                                        </form>
+                                                    </x-slot>
+
+                                                    <x-slot name="footer">
+                                                        <x-neev-component::secondary-button @click="show = false">
+                                                            {{ __('Cancel') }}
+                                                        </x-neev-component::secondary-button>
+
+                                                        <x-neev-component::button type="submit" x-bind:disabled="role === userRole" class="ms-3" @click.prevent="$refs.changeRoleForm.submit()">
                                                             {{ __('Change Role') }}
-                                                        </x-slot>
-                                                        
-                                                        <x-slot name="content">
-                                                            <p>{{$member->name}}</p>
-                                                            <form method="POST" action="{{ route('teams.roles.change') }}" x-ref="changeRoleForm" @keydown.enter.prevent="if (role !== userRole) { $refs.changeRoleForm.submit() }">
-                                                                @csrf
-                                                                @method('PUT')
-
-                                                                <input type="hidden" name="resource_id" value="{{ $team->id }}">
-                                                                <input type="hidden" name="user_id" value="{{ $member->id }}">
-                                                                @if (config('neev.roles'))
-                                                                    <input type="hidden" name="resource_type" value="{{ class_basename(Ssntpl\Neev\Models\Team::class) }}">
-                                                                @endif
-                                                                <div class="mt-4 flex gap-2 items-center w-2/3">
-                                                                    <x-neev-component::label for="role" value="{{ __('Role') }}" />
-                                                                    <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
-                                                                        @foreach ($team->roles() as $role)
-                                                                            @if (config('neev.roles'))
-                                                                                <option value="{{$role->name}}" x-bind:selected="role === '{{$role->name}}'">{{$role->name}}</option>
-                                                                            @else
-                                                                                <option value="{{$role}}" x-bind:selected="role === '{{$role}}'">{{$role}}</option>
-                                                                            @endif
-                                                                        @endforeach
-                                                                    </select>
-                                                                </div>
-                                                            </form>
-                                                        </x-slot>
-
-                                                        <x-slot name="footer">
-                                                            <x-neev-component::secondary-button @click="show = false">
-                                                                {{ __('Cancel') }}
-                                                            </x-neev-component::secondary-button>
-
-                                                            <x-neev-component::button type="submit" x-bind:disabled="role === userRole" class="ms-3" @click.prevent="$refs.changeRoleForm.submit()">
-                                                                {{ __('Change Role') }}
-                                                            </x-neev-component::button>
-                                                        </x-slot>
-                                                    </x-neev-component::dialog-modal>
-                                                </div>
-                                            </td>
-                                        @endif
+                                                        </x-neev-component::button>
+                                                    </x-slot>
+                                                </x-neev-component::dialog-modal>
+                                            </div>
+                                        </td>
                                         <td class="px-4 py-2"></td>
                                         <td class="px-4 py-2 text-center">
                                             <form method="POST" action="{{route('teams.invite')}}">
@@ -395,7 +387,7 @@
                                                                 <x-neev-component::label for="role" value="{{ __('Role') }}" />
                                                                 <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
                                                                     @foreach ($team->roles() as $role)
-                                                                        @if (config('neev.roles'))
+                                                                        @if ($role?->name)
                                                                             <option value="{{$role->name}}" x-bind:selected="role === '{{$role->name}}'">{{$role->name}}</option>
                                                                         @else
                                                                             <option value="{{$role}}" x-bind:selected="role === '{{$role}}'">{{$role}}</option>
@@ -449,11 +441,9 @@
                                             </form>
                                         </td>
                                     @else
-                                        @if (config('neev.roles'))
-                                            <td class="px-4 py-2 text-center capitalize">
-                                                {{ $invitation->role ?? ''}}
-                                            </td>
-                                        @endif
+                                        <td class="px-4 py-2 text-center capitalize">
+                                            {{ $invitation->role ?? '--'}}
+                                        </td>
                                         <td class="px-4 py-2">
                                             <div class="flex justify-center items-center">
                                                 <p class="text-sm">{{$invitation->expires_at}}</p>

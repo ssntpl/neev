@@ -49,7 +49,7 @@ class PasskeyController extends Controller
         $user = User::model()->find($request->user()->id);
 
         $rpName = env('APP_NAME', 'Neev');
-        $rpId = parse_url(config('neev.home_url'), PHP_URL_HOST);
+        $rpId = parse_url(config('app.url',), PHP_URL_HOST);
         $rpEntity = new PublicKeyCredentialRpEntity($rpName, $rpId);
 
         $userId = strval($user->id);
@@ -112,7 +112,7 @@ class PasskeyController extends Controller
         $user = User::model()->find($request->user()->id);
         $input = json_decode($request->attestation, true);
 
-        $rpId = parse_url(config('neev.home_url'), PHP_URL_HOST);
+        $rpId = parse_url(config('app.url'), PHP_URL_HOST);
         $challenge = Base64UrlSafe::decode($input['challenge']);
         if (!$challenge) {
             return back()->withErrors(['message' => 'Passkey was not added.']);
@@ -269,7 +269,7 @@ class PasskeyController extends Controller
             ];
         }
 
-        $rpId = parse_url(config('neev.home_url'), PHP_URL_HOST);
+        $rpId = parse_url(config('app.url'), PHP_URL_HOST);
         $challenge = random_bytes(32);
         $base64Challenge = Base64UrlSafe::encode($challenge);
         $options = new PublicKeyCredentialRequestOptions(
@@ -313,7 +313,7 @@ class PasskeyController extends Controller
 
         $credential = new PublicKeyCredential($type, $rawId, $response);
 
-        $rpId = parse_url(config('neev.home_url'), PHP_URL_HOST);
+        $rpId = parse_url(config('app.url'), PHP_URL_HOST);
         $challenge = Base64UrlSafe::decode($input['challenge']);
 
         $options = new PublicKeyCredentialRequestOptions(

@@ -14,7 +14,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
      * @var string
      */
     protected $signature = 'neev:install    {teams : Indicates if team support should be installed}
-                                            {roles : Indicates if roles support should be installed}
                                             {verification : Indicates if email verification support should be installed}
                                             {domain_federation : Indicates if domain federation support should be installed}';
 
@@ -37,14 +36,13 @@ class InstallNeev extends Command implements PromptsForMissingInput
         $this->callSilent('vendor:publish', ['--tag' => 'neev-routes', '--force' => true]);
         
         $file = config_path('neev.php');
+        
+        $this->installRole();
 
         if ($this->argument('teams') === 'yes') {
             $this->installTeam();
         }
         
-        if ($this->argument('roles') === 'yes') {
-            $this->installRole();
-        }
 
         if ($this->argument('domain_federation') === 'yes') {
             $this->replaceInFile("'domain_federation' => false,", "'domain_federation' => true,", $file);
@@ -67,8 +65,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
     }
   
     protected function installRole() {
-        $this->replaceInFile("'roles' => false", "'roles' => true", config_path('neev.php'));
-
         $this->callSilent('vendor:publish', ['--tag' => 'neev-role-migrations', '--force' => true]);
     }
 
@@ -100,15 +96,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
                     'no' => 'No'
                 ],
                 default: 'yes'
-            ),
-            
-            'roles' => fn () => select(
-                label: 'Would you like to install role support?',
-                options: [
-                    'yes' => 'Yes',
-                    'no' => 'No'
-                ],
-                default: 'no'
             ),
 
             'verification' => fn () => select(

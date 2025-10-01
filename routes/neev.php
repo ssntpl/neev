@@ -26,6 +26,9 @@ Route::middleware('web')->group(function () {
     Route::put('/login', [UserAuthController::class, 'loginPassword'])
         ->name('login.password');
 
+    Route::post('/login/link', [UserAuthController::class, 'sendLoginLink'])
+        ->name('login.link.send');
+
     Route::get('/login/{id}/{hash}', [UserAuthController::class, 'loginUsingLink'])
         ->name('login.link');
 
