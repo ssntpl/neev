@@ -37,7 +37,7 @@ return new class extends Migration
             $table->string('model_type');
             $table->unsignedBigInteger('resource_id');
             $table->string('resource_type');
-            $table->unique(['model_id', 'model_type', 'resource_id', 'resource_type']);
+            $table->unique(['model_id', 'model_type', 'resource_id', 'resource_type'], 'model_resource_unique');
         });
     }
 

@@ -9,9 +9,6 @@ trait HasRoles
 {
     public function roles()
     {
-        if (!config('neev.roles')) {
-            return [];
-        }
         return Role::where('resource_type', class_basename($this))->get();
     }
 

@@ -92,7 +92,7 @@ class TeamController extends Controller
             ]);
 
             $team->users()->attach($user, ['joined' => true]);
-            if (config('neev.roles')) {
+            if ($team->default_role) {
                 $user->assignRole($team->default_role ?? '', $team);
             }
         } catch (Exception $e) {
@@ -125,9 +125,7 @@ class TeamController extends Controller
                 return back()->withErrors(['message' => 'You cannot delete this team.']);
             }
             $team->delete();
-            if (config('neev.roles')) {
-                $user->role($team)->delete();
-            }
+            $user->role($team)?->delete();
         } catch (Exception $e) {
             return back()->withErrors(['message' => 'Failed to delete team.']);
         }
@@ -172,7 +170,7 @@ class TeamController extends Controller
                 return back()->with(['status' => 'User already added.']);
             } else if (!$team->allUsers->contains($member)) {
                 $team->users()->attach($member, ['role' => $request->role]);
-                if (config('neev.roles')) {
+                if ($request->role) {
                     $user->assignRole($request->role, $team);
                 }
             }
@@ -218,9 +216,7 @@ class TeamController extends Controller
             }
 
             $team->users()->detach($user);
-            if (config('neev.roles')) {
-                $user->role($team)->delete();
-            }
+            $user->role($team)?->delete();
         } catch (Exception $e) {
             return back()->withErrors(['message' => 'Failed to leave from team.']);
         }
@@ -247,7 +243,7 @@ class TeamController extends Controller
                     }
                     if (!$team->allUsers->contains($user)) {
                         $team->allUsers()->attach($user, ['joined' => true, 'role' => $invitation->role]);
-                        if (config('neev.roles')) {
+                        if ($invitation?->role) {
                             $user->assignRole($invitation->role, $team);
                         }
                     }
@@ -258,9 +254,7 @@ class TeamController extends Controller
                 $team = Team::model()->find($request->team_id);
                 if ($request->action == 'reject') {
                     $team->allUsers()->detach($user);
-                    if (config('neev.roles')) {
-                        $user->role($team)->delete();
-                    }
+                    $user->role($team)?->delete();
                     return back()->with('status', 'Rejected Successfully');
                 } elseif ($request->action == 'accept') {
                     $membership = $team->invitedUsers->where('id', $user->id)->first()->membership;
@@ -318,7 +312,7 @@ class TeamController extends Controller
                 $membership->joined = true;
                 $membership->role = $request->role;
                 $membership->save();
-                if (config('neev.roles')) {
+                if ($request->role) {
                     $user->assignRole($request->role, $team);
                 }
                 return back()->with('status', 'Request Accepted');

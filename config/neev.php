@@ -1,21 +1,19 @@
 <?php
 
 use Ssntpl\Neev\Models\DomainRule;
-use Ssntpl\Neev\Models\MultiFactorAuth;
-use Ssntpl\Neev\Models\User;
 
 return [
     'team' => false,
-    'roles' => false,
     'email_verified' => false,
     'domain_federation' => false,
     
     'team_model' => Ssntpl\Neev\Models\Team::class,
     'user_model' => Ssntpl\Neev\Models\User::class,
+
     'support_username' => false,
     'domain_rules' => [
-        DomainRule::mfa(),
-        DomainRule::passkey(),
+        DomainRule::mfa(), // allow compalsory mfa
+        DomainRule::passkey(), // member may add passkeys
         DomainRule::oauth(),
         DomainRule::pass_min_len(),
         DomainRule::pass_max_len(),
@@ -27,19 +25,20 @@ return [
         DomainRule::pass_columns(),
     ],
 
-    'home_url' => env('APP_URL'),
     'dashboard_url' => env('APP_URL').'/dashboard',
 
     'multi_factor_auth' => [
-        MultiFactorAuth::authenticator(),
-        MultiFactorAuth::email(),
+        'authenticator',
+        'email',
     ],
 
     'recovery_codes' => 16,
 
     'oauth' => [
-        User::google(),
-        User::github(),
+        // 'google',
+        // 'github',
+        // 'microsoft',
+        // 'apple',
     ],
 
     'magicauth' => true,

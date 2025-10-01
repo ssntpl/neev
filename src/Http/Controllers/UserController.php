@@ -53,7 +53,7 @@ class UserController extends Controller
 
     public function tokens(Request $request)
     {
-        return view('neev::account.tokens', ['user' => User::model()->find($request->user()->id), 'allPermissions' => config('neev.roles') ? Permission::all() : []]);
+        return view('neev::account.tokens', ['user' => User::model()->find($request->user()->id), 'allPermissions' => Permission::all()]);
     }
 
     public function teams(Request $request)

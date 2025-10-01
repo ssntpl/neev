@@ -21,21 +21,28 @@
                             </form>
                         @endforeach
                     @endif
-                </div>
-
-                @if (($isDomainFederated && $rules['passkey']) || !$isDomainFederated)
                     {{-- Passkey --}}
                     <form id="login-form" method="POST" action="{{ route('passkeys.login') }}">
                         @csrf
                         <input id="email" type="hidden" name="email" value="{{$email}}" required />
-
+    
                         <input type="hidden" name="assertion" id="assertion">
-
+    
                         <x-neev-component::secondary-button type="button" id="login-button">
                             {{__('Login with Passkey')}}
                         </x-neev-component::secondary-button>
                     </form>
-                @endif
+                    @if (config('neev.magicauth'))
+                        <form method="POST" action="{{ route('login.link.send') }}">
+                            @csrf
+                            <input type="hidden" name="email" value="{{$email}}" required>
+                            <x-neev-component::secondary-button type="submit" class="ms-2">
+                                {{ __('Login Via Link') }}
+                            </x-neev-component::secondary-button>
+                        </form>
+                    @endif
+                </div>
+
             </div>
             <div class="border rounded-lg p-4">
                 <div class="mb-4 text-sm text-gray-600 dark:text-gray-400">

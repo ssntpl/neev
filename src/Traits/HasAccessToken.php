@@ -11,7 +11,7 @@ trait HasAccessToken
 {
     public function createApiToken(?string $name = null, ?array $permissions = null, ?int $expiry = null)
     {
-        if (config('neev.roles') && count($permissions ?? []) === count(Permission::all())) {
+        if (count($permissions ?? []) === count(Permission::all())) {
             $permissions = ['*'];
         }
         $plainTextToken = hash('sha256', Str::random(40));

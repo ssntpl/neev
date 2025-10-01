@@ -24,12 +24,6 @@
                     <x-neev-component::button type="submit" class="ms-2">
                         {{ __('Continue') }}
                     </x-neev-component::button>
-
-                    @if (config('neev.magicauth'))
-                        <x-neev-component::button type="submit" class="ms-2" name="action" value="link">
-                            {{ __('Send Login Link') }}
-                        </x-neev-component::button>
-                    @endif
                 </div>
             </div>
         </form>

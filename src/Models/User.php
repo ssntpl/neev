@@ -108,24 +108,4 @@ class User extends Authenticatable
         $this->active = false;
         return $this->save();
     }
-    
-    public static function google()
-    {
-        return 'google';
-    }
-    
-    public static function github()
-    {
-        return 'github';
-    }
-    
-    public static function microsoft()
-    {
-        return 'microsoft';
-    }
-    
-    public static function apple()
-    {
-        return 'apple';
-    }
 }
