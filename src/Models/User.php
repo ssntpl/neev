@@ -31,14 +31,8 @@ class User extends Authenticatable
 
     protected $fillable = [
         'name',
-        'email',
-        'password',
+        'username',
         'active',
-    ];
-
-    protected $hidden = [
-        'password',
-        'remember_token',
     ];
 
     public function getProfilePhotoUrlAttribute()
@@ -49,38 +43,29 @@ class User extends Authenticatable
         return collect(explode(' ', $this->name))->map(fn($word) => strtoupper(substr($word, 0, 1)))->join('');;
     }
 
-    protected static function booted()
-    {
-        static::created(function ($user) {
-            PasswordHistory::create([
-                'user_id' => $user->id ?? null,
-                'password' => $user->password,
-            ]);
-        });
-
-        static::updated(function ($user) {
-            if ($user->isDirty('password')) {
-                PasswordHistory::create([
-                'user_id' => $user->id,
-                'password' => $user->password,
-            ]);
-            }
-        });
-    }
-
-    public function loginHistory()
-    {
-        return $this->hasMany(LoginHistory::class);
-    }
-
     public function emails()
     {
         return $this->hasMany(Email::class);
     }
 
-    public function primaryEmail()
+    public function email()
     {
-        return $this->hasOne(Email::class)->where('email', $this->email);
+        return $this->hasOne(Email::class)->where('is_primary', true);
+    }
+    
+    public function passwords()
+    {
+        return $this->hasMany(Password::class);
+    }
+
+    public function password()
+    {
+        return $this->hasOne(Password::class)->orderByDesc('created_at')->limit(1);
+    }
+
+    public function loginHistory()
+    {
+        return $this->hasMany(LoginHistory::class);
     }
 
     public function OTP($method = null)

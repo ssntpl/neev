@@ -53,7 +53,7 @@
                                 <td class="px-6 py-2 text-start">
                                     <div class="flex gap-2">
                                         <p>{{ $email->email ?? '--' }}</p>
-                                        @if ($email->email === $user->email)
+                                        @if ($email->email === $user->email->email)
                                             <span class="border border-blue-600 text-xs tracking-tight text-blue-600 rounded-full px-2">{{ 'Primary' }}</span>
                                         @endif
 
@@ -84,7 +84,7 @@
                                             @method('DELETE')
 
                                             <input type="hidden" name="email_id" value="{{$email->id}}">
-                                            <x-neev-component::danger-button x-bind:disabled="{{$email->email === $user->email ? 'true' : 'false'}}" type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete the email?')}}')) $el.closest('form').submit();">{{ __('Delete') }}</x-neev-component::danger-button>
+                                            <x-neev-component::danger-button x-bind:disabled="{{$email->email === $user->email->email ? 'true' : 'false'}}" type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete the email?')}}')) $el.closest('form').submit();">{{ __('Delete') }}</x-neev-component::danger-button>
                                         </form>
                                     </div>
                                 </td>
@@ -102,7 +102,7 @@
                         @method('PUT')
                         <select name="email" class="border rounded-md px-2 py-1" onchange="this.form.submit()">
                             @foreach ($user->emails->whereNotIn('verified_at', ['', null]) as $email)
-                                <option value="{{$email->email}}" x-bind:selected="{{$user->email === $email->email ? 'true' : 'false'}}">{{$email->email}}</option>
+                                <option value="{{$email->email}}" x-bind:selected="{{$user->email->email === $email->email ? 'true' : 'false'}}">{{$email->email}}</option>
                             @endforeach
                         </select>
                     </form>

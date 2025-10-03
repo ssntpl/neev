@@ -50,8 +50,8 @@ return [
     'maxmind_license_key' => env('MAXMIND_LICENSE_KEY'),
 
     'password' => [
-        'min_length' => 4,
-        'max_length' => 16,
+        'min_length' => 8,
+        'max_length' => 72,
         'combination_types' => [], //['alphabet', 'number', 'symbols'],
         'check_user_columns' => ['name', 'email'],
         'old_passwords' => 5,

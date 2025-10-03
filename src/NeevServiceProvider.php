@@ -31,28 +31,25 @@ class NeevServiceProvider extends ServiceProvider
         ], 'neev-config');
 
         $this->publishes([
-            __DIR__ . '/../database/migrations/create_login_history_table.php' => database_path('migrations/2025_01_01_000000_create_login_history_table.php'),
-            __DIR__.'/../database/migrations/create_otp_table.php' => database_path('migrations/2025_01_01_000001_create_otp_table.php'),
-            __DIR__.'/../database/migrations/create_emails_table.php' => database_path('migrations/2025_01_01_000004_create_emails_table.php'),
+            __DIR__.'/../database/migrations/create_users_table.php' => database_path('migrations/2025_01_01_000001_create_users_table.php'),
+            __DIR__ . '/../database/migrations/create_login_history_table.php' => database_path('migrations/2025_01_01_000002_create_login_history_table.php'),
+            __DIR__.'/../database/migrations/create_roles_table.php' => database_path('migrations/2025_01_01_000003_create_role_table.php'),
+            __DIR__.'/../database/migrations/create_otp_table.php' => database_path('migrations/2025_01_01_000004_create_otp_table.php'),
             __DIR__.'/../database/migrations/create_passkeys_table.php' => database_path('migrations/2025_01_01_000005_create_passkeys_table.php'),
             __DIR__.'/../database/migrations/create_multi_factor_auths_table.php' => database_path('migrations/2025_01_01_000006_create_multi_factor_auths_table.php'),
             __DIR__.'/../database/migrations/create_recovery_codes_table.php' => database_path('migrations/2025_01_01_000007_create_recovery_codes_table.php'),
             __DIR__.'/../database/migrations/create_access_tokens_table.php' => database_path('migrations/2025_01_01_000008_create_access_tokens_table.php'),
-            __DIR__.'/../database/migrations/create_password_histories_table.php' => database_path('migrations/2025_01_01_000009_create_password_histories_table.php'),
         ], 'neev-migrations');
-
-        $this->publishes([
-            __DIR__.'/../database/migrations/create_domain_rules_table.php' => database_path('migrations/2025_01_01_000010_create_domain_rules_table.php'),
-        ], 'neev-domain-federation-migrations');
-
-        $this->publishes([
-            __DIR__.'/../database/migrations/create_teams_table.php' => database_path('migrations/2025_01_01_000002_create_teams_table.php'),
-            __DIR__.'/../database/migrations/create_team_invitations_table.php' => database_path('migrations/2025_01_01_000011_create_team_invitations_table.php'),
-        ], 'neev-team-migrations');
         
         $this->publishes([
-            __DIR__.'/../database/migrations/create_roles_table.php' => database_path('migrations/2025_01_01_000003_create_role_table.php'),
-        ], 'neev-role-migrations');
+            __DIR__.'/../database/migrations/create_teams_table.php' => database_path('migrations/2025_01_01_000009_create_teams_table.php'),
+            __DIR__.'/../database/migrations/create_team_invitations_table.php' => database_path('migrations/2025_01_01_000010_create_team_invitations_table.php'),
+        ], 'neev-team-migrations');
+
+        $this->publishes([
+            __DIR__.'/../database/migrations/create_domain_rules_table.php' => database_path('migrations/2025_01_01_000011_create_domain_rules_table.php'),
+        ], 'neev-domain-federation-migrations');
+
         
         $this->publishes([
             __DIR__.'/../resources/views' => resource_path('views/vendor/neev'),

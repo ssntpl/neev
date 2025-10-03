@@ -59,7 +59,7 @@
                             </div>
                             <div>
                                 <p class="text-md">{{$team->owner->name}}</p>
-                                <p class="text-sm">{{$team->owner->email}}</p>
+                                <p class="text-sm">{{$team->owner->email->email}}</p>
                             </div>
                         </div>
                     </div>

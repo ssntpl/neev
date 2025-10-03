@@ -6,13 +6,11 @@ use Hash;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Ssntpl\Neev\Models\DomainRule;
 use Ssntpl\Neev\Models\Email;
-use Ssntpl\Neev\Models\PasswordHistory;
-use Ssntpl\Neev\Models\Team;
 
 class LoginRequest extends FormRequest
 {
@@ -46,38 +44,9 @@ class LoginRequest extends FormRequest
         $this->ensureIsNotRateLimited();
 
         $email = Email::where('email', $this->input('email'))->first();
-        $currentPassword = PasswordHistory::where('user_id', $email->user_id)->orderByDesc('id')->first();
-        if (!$currentPassword) {
-            $currentPassword = PasswordHistory::create([
-                'user_id' => $email->user_id,
-                'password' => $email->user->password,
-            ]);
-        }
-        if (!$email || !Hash::check($this->input('password'), $email->user->password)) {
-            $currentPassword->wrong_attempts++;
-            $isDomainfederated = false;
-            if (config('neev.team') && config('neev.domain_federation')) {
-                $emailDomain = substr(strrchr($email->email, "@"), 1);
-                
-                $team = Team::model()->where('federated_domain', $emailDomain)->first();
-                if ($team?->domain_verified_at) {
-                    $isDomainfederated = true;
-                    if ($team->rule(DomainRule::pass_hard_fail_attempts())->value > 0 && $currentPassword?->wrong_attempts >= (int) $team->rule(DomainRule::pass_hard_fail_attempts())->value) {
-                        RateLimiter::hit($this->throttleKey(),  60 * 60 * 24 * 365);
-                    } elseif ($team->rule(DomainRule::pass_soft_fail_attempts())->value > 0 && $currentPassword?->wrong_attempts%$team->rule(DomainRule::pass_soft_fail_attempts())->value === 0) {
-                        RateLimiter::hit($this->throttleKey(), (int) $team->rule(DomainRule::pass_block_user_mins())->value * 60);
-                    }
-                }
-            }
-
-            if (!$isDomainfederated) {
-                if (config('neev.password.hard_fail_attempts') > 0 && $currentPassword?->wrong_attempts >= config('neev.password.hard_fail_attempts')) {
-                    RateLimiter::hit($this->throttleKey(),  60 * 60 * 24 * 365);
-                } elseif (config('neev.password.soft_fail_attempts') > 0 && $currentPassword?->wrong_attempts%config('neev.password.soft_fail_attempts') === 0){
-                    RateLimiter::hit($this->throttleKey(), (int) config('neev.password.login_block_minutes') * 60);
-                }
-            }
-            $currentPassword->save();
+    
+        if (!$email || !Hash::check($this->input('password'), $email->user->password->password)) {
+            $this->handleFailedAttempt();
     
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
@@ -85,13 +54,12 @@ class LoginRequest extends FormRequest
         }
     
         Auth::login($email->user, $this->boolean('remember'));
-        $currentPassword->wrong_attempts = 0;
-        $currentPassword->save();
+        Cache::forget($this->throttleKey() . ':attempts');
         RateLimiter::clear($this->throttleKey());
     }
 
     /**
-     * Attempt to authenticate the request's credentials.
+     * Check if email exists.
      *
      * @throws \Illuminate\Validation\ValidationException
      */
@@ -100,15 +68,27 @@ class LoginRequest extends FormRequest
         $this->ensureIsNotRateLimited();
 
         $email = Email::where('email', $this->input('email'))->first();
-        $user = $email?->user;
+        return $email?->user;
+    }
 
-        if (!$user ) {
-            throw ValidationException::withMessages([
-                'email' => __('auth.failed'),
-            ]);
+    /**
+     * Handle failed login attempt.
+     */
+    protected function handleFailedAttempt(): void
+    {
+        $softFail = config('neev.password.soft_fail_attempts', 5);
+        $hardFail = config('neev.password.hard_fail_attempts', 20);
+        $blockMinutes = config('neev.password.login_block_minutes', 1);
+        
+        $key = $this->throttleKey();
+        $attempts = Cache::get($key . ':attempts', 0) + 1;
+        Cache::put($key . ':attempts', $attempts, 3600);
+        
+        if ($hardFail > 0 && $attempts >= $hardFail) {
+            RateLimiter::hit($key, 60 * 60 * 24 * 365);
+        } elseif ($softFail > 0 && $attempts >= $softFail) {
+            RateLimiter::hit($key, $blockMinutes * 60);
         }
-
-        return $user;
     }
 
     /**
@@ -118,20 +98,18 @@ class LoginRequest extends FormRequest
      */
     public function ensureIsNotRateLimited(): void
     {
-        if (RateLimiter::availableIn($this->throttleKey()) <= 0) {
-            return;
+        if (RateLimiter::availableIn($this->throttleKey()) > 0) {
+            event(new Lockout($this));
+
+            $seconds = RateLimiter::availableIn($this->throttleKey());
+
+            throw ValidationException::withMessages([
+                'email' => __('auth.throttle', [
+                    'seconds' => $seconds,
+                    'minutes' => ceil($seconds / 60),
+                ]),
+            ]);
         }
-
-        event(new Lockout($this));
-
-        $seconds = RateLimiter::availableIn($this->throttleKey());
-
-        throw ValidationException::withMessages([
-            'email' => __('auth.throttle', [
-                'seconds' => $seconds,
-                'minutes' => ceil($seconds / 60),
-            ]),
-        ]);
     }
 
     /**
