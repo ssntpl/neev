@@ -6,52 +6,64 @@
 
         <x-neev-component::validation-errors class="mb-4" />
 
-        <form method="POST" action="{{ route('register') }}">
-            @csrf
+        <div class="flex flex-col gap-2 border rounded-lg p-2 text-center">
+            <div class="flex gap-2 justify-around flex-wrap">
+                @foreach (config('neev.oauth') as $oauth)
+                    <form method="GET" action="{{ route('oauth.redirect', $oauth) }}">
+                        <x-neev-component::secondary-button type="submit">{{ __($oauth) }}</x-neev-component::secondary-button>
+                    </form>
+                @endforeach
+            </div>
+        </div>
 
-            @if ($id ?? null && $hash ?? null)
+        <div class="mt-4">
+            <form method="POST" action="{{ route('register') }}">
+                @csrf
+    
+                @if ($id ?? null && $hash ?? null)
+                    <div>
+                        <input type="hidden" name="invitation_id" value="{{$id}}"/>
+                        <input type="hidden" name="hash" value="{{$hash}}"/>
+                    </div>
+                @endif
+    
                 <div>
-                    <input type="hidden" name="invitation_id" value="{{$id}}"/>
-                    <input type="hidden" name="hash" value="{{$hash}}"/>
+                    <x-neev-component::label for="name" value="{{ __('Name') }}" />
+                    <x-neev-component::input id="name" class="block mt-1 w-full" type="text" name="name" :value="old('name')" required autofocus autocomplete="name" />
                 </div>
-            @endif
-
-            <div>
-                <x-neev-component::label for="name" value="{{ __('Name') }}" />
-                <x-neev-component::input id="name" class="block mt-1 w-full" type="text" name="name" :value="old('name')" required autofocus autocomplete="name" />
-            </div>
-
-            <div class="mt-4">
-                <x-neev-component::label for="email" value="{{ __('Email') }}" />
-                <x-neev-component::input id="email" class="block mt-1 w-full" type="email" name="email" :value="$email ?? old('email')" required autocomplete="username" />
-            </div>
-
-            @if (config('neev.support_username'))
+    
                 <div class="mt-4">
-                    <x-neev-component::label for="username" value="{{ __('Username') }}" />
-                    <x-neev-component::input id="username" class="block mt-1 w-full" type="text" name="username" :value="old('username')" required autocomplete="username" />
+                    <x-neev-component::label for="email" value="{{ __('Email') }}" />
+                    <x-neev-component::input id="email" class="block mt-1 w-full" type="email" name="email" :value="$email ?? old('email')" required autocomplete="username" />
                 </div>
-            @endif
-
-            <div class="mt-4">
-                <x-neev-component::label for="password" value="{{ __('Password') }}" />
-                <x-neev-component::input id="password" class="block mt-1 w-full" type="password" name="password" required autocomplete="new-password" />
-            </div>
-
-            <div class="mt-4">
-                <x-neev-component::label for="password_confirmation" value="{{ __('Confirm Password') }}" />
-                <x-neev-component::input id="password_confirmation" class="block mt-1 w-full" type="password" name="password_confirmation" required autocomplete="new-password" />
-            </div>
-
-            <div class="flex items-center justify-end mt-4">
-                <a class="underline text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800" href="{{ route('login') }}">
-                    {{ __('Already registered?') }}
-                </a>
-
-                <x-neev-component::button class="ms-4">
-                    {{ __('Register') }}
-                </x-neev-component::button>
-            </div>
-        </form>
+    
+                @if (config('neev.support_username'))
+                    <div class="mt-4">
+                        <x-neev-component::label for="username" value="{{ __('Username') }}" />
+                        <x-neev-component::input id="username" class="block mt-1 w-full" type="text" name="username" :value="old('username')" required autocomplete="username" />
+                    </div>
+                @endif
+    
+                <div class="mt-4">
+                    <x-neev-component::label for="password" value="{{ __('Password') }}" />
+                    <x-neev-component::input id="password" class="block mt-1 w-full" type="password" name="password" required autocomplete="new-password" />
+                </div>
+    
+                <div class="mt-4">
+                    <x-neev-component::label for="password_confirmation" value="{{ __('Confirm Password') }}" />
+                    <x-neev-component::input id="password_confirmation" class="block mt-1 w-full" type="password" name="password_confirmation" required autocomplete="new-password" />
+                </div>
+    
+                <div class="flex items-center justify-end mt-4">
+                    <a class="underline text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800" href="{{ route('login') }}">
+                        {{ __('Already registered?') }}
+                    </a>
+    
+                    <x-neev-component::button class="ms-4">
+                        {{ __('Register') }}
+                    </x-neev-component::button>
+                </div>
+            </form>
+        </div>
     </x-neev-component::authentication-card>
 </x-neev-layout::guest>
