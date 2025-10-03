@@ -243,11 +243,17 @@ class UserAuthController extends Controller
                 $rules['oauth'] = json_decode($team->rule('oauth')->value, true) ?? [];
             }
         }
+
+        $loginOptions = [];
+        if (count($user->passkeys) > 0) {
+            $loginOptions[] = 'passkey';
+        }
         
         if (config('neev.support_username') && !empty($request->username)) {
-            return view('neev::auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules]);
+            return view('neev::auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules, 'login_options' => $loginOptions]);
         }
-        return view('neev::auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules]);
+
+        return view('neev::auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules, 'login_options' => $loginOptions]);
     }
 
     public function sendLoginLink(Request $request)

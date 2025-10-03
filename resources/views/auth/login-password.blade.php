@@ -7,14 +7,14 @@
             <div class="flex flex-col gap-2 border rounded-lg p-4 text-center">
                 <div class="flex gap-2 justify-around flex-wrap">
                     @if (($isDomainFederated && count($rules['oauth']) > 0))
-                        @foreach ($rules['oauth'] as $oauth)
+                        @foreach ($rules['oauth'] ?? [] as $oauth)
                             <form method="GET" action="{{ route('oauth.redirect', $oauth) }}">
                                 <input type="hidden" name="email" value="{{$email}}" required>
                                 <x-neev-component::secondary-button type="submit">{{ __($oauth) }}</x-neev-component::secondary-button>
                             </form>
                         @endforeach
                     @elseif (!$isDomainFederated)
-                        @foreach (config('neev.oauth') as $oauth)
+                        @foreach (config('neev.oauth') ?? [] as $oauth)
                             <form method="GET" action="{{ route('oauth.redirect', $oauth) }}">
                                 <input type="hidden" name="email" value="{{$email}}" required>
                                 <x-neev-component::secondary-button type="submit">{{ __($oauth) }}</x-neev-component::secondary-button>
@@ -22,16 +22,18 @@
                         @endforeach
                     @endif
                     {{-- Passkey --}}
-                    <form id="login-form" method="POST" action="{{ route('passkeys.login') }}">
-                        @csrf
-                        <input id="email" type="hidden" name="email" value="{{$email}}" required />
-    
-                        <input type="hidden" name="assertion" id="assertion">
-    
-                        <x-neev-component::secondary-button type="button" id="login-button">
-                            {{__('Login with Passkey')}}
-                        </x-neev-component::secondary-button>
-                    </form>
+                    @if (array_key_exists('passkey', $login_options))
+                        <form id="login-form" method="POST" action="{{ route('passkeys.login') }}">
+                            @csrf
+                            <input id="email" type="hidden" name="email" value="{{$email}}" required />
+        
+                            <input type="hidden" name="assertion" id="assertion">
+        
+                            <x-neev-component::secondary-button type="button" id="login-button">
+                                {{__('Login with Passkey')}}
+                            </x-neev-component::secondary-button>
+                        </form>
+                    @endif
                     @if (config('neev.magicauth'))
                         <form method="POST" action="{{ route('login.link.send') }}">
                             @csrf
