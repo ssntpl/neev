@@ -72,12 +72,12 @@
                 <x-slot name="content">
 
                     {{-- Team Request --}}
-                    @if (count($user->teamRequests) > 0 || count(Ssntpl\Neev\Models\TeamInvitation::where('email', $user->email)->get() ))
+                    @if (count($user->teamRequests) > 0 || count(Ssntpl\Neev\Models\TeamInvitation::where('email', $user->email->email)->get() ))
                         <div class="flex justify-between">
                             <h1 class="font-bold">{{__('Team Requests')}}</h1>
                             <span>
                                 {{__('Total Requests')}}
-                                <span class="font-bold">{{ __(count($user->teamRequests) + count(Ssntpl\Neev\Models\TeamInvitation::where('email', $user->email)->get() )) }}</span>
+                                <span class="font-bold">{{ __(count($user->teamRequests) + count(Ssntpl\Neev\Models\TeamInvitation::where('email', $user->email->email)->get() )) }}</span>
                             </span>
                         </div>
                         <x-neev-component::table>
@@ -109,7 +109,7 @@
                                         </td>
                                     </x-neev-component::table-body-tr>
                                 @endforeach
-                                @foreach (Ssntpl\Neev\Models\TeamInvitation::where('email', $user->email)->get() as $invitation)
+                                @foreach (Ssntpl\Neev\Models\TeamInvitation::where('email', $user->email->email)->get() as $invitation)
                                     <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                         <td class="flex gap-2 px-4 py-2">
                                             <a href="{{route('teams.profile', $invitation->team->id)}}" class="flex gap-1 items-center">
@@ -211,7 +211,7 @@
                                                     @csrf
 
                                                     <x-neev-component::input type="hidden" name="team" value="{{ $team->name }}" />
-                                                    <x-neev-component::input type="hidden" name="email" value="{{ $team->owner->email }}" />
+                                                    <x-neev-component::input type="hidden" name="email" value="{{ $team->owner->email->email }}" />
                                                     <x-neev-component::button>
                                                         {{__('Send Request')}}
                                                     </x-neev-component::button>

@@ -2,8 +2,10 @@
 
 namespace Ssntpl\Neev\Commands;
 
+use DB;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\PromptsForMissingInput;
+use Schema;
 use function Laravel\Prompts\select;
 
 class InstallNeev extends Command implements PromptsForMissingInput
@@ -30,6 +32,13 @@ class InstallNeev extends Command implements PromptsForMissingInput
     public function handle()
     {
         $this->info('🔧 Installing with options:');
+
+        // Check if users table exists and is not empty
+        if (Schema::hasTable('users') && DB::table('users')->exists()) {
+            $this->error('❌ Installation failed: Users table is not empty. Please run this command on a fresh installation.');
+            return 1;
+        }
+
         $this->callSilent('vendor:publish', ['--tag' => 'neev-config', '--force' => true]);
         $this->callSilent('vendor:publish', ['--tag' => 'neev-migrations', '--force' => true]);
         $this->callSilent('vendor:publish', ['--tag' => 'neev-views', '--force' => true]);

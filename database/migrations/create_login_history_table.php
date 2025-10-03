@@ -22,10 +22,6 @@ return new class extends Migration
             $table->string('ip_address')->nullable();
             $table->timestamps();
         });
-
-        Schema::table('users', function (Blueprint $table) {
-            $table->boolean('active')->default(true)->after('password');
-        });
     }
 
     /**

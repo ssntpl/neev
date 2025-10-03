@@ -9,7 +9,7 @@ use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Ssntpl\Neev\Models\DomainRule;
 use Ssntpl\Neev\Models\Email;
-use Ssntpl\Neev\Models\PasswordHistory;
+use Ssntpl\Neev\Models\Password;
 use Ssntpl\Neev\Models\Team;
 use Str;
 
@@ -45,7 +45,7 @@ class PasswordLogic implements ValidationRule
         }
 
         if (isset($password['old_passwords']) && $password['old_passwords'] && $user) {
-            $oldPasswords = PasswordHistory::where('user_id', $user->id)->orderByDesc('id')->limit($password['old_passwords'])->get();
+            $oldPasswords = Password::where('user_id', $user->id)->orderByDesc('id')->limit($password['old_passwords'])->get();
             foreach ($oldPasswords ?? [] as $oldPassword) {
                 if (Hash::check($value, (string) $oldPassword->password)) {
                     $fail('New Password should not be the same as old password.');
@@ -63,7 +63,7 @@ class PasswordLogic implements ValidationRule
             return false;
         }
 
-        $currentPassword = PasswordHistory::where('user_id', $user->id)->orderByDesc('id')->first();
+        $currentPassword = Password::where('user_id', $user->id)->orderByDesc('id')->first();
         if ($currentPassword && isset($password['password_expiry_soft_days']) && $password['password_expiry_soft_days']) {
             $softLimit = Carbon::parse($currentPassword->created_at)->addDays((int) $password['password_expiry_soft_days']);
             if (Carbon::now()->greaterThanOrEqualTo($softLimit)) {
@@ -86,7 +86,7 @@ class PasswordLogic implements ValidationRule
             return;
         }
 
-        $currentPassword = PasswordHistory::where('user_id', $user->id)->orderByDesc('id')->first();
+        $currentPassword = Password::where('user_id', $user->id)->orderByDesc('id')->first();
         if ($currentPassword && isset($password['password_expiry_hard_days']) && $password['password_expiry_hard_days']) {
             $hardLimit = Carbon::parse($currentPassword->created_at)->addDays((int) $password['password_expiry_hard_days']);
             if (Carbon::now()->greaterThanOrEqualTo($hardLimit)) {

@@ -24,7 +24,7 @@ class UserController extends Controller
     public function emails(Request $request)
     {
         $user = User::model()->find($request->user()->id);
-        $emailDomain = substr(strrchr($user->email, "@"), 1);
+        $emailDomain = substr(strrchr($user->email->email, "@"), 1);
 
         $addEmail = true;
         if (config('neev.team') && config('neev.domain_federation')) {
@@ -39,7 +39,7 @@ class UserController extends Controller
     public function security(Request $request)
     {
         $user = User::model()->find($request->user()->id);
-        $emailDomain = substr(strrchr($user->email, "@"), 1);
+        $emailDomain = substr(strrchr($user->email->email, "@"), 1);
 
         $deleteAccount = true;
         if (config('neev.team') && config('neev.domain_federation')) {
@@ -59,7 +59,7 @@ class UserController extends Controller
     public function teams(Request $request)
     {
         $user = User::model()->find($request->user()->id);
-        $emailDomain = substr(strrchr($user->email, "@"), 1);
+        $emailDomain = substr(strrchr($user->email->email, "@"), 1);
 
         $join_team = true;
         if (config('neev.domain_federation')) {
@@ -142,7 +142,7 @@ class UserController extends Controller
             return back()->withErrors(['message' => 'Email does not exist.']);
         }
         
-        if ($email->email == $user->email) {
+        if ($email->is_primary) {
             return back()->withErrors(['message' => 'Cannot delete primary email.']);
         }
 
@@ -154,13 +154,16 @@ class UserController extends Controller
     public function primaryEmail(Request $request)
     {
         $user = User::model()->find($request->user()->id);
-
-        if (!$user || !$user->emails->where('email', $request->email)->first()?->verified_at) {
+        $email = $user->emails->where('email', $request->email)->first();
+        if (!$user || !$email?->verified_at) {
             return back()->withErrors(['message' => 'Your primary email was not changed.']);
         }
         
-        $user->email = $request->email;
-        $user->save();
+        $pemail = $user->email;
+        $pemail->is_primary = false;
+        $pemail->save();
+        $email->is_primary = true;
+        $email->save();
 
         return back()->with('status', 'Your primary email has been changed.');
     }
@@ -173,13 +176,15 @@ class UserController extends Controller
         ]);
 
         $user = User::model()->find($request->user()->id);
-        if (!Hash::check($request->current_password, $user->password)) {
+        if (!Hash::check($request->current_password, $user->password->password)) {
             return back()->withErrors([
                 'message' => 'Current Password is Wrong.'
             ]);
         }
-        $user->password = Hash::make($request->password);
-        $user->save();
+
+        $user->passwords()->create([
+            'password' => Hash::make($request->password),
+        ]);
         return back()->with('status', 'Password has been successfully updated.');
     }
 
@@ -189,7 +194,7 @@ class UserController extends Controller
             'password' => ['required'],
         ]);
         $user = User::model()->find($request->user()->id);
-        if (!Hash::check($request->password, $user->password)) {
+        if (!Hash::check($request->password, $user->password->password)) {
             return back()->withErrors([
                 'message' => 'Password is Wrong.'
             ]);

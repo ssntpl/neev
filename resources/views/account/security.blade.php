@@ -129,7 +129,7 @@
                                             @csrf
 
                                             <input type="hidden" name="auth_method" value="{{$method}}">
-                                            <input type="hidden" name="email" value="{{$user->email}}">
+                                            <input type="hidden" name="email" value="{{$user->email->email}}">
                                             <div class="flex gap-2 items-center text-start w-2/3">
                                                 <x-neev-component::label class="text-start" for="otp" value="{{ __('OTP') }}" class="w-1/4" />
                                                 <x-neev-component::input id="otp" class="block w-3/4" type="text" name="otp" required />

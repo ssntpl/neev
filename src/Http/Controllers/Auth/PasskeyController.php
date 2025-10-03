@@ -55,7 +55,7 @@ class PasskeyController extends Controller
         $userId = strval($user->id);
         $userEntity = new PublicKeyCredentialUserEntity(
             id: $userId,
-            name: $user->email,
+            name: $user->email->email,
             displayName: $user->name
         );
 
@@ -90,7 +90,7 @@ class PasskeyController extends Controller
             ],
             'user' => [
                 'id' => base64_encode($userId),
-                'name' => $user->email,
+                'name' => $user->email->email,
                 'displayName' => $user->name,
             ],
             'challenge' => $base64Challenge,
@@ -153,7 +153,7 @@ class PasskeyController extends Controller
 
         $userEntity = new PublicKeyCredentialUserEntity(
             id: strval($user->id),
-            name: $user->email,
+            name: $user->email->email,
             displayName: $user->name
         );
 

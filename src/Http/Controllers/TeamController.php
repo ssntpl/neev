@@ -46,7 +46,7 @@ class TeamController extends Controller
         $count = 0;
         if ($team->enforce_domain && $team->domain_verified_at) {
             foreach ($team->users ?? [] as $member) {
-                if (!str_ends_with(strtolower($member->email), '@' . strtolower($team->federated_domain))) {
+                if (!str_ends_with(strtolower($member->email->email), '@' . strtolower($team->federated_domain))) {
                     $count++;
                 }
             }
@@ -180,7 +180,7 @@ class TeamController extends Controller
                 $invitation->delete();
             }
 
-            Mail::to($member->email)->send(new TeamInvitation($team->name, $member->name));
+            Mail::to($member->email->email)->send(new TeamInvitation($team->name, $member->name));
         } catch (Exception $e) {
             return back()->withErrors(['message' => 'Failed to invite member.']);
         }
@@ -205,7 +205,7 @@ class TeamController extends Controller
                 return back()->withErrors(['message' => 'You cannot leave from this team.']);
             }
             
-            if ($team->domain_verified_at && str_ends_with(strtolower($user->email), '@' . strtolower($team->federated_domain))) {
+            if ($team->domain_verified_at && str_ends_with(strtolower($user->email->email), '@' . strtolower($team->federated_domain))) {
                 if ($user->active) {
                     $user->deactivate();
                     return back()->with('status', 'User Deactivated Successfully');
@@ -285,7 +285,7 @@ class TeamController extends Controller
                         $team->allUsers()->attach($user, ['action' => 'request_from_user']);
                     }
                     
-                    Mail::to($owner->email)->send(new TeamJoinRequest($team->name, $user->name, $owner->name, $team->id));
+                    Mail::to($owner->email->email)->send(new TeamJoinRequest($team->name, $user->name, $owner->name, $team->id));
 
                     return back()->with('status', 'Request has been sent.');
                 }
@@ -345,7 +345,7 @@ class TeamController extends Controller
     public function federateDomain(Request $request, Team $team)
     {
         $user = User::model()->find($request->user()->id);
-        if ($team->user_id !== $user->id || !str_ends_with(strtolower($user->email), '@' . strtolower($request->domain))) {
+        if ($team->user_id !== $user->id || !str_ends_with(strtolower($user->email->email), '@' . strtolower($request->domain))) {
             return back()->withErrors(['message' => 'You have not required permissions to federate domain.']);
         }
         try {
