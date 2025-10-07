@@ -1,6 +1,8 @@
 <?php
 
-use Ssntpl\Neev\Models\DomainRule;
+use Illuminate\Validation\Rules\Password;
+use Ssntpl\Neev\Rules\PasswordHistory;
+use Ssntpl\Neev\Rules\PasswordUserData;
 
 return [
     'team' => false,
@@ -9,20 +11,10 @@ return [
     
     'team_model' => Ssntpl\Neev\Models\Team::class,
     'user_model' => Ssntpl\Neev\Models\User::class,
-
     'support_username' => false,
+
     'domain_rules' => [
-        DomainRule::mfa(), // allow compalsory mfa
-        DomainRule::passkey(), // member may add passkeys
-        DomainRule::oauth(),
-        DomainRule::pass_min_len(),
-        DomainRule::pass_max_len(),
-        DomainRule::pass_old(),
-        DomainRule::pass_soft_fail_attempts(),
-        DomainRule::pass_block_user_mins(),
-        DomainRule::pass_hard_fail_attempts(),
-        DomainRule::pass_combinations(),
-        DomainRule::pass_columns(),
+       'mfa', // allow compalsory mfa
     ],
 
     'dashboard_url' => env('APP_URL').'/dashboard',
@@ -49,17 +41,31 @@ return [
     'edition' => env('MAXMIND_EDITION', 'GeoLite2-City'),
     'maxmind_license_key' => env('MAXMIND_LICENSE_KEY'),
 
-    'password' => [
-        'min_length' => 8,
-        'max_length' => 72,
-        'combination_types' => [], //['alphabet', 'number', 'symbols'],
-        'check_user_columns' => ['name', 'email'],
-        'old_passwords' => 5,
-        
-        'soft_fail_attempts' => 5,
-        'hard_fail_attempts' => 20,
-        'login_block_minutes' => 1,
-        'password_expiry_soft_days' => 30,
-        'password_expiry_hard_days' => 90,
+    'username' => [
+        'required',
+        'string',
+        'min:3',
+        'max:20',
+        'regex:/^(?![._])(?!.*[._]{2})[a-zA-Z0-9._]+(?<![._])$/',
+        'unique:users,username',
     ],
+
+    'password' => [
+        'required',
+        'confirmed',
+        Password::min(8)
+                ->max(72)
+                ->letters()
+                ->mixedCase()
+                ->numbers()
+                ->symbols(),
+        PasswordHistory::notReused(5),
+        PasswordUserData::notContain(['name', 'email']),
+    ],
+    
+    'login_soft_attempts' => 5,
+    'login_hard_attempts' => 20,
+    'login_block_minutes' => 1,
+    'password_soft_expiry_days' => 30,
+    'password_hard_expiry_days' => 90,
 ];

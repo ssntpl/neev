@@ -87,87 +87,12 @@
                                     @foreach ($team->rules as $rule)
                                         <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                             <td class="px-4 py-2 w-1/2 text-start">
-                                                {{ $rule->ruleTypeUI($rule->name) }}
+                                                {{ $rule->name }}
                                             </td>
                                             <td class="px-4 py-2 text-start">
-                                                @if ($rule->ruleType($rule->name) === 'bool')
-                                                    <label for="{{$rule->name}}">
-                                                        <x-neev-component::checkbox id="{{$rule->name}}" name="{{$rule->name}}" x-bind:checked="{{$rule->value ?? 0}}"/>
-                                                    </label>
-                                                @elseif ($rule->ruleType($rule->name) === 'text')
-                                                    <input type="text" name="{{$rule->name}}" value="{{$rule->value}}" class="px-2 py-1 border shadow rounded bg-white">
-                                                @elseif ($rule->ruleType($rule->name) === 'number')
-                                                    <input type="number" name="{{$rule->name}}" value="{{$rule->value}}" class="px-2 py-1 border shadow rounded bg-white">
-                                                @elseif ($rule->ruleType($rule->name) === 'array')
-                                                    <div x-data="{
-                                                            items: JSON.parse(@js($rule->value ?? '[]')),
-                                                            input: '',
-                                                            add() {
-                                                                const parts = this.input.split(/[,\n]/).map(s => s.trim()).filter(Boolean);
-                                                                parts.forEach(v => { if (!this.items.includes(v)) this.items.push(v); });
-                                                                this.input = '';
-                                                            },
-                                                            remove(i) { this.items.splice(i, 1); }
-                                                        }">
-                                                        <div class="flex flex-wrap gap-2 items-center"
-                                                            @click="$refs.input.focus()">
-                                                            <template x-for="(v,i) in items" :key="v">
-                                                                <span class="inline-flex items-center gap-1 px-2 py-1 text-sm bg-gray-200 rounded-full">
-                                                                    <span x-text="v"></span>
-                                                                    <button type="button" class="text-gray-500 hover:text-gray-700" @click="remove(i)">✕</button>
-                                                                </span>
-                                                            </template>
-
-                                                            <input
-                                                                x-ref="input"
-                                                                x-model="input"
-                                                                type="text"
-                                                                placeholder="Type and press Enter or comma…"
-                                                                class="w-58 border bg-white rounded shadow text-sm p-1"
-                                                                @keydown.enter.prevent="add()"
-                                                                @keydown.,.prevent="add()"
-                                                                @blur="add()"
-                                                                @paste.prevent="const text = (event.clipboardData || window.clipboardData).getData('text');
-                                                                    input = text; add();"/>
-                                                        </div>
-
-                                                        <template x-for="v in items" :key="'hidden-'+v">
-                                                            <input type="hidden" name="{{$rule->name}}[]" :value="v">
-                                                        </template>
-                                                    </div>
-                                                @elseif ($rule->ruleType($rule->name) === 'select')
-                                                    <div x-data="{
-                                                            all: (@js($rule->option($rule->name) ?? [])).filter(v => !(@js($rule->value ?? [])).includes(v)),
-                                                            selected: JSON.parse(@js($rule->value ?? '[]')),
-                                                            add(v, i) {
-                                                                this.all.splice(i, 1); 
-                                                                this.selected.push(v);
-                                                            },
-                                                            remove(v, i) {
-                                                                this.selected.splice(i, 1); 
-                                                                this.all.push(v);
-                                                            }
-                                                        }">
-                                                        <div class="flex flex-wrap gap-2 items-center">
-                                                            <template x-for="(v,i) in selected" :key="v">
-                                                                <span class="inline-flex items-center gap-1 px-2 py-1 text-sm bg-blue-200 rounded-full">
-                                                                    <span x-text="v"></span>
-                                                                    <button type="button" class="text-gray-500 hover:text-gray-700" @click="remove(v, i)">✕</button>
-                                                                </span>
-                                                            </template>
-                                                            <span>|</span>
-                                                            <template x-for="(v,i) in all" :key="v">
-                                                                <span class="inline-flex items-center gap-1 px-2 py-1 text-sm bg-gray-200 rounded-full">
-                                                                    <span x-text="v"></span>
-                                                                    <button type="button" class="text-gray-500 hover:text-gray-700" @click="add(v, i)">+</button>
-                                                                </span>
-                                                            </template>
-                                                        </div>
-                                                        <template x-for="v in selected" :key="'hidden-'+v">
-                                                            <input type="hidden" name="{{$rule->name}}[]" :value="v">
-                                                        </template>
-                                                    </div>
-                                                @endif
+                                                <label for="{{$rule->name}}">
+                                                    <x-neev-component::checkbox id="{{$rule->name}}" name="{{$rule->name}}" x-bind:checked="{{$rule->value ?? 0}}"/>
+                                                </label>
                                             </td>
                                         </x-neev-component::table-body-tr>
                                     @endforeach

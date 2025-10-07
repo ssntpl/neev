@@ -8,7 +8,6 @@ use Illuminate\Http\Request;
 use Mail;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
-use Ssntpl\Neev\Models\DomainRule;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Str;
@@ -373,7 +372,7 @@ class TeamController extends Controller
                     foreach (config('neev.domain_rules') ?? [] as $rule) {
                         $team->rules()->create([
                             'name' => $rule,
-                            'value' => DomainRule::ruleDefaultValue($rule) ?? null,
+                            'value' => false,
                         ]);
                     }
                     return back()->with('status', 'Domain verified successfully!');
@@ -437,14 +436,7 @@ class TeamController extends Controller
         }
         try {
             foreach ($team->rules ?? [] as $rule) {
-                if ($rule->ruleType($rule->name) === 'bool') {
-                    $rule->value = (bool) $request->{$rule->name};
-                } elseif ($rule->ruleType($rule->name) === 'number') {
-                    $rule->value = (int) $request->{$rule->name};
-                } else {
-                    $rule->value = $request->{$rule->name};
-                }
-
+                $rule->value = (bool) $request->{$rule->name};
                 $rule->save();
             }
             

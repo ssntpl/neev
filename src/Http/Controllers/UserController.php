@@ -11,8 +11,6 @@ use Ssntpl\Neev\Models\LoginHistory;
 use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
-use Ssntpl\Neev\Rules\PasswordLogic;
-use Ssntpl\Neev\Rules\PasswordValidate;
 
 class UserController extends Controller
 {
@@ -107,6 +105,22 @@ class UserController extends Controller
 
     public function profileUpdate(Request $request)
     {
+        $validationRules = [
+            'name' => 'required|string|max:255',
+        ];
+        
+        if (config('neev.support_username')) {
+            $usernameRules = config('neev.username');
+            // Remove unique rule for current user
+            $usernameRules = array_filter($usernameRules, function($rule) {
+                return !str_contains($rule, 'unique:');
+            });
+            $usernameRules[] = 'unique:users,username,' . $request->user()->id;
+            $validationRules['username'] = $usernameRules;
+        }
+        
+        $request->validate($validationRules);
+        
         $user = User::model()->find($request->user()->id);
         $user->name = $request->name;
         if (config('neev.support_username')) {
@@ -172,7 +186,7 @@ class UserController extends Controller
     {
         $request->validate([
             'current_password' => ['required'],
-            'password' => ['required', 'confirmed', new PasswordValidate, new PasswordLogic],
+            'password' => config('neev.password'),
         ]);
 
         $user = User::model()->find($request->user()->id);
