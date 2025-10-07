@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Services;
 
 use Exception;
 use GeoIp2\Database\Reader;
+use Log;
 
 class GeoIP
 {
@@ -15,7 +16,7 @@ class GeoIP
         try {
             $this->reader = new Reader($dbPath);
         } catch (Exception $e) {
-            
+            Log::error($e->getMessage());
         }
     }
 
@@ -33,6 +34,7 @@ class GeoIP
                 'timezone' => $record->location->timeZone,
             ];
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return null;
         }
     }

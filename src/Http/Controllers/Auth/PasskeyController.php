@@ -143,6 +143,7 @@ class PasskeyController extends Controller
             $response,
     );
         } catch (\Throwable $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Passkey was not added.']);
         }
 
@@ -201,6 +202,7 @@ class PasskeyController extends Controller
                 $rp->id
             );
         } catch (\Throwable $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Passkey was not added.']);
         }
 
