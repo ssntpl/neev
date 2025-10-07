@@ -4,9 +4,10 @@ namespace Ssntpl\Neev\Http\Controllers\Auth;
 
 use Auth;
 use Exception;
+use Illuminate\Validation\ValidationException;
 use Log;
 use Ssntpl\Neev\Models\Email;
-use Ssntpl\Neev\Models\LoginHistory;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Passkey;
 use Ssntpl\Neev\Models\User;
 use Illuminate\Http\Request;
@@ -142,6 +143,7 @@ class PasskeyController extends Controller
             $response,
     );
         } catch (\Throwable $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Passkey was not added.']);
         }
 
@@ -200,6 +202,7 @@ class PasskeyController extends Controller
                 $rp->id
             );
         } catch (\Throwable $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Passkey was not added.']);
         }
 
@@ -326,6 +329,19 @@ class PasskeyController extends Controller
 
         $email = Email::where('email', $request->email)->first();
         $user = $email?->user;
+        if (config('neev.fail_attempts_in_db')) {
+            $clientDetails = LoginAttempt::getClientDetails($request);
+            $attempt = $user->loginAttempts()->create([
+                'method' => LoginAttempt::Passkey,
+                'location' => $geoIP?->getLocation($request->ip()),
+                'multi_factor_method' => null,
+                'platform' => $clientDetails['platform'] ?? '',
+                'browser' => $clientDetails['browser'] ?? '',
+                'device' => $clientDetails['device'] ?? '',
+                'ip_address' => $request->ip(),
+                'is_success' => false,
+            ]);
+        }
         $passkey = $user?->passkeys?->where('credential_id', Base64UrlSafe::encode(Base64UrlSafe::decode($rawId)))->first();
 
         if (!$passkey || !$user || $user?->id != (int) base64_decode($input['response']['userHandle'])) {
@@ -365,7 +381,7 @@ class PasskeyController extends Controller
             userHandle: $input['response']['userHandle'] ?? null
         );
 
-        self::login($request, $geoIP, $user, LoginHistory::Passkey);
+        self::login($request, $geoIP, $user, LoginAttempt::Passkey, $attempt ?? null);
         
         $passkey->last_used = now();
         $passkey->save();
@@ -373,28 +389,34 @@ class PasskeyController extends Controller
         return redirect(config('neev.dashboard_url'));
     }
 
-    public static function login(Request $request, GeoIP $geoIP, $user, $method, $mfa = null) 
+    public static function login(Request $request, GeoIP $geoIP, $user, $method, $mfa = null, $attempt = null) 
     {
         if (!$user->active) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
+            throw ValidationException::withMessages([
                 'email' => 'Your account is deactivated, please contact your admin to activate your account.',
             ]);
         }
         Auth::login($user, false);
         $request->session()->regenerate();
-        try {
-            $clientDetails = LoginHistory::getClientDetails($request);
-            $user->loginHistory()->create([
-                'method' => $method,
-                'location' => $geoIP?->getLocation($request->ip()),
-                'multi_factor_method' => $mfa,
-                'platform' => $clientDetails['platform'] ?? '',
-                'browser' => $clientDetails['browser'] ?? '',
-                'device' => $clientDetails['device'] ?? '',
-                'ip_address' => $request->ip(),
-            ]);
-        } catch (Exception $e) {
-            Log::error($e->getMessage());
+            try {
+                if ($attempt) {
+                    $attempt->is_success = true;
+                    $attempt->save();
+                } else {
+                    $clientDetails = LoginAttempt::getClientDetails($request);
+                    $user->loginAttempts()->create([
+                        'method' => $method,
+                        'location' => $geoIP?->getLocation($request->ip()),
+                        'multi_factor_method' => $mfa,
+                        'platform' => $clientDetails['platform'] ?? '',
+                        'browser' => $clientDetails['browser'] ?? '',
+                        'device' => $clientDetails['device'] ?? '',
+                        'ip_address' => $request->ip(),
+                        'is_success' => true,
+                    ]);
+                }
+            } catch (Exception $e) {
+                Log::error($e->getMessage());
         }
     }
 }

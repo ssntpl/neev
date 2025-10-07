@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Models\Email;
-use Ssntpl\Neev\Models\LoginHistory;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
@@ -76,7 +76,7 @@ class UserController extends Controller
             ->orderBy('last_activity', 'desc')
             ->get()
             ->map(function ($session) {
-                $agent = LoginHistory::getClientDetails(userAgent: $session->user_agent);
+                $agent = LoginAttempt::getClientDetails(userAgent: $session->user_agent);
 
                 return (object)[
                     'id' => $session->id,
@@ -93,13 +93,13 @@ class UserController extends Controller
         ]);
     }
 
-    public function loginHistory(Request $request)
+    public function loginAttempts(Request $request)
     {
         $user = User::model()->find($request->user()->id);
-        $history = User::model()->find($user->id)?->loginHistory()?->orderBy('created_at', 'desc')?->get();
-        return view('neev::account.login-history', [
+        $attempts = User::model()->find($user->id)?->loginAttempts()?->orderBy('created_at', 'desc')?->get();
+        return view('neev::account.login-attempt', [
             'user' => $user,
-            'history' => $history,
+            'attempts' => $attempts,
         ]);
     }
 

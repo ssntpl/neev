@@ -39,6 +39,21 @@ return new class extends Migration
             $table->timestamps();
             $table->unique(['user_id', 'email']);
         });
+
+        Schema::create('login_attempts', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('method');
+            $table->string('multi_factor_method')->nullable();
+            $table->text('location')->nullable();
+            $table->string('platform')->nullable();
+            $table->string('browser')->nullable();
+            $table->string('device')->nullable();
+            $table->string('ip_address')->nullable();
+            $table->boolean('is_success')->default(false);
+            $table->boolean('is_suspicious')->default(false);
+            $table->timestamps();
+        });
     }
 
     /**
@@ -49,5 +64,6 @@ return new class extends Migration
         Schema::dropIfExists('users');
         Schema::dropIfExists('passwords');
         Schema::dropIfExists('emails');
+        Schema::dropIfExists('login_attempts');
     }
 };

@@ -35,8 +35,9 @@ return [
 
     'magicauth' => true,
 
-    //Login History
-    'last_login_history_in_days' => 30,
+    //Login Attempts
+    'fail_attempts_in_db' => false,
+    'last_login_attempts_in_days' => 30,
     'geo_ip_db' => 'app/geoip/GeoLite2-City.mmdb',
     'edition' => env('MAXMIND_EDITION', 'GeoLite2-City'),
     'maxmind_license_key' => env('MAXMIND_LICENSE_KEY'),

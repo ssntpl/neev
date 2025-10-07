@@ -63,9 +63,9 @@ class User extends Authenticatable
         return $this->hasOne(Password::class)->orderByDesc('created_at')->limit(1);
     }
 
-    public function loginHistory()
+    public function loginAttempts()
     {
-        return $this->hasMany(LoginHistory::class);
+        return $this->hasMany(LoginAttempt::class);
     }
 
     public function OTP($method = null)

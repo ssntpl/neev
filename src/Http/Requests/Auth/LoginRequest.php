@@ -49,7 +49,7 @@ class LoginRequest extends FormRequest
             $this->handleFailedAttempt();
     
             throw ValidationException::withMessages([
-                'email' => __('auth.failed'),
+                'user' => __('auth.failed'),
             ]);
         }
     
