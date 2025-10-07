@@ -40,7 +40,7 @@ trait HasMultiAuth
                 $auth = $this->multiFactorAuth($method);
                 $secret = $auth?->secret ?? Base32::encodeUpper(random_bytes(32));
                 $totp = TOTP::create($secret);
-                $totp->setLabel($this->email);
+                $totp->setLabel($this->email?->email);
                 $totp->setIssuer(env('APP_NAME', 'Neev')); 
                 if (!$auth) {
                     $this->multiFactorAuths()->create([

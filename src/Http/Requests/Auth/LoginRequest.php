@@ -76,8 +76,8 @@ class LoginRequest extends FormRequest
      */
     protected function handleFailedAttempt(): void
     {
-        $softFail = config('neev.password.soft_fail_attempts', 5);
-        $hardFail = config('neev.password.hard_fail_attempts', 20);
+        $softFail = config('neev.login_soft_attempts', 5);
+        $hardFail = config('neev.login_hard_attempts', 20);
         $blockMinutes = config('neev.password.login_block_minutes', 1);
         
         $key = $this->throttleKey();

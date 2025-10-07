@@ -12,6 +12,7 @@ use Illuminate\Validation\ValidationException;
 use Mail;
 use Session;
 use Ssntpl\Neev\Http\Controllers\Controller;
+use Ssntpl\Neev\Http\Controllers\Auth\PasskeyController;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
@@ -21,8 +22,6 @@ use Ssntpl\Neev\Models\LoginHistory;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
-use Ssntpl\Neev\Rules\PasswordLogic;
-use Ssntpl\Neev\Rules\PasswordValidate;
 use Ssntpl\Neev\Services\GeoIP;
 use URL;
 use Log;
@@ -32,7 +31,7 @@ class UserAuthController extends Controller
     public function login(LoginRequest $request, GeoIP $geoIP, $user, $method, $mfa = null, $loginHistory = true) 
     {
         if (!$user->active) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
+            throw ValidationException::withMessages([
                 'email' => 'Your account is deactivated, please contact your admin to activate your account.',
             ]);
         }
@@ -71,7 +70,13 @@ class UserAuthController extends Controller
             }
             return view('neev::auth.register', ['id' => $request->id, 'hash' => $request->hash, 'email' => $invitation->email ?? null]);
         }
-        return view('neev::auth.register');
+        $input = $request->email;
+        $isEmail = filter_var($input, FILTER_VALIDATE_EMAIL);
+        
+        return view('neev::auth.register', [
+            'email' => $isEmail ? $input : null,
+            'username' => !$isEmail ? $input : null
+        ]);
     }
 
     public function emailChangeCreate(Request $request)
@@ -103,11 +108,17 @@ class UserAuthController extends Controller
     */
     public function registerStore(LoginRequest $request, GeoIP $geoIP)
     {
-        $request->validate([
+        $validationRules = [
             'name' => 'required|string|max:255',
             'email' => 'required|string|lowercase|email|max:255|unique:'.Email::class,
-            'password' => ['required', 'confirmed', new PasswordValidate, new PasswordLogic],
-        ]);
+            'password' => config('neev.password'),
+        ];
+        
+        if (config('neev.support_username')) {
+            $validationRules['username'] = config('neev.username');
+        }
+        
+        $request->validate($validationRules);
 
         try {
             if (config('neev.support_username')) {
@@ -325,8 +336,8 @@ class UserAuthController extends Controller
             'email' => 'required|string|email|max:255|',
         ]);
 
-        $user = User::model()->where('email', $request->email)->first();
-        $email = $user?->email;
+        $email = Email::where('email', $request->email)->first();
+        $user = $email?->user;
         if (!$user || !$email || (config('neev.email_verified') && !$email->verified_at)) {
             return back()->withErrors([
                 'message' => __('User not registered or wrong email.'),
@@ -367,7 +378,7 @@ class UserAuthController extends Controller
     {
         $request->validate([
             'email' => 'required|string|email|max:255',
-            'password' => ['required', 'confirmed', new PasswordValidate, new PasswordLogic],
+            'password' => config('neev.password'),
         ]);
 
         $email = Email::where('email', $request->email)->first();
@@ -461,13 +472,13 @@ class UserAuthController extends Controller
                 ]);
             }
     
-            Auth::logoutOtherDevices($request->password);
-    
             if (config('session.driver') === 'database') {
                 DB::table('sessions')
                     ->where('user_id', $user->id)
                     ->where('id', '!=', Session::getId())
                     ->delete();
+            } else {
+                $request->session()->regenerate(true);
             }
         } else {
             if ($request->session_id == session()->getId()) {

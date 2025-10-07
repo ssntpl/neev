@@ -13,7 +13,19 @@ class CleanOldPasswords extends Command
 
     public function handle()
     {
-        $oldPasswords = config('neev.password.old_passwords');
+        $passwordRules = config('neev.password');
+        $oldPasswords = 5; // default
+        
+        // Extract count from PasswordHistory rule
+        foreach ($passwordRules as $rule) {
+            if (is_object($rule) && get_class($rule) === 'Ssntpl\Neev\Rules\PasswordHistory') {
+                $reflection = new \ReflectionClass($rule);
+                $property = $reflection->getProperty('count');
+                $property->setAccessible(true);
+                $oldPasswords = $property->getValue($rule);
+                break;
+            }
+        }
         $users = User::model()->all();
         if (!$users) {
             $this->info('No users found.');
