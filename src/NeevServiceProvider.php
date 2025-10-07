@@ -5,7 +5,7 @@ namespace Ssntpl\Neev;
 use Blade;
 use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
-use Ssntpl\Neev\Commands\CleanOldLoginHistory;
+use Ssntpl\Neev\Commands\CleanOldLoginAttempts;
 use Ssntpl\Neev\Commands\CleanOldPasswords;
 use Ssntpl\Neev\Commands\CreatePermission;
 use Ssntpl\Neev\Commands\CreateRole;
@@ -32,7 +32,6 @@ class NeevServiceProvider extends ServiceProvider
 
         $this->publishes([
             __DIR__.'/../database/migrations/create_users_table.php' => database_path('migrations/2025_01_01_000001_create_users_table.php'),
-            __DIR__ . '/../database/migrations/create_login_history_table.php' => database_path('migrations/2025_01_01_000002_create_login_history_table.php'),
             __DIR__.'/../database/migrations/create_roles_table.php' => database_path('migrations/2025_01_01_000003_create_role_table.php'),
             __DIR__.'/../database/migrations/create_otp_table.php' => database_path('migrations/2025_01_01_000004_create_otp_table.php'),
             __DIR__.'/../database/migrations/create_passkeys_table.php' => database_path('migrations/2025_01_01_000005_create_passkeys_table.php'),
@@ -86,7 +85,7 @@ class NeevServiceProvider extends ServiceProvider
         $this->commands([
             InstallNeev::class,
             DownloadGeoLiteDb::class,
-            CleanOldLoginHistory::class,
+            CleanOldLoginAttempts::class,
             CreatePermission::class,
             CleanOldPasswords::class,
             CreateRole::class,

@@ -5,10 +5,8 @@ namespace Ssntpl\Neev\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 
-class LoginHistory extends Model
+class LoginAttempt extends Model
 {
-    protected $table = 'login_history';
-
     public const Password = 'password';
     public const Passkey = 'passkey';
     public const MagicAuth = 'magic auth';
@@ -22,6 +20,8 @@ class LoginHistory extends Model
         'browser',
         'device',
         'ip_address',
+        'is_success',
+        'is_suspicious',
     ];
 
     protected $casts = [

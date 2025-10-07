@@ -31,8 +31,8 @@
         Sessions
     </a>
 
-    <a href="{{ route('account.loginHistory') }}"
-    class="block px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 {{ request()->routeIs('account.loginHistory') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : '' }}">
-        Login History
+    <a href="{{ route('account.loginAttempts') }}"
+    class="block px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 {{ request()->routeIs('account.loginAttempts') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : '' }}">
+        Login Attempts
     </a>
 </nav>
