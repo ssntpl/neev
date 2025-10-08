@@ -221,9 +221,9 @@ class UserAuthController extends Controller
     /**
      * Show the login page.
     */
-    public function loginCreate()
+    public function loginCreate(Request $request)
     {
-        return view('neev::auth.login');
+        return view('neev::auth.login', ['redirect' => $request->redirect]);
     }
 
     /**
@@ -260,9 +260,9 @@ class UserAuthController extends Controller
         }
         
         if (config('neev.support_username') && !empty($request->username)) {
-            return view('neev::auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules]);
+            return view('neev::auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail()]);
         }
-        return view('neev::auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules]);
+        return view('neev::auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail()]);
     }
 
     public function sendLoginLink(Request $request)
@@ -330,6 +330,10 @@ class UserAuthController extends Controller
             return redirect(route('otp.mfa.create', $user->preferedMultiAuth?->method ?? $user->multiFactorAuths()->first()?->method));
         }
 
+        if ($request->redirect) {
+            return redirect($request->redirect);
+        }
+        
         if (!$email->verified_at && config('neev.email_verified')) {
             return redirect(route('verification.notice'));
         }
@@ -447,6 +451,11 @@ class UserAuthController extends Controller
 
     public function emailVerifyStore(Request $request, $id, $hash) {
         $user = User::model()->findOrFail($id);
+        $logedinUser = User::model()->find($request->user()?->id);
+        if (!$user || !$logedinUser || $logedinUser?->id != $user?->id) {
+            return redirect(route('login') . '?redirect=' . urlencode($request->fullUrl()))->withErrors(['message' => __('Please login first to verify your email.')]);
+        }
+        
         $email = null;
         foreach ($user->emails as $item) {
             if (sha1($item->email) == $hash) {
@@ -455,15 +464,12 @@ class UserAuthController extends Controller
             }
         }
         
-        if (!$email || $email->verified_at) {
-            return redirect(config('neev.dashboard_url'));
-        } else if ($email && $request->hasValidSignature()) {
+        if ($email && $request->hasValidSignature()) {
             $email->verified_at = now();
             $email->save();
-            return redirect(config('neev.dashboard_url'));
         }
-
-        return response()->json(['message' => 'Invalid or expired verification link.'], 403);
+        
+        return redirect(config('neev.dashboard_url'));
     }
 
     /**
