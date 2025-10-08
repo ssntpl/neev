@@ -38,7 +38,7 @@
                 <x-neev-component::label for="email" value="{{ __(config('neev.support_username') ? 'Email or Username' : 'Email') }}" />
                 <x-neev-component::input id="email" class="block mt-1 w-full" type="text" name="email" :value="old('email')" required autofocus autocomplete="username" />
             </div>
-
+            <input type="hidden" name="redirect" value={{$redirect}}>
             <div class="flex flex-col gap-2 mt-4">
                 <a class="underline text-sm text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-100 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800" href="{{ route('register') }}">
                     {{ __('Have not registered?') }}
