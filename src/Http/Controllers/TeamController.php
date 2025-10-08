@@ -176,7 +176,7 @@ class TeamController extends Controller
             } else if (!$team->allUsers->contains($member)) {
                 $team->users()->attach($member, ['role' => $request->role]);
                 if ($request->role) {
-                    $user->assignRole($request->role, $team);
+                    $member->assignRole($request->role, $team);
                 }
             }
 
@@ -323,7 +323,7 @@ class TeamController extends Controller
                 $membership->role = $request->role;
                 $membership->save();
                 if ($request->role) {
-                    $user->assignRole($request->role, $team);
+                    $member->assignRole($request->role, $team);
                 }
                 return back()->with('status', 'Request Accepted');
             }

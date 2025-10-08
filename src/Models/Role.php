@@ -28,13 +28,13 @@ class Role extends Model
     public static function findResource($resourceType = '', $id)
     {
         if ((!$resourceType || $resourceType == 'Team')) {
-            return Team::model()->find($id)->first();
+            return Team::model()->find($id);
         }
         $class = "App\\Models\\{$resourceType}";
         if (! class_exists($class)) {
             throw new InvalidArgumentException("Model class not found: {$class}");
         }
 
-        return $class::find($id)->first();
+        return $class::find($id);
     }
 }
