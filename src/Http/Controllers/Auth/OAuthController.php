@@ -59,17 +59,28 @@ class OAuthController extends Controller
         
         try {
             $clientDetails = LoginAttempt::getClientDetails($request);
-            $user->loginAttempts()->create([
+            $location = $geoIP?->getLocation($request->ip());
+            $attempt = $user->loginAttempts()->create([
                 'method' => $service,
-                'location' => $geoIP?->getLocation($request->ip()),
+                'location' => $location,
                 'platform' => $clientDetails['platform'] ?? '',
                 'browser' => $clientDetails['browser'] ?? '',
                 'device' => $clientDetails['device'] ?? '',
                 'ip_address' => $request->ip(),
+                'is_suspicious' => LoginAttempt::isSuspicious($user, $clientDetails, $request->ip(), $location),
                 'is_success' => true,
             ]);
         } catch (Exception $e) {
             Log::error($e->getMessage());
+        }
+
+        if ($attempt?->is_suspicious) {
+            if (count($user->multiFactorAuths) > 0) {
+                session(['email' => $user->email->email, 'attempt_id' => $attempt?->id]);
+                return redirect(route('otp.mfa.create', $user->preferedMultiAuth?->method ?? $user->multiFactorAuths()->first()?->method));
+            } else {
+                return UserAuthController::suspiciousAction($request, $user->email, $attempt);
+            }
         }
         
         return redirect(config('neev.dashboard_url'));

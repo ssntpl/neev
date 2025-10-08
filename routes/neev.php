@@ -29,7 +29,7 @@ Route::middleware('web')->group(function () {
     Route::post('/login/link', [UserAuthController::class, 'sendLoginLink'])
         ->name('login.link.send');
 
-    Route::get('/login/{id}/{hash}', [UserAuthController::class, 'loginUsingLink'])
+    Route::get('/login/{id}', [UserAuthController::class, 'loginUsingLink'])
         ->name('login.link');
 
     Route::get('/otp/mfa/{method}', [UserAuthController::class, 'verifyMFAOTPCreate'])

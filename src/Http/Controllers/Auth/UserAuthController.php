@@ -43,20 +43,25 @@ class UserAuthController extends Controller
                 $attempt->save();
             } else {
                 $clientDetails = LoginAttempt::getClientDetails($request);
-                $user->loginAttempts()->create([
+                $location = $geoIP?->getLocation($request->ip());
+                $attempt = $user->loginAttempts()->create([
                     'method' => $method,
-                    'location' => $geoIP?->getLocation($request->ip()),
+                    'location' => $location,
                     'multi_factor_method' => $mfa,
                     'platform' => $clientDetails['platform'] ?? '',
                     'browser' => $clientDetails['browser'] ?? '',
                     'device' => $clientDetails['device'] ?? '',
                     'ip_address' => $request->ip(),
+                    'is_suspicious' => LoginAttempt::isSuspicious($user, $clientDetails, $request->ip(), $location),
                     'is_success' => true,
                 ]);
             }
         } catch (Exception $e) {
             Log::error($e->getMessage());
+            return null;
         }
+
+        return $attempt;
     }
 
     /**
@@ -286,15 +291,20 @@ class UserAuthController extends Controller
     public function loginUsingLink(Request $request, $id, GeoIP $geoIP)
     {
         if (! $request->hasValidSignature()) {
-            return response()->json(['message' => 'Invalid or expired verification link.'], 403);
+            return redirect(route('login'))->withErrors(['message' => 'Invalid or expired link.']);
         }
-
+        
         $email = Email::find($id);
-        if (config('neev.email_verified') && !$email->verified_at) {
-            return redirect(route('login'));
+        if (config('neev.email_verified') && !$email?->verified_at) {
+            return redirect(route('login'))->withErrors(['message' => 'Invalid or expired link.']);
+        }
+        
+        $attempt = LoginAttempt::find($request->attempt_id);
+        if ($attempt && $attempt->user_id != $email->user_id) {
+            return redirect(route('login'))->withErrors(['message' => 'Invalid or expired link.']);
         }
 
-        PasskeyController::login($request, $geoIP, $email->user, LoginAttempt::MagicAuth);
+        PasskeyController::login($request, $geoIP, $email->user, LoginAttempt::MagicAuth, null, $attempt);
 
         return redirect(config('neev.dashboard_url'));
     }
@@ -312,22 +322,29 @@ class UserAuthController extends Controller
         $user = $email->user;
         if (config('neev.fail_attempts_in_db')) {
             $clientDetails = LoginAttempt::getClientDetails($request);
+            $location = $geoIP?->getLocation($request->ip());
+            $isSuspicious = LoginAttempt::isSuspicious($user, $clientDetails, $request->ip(), $location);
             $attempt = $user->loginAttempts()->create([
                 'method' => LoginAttempt::Password,
-                'location' => $geoIP?->getLocation($request->ip()),
+                'location' => $location,
                 'multi_factor_method' => null,
                 'platform' => $clientDetails['platform'] ?? '',
                 'browser' => $clientDetails['browser'] ?? '',
                 'device' => $clientDetails['device'] ?? '',
                 'ip_address' => $request->ip(),
+                'is_suspicious' => $isSuspicious,
                 'is_success' => false,
             ]);
         }
-        $this->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, attempt: $attempt ?? null);
+        $attempt = $this->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, attempt: $attempt ?? null);
 
         if (count($user->multiFactorAuths) > 0) {
-            session(['email' => $email->email, 'attempt_id' => $attempt->id]);
+            session(['email' => $email->email, 'attempt_id' => $attempt?->id]);
             return redirect(route('otp.mfa.create', $user->preferedMultiAuth?->method ?? $user->multiFactorAuths()->first()?->method));
+        }
+
+        if ($attempt?->is_suspicious) {
+            return self::suspiciousAction($request, $email, $attempt);
         }
 
         if ($request->redirect) {
@@ -578,5 +595,21 @@ class UserAuthController extends Controller
         }
 
         return back()->withErrors(['message' => 'Code is invalid']);
+    }
+
+    public static function suspiciousAction($request, $email, $attempt) {
+        $attempt->is_success = false;
+        $attempt->save();
+        Auth::logoutCurrentDevice();
+        $request->session()->invalidate();
+        $signedUrl = URL::temporarySignedRoute(
+            'login.link',
+            Carbon::now()->addMinutes(10),
+            ['id' => $email->id, 'attempt_id' => $attempt->id]
+        );
+    
+        Mail::to($email->email)->send(new LoginUsingLink($signedUrl, 10));
+        
+        return redirect(route('login'))->with('status', 'Login link has been sent to your email. please verify your email.');
     }
 }

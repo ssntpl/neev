@@ -24,6 +24,7 @@
                             <th class="px-6 py-3 text-center font-bold tracking-wide">Device</th>
                             <th class="px-6 py-3 text-center font-bold tracking-wide">Location</th>
                             <th class="px-6 py-3 text-center font-bold tracking-wide">Status</th>
+                            <th class="px-6 py-3 text-center font-bold tracking-wide">Suspicious</th>
                             <th class="px-6 py-3 text-center font-bold tracking-wide">Logged in at</th>
                         </tr>
                     </x-slot>
@@ -59,6 +60,7 @@
                                     @endif
                                 </td>
                                 <td class="px-6 py-4 text-center">{{ $login->is_success ? 'Success' : 'Fail' }}</td>
+                                <td class="px-6 py-4 text-center {{$login->is_suspicious ? 'text-red-400' : ''}}">{{ $login->is_suspicious ? 'Suspicious' : 'Not Suspicious' }}</td>
                                 <td class="px-6 py-4 text-center">{{ $login->created_at->diffForHumans() ?? '--' }}</td>
                             </x-neev-component::table-body-tr>
                         @endforeach

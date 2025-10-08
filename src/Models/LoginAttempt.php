@@ -67,4 +67,70 @@ class LoginAttempt extends Model
             'device'   => $device,
         ];
     }
+
+    public static function isSuspicious($user, array $clientDetails, string $ip, ?string $location = null): bool
+    {
+        $allAttempts = $user->loginAttempts()
+            ->where('created_at', '>=', now()->subDays(30))
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        $successfulAttempts = $allAttempts->where('is_success', true);
+        
+        if ($successfulAttempts->isEmpty()) {
+            return false;
+        }
+
+        $riskScore = 0;
+        $deviceFingerprint = $clientDetails['browser'] . '|' . $clientDetails['platform'] . '|' . $clientDetails['device'];
+
+        // Recent Failed Attempts Analysis
+        $recentFailedAttempts = $allAttempts->where('is_success', false)
+            ->where('created_at', '>=', now()->subHours(24));
+        
+        $failedFromSameDevice = $recentFailedAttempts->filter(fn($attempt) => 
+            $attempt->browser . '|' . $attempt->platform . '|' . $attempt->device === $deviceFingerprint
+        )->count();
+        
+        if ($failedFromSameDevice > 0) {
+            $riskScore += min($failedFromSameDevice * 2, 6); // Cap at 6 points
+        }
+
+        // IP Analysis
+        $ipCounts = $successfulAttempts->groupBy('ip_address')->map->count();
+        if (!$ipCounts->has($ip)) {
+            $riskScore += 3;
+        } elseif (($ipCounts->get($ip, 0) / $successfulAttempts->count()) < 0.1) {
+            $riskScore += 2;
+        }
+
+        // Device Analysis
+        $deviceCombinations = $successfulAttempts->map(fn($attempt) => 
+            $attempt->browser . '|' . $attempt->platform . '|' . $attempt->device
+        )->countBy();
+        
+        if (!$deviceCombinations->has($deviceFingerprint)) {
+            $riskScore += 2;
+        }
+
+        // Location Analysis
+        if ($location) {
+            $locationCounts = $successfulAttempts->whereNotNull('location')
+                ->pluck('location')
+                ->filter()
+                ->countBy();
+            
+            if ($locationCounts->isNotEmpty() && !$locationCounts->has($location)) {
+                $riskScore += 2;
+            }
+        }
+
+        $threshold = match (true) {
+            $successfulAttempts->count() < 3 => 4,
+            $successfulAttempts->count() < 10 => 3,
+            default => 2
+        };
+
+        return $riskScore >= $threshold;
+    }
 }

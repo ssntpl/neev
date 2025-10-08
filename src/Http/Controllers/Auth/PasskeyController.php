@@ -331,14 +331,16 @@ class PasskeyController extends Controller
         $user = $email?->user;
         if (config('neev.fail_attempts_in_db')) {
             $clientDetails = LoginAttempt::getClientDetails($request);
+            $location = $geoIP?->getLocation($request->ip());
             $attempt = $user->loginAttempts()->create([
                 'method' => LoginAttempt::Passkey,
-                'location' => $geoIP?->getLocation($request->ip()),
+                'location' => $location,
                 'multi_factor_method' => null,
                 'platform' => $clientDetails['platform'] ?? '',
                 'browser' => $clientDetails['browser'] ?? '',
                 'device' => $clientDetails['device'] ?? '',
                 'ip_address' => $request->ip(),
+                'is_suspicious' => LoginAttempt::isSuspicious($user, $clientDetails, $request->ip(), $location),
                 'is_success' => false,
             ]);
         }
@@ -381,10 +383,14 @@ class PasskeyController extends Controller
             userHandle: $input['response']['userHandle'] ?? null
         );
 
-        self::login($request, $geoIP, $user, LoginAttempt::Passkey, $attempt ?? null);
+        $attempt = self::login($request, $geoIP, $user, LoginAttempt::Passkey, $attempt ?? null);
         
         $passkey->last_used = now();
         $passkey->save();
+
+        if ($attempt?->is_suspicious) {
+            return UserAuthController::suspiciousAction($request, $email, $attempt);
+        }
 
         return redirect(config('neev.dashboard_url'));
     }
@@ -398,25 +404,29 @@ class PasskeyController extends Controller
         }
         Auth::login($user, false);
         $request->session()->regenerate();
-            try {
-                if ($attempt) {
-                    $attempt->is_success = true;
-                    $attempt->save();
-                } else {
-                    $clientDetails = LoginAttempt::getClientDetails($request);
-                    $user->loginAttempts()->create([
-                        'method' => $method,
-                        'location' => $geoIP?->getLocation($request->ip()),
-                        'multi_factor_method' => $mfa,
-                        'platform' => $clientDetails['platform'] ?? '',
-                        'browser' => $clientDetails['browser'] ?? '',
-                        'device' => $clientDetails['device'] ?? '',
-                        'ip_address' => $request->ip(),
-                        'is_success' => true,
-                    ]);
-                }
-            } catch (Exception $e) {
-                Log::error($e->getMessage());
+        try {
+            if ($attempt) {
+                $attempt->is_success = true;
+                $attempt->save();
+            } else {
+                $clientDetails = LoginAttempt::getClientDetails($request);
+                $location = $geoIP?->getLocation($request->ip());
+                $attempt = $user->loginAttempts()->create([
+                    'method' => $method,
+                    'location' => $location,
+                    'multi_factor_method' => $mfa,
+                    'platform' => $clientDetails['platform'] ?? '',
+                    'browser' => $clientDetails['browser'] ?? '',
+                    'device' => $clientDetails['device'] ?? '',
+                    'ip_address' => $request->ip(),
+                    'is_suspicious' => LoginAttempt::isSuspicious($user, $clientDetails, $request->ip(), $location),
+                    'is_success' => true,
+                ]);
+            }
+        } catch (Exception $e) {
+            Log::error($e->getMessage());
+            return null;
         }
+        return $attempt;
     }
 }
