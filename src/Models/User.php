@@ -4,9 +4,9 @@ namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Notifications\Notifiable;
+use Ssntpl\Permissions\Traits\HasRoles;
 use Ssntpl\Neev\Traits\HasAccessToken;
 use Ssntpl\Neev\Traits\HasMultiAuth;
-use Ssntpl\Neev\Traits\HasRoles;
 use Ssntpl\Neev\Traits\HasTeams;
 use Ssntpl\Neev\Traits\VerifyEmail;
 use Illuminate\Foundation\Auth\User as Authenticatable;

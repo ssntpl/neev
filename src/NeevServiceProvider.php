@@ -12,9 +12,6 @@ use Ssntpl\Neev\Commands\CreateRole;
 use Ssntpl\Neev\Commands\DownloadGeoLiteDb;
 use Ssntpl\Neev\Commands\InstallNeev;
 use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
-use Ssntpl\Neev\Http\Middleware\PermissionMiddleware;
-use Ssntpl\Neev\Http\Middleware\RoleMiddleware;
-use Ssntpl\Neev\Http\Middleware\RoleOrPermissionMiddleware;
 
 class NeevServiceProvider extends ServiceProvider
 {
@@ -22,9 +19,6 @@ class NeevServiceProvider extends ServiceProvider
     {
         $router = $this->app->make(Router::class);
         $router->aliasMiddleware('neev', NeevMiddleware::class);
-        $router->aliasMiddleware('role', RoleMiddleware::class);
-        $router->aliasMiddleware('permission', PermissionMiddleware::class);
-        $router->aliasMiddleware('roleOrPermission', RoleOrPermissionMiddleware::class);
 
         $this->publishes([
             __DIR__.'/../config/neev.php' => config_path('neev.php'),
@@ -32,21 +26,20 @@ class NeevServiceProvider extends ServiceProvider
 
         $this->publishes([
             __DIR__.'/../database/migrations/create_users_table.php' => database_path('migrations/2025_01_01_000001_create_users_table.php'),
-            __DIR__.'/../database/migrations/create_roles_table.php' => database_path('migrations/2025_01_01_000003_create_role_table.php'),
-            __DIR__.'/../database/migrations/create_otp_table.php' => database_path('migrations/2025_01_01_000004_create_otp_table.php'),
-            __DIR__.'/../database/migrations/create_passkeys_table.php' => database_path('migrations/2025_01_01_000005_create_passkeys_table.php'),
-            __DIR__.'/../database/migrations/create_multi_factor_auths_table.php' => database_path('migrations/2025_01_01_000006_create_multi_factor_auths_table.php'),
-            __DIR__.'/../database/migrations/create_recovery_codes_table.php' => database_path('migrations/2025_01_01_000007_create_recovery_codes_table.php'),
-            __DIR__.'/../database/migrations/create_access_tokens_table.php' => database_path('migrations/2025_01_01_000008_create_access_tokens_table.php'),
+            __DIR__.'/../database/migrations/create_otp_table.php' => database_path('migrations/2025_01_01_000002_create_otp_table.php'),
+            __DIR__.'/../database/migrations/create_passkeys_table.php' => database_path('migrations/2025_01_01_000003_create_passkeys_table.php'),
+            __DIR__.'/../database/migrations/create_multi_factor_auths_table.php' => database_path('migrations/2025_01_01_000004_create_multi_factor_auths_table.php'),
+            __DIR__.'/../database/migrations/create_recovery_codes_table.php' => database_path('migrations/2025_01_01_000005_create_recovery_codes_table.php'),
+            __DIR__.'/../database/migrations/create_access_tokens_table.php' => database_path('migrations/2025_01_01_000006_create_access_tokens_table.php'),
         ], 'neev-migrations');
         
         $this->publishes([
-            __DIR__.'/../database/migrations/create_teams_table.php' => database_path('migrations/2025_01_01_000009_create_teams_table.php'),
-            __DIR__.'/../database/migrations/create_team_invitations_table.php' => database_path('migrations/2025_01_01_000010_create_team_invitations_table.php'),
+            __DIR__.'/../database/migrations/create_teams_table.php' => database_path('migrations/2025_01_01_000007_create_teams_table.php'),
+            __DIR__.'/../database/migrations/create_team_invitations_table.php' => database_path('migrations/2025_01_01_000008_create_team_invitations_table.php'),
         ], 'neev-team-migrations');
 
         $this->publishes([
-            __DIR__.'/../database/migrations/create_domain_rules_table.php' => database_path('migrations/2025_01_01_000011_create_domain_rules_table.php'),
+            __DIR__.'/../database/migrations/create_domain_rules_table.php' => database_path('migrations/2025_01_01_000009_create_domain_rules_table.php'),
         ], 'neev-domain-federation-migrations');
 
         
