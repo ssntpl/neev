@@ -122,7 +122,7 @@
                                             <div class="flex gap-4 justify-end">
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                 <input type="hidden" name="user_id" value="{{ $member->id }}">
-                                                <input type="hidden" name="resource_type" value="{{ class_basename(Ssntpl\Neev\Models\Team::class) }}">
+                                                <input type="hidden" name="resource_type" value="{{ 'Ssntpl\\Neev\\Models\\Team' }}">
                                                 <x-neev-component::button name="action" value="accept">
                                                     {{ __('Accept') }}
                                                 </x-neev-component::button>
@@ -177,7 +177,7 @@
 
                                                             <input type="hidden" name="resource_id" value="{{ $team->id }}">
                                                             <input type="hidden" name="user_id" value="{{ $member->id }}">
-                                                            <input type="hidden" name="resource_type" value="{{ class_basename(Ssntpl\Neev\Models\Team::class) }}">
+                                                            <input type="hidden" name="resource_type" value="{{ 'Ssntpl\\Neev\\Models\\Team' }}">
                                                             <div class="mt-4 flex gap-2 items-center w-2/3">
                                                                 <x-neev-component::label for="role" value="{{ __('Role') }}" />
                                                                 <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
@@ -295,7 +295,7 @@
 
                                                             <input type="hidden" name="resource_id" value="{{ $team->id }}">
                                                             <input type="hidden" name="user_id" value="{{ $member->id }}">
-                                                            <input type="hidden" name="resource_type" value="{{ class_basename(Ssntpl\Neev\Models\Team::class) }}">
+                                                            <input type="hidden" name="resource_type" value="{{ 'Ssntpl\\Neev\\Models\\Team' }}">
                                                             <div class="mt-4 flex gap-2 items-center w-2/3">
                                                                 <x-neev-component::label for="role" value="{{ __('Role') }}" />
                                                                 <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
@@ -382,6 +382,7 @@
                                                             @method('PUT')
 
                                                             <input type="hidden" name="resource_id" value="{{ $team->id }}">
+                                                            <input type="hidden" name="resource_type" value="{{ 'Ssntpl\\Neev\\Models\\Team' }}">
                                                             <input type="hidden" name="invitation_id" value="{{ $invitation->id }}">
                                                             <div class="mt-4 flex gap-2 items-center w-2/3">
                                                                 <x-neev-component::label for="role" value="{{ __('Role') }}" />

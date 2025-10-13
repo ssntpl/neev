@@ -1,6 +1,6 @@
 {
     "name": "ssntpl/neev",
-    "description": "Larave Starter Kit for user management.",
+    "description": "Laravel Starter Kit for user management.",
     "keywords": [
         "laravel", 
         "ssntpl", 
@@ -44,6 +44,7 @@
         "web-auth/webauthn-lib": "^5.2",
         "laravel/socialite": "^5.23",
         "spomky-labs/otphp": "^11.3",
+        "ssntpl/permissions": "*",
         "bacon/bacon-qr-code": "^3.0"
     }
 }

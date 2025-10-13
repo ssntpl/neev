@@ -4,7 +4,7 @@ namespace Ssntpl\Neev\Models;
 
 use Exception;
 use Illuminate\Database\Eloquent\Model;
-use Ssntpl\Neev\Traits\HasRoles;
+use Ssntpl\Permissions\Traits\HasRoles;
 
 class Team extends Model
 {

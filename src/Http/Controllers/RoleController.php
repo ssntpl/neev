@@ -5,7 +5,7 @@ namespace Ssntpl\Neev\Http\Controllers;
 use Exception;
 use Illuminate\Http\Request;
 use Log;
-use Ssntpl\Neev\Models\Role;
+use Ssntpl\Permissions\Models\Role;
 use Ssntpl\Neev\Models\User;
 
 class RoleController extends Controller
@@ -16,7 +16,7 @@ class RoleController extends Controller
             $resource = Role::findResource($request->resource_type ?? '', $request->resource_id);
             if ($request->user_id) {
                 $member = User::model()->find($request->user_id);
-                if ($request->resource_type == "Team") {
+                if (class_basename($request->resource_type) == "Team") {
                     $membership = $resource->allUsers->where('id', $member->id)->first()->membership;
                     $membership->role = $request->role;
                     $membership->save();
