@@ -303,7 +303,7 @@ php artisan neev:create-role
 ### Maintenance Commands
 ```bash
 # Clean old login records (runs automatically)
-php artisan neev:clean-login-history
+php artisan neev:clean-login-attempts
 
 # Clean old password history
 php artisan neev:clean-passwords
@@ -311,23 +311,7 @@ php artisan neev:clean-passwords
 # Download/update GeoIP database
 php artisan neev:download-geolite
 
-# Send push notifications
-php artisan neev:push-notification
-```
-
 ## Advanced Features
-
-### Push Notifications
-Neev includes Firebase Cloud Messaging support:
-
-```php
-// Configure in config/neev.php
-'firebase' => [
-    'api_key' => env('FIREBASE_API_KEY'),
-    'project_id' => env('FIREBASE_PROJECT_ID'),
-    // ... other Firebase config
-],
-```
 
 ### Custom Models
 You can use your own models:
@@ -426,10 +410,6 @@ If you need help:
 - Laravel 10.0 or higher
 - MySQL, PostgreSQL, or SQLite database
 - Redis (recommended for caching and sessions)
-
-## License
-
-Neev is open-source software. Please check the license file for details.
 
 ## Credits
 
