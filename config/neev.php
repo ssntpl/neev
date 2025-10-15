@@ -195,7 +195,7 @@ return [
     | - Users should store codes securely (password manager, printed copy)
     | Recommended: 8-16 codes
     */
-    'recovery_codes' => 16,
+    'recovery_codes' => 8,
 
     /*
     |--------------------------------------------------------------------------
@@ -216,14 +216,15 @@ return [
     | 1. OAuth app registration with the provider
     | 2. Client ID and secret in config/services.php
     | 3. Proper redirect URLs configured
+    | 4. Implement using socialite package // add link
     |
     | 'google'    - Google OAuth 2.0 (requires Google Cloud Console setup)
     | 'github'    - GitHub OAuth (requires GitHub App or OAuth App)
     | 'microsoft' - Microsoft OAuth (requires Azure App Registration)
     | 'apple'     - Sign in with Apple (requires Apple Developer setup)
     |
-    | Security note: OAuth providers bypass password requirements but still
-    | respect MFA settings and other security policies.
+    | Security note: OAuth providers bypass password requirements as well as
+    | MFA settings and other security policies.
     */
     'oauth' => [
         // 'google',    // Enable Google Sign-In
@@ -270,7 +271,7 @@ return [
     | - Longer retention = better security analysis but more storage
     | - Shorter retention = less storage but limited historical data
     | - Compliance requirements may dictate minimum retention periods
-    | - Use 'neev:clean-login-history' command to clean old records
+    | - Use 'neev:clean-login-attempts' command to clean old records
     |
     | Recommended: 30-90 days depending on security requirements
     */
