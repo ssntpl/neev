@@ -15,6 +15,9 @@
             </div>
 
             <div class="flex items-center ms-6">
+                <!-- Notifications -->
+                <x-neev-component::notification-bell :user="$user" />
+                
                 <!-- Teams Dropdown -->
                 @if (config('neev.team'))
                     @php

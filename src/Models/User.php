@@ -82,6 +82,16 @@ class User extends Authenticatable
         return $this->hasMany(Passkey::class);
     }
 
+    public function devices()
+    {
+        return $this->hasMany(UserDevice::class);
+    }
+
+    public function routeNotificationForFcm()
+    {
+        return $this->devices()->pluck('device_token')->toArray();
+    }
+
     public function activate()
     {
         $this->active = true;

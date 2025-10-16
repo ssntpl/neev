@@ -11,6 +11,7 @@ use Ssntpl\Neev\Commands\CreatePermission;
 use Ssntpl\Neev\Commands\CreateRole;
 use Ssntpl\Neev\Commands\DownloadGeoLiteDb;
 use Ssntpl\Neev\Commands\InstallNeev;
+use Ssntpl\Neev\Commands\PushNotification;
 use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
 
 class NeevServiceProvider extends ServiceProvider
@@ -31,15 +32,16 @@ class NeevServiceProvider extends ServiceProvider
             __DIR__.'/../database/migrations/create_multi_factor_auths_table.php' => database_path('migrations/2025_01_01_000004_create_multi_factor_auths_table.php'),
             __DIR__.'/../database/migrations/create_recovery_codes_table.php' => database_path('migrations/2025_01_01_000005_create_recovery_codes_table.php'),
             __DIR__.'/../database/migrations/create_access_tokens_table.php' => database_path('migrations/2025_01_01_000006_create_access_tokens_table.php'),
+            __DIR__.'/../database/migrations/create_notifications_table.php' => database_path('migrations/2025_01_01_000007_create_notifications_table.php'),
         ], 'neev-migrations');
         
         $this->publishes([
-            __DIR__.'/../database/migrations/create_teams_table.php' => database_path('migrations/2025_01_01_000007_create_teams_table.php'),
-            __DIR__.'/../database/migrations/create_team_invitations_table.php' => database_path('migrations/2025_01_01_000008_create_team_invitations_table.php'),
+            __DIR__.'/../database/migrations/create_teams_table.php' => database_path('migrations/2025_01_01_000008_create_teams_table.php'),
+            __DIR__.'/../database/migrations/create_team_invitations_table.php' => database_path('migrations/2025_01_01_000009_create_team_invitations_table.php'),
         ], 'neev-team-migrations');
 
         $this->publishes([
-            __DIR__.'/../database/migrations/create_domain_rules_table.php' => database_path('migrations/2025_01_01_000009_create_domain_rules_table.php'),
+            __DIR__.'/../database/migrations/create_domain_rules_table.php' => database_path('migrations/2025_01_01_000010_create_domain_rules_table.php'),
         ], 'neev-domain-federation-migrations');
 
         
@@ -75,6 +77,7 @@ class NeevServiceProvider extends ServiceProvider
     public function register()
     {
         $this->mergeConfigFrom(__DIR__.'/../config/neev.php', 'neev');
+        
         $this->commands([
             InstallNeev::class,
             DownloadGeoLiteDb::class,
@@ -82,6 +85,7 @@ class NeevServiceProvider extends ServiceProvider
             CreatePermission::class,
             CleanOldPasswords::class,
             CreateRole::class,
+            PushNotification::class
         ]);
     }
 }

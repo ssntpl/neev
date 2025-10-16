@@ -45,6 +45,7 @@
         "laravel/socialite": "^5.23",
         "spomky-labs/otphp": "^11.3",
         "ssntpl/permissions": "*",
-        "bacon/bacon-qr-code": "^3.0"
+        "bacon/bacon-qr-code": "^3.0",
+        "laravel-notification-channels/fcm": "^5.1"
     }
 }
