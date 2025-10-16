@@ -77,6 +77,50 @@
                 }
 
                 async function registerDevice() {
+                    const device_id = localStorage.getItem('fcm_device_id');
+                    if (device_id > 0) {
+                        try {
+                            if (Notification.permission !== 'granted') {
+                                localStorage.removeItem('fcm_device_id');
+                                const response = await fetch('/neev/device/register', {
+                                    method: 'DELETE',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                        'Accept': 'application/json'
+                                    },
+                                    body: JSON.stringify({ device_id: device_id })
+                                });
+    
+                                if (response.ok) {
+                                    console.log('Device deletion successfully');
+                                }
+                                return;
+                            } else {
+                                const response = await fetch('/neev/device/register', {
+                                    method: 'PUT',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                                        'Accept': 'application/json'
+                                    },
+                                    body: JSON.stringify({ device_id: device_id })
+                                });
+    
+                                if (response.ok) {
+                                    const data = await response.json();
+                                    if (data?.status == 'unauthorized') {
+                                        localStorage.removeItem('fcm_device_id');
+                                    } else {
+                                        console.log('Device updated successfully');
+                                        return;
+                                    }
+                                }
+                            }
+                        } catch (error) {
+                            console.error('Device update error:', error);
+                        }
+                    };
                     const token = await getFirebaseToken();
                     if (!token) return;
 
@@ -91,7 +135,13 @@
                             body: JSON.stringify({ device_token: token })
                         });
 
-                        if (response.ok) console.log('Device registered successfully');
+                        if (response.ok) {
+                            const data = await response.json();
+                            if (data?.device_id) {
+                                localStorage.setItem('fcm_device_id', data?.device_id);
+                                console.log('Device registered successfully');
+                            }
+                        }
                     } catch (error) {
                         console.error('Device registration error:', error);
                     }

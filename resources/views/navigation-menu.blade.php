@@ -96,7 +96,19 @@
                             <div class="border-t border-gray-200 dark:border-gray-600"></div>
 
                             <!-- Authentication -->
-                            <form method="POST" action="{{ route('logout') }}" x-data>
+                            <form method="POST" action="{{ route('logout') }}" x-data @submit.prevent="
+                                const token = localStorage.getItem('fcm_device_id');
+                                const formData = new FormData($el);
+                                if (token) formData.append('fcm_device_id', token);
+                                fetch($el.action, {
+                                    method: 'POST',
+                                    body: formData,
+                                    headers: { 'Accept': 'application/json' }
+                                }).then(() => {
+                                    localStorage.removeItem('fcm_device_id');
+                                    window.location.reload();
+                                });"
+                            >
                                 @csrf
 
                                 <button type="submit" class="cursor-pointer w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-600">

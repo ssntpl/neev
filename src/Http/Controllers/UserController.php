@@ -108,10 +108,8 @@ class UserController extends Controller
     public function notifications(Request $request)
     {
         $user = User::model()->find($request->user()->id);
-        $notifications = $user->notifications()->orderBy('created_at', 'desc')->get();
         return view('neev::account.notifications', [
             'user' => $user,
-            'notifications' => $notifications,
         ]);
     }
 
@@ -159,7 +157,7 @@ class UserController extends Controller
         // Send push notification
         $title = 'Added New Email';
         $body = "A new email address has been added to your account: $request->email";
-        PushNotificationJob::dispatch($user->id, $title, $body);
+        PushNotificationJob::dispatch($user->id, $title, $body, env('APP_URL').'/account/emails')->delay(5);
 
         return back()->with('status', 'Email has been Added.');
     }

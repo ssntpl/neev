@@ -477,10 +477,17 @@ class UserAuthController extends Controller
     */
     public function destroy(Request $request)
     {
+        $request->fcm_device_id;
+        $device = User::model()->find($request->user()->id)->devices()->where('id', $request->fcm_device_id)->first();
+        
         Auth::logoutCurrentDevice();
+        
+        if ($device) {
+            $device->delete();
+        }
 
         $request->session()->invalidate();
-
+        
         return redirect(route('login'));
     }
 
@@ -512,7 +519,9 @@ class UserAuthController extends Controller
             DB::table('sessions')->where('id', $request->session_id )->delete();
         }
 
-       return back()->with('logoutStatus', __('Logged out from other sessions.'));
+        $user->devices()->delete();
+
+        return back()->with('logoutStatus', __('Logged out from other sessions.'));
     }
 
     public function verifyMFAOTPCreate($method)

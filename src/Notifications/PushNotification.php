@@ -5,7 +5,6 @@ namespace Ssntpl\Neev\Notifications;
 use Illuminate\Notifications\Notification;
 use NotificationChannels\Fcm\FcmChannel;
 use NotificationChannels\Fcm\FcmMessage;
-use NotificationChannels\Fcm\Resources\Notification as FcmNotification;
 
 class PushNotification extends Notification
 {
@@ -13,19 +12,16 @@ class PushNotification extends Notification
 
     public function via($notifiable)
     {
-        return [FcmChannel::class];
+        return [FcmChannel::class, 'database'];
     }
 
     public function toFcm($notifiable)
     {
         $message = FcmMessage::create()
-            ->notification(
-                FcmNotification::create()
-                    ->title($this->title)
-                    ->body($this->body)
-            )
             ->data([
                 'type' => 'notification',
+                'title' => $this->title,
+                'body' => $this->body,
                 'click_action' => $this->link ?? env('APP_URL'),
             ]);
 
