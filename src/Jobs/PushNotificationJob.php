@@ -22,7 +22,7 @@ class PushNotificationJob implements ShouldQueue
     public function handle(): void
     {
         $user = User::model()->find($this->user_id);
-        $user->notify(new PushNotification(
+        $user->notifyNow(new PushNotification(
             $this->title,
             $this->body,
             $this->link,
