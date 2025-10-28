@@ -117,20 +117,6 @@ return [
     */
 
     /*
-    | Available Domain Rules:
-    | ----------------------
-    | 'mfa' - Mandatory Multi-Factor Authentication
-    |         Forces all users from federated domains to enable and use MFA
-    |         Blocks access until MFA is configured and verified
-    |         Applied automatically on first login from federated domain
-    |
-    | Future rules may include: 'password_complexity', 'session_timeout', etc.
-    */
-    'domain_rules' => [
-       'mfa', // Enforce mandatory MFA for users from federated domains
-    ],
-
-    /*
     |--------------------------------------------------------------------------
     | Application URLs
     |--------------------------------------------------------------------------
@@ -216,7 +202,8 @@ return [
     | 1. OAuth app registration with the provider
     | 2. Client ID and secret in config/services.php
     | 3. Proper redirect URLs configured
-    | 4. Implement using socialite package // add link
+    | 4. Implement using socialite package
+    | Link - https://socialiteproviders.com/about
     |
     | 'google'    - Google OAuth 2.0 (requires Google Cloud Console setup)
     | 'github'    - GitHub OAuth (requires GitHub App or OAuth App)
@@ -259,7 +246,7 @@ return [
     |
     | Performance impact: Database storage is slower but more reliable
     */
-    'fail_attempts_in_db' => false,
+    'record_failed_login_attempts' => false,
 
     /*
     | Login History Retention Period

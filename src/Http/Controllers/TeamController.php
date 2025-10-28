@@ -382,8 +382,9 @@ class TeamController extends Controller
         try {
             if ($request->verify) {
                 $res = $this->verify($team);
+                $domain_rules = ["mfa"];
                 if ($res) {
-                    foreach (config('neev.domain_rules') ?? [] as $rule) {
+                    foreach ($domain_rules ?? [] as $rule) {
                         $team->rules()->create([
                             'name' => $rule,
                             'value' => false,

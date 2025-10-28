@@ -310,7 +310,7 @@ class UserAuthController extends Controller
         }
         
         $user = $email->user;
-        if (config('neev.fail_attempts_in_db')) {
+        if (config('neev.record_failed_login_attempts')) {
             $clientDetails = LoginAttempt::getClientDetails($request);
             $attempt = $user->loginAttempts()->create([
                 'method' => LoginAttempt::Password,
