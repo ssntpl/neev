@@ -6,11 +6,13 @@ use Hash;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
+use Ssntpl\Neev\Jobs\PushNotificationJob;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
-use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Notifications\PushNotification;
+use Ssntpl\Permissions\Models\Permission;
 
 class UserController extends Controller
 {
@@ -103,6 +105,14 @@ class UserController extends Controller
         ]);
     }
 
+    public function notifications(Request $request)
+    {
+        $user = User::model()->find($request->user()->id);
+        return view('neev::account.notifications', [
+            'user' => $user,
+        ]);
+    }
+
     public function profileUpdate(Request $request)
     {
         $validationRules = [
@@ -143,6 +153,11 @@ class UserController extends Controller
 
         $auth = new UserAuthController;
         $auth->emailVerifySend($request);
+
+        // Send push notification
+        $title = 'Added New Email';
+        $body = "A new email address has been added to your account: $request->email";
+        PushNotificationJob::dispatch($user->id, $title, $body, env('APP_URL').'/account/emails')->delay(5);
 
         return back()->with('status', 'Email has been Added.');
     }

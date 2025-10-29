@@ -65,6 +65,14 @@ return new class extends Migration
             $table->boolean('is_suspicious')->default(false);
             $table->timestamps();
         });
+
+        Schema::create('user_devices', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('device_type');
+            $table->string('device_token')->unique();
+            $table->timestamps();
+        });
     }
 
     /**
@@ -72,9 +80,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('users');
         Schema::dropIfExists('passwords');
         Schema::dropIfExists('emails');
         Schema::dropIfExists('login_attempts');
+        Schema::dropIfExists('user_devices');
+        Schema::dropIfExists('users');
     }
 };

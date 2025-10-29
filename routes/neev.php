@@ -4,6 +4,8 @@ use Illuminate\Support\Facades\Route;
 use Ssntpl\Neev\Http\Controllers\Auth\OAuthController;
 use Ssntpl\Neev\Http\Controllers\Auth\PasskeyController;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
+use Ssntpl\Neev\Http\Controllers\DeviceController;
+use Ssntpl\Neev\Http\Controllers\NotificationController;
 use Ssntpl\Neev\Http\Controllers\RoleController;
 use Ssntpl\Neev\Http\Controllers\TeamController;
 use Ssntpl\Neev\Http\Controllers\UserController;
@@ -102,6 +104,8 @@ Route::middleware( ['web', 'neev'])->group(function () {
             ->name('account.sessions');
         Route::get('/loginAttempts', [UserController::class, 'loginAttempts'])
             ->name('account.loginAttempts');
+        Route::get('/notifications', [UserController::class, 'notifications'])
+            ->name('account.notifications');
 
         Route::post('/multiFactorAuth', [UserController::class, 'addMultiFactorAuth'])
             ->name('multi.auth');
@@ -183,4 +187,13 @@ Route::middleware( ['web', 'neev'])->group(function () {
         Route::put('/{team}/domain/rules', [TeamController::class, 'updateDomainRule'])
             ->name('domain.rules');
     });
+});
+
+Route::prefix('neev')->middleware(['web', 'neev'])->group(function (){
+    Route::post('/device/register', [DeviceController::class, 'store']);
+    Route::put('/device/register', [DeviceController::class, 'update']);
+    Route::delete('/device/register', [DeviceController::class, 'destroy']);
+    Route::post('/notifications/markRead', [NotificationController::class, 'markAsRead']);
+    Route::post('/notifications/markAllRead', [NotificationController::class, 'markAllAsRead']);
+    Route::delete('/notifications', [NotificationController::class, 'destroy']);
 });
