@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -11,9 +12,19 @@ return new class extends Migration
      */
     public function up(): void
     {
-        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        // Check if users table exists and has data
+        if (Schema::hasTable('users')) {
+            $userCount = DB::table('users')->count();
+            if ($userCount > 0) {
+                throw new \RuntimeException(
+                    'Cannot drop users table: table contains ' . $userCount . ' user(s). ' .
+                    'Neev can only be installed on a fresh installation with an empty users table.'
+                );
+            }
+        }
+
         Schema::dropIfExists('users');
-        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+        Schema::dropIfExists('password_reset_tokens');
 
         Schema::create('users', function (Blueprint $table) {
             $table->id();
