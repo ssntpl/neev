@@ -3,8 +3,8 @@
 namespace Ssntpl\Neev\Traits;
 
 use Ssntpl\Neev\Models\AccessToken;
-use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\NewAccessToken;
+use Ssntpl\Permissions\Models\Permission;
 use Str;
 
 trait HasAccessToken
@@ -32,7 +32,7 @@ trait HasAccessToken
         $token = $this->accessTokens()->create([
             'name' => AccessToken::login,
             'token' => $plainTextToken,
-            'token_type' => AccessToken::api_token,
+            'token_type' => AccessToken::login,
             'expires_at' => $expiry ? now()->addMinutes($expiry) : null,
         ]);
 

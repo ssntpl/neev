@@ -7,13 +7,13 @@ use Illuminate\Database\Eloquent\Model;
 class DomainRule extends Model
 {   
     protected $fillable = [
-        'team_id',
+        'domain_id',
         'name',
         'value',
     ];
 
-    public function team()
+    public function domain()
     {
-        return $this->belongsTo(Team::getClass(), 'team_id');
+        return $this->belongsTo(Team::getClass(), 'domain_id');
     }
 }
