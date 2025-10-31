@@ -7,12 +7,10 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Models\Email;
-use Ssntpl\Neev\Models\LoginHistory;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
-use Ssntpl\Neev\Rules\PasswordLogic;
-use Ssntpl\Neev\Rules\PasswordValidate;
 
 class UserController extends Controller
 {
@@ -78,7 +76,7 @@ class UserController extends Controller
             ->orderBy('last_activity', 'desc')
             ->get()
             ->map(function ($session) {
-                $agent = LoginHistory::getClientDetails(userAgent: $session->user_agent);
+                $agent = LoginAttempt::getClientDetails(userAgent: $session->user_agent);
 
                 return (object)[
                     'id' => $session->id,
@@ -95,18 +93,34 @@ class UserController extends Controller
         ]);
     }
 
-    public function loginHistory(Request $request)
+    public function loginAttempts(Request $request)
     {
         $user = User::model()->find($request->user()->id);
-        $history = User::model()->find($user->id)?->loginHistory()?->orderBy('created_at', 'desc')?->get();
-        return view('neev::account.login-history', [
+        $attempts = User::model()->find($user->id)?->loginAttempts()?->orderBy('created_at', 'desc')?->get();
+        return view('neev::account.login-attempt', [
             'user' => $user,
-            'history' => $history,
+            'attempts' => $attempts,
         ]);
     }
 
     public function profileUpdate(Request $request)
     {
+        $validationRules = [
+            'name' => 'required|string|max:255',
+        ];
+        
+        if (config('neev.support_username')) {
+            $usernameRules = config('neev.username');
+            // Remove unique rule for current user
+            $usernameRules = array_filter($usernameRules, function($rule) {
+                return !str_contains($rule, 'unique:');
+            });
+            $usernameRules[] = 'unique:users,username,' . $request->user()->id;
+            $validationRules['username'] = $usernameRules;
+        }
+        
+        $request->validate($validationRules);
+        
         $user = User::model()->find($request->user()->id);
         $user->name = $request->name;
         if (config('neev.support_username')) {
@@ -172,7 +186,7 @@ class UserController extends Controller
     {
         $request->validate([
             'current_password' => ['required'],
-            'password' => ['required', 'confirmed', new PasswordValidate, new PasswordLogic],
+            'password' => config('neev.password'),
         ]);
 
         $user = User::model()->find($request->user()->id);

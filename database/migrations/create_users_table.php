@@ -3,6 +3,7 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 
 return new class extends Migration
 {
@@ -11,9 +12,19 @@ return new class extends Migration
      */
     public function up(): void
     {
-        DB::statement('SET FOREIGN_KEY_CHECKS=0;');
+        // Check if users table exists and has data
+        if (Schema::hasTable('users')) {
+            $userCount = DB::table('users')->count();
+            if ($userCount > 0) {
+                throw new \RuntimeException(
+                    'Cannot drop users table: table contains ' . $userCount . ' user(s). ' .
+                    'Neev can only be installed on a fresh installation with an empty users table.'
+                );
+            }
+        }
+
         Schema::dropIfExists('users');
-        DB::statement('SET FOREIGN_KEY_CHECKS=1;');
+        Schema::dropIfExists('password_reset_tokens');
 
         Schema::create('users', function (Blueprint $table) {
             $table->id();
@@ -39,6 +50,21 @@ return new class extends Migration
             $table->timestamps();
             $table->unique(['user_id', 'email']);
         });
+
+        Schema::create('login_attempts', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('method');
+            $table->string('multi_factor_method')->nullable();
+            $table->text('location')->nullable();
+            $table->string('platform')->nullable();
+            $table->string('browser')->nullable();
+            $table->string('device')->nullable();
+            $table->string('ip_address')->nullable();
+            $table->boolean('is_success')->default(false);
+            $table->boolean('is_suspicious')->default(false);
+            $table->timestamps();
+        });
     }
 
     /**
@@ -49,5 +75,6 @@ return new class extends Migration
         Schema::dropIfExists('users');
         Schema::dropIfExists('passwords');
         Schema::dropIfExists('emails');
+        Schema::dropIfExists('login_attempts');
     }
 };

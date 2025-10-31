@@ -6,15 +6,17 @@
 
         <x-neev-component::validation-errors class="mb-4" />
 
-        <div class="flex flex-col gap-2 border rounded-lg p-2 text-center">
-            <div class="flex gap-2 justify-around flex-wrap">
-                @foreach (config('neev.oauth') as $oauth)
-                    <form method="GET" action="{{ route('oauth.redirect', $oauth) }}">
-                        <x-neev-component::secondary-button type="submit">{{ __($oauth) }}</x-neev-component::secondary-button>
-                    </form>
-                @endforeach
+        @if (config('neev.oauth'))
+            <div class="flex flex-col gap-2 border rounded-lg p-2 text-center">
+                <div class="flex gap-2 justify-around flex-wrap">
+                    @foreach (config('neev.oauth') as $oauth)
+                        <form method="GET" action="{{ route('oauth.redirect', $oauth) }}">
+                            <x-neev-component::secondary-button type="submit">{{ __($oauth) }}</x-neev-component::secondary-button>
+                        </form>
+                    @endforeach
+                </div>
             </div>
-        </div>
+        @endif
 
         <div class="mt-4">
             <form method="POST" action="{{ route('register') }}">
@@ -40,7 +42,7 @@
                 @if (config('neev.support_username'))
                     <div class="mt-4">
                         <x-neev-component::label for="username" value="{{ __('Username') }}" />
-                        <x-neev-component::input id="username" class="block mt-1 w-full" type="text" name="username" :value="old('username')" required autocomplete="username" />
+                        <x-neev-component::input id="username" class="block mt-1 w-full" type="text" name="username" :value="$username ?? old('username')" required autocomplete="username" />
                     </div>
                 @endif
     

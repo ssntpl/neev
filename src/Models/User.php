@@ -4,9 +4,9 @@ namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Notifications\Notifiable;
+use Ssntpl\Permissions\Traits\HasRoles;
 use Ssntpl\Neev\Traits\HasAccessToken;
 use Ssntpl\Neev\Traits\HasMultiAuth;
-use Ssntpl\Neev\Traits\HasRoles;
 use Ssntpl\Neev\Traits\HasTeams;
 use Ssntpl\Neev\Traits\VerifyEmail;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -63,9 +63,9 @@ class User extends Authenticatable
         return $this->hasOne(Password::class)->orderByDesc('created_at')->limit(1);
     }
 
-    public function loginHistory()
+    public function loginAttempts()
     {
-        return $this->hasMany(LoginHistory::class);
+        return $this->hasMany(LoginAttempt::class);
     }
 
     public function OTP($method = null)

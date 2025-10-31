@@ -72,9 +72,12 @@ class InstallNeev extends Command implements PromptsForMissingInput
         
         $this->callSilent('vendor:publish', ['--tag' => 'neev-team-migrations', '--force' => true]);
     }
-  
+    
     protected function installRole() {
-        $this->callSilent('vendor:publish', ['--tag' => 'neev-role-migrations', '--force' => true]);
+        $this->callSilent('vendor:publish', ['--tag' => 'permissions-config', '--force' => true]);
+        $this->callSilent('vendor:publish', ['--tag' => 'permissions-migrations', '--force' => true]);
+
+        $this->replaceInFile("'user_model' => \"App\\\Models\\\User\"", "'user_model' => \"Ssntpl\\\Neev\\\Models\\\User\"", config_path('permissions.php'));
     }
 
     /**

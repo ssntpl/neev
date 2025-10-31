@@ -100,8 +100,8 @@ Route::middleware( ['web', 'neev'])->group(function () {
             ->name('account.teams');
         Route::get('/sessions', [UserController::class, 'sessions'])
             ->name('account.sessions');
-        Route::get('/loginHistory', [UserController::class, 'loginHistory'])
-            ->name('account.loginHistory');
+        Route::get('/loginAttempts', [UserController::class, 'loginAttempts'])
+            ->name('account.loginAttempts');
 
         Route::post('/multiFactorAuth', [UserController::class, 'addMultiFactorAuth'])
             ->name('multi.auth');

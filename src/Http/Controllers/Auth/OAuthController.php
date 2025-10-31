@@ -9,6 +9,7 @@ use Laravel\Socialite\Facades\Socialite;
 use Log;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\Email;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\GeoIP;
@@ -57,17 +58,18 @@ class OAuthController extends Controller
         $request->session()->regenerate();
         
         try {
-            $clientDetails = \Ssntpl\Neev\Models\LoginHistory::getClientDetails($request);
-            $user->loginHistory()->create([
+            $clientDetails = LoginAttempt::getClientDetails($request);
+            $user->loginAttempts()->create([
                 'method' => $service,
                 'location' => $geoIP?->getLocation($request->ip()),
                 'platform' => $clientDetails['platform'] ?? '',
                 'browser' => $clientDetails['browser'] ?? '',
                 'device' => $clientDetails['device'] ?? '',
                 'ip_address' => $request->ip(),
+                'is_success' => true,
             ]);
         } catch (Exception $e) {
-            \Log::error($e->getMessage());
+            Log::error($e->getMessage());
         }
         
         return redirect(config('neev.dashboard_url'));

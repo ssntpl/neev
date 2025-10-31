@@ -5,7 +5,7 @@
 
     <x-neev-component::card>
         <x-slot name="title">
-            {{ __('Login History') }}
+            {{ __('Login Attempts') }}
         </x-slot>
 
         <x-slot name="action">
@@ -15,7 +15,7 @@
         </x-slot>
 
         <x-slot name="content">
-            @if (count($history ?? []) > 0)
+            @if (count($attempts ?? []) > 0)
                 <x-neev-component::table>
                     <x-slot name="head">
                         <tr>
@@ -23,11 +23,12 @@
                             <th class="px-6 py-3 text-center font-bold tracking-wide">MFA</th>
                             <th class="px-6 py-3 text-center font-bold tracking-wide">Device</th>
                             <th class="px-6 py-3 text-center font-bold tracking-wide">Location</th>
+                            <th class="px-6 py-3 text-center font-bold tracking-wide">Status</th>
                             <th class="px-6 py-3 text-center font-bold tracking-wide">Logged in at</th>
                         </tr>
                     </x-slot>
                     <x-slot name="body">
-                        @foreach ($history as $login)
+                        @foreach ($attempts as $login)
                             <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
                                 <td class="px-6 py-4 text-center capitalize">{{ $login->method ?? '--' }}</td>
                                 <td class="px-6 py-4 text-center">{{ $login->multi_factor_method ?? '--' }}</td>
@@ -57,6 +58,7 @@
                                         --
                                     @endif
                                 </td>
+                                <td class="px-6 py-4 text-center">{{ $login->is_success ? 'Success' : 'Fail' }}</td>
                                 <td class="px-6 py-4 text-center">{{ $login->created_at->diffForHumans() ?? '--' }}</td>
                             </x-neev-component::table-body-tr>
                         @endforeach

@@ -5,10 +5,11 @@ namespace Ssntpl\Neev\Http\Controllers;
 use Carbon\Carbon;
 use Exception;
 use Illuminate\Http\Request;
+use Log;
 use Mail;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
-use Ssntpl\Neev\Models\DomainRule;
+use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Str;
@@ -96,6 +97,7 @@ class TeamController extends Controller
                 $user->assignRole($team->default_role ?? '', $team);
             }
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to create team.']);
         }
 
@@ -110,6 +112,7 @@ class TeamController extends Controller
             $team->is_public = (bool) $request->public;
             $team->save();
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to update team.']);
         }
 
@@ -127,6 +130,7 @@ class TeamController extends Controller
             $team->delete();
             $user->role($team)?->delete();
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to delete team.']);
         }
 
@@ -141,7 +145,8 @@ class TeamController extends Controller
             if ($user->id != $team->user_id || ($team->enforce_domain && $team->domain_verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->federated_domain)))) {
                 return back()->withErrors(['message' => 'You cannot invite member in this team.']);
             }
-            $member = User::model()->where('email', $request->email)->first();
+            $email = Email::where('email', $request->email)->first();
+            $member = $email?->user;
             if (!$member) {
                 $expiry = Carbon::now()->addDays(7);
 
@@ -171,7 +176,7 @@ class TeamController extends Controller
             } else if (!$team->allUsers->contains($member)) {
                 $team->users()->attach($member, ['role' => $request->role]);
                 if ($request->role) {
-                    $user->assignRole($request->role, $team);
+                    $member->assignRole($request->role, $team);
                 }
             }
 
@@ -182,6 +187,7 @@ class TeamController extends Controller
 
             Mail::to($member->email->email)->send(new TeamInvitation($team->name, $member->name));
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to invite member.']);
         }
         
@@ -218,6 +224,7 @@ class TeamController extends Controller
             $team->users()->detach($user);
             $user->role($team)?->delete();
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to leave from team.']);
         }
         
@@ -264,6 +271,7 @@ class TeamController extends Controller
                 }
             }
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to Accept/Reject Request.']);
         }
         
@@ -274,7 +282,8 @@ class TeamController extends Controller
     {
         $user = User::model()->find($request->user()->id);
         try {
-            $owner = User::model()->where('email', $request->email)->first();
+            $email = Email::where('email', $request->email)->first();
+            $owner = $email?->user;
             if ($owner) {
                 $team = Team::model()->where(['name' => $request->team, 'user_id' => $owner->id])->first();
                 if ($team && !$team->enforce_domain && !$team->domain_verified_at) {
@@ -292,6 +301,7 @@ class TeamController extends Controller
             }
 
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to Send Request.']);
         }
         
@@ -313,11 +323,12 @@ class TeamController extends Controller
                 $membership->role = $request->role;
                 $membership->save();
                 if ($request->role) {
-                    $user->assignRole($request->role, $team);
+                    $member->assignRole($request->role, $team);
                 }
                 return back()->with('status', 'Request Accepted');
             }
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to Accept/Reject Request.']);
         }
 
@@ -336,6 +347,7 @@ class TeamController extends Controller
                 return back()->with('status', 'Owner has been changed.');
             }
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to proccess change owner request.']);
         }
 
@@ -356,6 +368,7 @@ class TeamController extends Controller
             $team->save();
             return back()->with('token', $token);
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to federate domain.']);
         }
     }
@@ -369,11 +382,12 @@ class TeamController extends Controller
         try {
             if ($request->verify) {
                 $res = $this->verify($team);
+                $domain_rules = ["mfa"];
                 if ($res) {
-                    foreach (config('neev.domain_rules') ?? [] as $rule) {
+                    foreach ($domain_rules ?? [] as $rule) {
                         $team->rules()->create([
                             'name' => $rule,
-                            'value' => DomainRule::ruleDefaultValue($rule) ?? null,
+                            'value' => false,
                         ]);
                     }
                     return back()->with('status', 'Domain verified successfully!');
@@ -392,6 +406,7 @@ class TeamController extends Controller
             $team->save();
             return back()->with('status', 'domain has been updated.');
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to update domain.']);
         }
     }
@@ -425,6 +440,7 @@ class TeamController extends Controller
             $team->rules()->delete();
             return back()->with('status', 'Domain has been delete.');
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to delete domain.']);
         }
     }
@@ -437,19 +453,13 @@ class TeamController extends Controller
         }
         try {
             foreach ($team->rules ?? [] as $rule) {
-                if ($rule->ruleType($rule->name) === 'bool') {
-                    $rule->value = (bool) $request->{$rule->name};
-                } elseif ($rule->ruleType($rule->name) === 'number') {
-                    $rule->value = (int) $request->{$rule->name};
-                } else {
-                    $rule->value = $request->{$rule->name};
-                }
-
+                $rule->value = (bool) $request->{$rule->name};
                 $rule->save();
             }
             
             return back()->with('status', 'Domain Rules have been updated.');
         } catch (Exception $e) {
+            Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to update domain rules.']);
         }
     }

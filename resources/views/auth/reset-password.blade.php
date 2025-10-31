@@ -14,7 +14,7 @@
             </div>
 
             <div class="mt-4">
-                <x-neev-component::label for="password" value="{{ __('Password') }}" />
+                <x-neev-component::label for="password" value="{{ __('New Password') }}" />
                 <x-neev-component::input id="password" class="block mt-1 w-full" type="password" name="password" required autocomplete="new-password" />
             </div>
 

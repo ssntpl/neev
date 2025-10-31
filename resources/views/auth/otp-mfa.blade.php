@@ -24,6 +24,7 @@
     
                 <input type="hidden" name="email" value="{{$email}}">
                 <input type="hidden" name="auth_method" value="{{$method}}">
+                <input type="hidden" name="attempt_id" value="{{$attempt_id}}">
                 <div class="block">
                     <x-input id="otp" class="block mt-1 w-full text-center" placeholder="XXXXXX" type="text" name="otp" required autofocus />
                 </div>
