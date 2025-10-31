@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 
 class Email extends Model
 {
@@ -21,5 +22,10 @@ class Email extends Model
     public function user()
     {
         return $this->belongsTo(User::getClass(), 'user_id');
+    }
+
+    public function otp(): MorphOne
+    {
+        return $this->morphOne(OTP::class, 'owner');
     }
 }

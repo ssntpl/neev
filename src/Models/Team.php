@@ -29,6 +29,10 @@ class Team extends Model
         'domain_verification_token',
     ];
 
+    protected $hidden = [
+        'domain_verification_token',
+    ];
+
     protected $casts = [
         'is_public' => 'bool',
         'enforce_domain' => 'bool',

@@ -8,9 +8,9 @@ use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
-use Ssntpl\Neev\Models\Permission;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Permissions\Models\Permission;
 
 class UserController extends Controller
 {
@@ -244,7 +244,10 @@ class UserController extends Controller
             return back()->with('status', 'Auth has been deleted.');
         }
         $res = $user->addMultiFactorAuth($request->auth_method);
-        return $res;
+        if (!$res) {
+            return back()->withErrors(['message' => 'Auth was not deleted.']);
+        }
+        return back()->with($res);
     }
 
     public function preferedMultiFactorAuth(Request $request)

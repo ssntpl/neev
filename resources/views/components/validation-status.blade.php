@@ -1,5 +1,5 @@
 @php
-    $status ??= session('status');
+    $status ??= session('status') ?? session('message');
 @endphp
 @if ($status)
     <div {{ $attributes }}>

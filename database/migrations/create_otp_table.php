@@ -13,12 +13,12 @@ return new class extends Migration
     {
         Schema::create('otp', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->string('method');
+            $table->unsignedBigInteger('owner_id');
+            $table->string('owner_type');
             $table->integer('otp');
             $table->timestamp('expires_at');
             $table->timestamps();
-            $table->unique(['user_id', 'method']);
+            $table->unique(['owner_id', 'owner_type']);
         });
     }
 

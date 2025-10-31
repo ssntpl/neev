@@ -326,11 +326,11 @@ class UserAuthController extends Controller
         $this->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, attempt: $attempt ?? null);
 
         if (count($user->multiFactorAuths) > 0) {
-            session(['email' => $email->email, 'attempt_id' => $attempt->id]);
+            session(['email' => $email->email, 'attempt_id' => $attempt?->id ?? null]);
             return redirect(route('otp.mfa.create', $user->preferedMultiAuth?->method ?? $user->multiFactorAuths()->first()?->method));
         }
 
-        if ($request->redirect) {
+        if ($request->redirect && $request->redirect != '/') {
             return redirect($request->redirect);
         }
         
@@ -565,7 +565,7 @@ class UserAuthController extends Controller
         $attempt = LoginAttempt::find($request->attempt_id);
         if ($attempt) {
             $attempt->is_success = false;
-            $attempt->mfa = $request->auth_method;
+            $attempt->multi_factor_method = $request->auth_method;
             $attempt->save();
         }
         if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {

@@ -14,9 +14,10 @@ return new class extends Migration
         Schema::create('access_tokens', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->unsignedBigInteger('attempt_id')->nullable();
             $table->string('name');
             $table->string('token')->unique();
-            $table->enum('token_type', ['api_token', 'login'])->default('login');
+            $table->string('token_type')->default('login');
             $table->text('permissions')->nullable();
             $table->timestamp('last_used_at')->nullable();
             $table->timestamp('expires_at')->nullable();

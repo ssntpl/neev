@@ -3,22 +3,27 @@
 namespace Ssntpl\Neev;
 
 use Blade;
-use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
+use Route;
 use Ssntpl\Neev\Commands\CleanOldLoginAttempts;
 use Ssntpl\Neev\Commands\CleanOldPasswords;
 use Ssntpl\Neev\Commands\CreatePermission;
 use Ssntpl\Neev\Commands\CreateRole;
 use Ssntpl\Neev\Commands\DownloadGeoLiteDb;
 use Ssntpl\Neev\Commands\InstallNeev;
+use Ssntpl\Neev\Http\Middleware\NeevAPIMiddleware;
 use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
 
 class NeevServiceProvider extends ServiceProvider
 {
     public function boot()
     {
-        $router = $this->app->make(Router::class);
-        $router->aliasMiddleware('neev', NeevMiddleware::class);
+        Route::middlewareGroup('neev:web', [
+            NeevMiddleware::class,
+        ]);
+        Route::middlewareGroup('neev:api', [
+            NeevAPIMiddleware::class,
+        ]);
 
         $this->publishes([
             __DIR__.'/../config/neev.php' => config_path('neev.php'),

@@ -68,15 +68,6 @@ class User extends Authenticatable
         return $this->hasMany(LoginAttempt::class);
     }
 
-    public function OTP($method = null)
-    {
-        if ($method) {
-            return $this->hasMany(OTP::class)->where('method', $method)->first();
-        } else {
-            return $this->hasMany(OTP::class);
-        }
-    }
-
     public function passkeys()
     {
         return $this->hasMany(Passkey::class);

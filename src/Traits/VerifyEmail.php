@@ -11,10 +11,10 @@ trait VerifyEmail
     {
         if ($email) {
             $email = Email::where('email', $email)->first();
-            return $email?->verified_at;
+            return $email?->verified_at ? true : false;
         }
 
         $user = User::model()->find($this->id);
-        return $user->email?->verified_at;
+        return $user->email?->verified_at ? true : false;
     }
 }
