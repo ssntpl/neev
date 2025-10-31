@@ -61,16 +61,16 @@ trait HasMultiAuth
                     $this->generateRecoveryCodes();
                 }
 
-                return back()->with([
+                return [
                     'qr_code' => $qrCodeSvg,
                     'secret' => $totp->getSecret(),
                     'method' => $method,
-                ]);
+                ];
                 
             case 'email':
                 $auth = $this->multiFactorAuth($method);
                 if ($auth) {
-                    return back()->withErrors(['message' => 'Email already Configured.']);
+                    return ['message' => 'Email already Configured.'];
                 }
                 
                 $this->multiFactorAuths()->create([
@@ -81,10 +81,10 @@ trait HasMultiAuth
                 if (count($this->recoveryCodes) == 0) {
                     $this->generateRecoveryCodes();
                 }
-                return back()->with('status', 'Email Configured.');
+                return ['message' => 'Email Configured.'];
                 
             default:
-                return back()->withErrors(['message' => 'Invalid method.']);
+                return null;
         }
     }
 

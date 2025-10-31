@@ -2,12 +2,12 @@
 
 namespace Ssntpl\Neev\Rules;
 
-use Auth;
 use Hash;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Password;
+use Ssntpl\Neev\Models\User;
 
 class PasswordHistory implements ValidationRule 
 {
@@ -25,7 +25,7 @@ class PasswordHistory implements ValidationRule
 
     public function validate(string $attribute, mixed $value, Closure $fail): void 
     {
-        $user = Auth::user();
+        $user = User::model()->find(request()->user()?->id);
         $email = request()->input('email');
         if ($email) {
             $email = Email::where('email', $email)->first();

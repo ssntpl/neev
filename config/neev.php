@@ -137,6 +137,8 @@ return [
     */
     'dashboard_url' => env('NEEV_DASHBOARD_URL', env('APP_URL').'/dashboard'),
 
+    'frontend_url' => env('APP_URL'),
+
     /*
     |--------------------------------------------------------------------------
     | Multi-Factor Authentication Configuration

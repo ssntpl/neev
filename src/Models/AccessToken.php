@@ -8,10 +8,12 @@ class AccessToken extends Model
 {
 
     public const api_token = 'api_token';
+    public const mfa_token = 'mfa_token';
     public const login = 'login';
 
     protected $fillable = [
         'user_id',
+        'attempt_id',
         'name',
         'token',
         'token_type',
@@ -27,13 +29,18 @@ class AccessToken extends Model
     protected $casts = [
         'permissions' => 'array',
         'token' => 'hashed',
-        'last_used' => 'datetime',
+        'last_used_at' => 'datetime',
         'expires_at' => 'datetime',
     ];
 
     public function user()
     {
         return $this->belongsTo(User::getClass(),'user_id');
+    }
+
+    public function attempt()
+    {
+        return $this->belongsTo(LoginAttempt::class,'attempt_id');
     }
 
     public function can(string $permission): bool

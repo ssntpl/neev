@@ -3,22 +3,27 @@
 namespace Ssntpl\Neev;
 
 use Blade;
-use Illuminate\Routing\Router;
 use Illuminate\Support\ServiceProvider;
+use Route;
 use Ssntpl\Neev\Commands\CleanOldLoginAttempts;
 use Ssntpl\Neev\Commands\CleanOldPasswords;
 use Ssntpl\Neev\Commands\CreatePermission;
 use Ssntpl\Neev\Commands\CreateRole;
 use Ssntpl\Neev\Commands\DownloadGeoLiteDb;
 use Ssntpl\Neev\Commands\InstallNeev;
+use Ssntpl\Neev\Http\Middleware\NeevAPIMiddleware;
 use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
 
 class NeevServiceProvider extends ServiceProvider
 {
     public function boot()
     {
-        $router = $this->app->make(Router::class);
-        $router->aliasMiddleware('neev', NeevMiddleware::class);
+        Route::middlewareGroup('neev:web', [
+            NeevMiddleware::class,
+        ]);
+        Route::middlewareGroup('neev:api', [
+            NeevAPIMiddleware::class,
+        ]);
 
         $this->publishes([
             __DIR__.'/../config/neev.php' => config_path('neev.php'),
@@ -39,7 +44,7 @@ class NeevServiceProvider extends ServiceProvider
         ], 'neev-team-migrations');
 
         $this->publishes([
-            __DIR__.'/../database/migrations/create_domain_rules_table.php' => database_path('migrations/2025_01_01_000009_create_domain_rules_table.php'),
+            __DIR__.'/../database/migrations/create_domains_table.php' => database_path('migrations/2025_01_01_000009_create_domains_table.php'),
         ], 'neev-domain-federation-migrations');
 
         

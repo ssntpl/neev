@@ -3,16 +3,14 @@
 namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 class OTP extends Model
 {
-
-    public const Email = 'email';
-
     protected $table = 'otp';
     protected $fillable = [
-        'user_id',
-        'method',
+        'owner_id',
+        'owner_type',
         'otp',
         'expires_at',
     ];
@@ -21,8 +19,8 @@ class OTP extends Model
         'expires_at' => 'datetime',
     ];
 
-    public function user()
+    public function owner(): MorphTo
     {
-        return $this->belongsTo(User::getClass(),'user_id');
+        return $this->morphTo();
     }
 }

@@ -17,6 +17,7 @@ use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
+use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
@@ -167,8 +168,8 @@ class UserAuthController extends Controller
                     } else {
                         if (config('neev.domain_federation')) {
                             $emailDomain = substr(strrchr($request->email, "@"), 1);
-                            $team = Team::model()->where('federated_domain', $emailDomain)->first();
-                            if (!$team?->domain_verified_at) {
+                            $domain = Domain::where('domain', $emailDomain)->first();
+                            if (!$domain?->verified_at) {
                                 $team = Team::model()->forceCreate([
                                     'name' => explode(' ', $user->name, 2)[0]."'s Team",
                                     'user_id' => $user->id,
@@ -246,23 +247,20 @@ class UserAuthController extends Controller
             ]);
         }
 
-        $rules = [];
         $isDomainFederated = false;
         if (config('neev.team') && config('neev.domain_federation')) {
             $emailDomain = substr(strrchr($request->email, "@"), 1);
             
-            $team = Team::model()->where('federated_domain', $emailDomain)->first();
-            if ($team?->domain_verified_at) {
+            $domain = Domain::where('domain', $emailDomain)->first();
+            if ($domain?->verified_at) {
                 $isDomainFederated = true;
-                $rules['passkey'] = $team->rule('passkey')->value;
-                $rules['oauth'] = json_decode($team->rule('oauth')->value, true) ?? [];
             }
         }
         
         if (config('neev.support_username') && !empty($request->username)) {
-            return view('neev::auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail()]);
+            return view('neev::auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail()]);
         }
-        return view('neev::auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail()]);
+        return view('neev::auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail()]);
     }
 
     public function sendLoginLink(Request $request)
@@ -326,11 +324,11 @@ class UserAuthController extends Controller
         $this->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, attempt: $attempt ?? null);
 
         if (count($user->multiFactorAuths) > 0) {
-            session(['email' => $email->email, 'attempt_id' => $attempt->id]);
+            session(['email' => $email->email, 'attempt_id' => $attempt?->id ?? null]);
             return redirect(route('otp.mfa.create', $user->preferedMultiAuth?->method ?? $user->multiFactorAuths()->first()?->method));
         }
 
-        if ($request->redirect) {
+        if ($request->redirect && $request->redirect != '/') {
             return redirect($request->redirect);
         }
         
@@ -565,7 +563,7 @@ class UserAuthController extends Controller
         $attempt = LoginAttempt::find($request->attempt_id);
         if ($attempt) {
             $attempt->is_success = false;
-            $attempt->mfa = $request->auth_method;
+            $attempt->multi_factor_method = $request->auth_method;
             $attempt->save();
         }
         if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
