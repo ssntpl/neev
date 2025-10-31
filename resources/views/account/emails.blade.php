@@ -14,13 +14,13 @@
         <x-slot name="action" class="flex">
             @if ($add_email)
                 <div>
-                    <div x-show="!addEmailOpen" x-on:click="addEmailOpen = true" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                    <div x-show="!addEmailOpen" x-on:click="addEmailOpen = true" class="cursor-pointer border-2 border-gray-500 text-gray-500 rounded-full shadow">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
                             <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
                         </svg>
                     </div>
 
-                    <div x-show="addEmailOpen" x-on:click="addEmailOpen = false" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                    <div x-show="addEmailOpen" x-on:click="addEmailOpen = false" class="cursor-pointer border-2 border-gray-500 text-gray-500 rounded-full shadow">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd" />
                         </svg>
@@ -53,7 +53,7 @@
                                 <td class="px-6 py-2 text-start">
                                     <div class="flex gap-2">
                                         <p>{{ $email->email ?? '--' }}</p>
-                                        @if ($email->email === $user->email->email)
+                                        @if ($email->is_primary)
                                             <span class="border border-blue-600 text-xs tracking-tight text-blue-600 rounded-full px-2">{{ 'Primary' }}</span>
                                         @endif
 

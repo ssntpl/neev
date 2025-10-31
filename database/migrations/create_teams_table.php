@@ -15,12 +15,6 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('name');
-            if (config('neev.domain_federation')) {
-                $table->boolean('enforce_domain')->default(false);
-                $table->string('federated_domain')->nullable();
-                $table->string('domain_verification_token')->nullable();
-                $table->timestamp('domain_verified_at')->nullable();
-            }
             $table->boolean('is_public')->default(true);
             $table->timestamps();
             $table->unique(['name', 'user_id']);

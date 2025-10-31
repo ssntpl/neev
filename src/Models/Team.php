@@ -23,21 +23,10 @@ class Team extends Model
         'user_id',
         'name',
         'is_public',
-        'enforce_domain',
-        'domain_federated',
-        'domain_verified_at',
-        'domain_verification_token',
-    ];
-
-    protected $hidden = [
-        'domain_verification_token',
     ];
 
     protected $casts = [
         'is_public' => 'bool',
-        'enforce_domain' => 'bool',
-        'domain_verified_at' => 'datetime',
-        'domain_verification_token' => 'hashed',
     ];
 
     public function owner()
@@ -100,14 +89,14 @@ class Team extends Model
         $this->users()->detach($user);
     }
 
-    public function rules()
+    public function domains()
     {
-        return $this->hasMany(DomainRule::class);
+        return $this->hasMany(Domain::class);
     }
 
-    public function rule($name)
+    public function domain()
     {
-        return $this->hasMany(DomainRule::class)->where('name', $name)->first();
+        return $this->hasOne(Domain::class)->where('is_primary', true);
     }
 
     public function invitations()

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Facades\Socialite;
 use Log;
 use Ssntpl\Neev\Http\Controllers\Controller;
+use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
@@ -104,8 +105,8 @@ class OAuthController extends Controller
             if (config('neev.team')) {
                 if (config('neev.domain_federation')) {
                     $emailDomain = substr(strrchr($oauthUser->email, "@"), 1);
-                    $team = Team::model()->where('federated_domain', $emailDomain)->first();
-                    if (!$team?->domain_verified_at) {
+                    $domain = Domain::where('domain', $emailDomain)->first();
+                    if (!$domain?->verified_at) {
                         $team = Team::model()->forceCreate([
                             'name' => explode(' ', $user->name, 2)[0]."'s Team",
                             'user_id' => $user->id,

@@ -9,6 +9,7 @@ use Log;
 use Mail;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
+use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
@@ -52,16 +53,6 @@ class TeamApiController extends Controller
         $team->joinRequests;
         $team->invitedUsers;
         $team->invitations;
-
-        if ($team->enforce_domain && $team->domain_verified_at) {
-            $count = 0;
-            foreach ($team->users ?? [] as $member) {
-                if (!str_ends_with(strtolower($member->email->email), '@' . strtolower($team->federated_domain))) {
-                    $count++;
-                }
-            }
-            $team->outside_members = $count;
-        }
 
         return response()->json([
             'status' => 'Success',
@@ -204,7 +195,7 @@ class TeamApiController extends Controller
         $user = User::model()->find($request->user()->id);
         try {
             $team = Team::model()->find($request->team_id);
-            if ($user->id != $team->user_id || ($team->enforce_domain && $team->domain_verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->federated_domain)))) {
+            if ($user->id != $team->user_id || ($team->domain?->enforce && $team->domain?->verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->domain?->domain)))) {
                 return response()->json([
                     'status' => 'Failed',
                     'message' => 'You cannot invite member in this team.',
@@ -375,7 +366,7 @@ class TeamApiController extends Controller
                 ], 400);
             }
             
-            if ($team->domain_verified_at && str_ends_with(strtolower($user->email->email), '@' . strtolower($team->federated_domain))) {
+            if ($team->domain?->verified_at && str_ends_with(strtolower($user->email->email), '@' . strtolower($team->domain?->domain))) {
                 if ($user->active) {
                     $user->deactivate();
                     return response()->json([
@@ -412,7 +403,7 @@ class TeamApiController extends Controller
         $user = User::model()->find($request->user()->id);
         try {
             $team = Team::model()->find($request->team_id);
-            if ($team && !$team->enforce_domain && !$team->domain_verified_at) {
+            if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
                 if ($team->users->contains($user)) {
                     return response()->json([
                         'status' => 'Failed',
@@ -490,6 +481,38 @@ class TeamApiController extends Controller
             'message' => 'Invalid Action.',
         ], 400);
     }
+
+    public function getDomains(Request $request)
+    {
+        $team = Team::model()->find($request->team_id);
+        if (!$team) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'Team not found.',
+            ], 400);
+        }
+
+        $domains = $team->domains;
+        
+        foreach ($domains ?? [] as $domain) {
+            if ($domain?->enforce && $domain?->verified_at) {
+                $count = 0;
+                foreach ($team->users ?? [] as $member) {
+                    if (!str_ends_with(strtolower($member->email->email), '@' . strtolower($domain?->domain))) {
+                        $count++;
+                    }
+                }
+                $domain->outside_members = $count;
+            }
+            $domain?->rules;
+        }
+
+        return response()->json([
+            'status' => 'Success',
+            'message' => 'Domains fetched successfully.',
+            'data' => $domains,
+        ]);
+    }
     
     public function domainFederate(Request $request)
     {
@@ -502,7 +525,8 @@ class TeamApiController extends Controller
             ], 400);
         
         }
-        if ($team->user_id !== $user->id || !str_ends_with(strtolower($user->email->email), '@' . strtolower($request->domain))) {
+        if ($team->user_id !== $user->id) {
+            //  || !str_ends_with(strtolower($user->email->email), '@' . strtolower($request->domain))
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You have not required permissions to federate domain.',
@@ -510,10 +534,13 @@ class TeamApiController extends Controller
         }
         try {
             $token = Str::random(32);
-            $team->federated_domain = $request->domain;
-            $team->enforce_domain = (bool) $request->enforce;
-            $team->domain_verification_token = $token;
-            $team->save();
+            $team->domains()->updateOrCreate([
+                'domain' => $request->domain
+            ],[
+                'enforce' => (bool) $request->enforce,
+                'verification_token' => $token,
+                'is_primary' => $team->domain ? false : true,
+            ]);
 
             return response()->json([
                 'status' => 'Success',
@@ -532,8 +559,8 @@ class TeamApiController extends Controller
     public function updateDomain(Request $request)
     {
         $user = User::model()->find($request->user()->id);
-        $team = Team::model()->find($request->team_id);
-        if (!$team || !$user || $team->user_id !== $user->id) {
+        $domain = Domain::find($request->domain_id);
+        if (!$domain || !$user || $domain?->team->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You have not required permissions to update domain.',
@@ -541,11 +568,11 @@ class TeamApiController extends Controller
         }
         try {
             if ($request->verify) {
-                $res = $this->verify($team);
+                $res = $this->verify($domain);
                 if ($res) {
                     $domain_rules = ["mfa"];
                     foreach ($domain_rules ?? [] as $rule) {
-                        $team->rules()->create([
+                        $domain?->rules()->create([
                             'name' => $rule,
                             'value' => false,
                         ]);
@@ -565,8 +592,8 @@ class TeamApiController extends Controller
 
             if ($request->token) {
                 $token = Str::random(32);
-                $team->domain_verification_token = $token;
-                $team->save();
+                $domain->verification_token = $token;
+                $domain->save();
 
                 return response()->json([
                     'status' => 'Success',
@@ -576,14 +603,14 @@ class TeamApiController extends Controller
             }
             
             if (isset($request->enforce)) {
-                $team->enforce_domain = (bool) $request->enforce;
+                $domain->enforce = (bool) $request->enforce;
             }
-            $team->save();
+            $domain->save();
 
             return response()->json([
                 'status' => 'Success',
                 'message' => 'Domain has been updated.',
-                'data' => $team
+                'data' => $domain
             ]);
         } catch (Exception $e) {
             Log::error($e);
@@ -594,15 +621,15 @@ class TeamApiController extends Controller
         }
     }
 
-    public function verify($team)
+    public function verify($domain)
     {
-        $records = dns_get_record($team->federated_domain, DNS_TXT);
-        $verified = collect($records)->pluck('txt')->contains($team->domain_verification_token);
+        $records = dns_get_record($domain?->domain, DNS_TXT);
+        $verified = collect($records)->pluck('txt')->contains($domain?->verification_token);
 
         if ($verified) {
-            $team->domain_verification_token = null;
-            $team->domain_verified_at = now();
-            $team->save();
+            $domain->verification_token = null;
+            $domain->verified_at = now();
+            $domain->save();
             return true;
         }
 
@@ -612,25 +639,20 @@ class TeamApiController extends Controller
     public function deleteDomain(Request $request)
     {
         $user = User::model()->find($request->user()->id);
-        $team = Team::model()->find($request->team_id);
-        if (!$team || !$user || $team->user_id !== $user->id) {
+        $domain = Domain::find($request->domain_id);
+        if (!$domain || !$user || $domain?->team->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You have not required permissions to delete domain.',
             ], 400);
         }
         try {
-            $team->federated_domain = null;
-            $team->enforce_domain = false;
-            $team->domain_verification_token = null;
-            $team->domain_verified_at = null;
-            $team->save();
-            $team->rules()->delete();
+            $domain->rules()->delete();
+            $domain->delete();
 
             return response()->json([
                 'status' => 'Success',
                 'message' => 'Domain has been delete.',
-                'data' => $team
             ]);
         } catch (Exception $e) {
             Log::error($e);
@@ -644,15 +666,15 @@ class TeamApiController extends Controller
     public function updateDomainRule(Request $request)
     {
         $user = User::model()->find($request->user()->id);
-        $team = Team::model()->find($request->team_id);
-        if ($team->user_id !== $user->id) {
+        $domain = Domain::find($request->domain_id);
+        if (!$domain || $domain?->team->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You have not required permissions to update domain.',
             ], 400);
         }
         try {
-            foreach ($team->rules ?? [] as $rule) {
+            foreach ($domain?->rules ?? [] as $rule) {
                 if (isset($request->{$rule->name})) {
                     $rule->value = (bool) $request->{$rule->name};
                 }
@@ -662,7 +684,7 @@ class TeamApiController extends Controller
             return response()->json([
                 'status' => 'Success',
                 'message' => 'Domain Rules have been updated.',
-                'data' => $team->rules
+                'data' => $domain->rules
             ]);
         } catch (Exception $e) {
             Log::error($e);
@@ -676,8 +698,8 @@ class TeamApiController extends Controller
     public function getDomainRule(Request $request)
     {
         $user = User::model()->find($request->user()->id);
-        $team = Team::model()->find($request->team_id);
-        if (!$team->users->contains($user)) {
+        $domain = Domain::find($request->domain_id);
+        if (!$domain || !$user || !$domain->team->users->contains($user)) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You have not required permissions to get domain rules.',
@@ -686,7 +708,38 @@ class TeamApiController extends Controller
         
         return response()->json([
             'status' => 'Success',
-            'data' => $team->rules
+            'data' => $domain->rules
+        ]);
+    }
+
+    public function primaryDomain(Request $request)
+    {
+        $user = User::model()->find($request->user()->id);
+        $domain = Domain::find($request->domain_id);
+        if (!$user || !$domain || !$domain?->verified_at || !$domain->team->users->contains($user)) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'You have not required permissions to change primary domain.',
+            ], 400);
+        }
+        
+        $pdomain = $domain->team->domain;
+        if ($pdomain) {
+            if ($pdomain->id == $domain->id) {
+                return response()->json([
+                    'status' => 'Success',
+                    'message' => 'Primary domain was aready changed.',
+                ]);
+            }
+            $pdomain->is_primary = false;
+            $pdomain->save();
+        }
+        $domain->is_primary = true;
+        $domain->save();
+
+        return response()->json([
+            'status' => 'Success',
+            'message' => $domain->domain . ' has been set as primary domain.',
         ]);
     }
 }

@@ -6,9 +6,9 @@ use Hash;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
+use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
-use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Permissions\Models\Permission;
 
@@ -26,8 +26,8 @@ class UserController extends Controller
 
         $addEmail = true;
         if (config('neev.team') && config('neev.domain_federation')) {
-            $team = Team::model()->where('federated_domain', $emailDomain)->first();
-            if ($team?->domain_verified_at && $team->users->contains($user)) {
+            $domain = Domain::where('domain', $emailDomain)->first();
+            if ($domain?->verified_at && $domain?->team?->users->contains($user)) {
                 $addEmail = false;
             }
         }
@@ -41,8 +41,8 @@ class UserController extends Controller
 
         $deleteAccount = true;
         if (config('neev.team') && config('neev.domain_federation')) {
-            $team = Team::model()->where('federated_domain', $emailDomain)->first();
-            if ($team?->domain_verified_at && $team->users->contains($user)) {
+            $domain = Domain::where('domain', $emailDomain)->first();
+            if ($domain?->verified_at && $domain?->team->users->contains($user)) {
                 $deleteAccount = false;
             }
         }
@@ -61,8 +61,8 @@ class UserController extends Controller
 
         $join_team = true;
         if (config('neev.domain_federation')) {
-            $team = Team::model()->where('federated_domain', $emailDomain)->first();
-            if ($team?->domain_verified_at) {
+            $domain = Domain::where('domain', $emailDomain)->first();
+            if ($domain?->verified_at) {
                 $join_team = false;
             }
         }

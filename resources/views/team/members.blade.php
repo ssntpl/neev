@@ -150,7 +150,7 @@
                     <x-neev-component::table>
                         <x-slot name="body">
                             @foreach ($team->users as $member)
-                                <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50 {{$team->enforce_domain && $team->domain_verified_at && !str_ends_with(strtolower($member->email->email), '@' . strtolower($team->federated_domain)) ? 'text-red-400' : ''}}">
+                                <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50 {{$team->domain?->enforce && $team->domain?->verified_at && !str_ends_with(strtolower($member->email->email), '@' . strtolower($team->domain?->domain)) ? 'text-red-400' : ''}}">
                                     <td class="flex gap-2 px-4 py-2">
                                         <div class="w-10 h-10 bg-blue-100 text-blue-500 text-xl rounded-full flex items-center justify-center font-medium">
                                             {{ $member->profile_photo_url }}
@@ -231,11 +231,11 @@
 
                                             <input type="hidden" name="team_id" value="{{ $team->id }}"/>
                                             <input type="hidden" name="user_id" value="{{ $member->id }}"/>
-                                            @if (!$member->active && $team->domain_verified_at && $user->id !== $member->id)
+                                            @if (!$member->active && $team->domain?->verified_at && $user->id !== $member->id)
                                                 <x-neev-component::button
                                                     type="submit"
                                                     class="w-2/3" 
-                                                    x-bind:disabled="{{$team->user_id === $member->id || ($team->user_id !== $user->id && $user->id !== $member->id) || ($team->domain_verified_at && $member->id === $user->id)}}"
+                                                    x-bind:disabled="{{$team->user_id === $member->id || ($team->user_id !== $user->id && $user->id !== $member->id) || ($team->domain?->verified_at && $member->id === $user->id)}}"
                                                     @click.prevent="if (confirm('{{ __('Are you sure you want to activate the user?') }}')) $el.closest('form').submit();">
                                                     {{ __('Activate') }}
                                                 </x-neev-component::button>
@@ -243,9 +243,9 @@
                                                 <x-neev-component::danger-button
                                                     type="submit"
                                                     class="w-2/3" 
-                                                    x-bind:disabled="{{$team->user_id === $member->id || ($team->user_id !== $user->id && $user->id !== $member->id) || ($team->domain_verified_at && $member->id === $user->id)}}"
+                                                    x-bind:disabled="{{$team->user_id === $member->id || ($team->user_id !== $user->id && $user->id !== $member->id) || ($team->domain?->verified_at && $member->id === $user->id)}}"
                                                     @click.prevent="if (confirm('{{ $user->id === $member->id ? __('Are you sure you want to leave the team?') : __('Are you sure you want to remove/deactivate user from the team?') }}')) $el.closest('form').submit();">
-                                                    {{ $user->id === $member->id ? __('Leave') : ($team->domain_verified_at && str_ends_with(strtolower($member->email), '@' . strtolower($team->federated_domain)) ? __('Deactivate') : __('Remove')) }}
+                                                    {{ $user->id === $member->id ? __('Leave') : ($team->domain?->verified_at && str_ends_with(strtolower($member->email), '@' . strtolower($team->domain?->domain)) ? __('Deactivate') : __('Remove')) }}
                                                 </x-neev-component::danger-button>
                                             @endif
                                         </form>

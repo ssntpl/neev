@@ -17,6 +17,7 @@ use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
+use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
@@ -167,8 +168,8 @@ class UserAuthController extends Controller
                     } else {
                         if (config('neev.domain_federation')) {
                             $emailDomain = substr(strrchr($request->email, "@"), 1);
-                            $team = Team::model()->where('federated_domain', $emailDomain)->first();
-                            if (!$team?->domain_verified_at) {
+                            $domain = Domain::where('domain', $emailDomain)->first();
+                            if (!$domain?->verified_at) {
                                 $team = Team::model()->forceCreate([
                                     'name' => explode(' ', $user->name, 2)[0]."'s Team",
                                     'user_id' => $user->id,
@@ -250,8 +251,8 @@ class UserAuthController extends Controller
         if (config('neev.team') && config('neev.domain_federation')) {
             $emailDomain = substr(strrchr($request->email, "@"), 1);
             
-            $team = Team::model()->where('federated_domain', $emailDomain)->first();
-            if ($team?->domain_verified_at) {
+            $domain = Domain::where('domain', $emailDomain)->first();
+            if ($domain?->verified_at) {
                 $isDomainFederated = true;
             }
         }

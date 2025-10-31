@@ -181,10 +181,12 @@ Route::middleware('web')->group(function () {
             Route::put('/owner/change', [TeamController::class, 'ownerChange'])
                 ->name('teams.owner.change');
             Route::post('/{team}/domain', [TeamController::class, 'federateDomain']);
-            Route::put('/{team}/domain', [TeamController::class, 'updateDomain']);
-            Route::delete('/{team}/domain', [TeamController::class, 'deleteDomain']);
-            Route::put('/{team}/domain/rules', [TeamController::class, 'updateDomainRule'])
+            Route::put('/{domain}/domain', [TeamController::class, 'updateDomain']);
+            Route::delete('/{domain}/domain', [TeamController::class, 'deleteDomain']);
+            Route::put('/{domain}/domain/rules', [TeamController::class, 'updateDomainRule'])
                 ->name('domain.rules');
+            Route::put('/domain/primary', [TeamController::class, 'primaryDomain'])
+                ->name('domain.primary');
         });
     });
 });
@@ -247,11 +249,13 @@ Route::prefix('/neev')->group(function () {
         Route::post('/teams/request', [TeamApiController::class, 'request']);
         Route::put('/teams/request', [TeamApiController::class, 'requestAction']);
         
-        Route::post('/domain', [TeamApiController::class, 'domainFederate']);
-        Route::put('/domain', [TeamApiController::class, 'updateDomain']);
-        Route::delete('/domain', [TeamApiController::class, 'deleteDomain']);
-        Route::put('/domain/rules', [TeamApiController::class, 'updateDomainRule']);
-        Route::get('/domain/rules', [TeamApiController::class, 'getDomainRule']);
+        Route::get('/domains', [TeamApiController::class, 'getDomains']);
+        Route::post('/domains', [TeamApiController::class, 'domainFederate']);
+        Route::put('/domains', [TeamApiController::class, 'updateDomain']);
+        Route::delete('/domains', [TeamApiController::class, 'deleteDomain']);
+        Route::put('/domains/rules', [TeamApiController::class, 'updateDomainRule']);
+        Route::get('/domains/rules', [TeamApiController::class, 'getDomainRule']);
+        Route::put('/domains/primary', [TeamApiController::class, 'primaryDomain']);
         
         Route::put('/role/change', [RoleController::class, 'requestAction']);
     });
