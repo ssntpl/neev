@@ -246,7 +246,6 @@ class UserAuthController extends Controller
             ]);
         }
 
-        $rules = [];
         $isDomainFederated = false;
         if (config('neev.team') && config('neev.domain_federation')) {
             $emailDomain = substr(strrchr($request->email, "@"), 1);
@@ -254,15 +253,13 @@ class UserAuthController extends Controller
             $team = Team::model()->where('federated_domain', $emailDomain)->first();
             if ($team?->domain_verified_at) {
                 $isDomainFederated = true;
-                $rules['passkey'] = $team->rule('passkey')->value;
-                $rules['oauth'] = json_decode($team->rule('oauth')->value, true) ?? [];
             }
         }
         
         if (config('neev.support_username') && !empty($request->username)) {
-            return view('neev::auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail()]);
+            return view('neev::auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail()]);
         }
-        return view('neev::auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'rules' => $rules, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail()]);
+        return view('neev::auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail()]);
     }
 
     public function sendLoginLink(Request $request)
