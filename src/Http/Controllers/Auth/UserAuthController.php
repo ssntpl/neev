@@ -256,11 +256,17 @@ class UserAuthController extends Controller
                 $isDomainFederated = true;
             }
         }
+
+        $loginOptions = [];
+        if (count($user->passkeys) > 0) {
+            $loginOptions[] = 'passkey';
+        }
         
         if (config('neev.support_username') && !empty($request->username)) {
-            return view('neev::auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail()]);
+            return view('neev::auth.login-password', ['email' => $request->email, 'username' => $request->username, 'isDomainFederated' => $isDomainFederated, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail(), 'login_options' => $loginOptions]);
         }
-        return view('neev::auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail()]);
+
+        return view('neev::auth.login-password', ['email' => $request->email, 'isDomainFederated' => $isDomainFederated, 'redirect' => $request->redirect, 'email_verified' => $user->hasVerifiedEmail(), 'login_options' => $loginOptions]);
     }
 
     public function sendLoginLink(Request $request)

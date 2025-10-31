@@ -14,16 +14,18 @@
                             </form>
                         @endforeach
                         {{-- Passkey --}}
-                        <form id="login-form" method="POST" action="{{ route('passkeys.login') }}">
-                            @csrf
-                            <input id="email" type="hidden" name="email" value="{{$email}}" required />
-        
-                            <input type="hidden" name="assertion" id="assertion">
-        
-                            <x-neev-component::secondary-button type="button" id="login-button">
-                                {{__('Login with Passkey')}}
-                            </x-neev-component::secondary-button>
-                        </form>
+                        @if (in_array('passkey', $login_options))
+                            <form id="login-form" method="POST" action="{{ route('passkeys.login') }}">
+                                @csrf
+                                <input id="email" type="hidden" name="email" value="{{$email}}" required />
+            
+                                <input type="hidden" name="assertion" id="assertion">
+            
+                                <x-neev-component::secondary-button type="button" id="login-button">
+                                    {{__('Login with Passkey')}}
+                                </x-neev-component::secondary-button>
+                            </form>
+                        @endif
                         @if (config('neev.magicauth'))
                             <form method="POST" action="{{ route('login.link.send') }}">
                                 @csrf
