@@ -7,8 +7,6 @@ use Illuminate\Support\ServiceProvider;
 use Route;
 use Ssntpl\Neev\Commands\CleanOldLoginAttempts;
 use Ssntpl\Neev\Commands\CleanOldPasswords;
-use Ssntpl\Neev\Commands\CreatePermission;
-use Ssntpl\Neev\Commands\CreateRole;
 use Ssntpl\Neev\Commands\DownloadGeoLiteDb;
 use Ssntpl\Neev\Commands\InstallNeev;
 use Ssntpl\Neev\Http\Middleware\NeevAPIMiddleware;
@@ -84,9 +82,7 @@ class NeevServiceProvider extends ServiceProvider
             InstallNeev::class,
             DownloadGeoLiteDb::class,
             CleanOldLoginAttempts::class,
-            CreatePermission::class,
             CleanOldPasswords::class,
-            CreateRole::class,
         ]);
     }
 }

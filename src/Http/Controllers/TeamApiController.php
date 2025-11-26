@@ -134,8 +134,8 @@ class TeamApiController extends Controller
                     'message' => 'You cannot delete this team.',
                 ], 400);
             }
+            $user->removeRole($team);
             $team->delete();
-            $user->role($team)?->delete();
 
             return response()->json([
                 'status' => 'Success',
@@ -305,7 +305,7 @@ class TeamApiController extends Controller
                 $team = Team::model()->find($request->team_id);
                 if ($request->action == 'reject') {
                     $team->allUsers()->detach($user);
-                    $user->role($team)?->delete();
+                    $user->removeRole($team);
                     return response()->json([
                         'status' => 'Success',
                         'message' => 'Invitation Rejected Successfully',
@@ -383,7 +383,7 @@ class TeamApiController extends Controller
             }
 
             $team->users()->detach($user);
-            $user->role($team)?->delete();
+            $user->removeRole($team);
 
             return response()->json([
                 'status' => 'success',

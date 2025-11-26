@@ -4,7 +4,7 @@ namespace Ssntpl\Neev\Traits;
 
 use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\NewAccessToken;
-use Ssntpl\Permissions\Models\Permission;
+use Ssntpl\LaravelAcl\Models\Permission;
 use Str;
 
 trait HasAccessToken

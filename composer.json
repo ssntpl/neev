@@ -40,11 +40,11 @@
     "require": {
         "php": "*",
         "laravel/framework": "*",
-        "geoip2/geoip2": "*",
+        "geoip2/geoip2": "^3.3",
         "web-auth/webauthn-lib": "^5.2",
         "laravel/socialite": "^5.23",
         "spomky-labs/otphp": "^11.3",
-        "ssntpl/permissions": "*",
+        "ssntpl/laravel-acl": "^0.2",
         "bacon/bacon-qr-code": "^3.0"
     }
 }

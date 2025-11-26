@@ -10,7 +10,7 @@ use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
-use Ssntpl\Permissions\Models\Permission;
+use Ssntpl\LaravelAcl\Models\Permission;
 
 class UserController extends Controller
 {

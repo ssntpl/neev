@@ -45,8 +45,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
         $this->callSilent('vendor:publish', ['--tag' => 'neev-routes', '--force' => true]);
         
         $file = config_path('neev.php');
-        
-        $this->installRole();
 
         if ($this->argument('teams') === 'yes') {
             $this->installTeam();
@@ -71,13 +69,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
         $this->replaceInFile("'team' => false", "'team' => true", config_path('neev.php'));
         
         $this->callSilent('vendor:publish', ['--tag' => 'neev-team-migrations', '--force' => true]);
-    }
-    
-    protected function installRole() {
-        $this->callSilent('vendor:publish', ['--tag' => 'permissions-config', '--force' => true]);
-        $this->callSilent('vendor:publish', ['--tag' => 'permissions-migrations', '--force' => true]);
-
-        $this->replaceInFile("'user_model' => \"App\\\Models\\\User\"", "'user_model' => \"Ssntpl\\\Neev\\\Models\\\User\"", config_path('permissions.php'));
     }
 
     /**
