@@ -7,6 +7,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Log;
 use Mail;
+use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Models\Domain;
@@ -35,6 +36,7 @@ class TeamController extends Controller
         return view('neev::team.members', [
             'user' => $user,
             'team' => $team,
+            'teamRoles' => Role::where('resource_type', Team::class)->get(),
         ]);
     }
     
@@ -132,8 +134,8 @@ class TeamController extends Controller
             if ($user->id != $team->user_id || count($user->ownedTeams) < 2) {
                 return back()->withErrors(['message' => 'You cannot delete this team.']);
             }
+            $user->removeRole($team);
             $team->delete();
-            $user->role($team)?->delete();
         } catch (Exception $e) {
             Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to delete team.']);
@@ -227,7 +229,7 @@ class TeamController extends Controller
             }
 
             $team->users()->detach($user);
-            $user->role($team)?->delete();
+            $user->removeRole($team);
         } catch (Exception $e) {
             Log::error($e->getMessage());
             return back()->withErrors(['message' => 'Failed to leave from team.']);
@@ -266,7 +268,7 @@ class TeamController extends Controller
                 $team = Team::model()->find($request->team_id);
                 if ($request->action == 'reject') {
                     $team->allUsers()->detach($user);
-                    $user->role($team)?->delete();
+                    $user->removeRole($team);
                     return back()->with('status', 'Rejected Successfully');
                 } elseif ($request->action == 'accept') {
                     $membership = $team->invitedUsers->where('id', $user->id)->first()->membership;

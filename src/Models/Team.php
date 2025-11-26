@@ -4,12 +4,9 @@ namespace Ssntpl\Neev\Models;
 
 use Exception;
 use Illuminate\Database\Eloquent\Model;
-use Ssntpl\Permissions\Traits\HasRoles;
 
 class Team extends Model
 {
-    use HasRoles;
-
     public static function model() {
         $class = config('neev.team_model', Team::class);
         return new $class;
@@ -91,11 +88,21 @@ class Team extends Model
 
     public function domains()
     {
+        if (!config('neev.domain_federation', false)) {
+            // if domains table does not exist, return empty relation
+            return $this->belongsTo(Domain::class)->whereRaw('1 = 0');
+        }
+        
         return $this->hasMany(Domain::class);
     }
 
     public function domain()
     {
+        if (!config('neev.domain_federation', false)) {
+            // if domains table does not exist, return empty relation
+            return $this->belongsTo(Domain::class)->whereRaw('1 = 0');
+        }
+        
         return $this->hasOne(Domain::class)->where('is_primary', true);
     }
 

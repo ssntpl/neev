@@ -348,11 +348,10 @@ return [
     'username' => [
         'required',
         'string',
-        'min:3',                    // Minimum length for usability
-        'max:20',                   // Maximum length for UI/UX considerations
-        // Alphanumeric with dots/underscores, no consecutive or leading/trailing special chars
-        'regex:/^(?![._])(?!.*[._]{2})[a-zA-Z0-9._]+(?<![._])$/',
-        'unique:users,username',    // Enforce uniqueness in users table
+        'min:3',                                                    // Minimum length for usability
+        'max:20',                                                   // Maximum length for UI/UX considerations
+        'regex:/^(?![._])(?!.*[._]{2})[a-zA-Z0-9._]+(?<![._])$/',   // Alphanumeric with dots/underscores, no consecutive or leading/trailing special chars
+        'unique:users,username',                                    // Enforce uniqueness in users table
     ],
 
     /*
@@ -409,15 +408,15 @@ return [
     */
     'password' => [
         'required',
-        'confirmed',                // Must match password_confirmation field
-        Password::min(8)            // Minimum 8 characters
-                ->max(72)           // Maximum 72 characters (bcrypt limit)
-                ->letters()         // Must contain letters
-                ->mixedCase()       // Must contain both upper and lowercase
-                ->numbers()         // Must contain numbers
-                ->symbols(),        // Must contain symbols
-        PasswordHistory::notReused(5),  // Cannot reuse last 5 passwords
-        PasswordUserData::notContain(['name', 'email']), // Cannot contain user's personal data
+        'confirmed',                                                // Must match password_confirmation field
+    Password::min(8)                                          // Minimum 8 characters
+            ->max(72)                                         // Maximum 72 characters (bcrypt limit)
+            ->letters()                                             // Must contain letters
+            ->mixedCase()                                           // Must contain both upper and lowercase
+            ->numbers()                                             // Must contain numbers
+            ->symbols(),                                            // Must contain symbols
+        PasswordHistory::notReused(5),                       // Cannot reuse last 5 passwords
+        PasswordUserData::notContain(['name', 'email']),   // Cannot contain user's personal data
     ],
 
     /*

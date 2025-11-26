@@ -41,7 +41,7 @@
                                 <div class="flex gap-2 items-center w-1/3">
                                     <x-neev-component::label for="role" value="{{ __('Role') }}" />
                                     <select name="role" id="role" class="w-full border rounded-md p-2">
-                                        @foreach ($team->roles() ?? [] as $role)
+                                        @foreach ($teamRoles ?? [] as $role)
                                             @if ($role?->name)
                                                 <option value="{{$role->name}}">{{$role->name}}</option>
                                             @else
@@ -108,7 +108,7 @@
                                             <div class="flex gap-2 items-center">
                                                 <x-neev-component::label for="role" value="{{ __('Role') }}" />
                                                 <select name="role" id="role" class="w-full border rounded-md p-2">
-                                                    @foreach ($team->roles() as $role)
+                                                    @foreach ($teamRoles as $role)
                                                         @if ($role?->name)
                                                             <option value="{{$role->name}}">{{$role->name}}</option>
                                                         @else
@@ -162,8 +162,8 @@
                                     </td>
                                     <td class="px-4 py-2 text-center capitalize">
                                         @if ($team->user_id === $user->id)
-                                            <div class="text-start" x-data="{ show: false, role: @js($member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '')), userRole: @js($member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '')) }">
-                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '--')}}</button>
+                                            <div class="text-start" x-data="{ show: false, role: @js($member->getRole($team)?->name ?? ($member->membership->role ?? '')), userRole: @js($member->getRole($team)?->name ?? ($member->membership->role ?? '')) }">
+                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->getRole($team)?->name ?? ($member->membership->role ?? '--')}}</button>
                                                 <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
                                                     <x-slot name="title">
                                                         {{ __('Change Role') }}
@@ -181,7 +181,7 @@
                                                             <div class="mt-4 flex gap-2 items-center w-2/3">
                                                                 <x-neev-component::label for="role" value="{{ __('Role') }}" />
                                                                 <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
-                                                                    @foreach ($team->roles() as $role)
+                                                                    @foreach ($teamRoles as $role)
                                                                         @if ($role?->name)
                                                                             <option value="{{$role->name}}" x-bind:selected="role === '{{$role->name}}'">{{$role->name}}</option>
                                                                         @else
@@ -205,7 +205,7 @@
                                                 </x-neev-component::dialog-modal>
                                             </div>
                                         @else
-                                            {{ $member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '') }}
+                                            {{ $member->getRole($team)?->name ?? ($member->membership->role ?? '') }}
                                         @endif
                                     </td>
                                     <td class="px-4 py-2 text-center capitalize">
@@ -280,8 +280,8 @@
                                     </td>
                                     @if ($team->owner->id === $user->id)
                                         <td class="px-4 py-2 text-center capitalize">
-                                            <div class="text-start" x-data="{ show: false, role: @js($member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '')), userRole: @js($member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '')) }">
-                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '--')}}</button>
+                                            <div class="text-start" x-data="{ show: false, role: @js($member->getRole($team)?->name ?? ($member->membership->role ?? '')), userRole: @js($member->getRole($team)?->name ?? ($member->membership->role ?? '')) }">
+                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->getRole($team)?->name ?? ($member->membership->role ?? '--')}}</button>
                                                 <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
                                                     <x-slot name="title">
                                                         {{ __('Change Role') }}
@@ -299,7 +299,7 @@
                                                             <div class="mt-4 flex gap-2 items-center w-2/3">
                                                                 <x-neev-component::label for="role" value="{{ __('Role') }}" />
                                                                 <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
-                                                                    @foreach ($team->roles() as $role)
+                                                                    @foreach ($teamRoles as $role)
                                                                         @if ($role?->name)
                                                                             <option value="{{$role->name}}" x-bind:selected="role === '{{$role->name}}'">{{$role->name}}</option>
                                                                         @else
@@ -330,7 +330,7 @@
                                                 @method('PUT')
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                 <input type="hidden" name="email" value="{{ $member->email->email }}">
-                                                <input type="hidden" name="role" value="{{ $member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '') }}">
+                                                <input type="hidden" name="role" value="{{ $member->getRole($team)?->name ?? ($member->membership->role ?? '') }}">
                                                 <x-neev-component::button>{{__('Invite')}}</x-neev-component::button>
                                             </form>
                                         </td>
@@ -351,7 +351,7 @@
                                         </td>
                                     @else
                                         <td class="px-4 py-2 text-center capitalize">
-                                            {{ $member->role($team)->first()?->role?->name ?? ($member->membership->role ?? '') }}
+                                            {{ $member->getRole($team)?->name ?? ($member->membership->role ?? '') }}
                                         </td>
                                     @endif
                                 </x-neev-component::table-body-tr>
@@ -387,7 +387,7 @@
                                                             <div class="mt-4 flex gap-2 items-center w-2/3">
                                                                 <x-neev-component::label for="role" value="{{ __('Role') }}" />
                                                                 <select name="role" id="role" x-model="role" class="w-full border rounded-md p-2">
-                                                                    @foreach ($team->roles() as $role)
+                                                                    @foreach ($teamRoles as $role)
                                                                         @if ($role?->name)
                                                                             <option value="{{$role->name}}" x-bind:selected="role === '{{$role->name}}'">{{$role->name}}</option>
                                                                         @else

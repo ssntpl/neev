@@ -257,6 +257,6 @@ Route::prefix('/neev')->group(function () {
         Route::get('/domains/rules', [TeamApiController::class, 'getDomainRule']);
         Route::put('/domains/primary', [TeamApiController::class, 'primaryDomain']);
         
-        Route::put('/role/change', [RoleController::class, 'requestAction']);
+        Route::put('/role/change', [RoleController::class, 'roleChangeViaAPI']);
     });
 });

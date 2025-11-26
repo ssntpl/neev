@@ -4,7 +4,7 @@ namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Notifications\Notifiable;
-use Ssntpl\Permissions\Traits\HasRoles;
+use Ssntpl\LaravelAcl\Traits\HasRoles;
 use Ssntpl\Neev\Traits\HasAccessToken;
 use Ssntpl\Neev\Traits\HasMultiAuth;
 use Ssntpl\Neev\Traits\HasTeams;
