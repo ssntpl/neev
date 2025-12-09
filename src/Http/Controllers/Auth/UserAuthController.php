@@ -124,7 +124,7 @@ class UserAuthController extends Controller
                 'is_primary' => true
             ]);
             
-            $password = $user->passwords()->create([
+            $user->passwords()->create([
                 'password' => Hash::make($request->password),
             ]);
 
@@ -308,7 +308,7 @@ class UserAuthController extends Controller
         $this->auth->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, attempt: $attempt ?? null, viaRequestAuth: true);
 
         if (count($user->multiFactorAuths) > 0) {
-            session(['email' => $email->email, 'attempt_id' => $attempt?->id ?? null]);
+            session(['email' => $email->email]);
             return redirect(route('otp.mfa.create', $user->preferredMultiAuth?->method ?? $user->multiFactorAuths()->first()?->method));
         }
 

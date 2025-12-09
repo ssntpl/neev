@@ -453,29 +453,6 @@ class UserApiController extends Controller
         ]);
     }
 
-    public function getRecoveryCodes(Request $request)
-    {
-        $user = User::model()->find($request->user()?->id);
-        if (!$user) {
-            return response()->json([
-                'status' => 'Failed',
-                'message' => 'User not found.',
-            ]);
-        }
-        if (count($user?->multiFactorAuths) === 0) {
-            return response()->json([
-                'status' => 'Failed',
-                'message' => 'Enable MFA first.',
-            ], 400);
-        }
-
-        return response()->json([
-            'status' => 'Success',
-            'message' => 'Recovery codes have been fetched.',
-            'data' => $user->recoveryCodes()->pluck('code')->toArray(),
-        ]);
-    }
-
     public function generateRecoveryCodes(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
@@ -491,12 +468,12 @@ class UserApiController extends Controller
                 'message' => 'Enable MFA first.',
             ], 400);
         }
-        $user->generateRecoveryCodes();
+        $codes = $user->generateRecoveryCodes();
 
         return response()->json([
             'status' => 'Success',
             'message' => 'New recovery codes are generated.',
-            'data' => $user->recoveryCodes()->pluck('code')->toArray(),
+            'data' => $codes,
         ]);
     }
 }

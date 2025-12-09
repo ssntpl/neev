@@ -35,7 +35,7 @@ class AuthService
             } else {
                 $clientDetails = LoginAttempt::getClientDetails($request);
 
-                $user->loginAttempts()->create([
+                $attempt = $user->loginAttempts()->create([
                     'method'  => $method,
                     'location' => $geoIP?->getLocation($request->ip()),
                     'multi_factor_method' => $mfa,
@@ -46,6 +46,7 @@ class AuthService
                     'is_success' => true,
                 ]);
             }
+            session(['attempt_id' => $attempt?->id ?? null]);
         } catch (Exception $e) {
             Log::error($e);
         }

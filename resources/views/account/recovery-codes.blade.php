@@ -8,7 +8,7 @@
         
         <x-slot name="content">
             <h1 class="font-bold text-lg">Recovery codes can be used to access your account in the event you lose access to your device and cannot receive multi-factor authentication codes.</h1>
-            @if (count($user->recoveryCodes) > 0)
+            @if (count($codes ?? []) > 0)
                 <div class="border rounded-lg">
                     <div class="p-4 font-bold">Recovery Codes</div>
                     <div class="p-4 bg-blue-100 text-sm flex items-start gap-2 text-blue-900 rounded">
@@ -23,8 +23,8 @@
                     </div>
                     <div x-data="recoveryCodesHandler('{{ Str::lower(config('app.name')) }}')" class="w-3/4 flex flex-col justify-self-center text-center p-4">
                         <ul id="recovery-codes" class="flex flex-wrap gap-2 text-start list-disc">
-                            @foreach ($user->recoveryCodes as $code)
-                                <li class="font-semibold tracking-widest" style="width: 24%">{{ $code->code }}</li>
+                            @foreach ($codes as $code)
+                                <li class="font-semibold tracking-widest" style="width: 24%">{{ $code }}</li>
                             @endforeach
                         </ul>
                         <div class="flex gap-4 justify-center mt-6">
@@ -40,8 +40,8 @@
                             >
                                 <h1 class="text-2xl font-bold mb-4">Recovery Codes</h1>
                                 <ul class="list-disc flex flex-col gap-2 px-10">
-                                    @foreach ($user->recoveryCodes as $code)
-                                        <li class="tracking-widest">{{ $code->code }}</li>
+                                    @foreach ($codes as $code)
+                                        <li class="tracking-widest">{{ $code }}</li>
                                     @endforeach
                                 </ul>
                                 <p class="text-lg mt-2">{{config('app.name')}} multi-factor authentication account recovery codes</p>

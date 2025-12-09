@@ -297,7 +297,12 @@ class UserController extends Controller
         if (count($user?->multiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
-        return view('neev::account.recovery-codes', ['user' => $user]);
+
+        if (count($user->recoveryCodes) === 0) {
+            $codes = $user->generateRecoveryCodes();
+        }
+
+        return view('neev::account.recovery-codes', ['codes' => $codes ?? []]);
     }
 
     public function generateRecoveryCodes(Request $request)
@@ -306,8 +311,8 @@ class UserController extends Controller
         if (count($user?->multiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
-        $user->generateRecoveryCodes();
-        return back()->with('status', 'New recovery codes are generated.');
+        $user->recoveryCodes()->delete();
+        return redirect()->route('recovery.codes');
     }
 
     public function tokenStore(Request $request)

@@ -6,6 +6,7 @@ use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
 use BaconQrCode\Writer;
+use Hash;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
 use Ssntpl\Neev\Models\MultiFactorAuth;
@@ -57,10 +58,6 @@ trait HasMultiAuth
                 $writer = new Writer($renderer);
                 $qrCodeSvg = $writer->writeString($totp->getProvisioningUri());
 
-                if (count($this->recoveryCodes) == 0) {
-                    $this->generateRecoveryCodes();
-                }
-
                 return [
                     'qr_code' => $qrCodeSvg,
                     'secret' => $totp->getSecret(),
@@ -77,10 +74,7 @@ trait HasMultiAuth
                     'method' => $method,
                     'preferred' => !$this->preferredMultiFactorAuth?->preferred,
                 ]);
-
-                if (count($this->recoveryCodes) == 0) {
-                    $this->generateRecoveryCodes();
-                }
+                
                 return ['message' => 'Email Configured.'];
                 
             default:
@@ -115,7 +109,7 @@ trait HasMultiAuth
             
             case 'recovery':
                 $code = $this->recoveryCodes?->first(function ($recoveryCode) use ($otp) {
-                    return $recoveryCode->code === $otp;
+                    return Hash::check($otp, $recoveryCode->code);
                 });
                 if ($code) {
                     $code->code = Str::lower(Str::random(10));
@@ -129,10 +123,15 @@ trait HasMultiAuth
 
     public function generateRecoveryCodes() {
         $this->recoveryCodes()->delete();
+        $codes = [];
         for ($i = 1; $i <= config('neev.recovery_codes'); $i++) {
+            $code = Str::lower(Str::random(10));
             $this->recoveryCodes()->create([
-                'code' => Str::lower(Str::random(10)),
+                'code' => $code,
             ]);
+            $codes[] = $code;
         }
+        
+        return $codes;
     }
 }

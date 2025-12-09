@@ -151,7 +151,7 @@
                                     </div>
                                     <div class="text-end">
                                         <a href="{{route('recovery.codes')}}" target="_blank">
-                                            <x-neev-component::secondary-button>{{ __('View') }}</x-neev-component::secondary-button>
+                                            <x-neev-component::secondary-button>{{ $user->recoveryCodes?->count() > 0 ? __('Reset') : 'Create' }}</x-neev-component::secondary-button>
                                         </a>
                                     </div>
                                 </div>

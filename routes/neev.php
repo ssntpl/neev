@@ -213,7 +213,6 @@ Route::prefix('/neev')->group(function () {
         Route::post('/mfa/add', [UserApiController::class, 'addMultiFactorAuthentication']);
         Route::delete('/mfa/delete', [UserApiController::class, 'deleteMultiFactorAuthentication']);
         Route::post('/mfa/otp/verify', [UserAuthApiController::class, 'verifyMFAOTP']);
-        Route::get('/recoveryCodes', [UserApiController::class, 'getRecoveryCodes']);
         Route::post('/recoveryCodes', [UserApiController::class, 'generateRecoveryCodes']);
 
         Route::get('/users', [UserApiController::class, 'getUser']);
