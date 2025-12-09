@@ -2,9 +2,7 @@
 
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
-use Auth;
 use Exception;
-use Illuminate\Validation\ValidationException;
 use Log;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
@@ -12,6 +10,7 @@ use Ssntpl\Neev\Models\Passkey;
 use Ssntpl\Neev\Models\User;
 use Illuminate\Http\Request;
 use ParagonIE\ConstantTime\Base64UrlSafe;
+use Ssntpl\Neev\Services\AuthService;
 use Symfony\Component\Uid\Uuid;
 use Throwable;
 use Webauthn\AttestationStatement\AttestationObjectLoader;
@@ -46,18 +45,29 @@ use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Http\Controllers\Controller;
 class PasskeyController extends Controller
 {
+    protected AuthService $auth;
+
+    public function __construct(AuthService $auth)
+    {
+        $this->auth = $auth;
+    }
     public function generateRegistrationOptions(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-
-        $rpName = env('APP_NAME', 'Neev');
-        $rpId = parse_url(config('neev.frontend_url', env('APP_URL'),), PHP_URL_HOST);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found',
+            ], 400);
+        }
+        $rpName = config('app.name', 'Neev');
+        $rpId = parse_url(config('neev.frontend_url', config('app.url')), PHP_URL_HOST);
         $rpEntity = new PublicKeyCredentialRpEntity($rpName, $rpId);
 
         $userId = strval($user->id);
         $userEntity = new PublicKeyCredentialUserEntity(
             id: $userId,
-            name: $user->email->email,
+            name: $user->email?->email,
             displayName: $user->name
         );
 
@@ -74,17 +84,6 @@ class PasskeyController extends Controller
             new PublicKeyCredentialParameters('public-key', -257),  // RS256
         ];
 
-        $options = new PublicKeyCredentialCreationOptions(
-            rp: $rpEntity,
-            user: $userEntity,
-            challenge: $challenge,
-            excludeCredentials: [],
-            pubKeyCredParams: $pubKeyCredParams,
-            timeout: 120000,
-            authenticatorSelection: $authenticatorSelection,
-            attestation: 'none'
-        );
-
         return response()->json([
             'rp' => [
                 'name' => $rpName,
@@ -92,15 +91,14 @@ class PasskeyController extends Controller
             ],
             'user' => [
                 'id' => base64_encode($userId),
-                'name' => $user->email->email,
+                'name' => $user->email?->email,
                 'displayName' => $user->name,
             ],
             'challenge' => $base64Challenge,
             'pubKeyCredParams' => $pubKeyCredParams,
             'authenticatorSelection' => [
-                // 'authenticatorAttachment' => $authenticatorSelection->authenticatorAttachment,
-                'residentKey' => $authenticatorSelection->residentKey,
-                'userVerification' => $authenticatorSelection->userVerification,
+                'residentKey' => $authenticatorSelection?->residentKey,
+                'userVerification' => $authenticatorSelection?->userVerification,
             ],
             'timeout' => 60000,
             'excludeCredentials' => [],
@@ -111,10 +109,16 @@ class PasskeyController extends Controller
 
     public function register(Request $request, GeoIP $geoIP)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found',
+            ], 400);
+        }
         $input = json_decode($request->attestation, true);
 
-        $rpId = parse_url(config('neev.frontend_url', env('APP_URL')), PHP_URL_HOST);
+        $rpId = parse_url(config('neev.frontend_url', config('app.url')), PHP_URL_HOST);
         $challenge = Base64UrlSafe::decode($input['challenge']);
         if (!$challenge) {
             return throw new Exception('passkey was not added.');
@@ -146,13 +150,13 @@ class PasskeyController extends Controller
 
         // Rebuild PublicKeyCredentialCreationOptions
         $rp = new PublicKeyCredentialRpEntity(
-            name: env('APP_URL', 'Neev'),
+            name: config('app.name', 'Neev'),
             id: $rpId
         );
 
         $userEntity = new PublicKeyCredentialUserEntity(
             id: strval($user->id),
-            name: $user->email->email,
+            name: $user->email?->email,
             displayName: $user->name
         );
 
@@ -167,7 +171,7 @@ class PasskeyController extends Controller
             challenge: $challenge,
             excludeCredentials: [],
             pubKeyCredParams: $pubKeyCredParams,
-            timeout: 120000,
+            timeout: 60000,
             authenticatorSelection: new AuthenticatorSelectionCriteria(
                 residentKey: 'required',
                 userVerification: 'required'
@@ -228,9 +232,14 @@ class PasskeyController extends Controller
     }
     
     public function deletePasskey(Request $request) {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return back()->withErrors([
+                'message' => 'Passkey was not deleted.'
+            ]);
+        }
         $passkey = Passkey::find($request->passkey_id);
-        if ($passkey->user_id != $user->id) {
+        if (!$passkey || $passkey?->user_id != $user->id) {
             return back()->withErrors([
                 'message' => 'Passkey was not deleted.'
             ]);
@@ -240,9 +249,15 @@ class PasskeyController extends Controller
     }
     
     public function updatePasskeyName(Request $request) {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found',
+            ], 400);
+        }
         $passkey = Passkey::find($request->passkey_id);
-        if (!$passkey || !$user || $passkey?->user_id != $user?->id) {
+        if (!$passkey || $passkey?->user_id != $user?->id) {
             return response()->json([
                 'status' => 'Failed'
             ], 400);
@@ -261,7 +276,10 @@ class PasskeyController extends Controller
         try {
             $request->validate(['email' => 'required|email']);
             $email = Email::where('email', $request->email)->first();
-            $user = $email->user;
+            $user = $email?->user;
+            if (!$email || !$user) {
+                throw new Exception('User not found.');
+            }
             $allowCredentials = [];
 
             foreach ($user->passkeys as $passkey) {
@@ -271,7 +289,7 @@ class PasskeyController extends Controller
                 ];
             }
 
-            $rpId = parse_url(config('neev.frontend_url', env('APP_URL')), PHP_URL_HOST);
+            $rpId = parse_url(config('neev.frontend_url', config('app.url')), PHP_URL_HOST);
             $challenge = random_bytes(32);
             $base64Challenge = Base64UrlSafe::encode($challenge);
             $options = new PublicKeyCredentialRequestOptions(
@@ -323,7 +341,7 @@ class PasskeyController extends Controller
 
         $credential = new PublicKeyCredential($type, $rawId, $response);
 
-        $rpId = parse_url(config('neev.frontend_url', env('APP_URL')), PHP_URL_HOST);
+        $rpId = parse_url(config('neev.frontend_url', config('app.url')), PHP_URL_HOST);
         $challenge = Base64UrlSafe::decode($input['challenge']);
 
         $options = new PublicKeyCredentialRequestOptions(
@@ -338,7 +356,7 @@ class PasskeyController extends Controller
         $user = $email?->user;
         if (config('neev.record_failed_login_attempts')) {
             $clientDetails = LoginAttempt::getClientDetails($request);
-            $attempt = $user->loginAttempts()->create([
+            $attempt = $user?->loginAttempts()->create([
                 'method' => LoginAttempt::Passkey,
                 'location' => $geoIP?->getLocation($request->ip()),
                 'multi_factor_method' => null,
@@ -394,37 +412,6 @@ class PasskeyController extends Controller
         return [$user, $attempt ?? null];
     }
 
-    public static function login(Request $request, GeoIP $geoIP, $user, $method, $mfa = null, $attempt = null) 
-    {
-        if (!$user->active) {
-            throw ValidationException::withMessages([
-                'email' => 'Your account is deactivated, please contact your admin to activate your account.',
-            ]);
-        }
-        Auth::login($user, false);
-        $request->session()->regenerate();
-            try {
-                if ($attempt) {
-                    $attempt->is_success = true;
-                    $attempt->save();
-                } else {
-                    $clientDetails = LoginAttempt::getClientDetails($request);
-                    $user->loginAttempts()->create([
-                        'method' => $method,
-                        'location' => $geoIP?->getLocation($request->ip()),
-                        'multi_factor_method' => $mfa,
-                        'platform' => $clientDetails['platform'] ?? '',
-                        'browser' => $clientDetails['browser'] ?? '',
-                        'device' => $clientDetails['device'] ?? '',
-                        'ip_address' => $request->ip(),
-                        'is_success' => true,
-                    ]);
-                }
-            } catch (Exception $e) {
-                Log::error($e->getMessage());
-        }
-    }
-
     public function registerViaWeb(Request $request, GeoIP $geoIP)
     {
         try {
@@ -446,6 +433,7 @@ class PasskeyController extends Controller
                 'data' => $res,
             ]);
         } catch (Exception $e) {
+            Log::error($e);
             return response()->json([
                 'status' => 'Failed',
                 'message' => $e->getMessage()
@@ -454,9 +442,9 @@ class PasskeyController extends Controller
     }
 
     public function deletePasskeyViaAPI(Request $request) {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         $passkey = Passkey::find($request->passkey_id);
-        if ($passkey->user_id != $user->id) {
+        if (!$user || !$passkey || $passkey?->user_id != $user?->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Passkey was not deleted.',
@@ -475,7 +463,7 @@ class PasskeyController extends Controller
         try {
             [$user, $attempt] = $this->passkeyLogin($request, $geoIP);
 
-            self::login($request, $geoIP, $user, LoginAttempt::Passkey, $attempt ?? null);
+            $this->auth->login($request, $geoIP, $user, LoginAttempt::Passkey, $attempt ?? null);
             return redirect(config('neev.dashboard_url'));
         } catch (Exception $e) {
             Log::error($e);
@@ -488,13 +476,13 @@ class PasskeyController extends Controller
         try {
             [$user, $attempt] = $this->passkeyLogin($request, $geoIP);
 
-            $authController = new AuthController();
+            $authController = new UserAuthApiController();
             $token = $authController->getToken(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Passkey, attempt: $attempt ?? null);
 
             return response()->json([
                 'status' => 'Success',
                 'token' => $token,
-                'email_verified' => $user->hasVerifiedEmail($request->email)
+                'email_verified' => $user?->hasVerifiedEmail($request->email)
             ]);
         } catch (Exception $e) {
             return response()->json([

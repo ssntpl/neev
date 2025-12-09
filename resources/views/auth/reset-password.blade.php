@@ -6,7 +6,7 @@
 
         <x-neev-component::validation-errors class="mb-4" />
 
-        <form method="POST" action="{{ route('password.update') }}">
+        <form method="POST" action="{{ route('user-password.update') }}">
             @csrf
 
             <div class="block">

@@ -79,11 +79,11 @@ class Team extends Model
 
     public function removeUser($user)
     {
-        if ($this->owner()->id === $user->id) {
+        if ($this->owner()?->id === $user?->id) {
             throw new Exception('cannot remove owner.');
         }
 
-        $this->users()->detach($user);
+        $this->users()?->detach($user);
     }
 
     public function domains()
@@ -113,6 +113,6 @@ class Team extends Model
 
     public function hasUser($user): bool
     {
-        return $this->users->contains($user);
+        return $this->users?->contains($user);
     }
 }

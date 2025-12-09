@@ -21,12 +21,12 @@ trait HasMultiAuth
 
     public function multiFactorAuth($method)
     {
-        return $this->multiFactorAuths->where('method', $method)->first();
+        return $this->multiFactorAuths?->where('method', $method)->first();
     }
 
-    public function preferedMultiFactorAuth()
+    public function preferredMultiFactorAuth()
     {
-        return $this->hasOne(MultiFactorAuth::class)->where('prefered', true);
+        return $this->hasOne(MultiFactorAuth::class)->where('preferred', true);
     }
 
     public function recoveryCodes()
@@ -41,11 +41,11 @@ trait HasMultiAuth
                 $secret = $auth?->secret ?? Base32::encodeUpper(random_bytes(32));
                 $totp = TOTP::create($secret);
                 $totp->setLabel($this->email?->email);
-                $totp->setIssuer(env('APP_NAME', 'Neev')); 
+                $totp->setIssuer(config('app.name', 'Neev')); 
                 if (!$auth) {
                     $this->multiFactorAuths()->create([
                         'method' => $method,
-                        'prefered' => !$this->preferedMultiFactorAuth?->prefered,
+                        'preferred' => !$this->preferredMultiFactorAuth?->preferred,
                         'secret' => $totp->getSecret(),
                     ]);
                 }
@@ -75,7 +75,7 @@ trait HasMultiAuth
                 
                 $this->multiFactorAuths()->create([
                     'method' => $method,
-                    'prefered' => !$this->preferedMultiFactorAuth?->prefered,
+                    'preferred' => !$this->preferredMultiFactorAuth?->preferred,
                 ]);
 
                 if (count($this->recoveryCodes) == 0) {
@@ -89,7 +89,7 @@ trait HasMultiAuth
     }
 
     public function verifyMFAOTP($method, $otp): bool {
-        $auth = $this->multiFactorAuth($method ?? $this->preferedMultiFactorAuth?->method);
+        $auth = $this->multiFactorAuth($method ?? $this->preferredMultiFactorAuth?->method);
         if (!$auth && $method !== 'recovery') {
             return false;
         }
@@ -102,7 +102,9 @@ trait HasMultiAuth
                 return $totp->verify(otp: $otp, timestamp: null, leeway: 29);
 
             case 'email':
-                if ($auth->otp == $otp && now()->lt($auth->expires_at)) {
+                $otpStored = (string) $auth->otp;
+                $otpGiven  = (string) $otp;
+                if (hash_equals($otpStored, $otpGiven) && now()->lt($auth->expires_at)) {
                     $auth->otp = null;
                     $auth->expires_at = null;
                     $auth->last_used = now();
@@ -112,7 +114,7 @@ trait HasMultiAuth
                 break;
             
             case 'recovery':
-                $code = $this->recoveryCodes->first(function ($recoveryCode) use ($otp) {
+                $code = $this->recoveryCodes?->first(function ($recoveryCode) use ($otp) {
                     return $recoveryCode->code === $otp;
                 });
                 if ($code) {

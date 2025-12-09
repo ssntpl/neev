@@ -2,22 +2,28 @@
 
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
+use DB;
 use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Laravel\Socialite\Facades\Socialite;
 use Log;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
-use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
 use Str;
 
 class OAuthController extends Controller
 {
+    protected AuthService $auth;
+
+    public function __construct(AuthService $auth)
+    {
+        $this->auth = $auth;
+    }
     public function redirect(Request $request, string $service)
     {
         $email = $request->email;
@@ -55,29 +61,17 @@ class OAuthController extends Controller
             }
         }
 
-        Auth::login($user);
-        $request->session()->regenerate();
-        
-        try {
-            $clientDetails = LoginAttempt::getClientDetails($request);
-            $user->loginAttempts()->create([
-                'method' => $service,
-                'location' => $geoIP?->getLocation($request->ip()),
-                'platform' => $clientDetails['platform'] ?? '',
-                'browser' => $clientDetails['browser'] ?? '',
-                'device' => $clientDetails['device'] ?? '',
-                'ip_address' => $request->ip(),
-                'is_success' => true,
-            ]);
-        } catch (Exception $e) {
-            Log::error($e->getMessage());
-        }
+        $this->auth->login($request, $geoIP, $user, $service);
         
         return redirect(config('neev.dashboard_url'));
     }
 
     public function register($oauthUser)
     {
+        if (!$oauthUser) {
+            return null;
+        }
+        DB::beginTransaction();
         if (!config('neev.support_username')) {
             $email = explode('@', $oauthUser->email)[0];
             $username = $email;
@@ -93,6 +87,11 @@ class OAuthController extends Controller
             $user = User::model()->create([
                 'name' => $oauthUser->name,
             ]);
+        }
+
+        if (!$user) {
+            DB::rollBack();
+            return null;
         }
 
         try {
@@ -126,11 +125,11 @@ class OAuthController extends Controller
                 }
             }
         } catch (Exception $e) {
-            $user->delete();
-            Log::error($e->getMessage());
+            DB::rollBack();
+            Log::error($e);
             return null;
         }
-
+        DB::commit();
         return $user;
     }
 }

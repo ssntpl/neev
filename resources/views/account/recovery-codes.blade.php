@@ -13,7 +13,7 @@
                     <div class="p-4 font-bold">Recovery Codes</div>
                     <div class="p-4 bg-blue-100 text-sm flex items-start gap-2 text-blue-900 rounded">
                         <div class="text-blue-600">
-                            <svg class="w-4 h-4 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 16 16">
+                            <svg class="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 16 16">
                                 <path d="M6.457 1.047c.659-1.234 2.427-1.234 3.086 0l6.082 11.378A1.75 1.75 0 0 1 14.082 15H1.918a1.75 1.75 0 0 1-1.543-2.575Zm1.763.707a.25.25 0 0 0-.44 0L1.698 13.132a.25.25 0 0 0 .22.368h12.164a.25.25 0 0 0 .22-.368Zm.53 3.996v2.5a.75.75 0 0 1-1.5 0v-2.5a.75.75 0 0 1 1.5 0ZM9 11a1 1 0 1 1-2 0 1 1 0 0 1 2 0Z" />
                             </svg>
                         </div>
@@ -21,7 +21,7 @@
                             <strong>Keep your recovery codes in a safe spot.</strong> These codes are the last resort for accessing your account in case you lose your password and second factors. If you cannot find these codes, you will lose access to your account.
                         </div>
                     </div>
-                    <div x-data="recoveryCodesHandler('{{ Str::lower(env('APP_NAME')) }}')" class="w-3/4 flex flex-col justify-self-center text-center p-4">
+                    <div x-data="recoveryCodesHandler('{{ Str::lower(config('app.name')) }}')" class="w-3/4 flex flex-col justify-self-center text-center p-4">
                         <ul id="recovery-codes" class="flex flex-wrap gap-2 text-start list-disc">
                             @foreach ($user->recoveryCodes as $code)
                                 <li class="font-semibold tracking-widest" style="width: 24%">{{ $code->code }}</li>
@@ -35,7 +35,7 @@
                         <!-- Hidden Printable Section -->
                         <div id="printable-area" class="hidden print:block">
                             <div 
-                                class="flex flex-col justify-self-center border border-4 border-black text-start w-3/4 p-6 mt-6 mx-auto"
+                                class="flex flex-col justify-self-center border-4 border-black text-start w-3/4 p-6 mt-6 mx-auto"
                                 style="font-family: monospace; font-size: 16px;"
                             >
                                 <h1 class="text-2xl font-bold mb-4">Recovery Codes</h1>
@@ -44,7 +44,7 @@
                                         <li class="tracking-widest">{{ $code->code }}</li>
                                     @endforeach
                                 </ul>
-                                <p class="text-lg mt-2">{{env('APP_NAME')}} multi-factor authentication account recovery codes</p>
+                                <p class="text-lg mt-2">{{config('app.name')}} multi-factor authentication account recovery codes</p>
                             </div>
                         </div>
                     </div>

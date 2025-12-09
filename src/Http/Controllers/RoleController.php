@@ -5,7 +5,6 @@ namespace Ssntpl\Neev\Http\Controllers;
 use Exception;
 use Illuminate\Http\Request;
 use Log;
-use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Models\User;
 
 class RoleController extends Controller
@@ -17,7 +16,7 @@ class RoleController extends Controller
             return back()->with('status', 'Role has been changed.');
         } catch (Exception $e) {
             Log::error($e);
-            return back()->withErrors(['message' => 'Failed to proccess change role request.']);
+            return back()->withErrors(['message' => 'Failed to process change role request.']);
         }
     }
 
@@ -33,7 +32,7 @@ class RoleController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'Failed to proccess change role request.'
+                'message' => 'Failed to process change role request.'
             ], 500);
         }
     }

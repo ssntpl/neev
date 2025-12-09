@@ -2,7 +2,7 @@
 
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
-use Carbon\Carbon;
+use DB;
 use Exception;
 use Hash;
 use Illuminate\Http\Request;
@@ -22,7 +22,7 @@ use Ssntpl\Neev\Services\GeoIP;
 use URL;
 use Log;
 
-class AuthController extends Controller
+class UserAuthApiController extends Controller
 {
     public function register(Request $request, GeoIP $geoIP)
     {
@@ -38,7 +38,7 @@ class AuthController extends Controller
         
         try {
             $request->validate($validationRules);
-            
+            DB::beginTransaction();
             $user = User::model()->create([
                 'name' => $request->name,
                 'username' => $request->username,
@@ -46,75 +46,73 @@ class AuthController extends Controller
 
             $user = User::model()->find($user->id);
             
-            $email = $user->emails()->create([
+            $email = $user?->emails()->create([
                 'email' => $request->email,
                 'is_primary' => true
             ]);
+
+            if (!$user || !$email) {
+                DB::rollBack();
+                return response()->json([
+                    'status' => 'Failed',
+                    'message' => 'Unable to create user email.',
+                ], 500);
+            }
             
             $user->passwords()->create([
                 'password' => Hash::make($request->password),
             ]);
 
             if (config('neev.team')) {
-                try {
-                    if ($request->invitation_id) {
-                        $invitation = TeamInvitation::find($request->invitation_id);
-                        if (!$invitation || sha1($invitation?->email) !== $request->hash) {
-                            $user->delete();
-                            return response()->json([
-                                'status' => 'Failed',
-                                'message' => 'Invalid or expired invitation link.',
-                            ], 500);
-                        }
+                if ($request->invitation_id) {
+                    $invitation = TeamInvitation::find($request->invitation_id);
+                    if (!$invitation || sha1($invitation?->email) !== $request->hash) {
+                        DB::rollBack();
+                        return response()->json([
+                            'status' => 'Failed',
+                            'message' => 'Invalid or expired invitation link.',
+                        ], 500);
+                    }
 
-                        $email->verified_at = now();
-                        $email->save();
+                    $email->verified_at = now();
+                    $email->save();
 
-                        $team = $invitation->team;
-                        $team->users()->attach($user, ['role' => $invitation->role ?? '', 'joined' => true]);
-                        if ($invitation?->role) {
-                            $user->assignRole($invitation->role, $team);
-                        }
-                        $invitation->delete();
-                    } else {
-                        if (config('neev.domain_federation')) {
-                            $emailDomain = substr(strrchr($request->email, "@"), 1);
-                            $domain = Domain::where('domain', $emailDomain)->first();
-                            if (!$domain?->verified_at) {
-                                $team = Team::model()->forceCreate([
-                                    'name' => explode(' ', $user->name, 2)[0]."'s Team",
-                                    'user_id' => $user->id,
-                                    'is_public' => false,
-                                ]);
-                            }
-                        } else {
+                    $team = $invitation->team;
+                    $team?->users()->attach($user, ['role' => $invitation->role ?? '', 'joined' => true]);
+                    if ($invitation?->role) {
+                        $user->assignRole($invitation->role, $team);
+                    }
+                    $invitation->delete();
+                } else {
+                    if (config('neev.domain_federation')) {
+                        $emailDomain = substr(strrchr($request->email, "@"), 1);
+                        $domain = Domain::where('domain', $emailDomain)->first();
+                        if (!$domain?->verified_at) {
                             $team = Team::model()->forceCreate([
                                 'name' => explode(' ', $user->name, 2)[0]."'s Team",
                                 'user_id' => $user->id,
                                 'is_public' => false,
                             ]);
                         }
-                        $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
-                        if ($team->default_role) {
-                            $user->assignRole($team->default_role ?? '', $team);
-                        }
+                    } else {
+                        $team = Team::model()->forceCreate([
+                            'name' => explode(' ', $user->name, 2)[0]."'s Team",
+                            'user_id' => $user->id,
+                            'is_public' => false,
+                        ]);
                     }
-
-                } catch (Exception $e) {
-                    $user->delete();
-                    Log::error($e);
-                    return response()->json([
-                        'status' => 'Failed',
-                        'message' => 'Unable to create team',
-                    ], 500);
+                    $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
+                    if ($team->default_role) {
+                        $user->assignRole($team->default_role ?? '', $team);
+                    }
                 }
             }
-
+            DB::commit();
             if (!$email->verified_at) {
                 UserApiController::sendMailVerification($email);
             }
 
-            $token = $this->getToken($request, $geoIP, $user, LoginAttempt::Password);;
+            $token = $this->getToken($request, $geoIP, $user, LoginAttempt::Password);
             if (!$token) {
                 return response()->json([
                     'status' => 'Failed',
@@ -127,6 +125,7 @@ class AuthController extends Controller
                 'email_verified' => $user->hasVerifiedEmail(),
             ]);
         } catch (Exception $e) {
+            DB::rollBack();
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
@@ -146,19 +145,19 @@ class AuthController extends Controller
         }
 
         $email = Email::where('email', $request->email)->first();
-        if (!$email) {
+        $user = $email?->user;
+        if (!$user || !$email) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Credentials are wrong.',
             ], 401);
         }
-        
-        $user = $email->user;
-        $mfaMethod = $user?->preferedMultiAuth?->method ?? $user?->multiFactorAuths()->first()?->method;
-        if (!$user || !Hash::check($request->password, (string)$user->password->password)) {
+
+        $mfaMethod = $user?->preferredMultiAuth?->method ?? $user?->multiFactorAuths()->first()?->method;
+        if (!Hash::check($request->password, (string)$user?->password?->password)) {
             if (config('neev.record_failed_login_attempts')) {
                 $clientDetails = LoginAttempt::getClientDetails($request);
-                $attempt = $user->loginAttempts()->create([
+                $user?->loginAttempts()->create([
                     'method' => LoginAttempt::Password,
                     'location' => $geoIP?->getLocation($request->ip()),
                     'multi_factor_method' => $mfaMethod ?? null,
@@ -175,19 +174,19 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $token = $this->getToken(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, mfa: $mfaMethod ?? null, attempt: $attempt ?? null);
+        $token = $this->getToken(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, mfa: $mfaMethod ?? null, attempt: null);
 
         return response()->json([
             'status' => 'Success',
             'token' => $token,
             'email_verified' => $user->hasVerifiedEmail($email->email),
-            'prefered_mfa' => $mfaMethod,
+            'preferred_mfa' => $mfaMethod,
         ]);
     }
 
     public function getToken(Request $request, GeoIP $geoIP, $user, $method, $mfa = null, $attempt = null) 
     {
-        if (!$user->active) {
+        if (!$user?->active) {
             throw ValidationException::withMessages([
                 'email' => 'Your account is deactivated, please contact your admin to activate your account.',
             ]);
@@ -211,6 +210,7 @@ class AuthController extends Controller
                 ]);
             }
 
+            // if mfa is enabled, set token expiry to 60 minutes else 24 hours
             $token = $user->createLoginToken($mfa ? 60 : 1440);
             $accessToken = $token->accessToken;
             if ($mfa) {
@@ -256,7 +256,7 @@ class AuthController extends Controller
     public function logout(Request $request)
     {
         $accessToken = AccessToken::find($request->attributes->get('token_id'));
-        if (!$accessToken || $accessToken->user->id !== $request->user()->id) {
+        if (!$accessToken || $accessToken?->user?->id !== $request->user()?->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Invalid Token.',
@@ -272,7 +272,7 @@ class AuthController extends Controller
 
     public function logoutAll(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
                 'status' => 'Failed',
@@ -297,7 +297,7 @@ class AuthController extends Controller
             ], 403);
         }
 
-        if ($email->verified_at) {
+        if ($email?->verified_at) {
             return response()->json([
                 'status' => 'Success',
                 'message' => 'Email verification already done.'
@@ -335,12 +335,12 @@ class AuthController extends Controller
     {
         $email = Email::where('email', $request->email)->first();
         
-        $otp = $email->otp;
+        $otp = $email?->otp;
 
-        if (!$otp || $otp->expires_at < now() || $otp->otp !== $request->otp) {
+        if (!$email || !$otp || $otp?->expires_at < now() || $otp?->otp !== $request->otp) {
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'Code verification was falied.'
+                'message' => 'Code verification was failed.'
             ], 401);
         }
         
@@ -370,11 +370,17 @@ class AuthController extends Controller
             if ($email->otp?->otp !== $request->otp) {
                 return response()->json([
                     'status' => 'Failed',
-                    'message' => 'Code verification was falied.',
+                    'message' => 'Code verification was failed.',
                 ]);
             }
 
             $user = $email->user;
+            if (!$user) {
+                return response()->json([
+                    'status' => 'Failed',
+                    'message' => 'User not found',
+                ]);
+            }
             $user->passwords()->create([
                 'password' => Hash::make($request->password),
             ]);
@@ -404,9 +410,10 @@ class AuthController extends Controller
             ], 401);
         }
 
+        $expiryMinutes = config('neev.url_expiry_time', 60);
         $signedUrl = URL::temporarySignedRoute(
             'loginUsingLink',
-            Carbon::now()->addMinutes(15),
+            now()->addMinutes($expiryMinutes),
             ['id' => $email->id]
         );
 
@@ -414,7 +421,7 @@ class AuthController extends Controller
         $frontendUrl = config('neev.frontend_url');
         $url = "{$frontendUrl}/login-link?{$query}";
     
-        Mail::to($email->email)->send(new LoginUsingLink($url, 15));
+        Mail::to($email->email)->send(new LoginUsingLink($url, $expiryMinutes));
         
         return response()->json([
             'status' => 'Success',
@@ -444,7 +451,7 @@ class AuthController extends Controller
         return response()->json([
             'status' => 'Success',
             'token' => $token,
-            'email_verified' => $email->user->hasVerifiedEmail($email->email),
+            'email_verified' => $email->user?->hasVerifiedEmail($email->email),
         ]);
     }
 
@@ -461,18 +468,20 @@ class AuthController extends Controller
 
         $attempt = $accessToken?->attempt;
 
-        if (!$user->verifyMFAOTP($request->auth_method, $request->otp)) {
+        if (!$accessToken || !$user->verifyMFAOTP($request->auth_method, $request->otp)) {
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'Code verification was falied.'
+                'message' => 'Code verification was failed.'
             ], 401);
         }
 
         $accessToken->token_type = AccessToken::login;
         $accessToken->save();
-        $attempt->is_success = true;
-        $attempt->multi_factor_method = $request->auth_method;
-        $attempt->save();
+        if ($attempt) {
+            $attempt->is_success = true;
+            $attempt->multi_factor_method = $request->auth_method;
+            $attempt->save();
+        }
 
         return response()->json([
             'status' => 'Success',

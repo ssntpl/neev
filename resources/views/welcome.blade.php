@@ -1,14 +1,14 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ e(str_replace('_', '-', app()->getLocale())) }}">
     <head>
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
 
-        <title>{{env('APP_NAME')}}</title>
+        <title>{{ e(config('app.name')) }}</title>
 
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
-        <link href="https://fonts.bunny.net/css?family=figtree:400,600&display=swap" rel="stylesheet" />
+        <link href="{{ e('https://fonts.bunny.net/css?family=figtree:400,600&display=swap') }}" rel="stylesheet" />
 
         <!-- Styles -->
         <style>
@@ -21,7 +21,7 @@
             <div class="relative min-h-screen flex flex-col items-center selection:bg-[#FF2D20] selection:text-white">
                 <div class="relative w-full max-w-2xl px-6 lg:max-w-7xl">
                     <header class="flex gap-2 py-10">
-                        <div>{{env('APP_NAME')}}</div>
+                        <div>{{ e(config('app.name')) }}</div>
                         @if (Route::has('login'))
                             <nav class="-mx-3 flex flex-1 justify-end">
                                 <div>
@@ -43,7 +43,7 @@
                                             href="{{ route('register') }}"
                                             class="rounded-md px-3 py-2 text-black ring-1 ring-transparent transition hover:text-black/70 focus:outline-none focus-visible:ring-[#FF2D20] dark:text-white dark:hover:text-white/80 dark:focus-visible:ring-white"
                                         >
-                                            register
+                                            Register
                                         </a>
                                     @endauth
                                 </div>
@@ -52,7 +52,7 @@
                     </header>
 
                     <footer class="py-16 text-center text-xl text-black dark:text-white/70">
-                        {{env('APP_NAME')}}
+                        {{ e(config('app.name')) }} is running Laravel v{{ e(Illuminate\Foundation\Application::VERSION) }} (PHP v{{ e(PHP_VERSION) }})
                     </footer>
                 </div>
             </div>

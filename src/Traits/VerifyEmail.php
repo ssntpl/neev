@@ -15,6 +15,6 @@ trait VerifyEmail
         }
 
         $user = User::model()->find($this->id);
-        return $user->email?->verified_at ? true : false;
+        return $user?->email?->verified_at ? true : false;
     }
 }

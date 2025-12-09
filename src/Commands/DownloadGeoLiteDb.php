@@ -23,7 +23,7 @@ class DownloadGeoLiteDb extends Command
         $url = "https://download.maxmind.com/app/geoip_download?edition_id={$edition}&license_key={$licenseKey}&suffix=tar.gz";
        
         $response = Http::withOptions(['sink' => $tempPath])->get($url);
-        if ($response->successful()) {
+        if ($response?->successful()) {
             $output = null;
             $result = 0;
             exec("tar -xzf {$tempPath} -C " . escapeshellarg($extractDir), $output, $result);
@@ -40,7 +40,7 @@ class DownloadGeoLiteDb extends Command
             }
             unlink($tempPath);
         } else {
-            $this->error("Failed to download: " . $response->status());
+            $this->error("Failed to download: " . $response?->status());
         }
     }
 }

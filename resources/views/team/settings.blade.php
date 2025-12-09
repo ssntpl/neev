@@ -48,7 +48,7 @@
                                         <x-neev-component::label for="user_id" value="{{ __('Member') }}" />
                                         <select x-model="user_id" name="user_id" id="user_id" class="w-full border rounded-md p-2">
                                             @foreach ($team->users as $member)
-                                                <option value="{{$member->id}}" x-bind:selected={{$member->id === $team->owner->id}}>{{$member->name}}</option>
+                                                <option value="{{$member->id}}" x-bind:selected="{{$member->id}} === {{$team->owner->id}}">{{$member->name}}</option>
                                             @endforeach
                                         </select>
                                     </div>

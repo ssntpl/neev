@@ -12,13 +12,13 @@
                 </x-slot>
                 <x-slot name="action">
                     <div>
-                        <div x-show="!memberOpen" x-on:click="memberOpen = true" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                        <div x-show="!memberOpen" x-on:click="memberOpen = true" class="cursor-pointer border-2 border-gray-500 text-gray-500 rounded-full shadow">
                             <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
                                 <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
                             </svg>
                         </div>
 
-                        <div x-show="memberOpen" x-on:click="memberOpen = false" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                        <div x-show="memberOpen" x-on:click="memberOpen = false" class="cursor-pointer border-2 border-gray-500 text-gray-500 rounded-full shadow">
                             <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
                                 <path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd" />
                             </svg>
@@ -231,22 +231,26 @@
 
                                             <input type="hidden" name="team_id" value="{{ $team->id }}"/>
                                             <input type="hidden" name="user_id" value="{{ $member->id }}"/>
+                                            @php
+                                                $isDisabled = $team->user_id === $member->id || ($team->user_id !== $user->id && $user->id !== $member->id) || ($team->domain?->verified_at && $member->id === $user->id);
+                                                $disabledAttr = $isDisabled ? 'disabled' : '';
+                                            @endphp
                                             @if (!$member->active && $team->domain?->verified_at && $user->id !== $member->id)
-                                                <x-neev-component::button
+                                                <button
                                                     type="submit"
-                                                    class="w-2/3" 
-                                                    x-bind:disabled="{{$team->user_id === $member->id || ($team->user_id !== $user->id && $user->id !== $member->id) || ($team->domain?->verified_at && $member->id === $user->id)}}"
+                                                    class="inline-flex cursor-pointer items-center justify-center px-4 py-2 bg-gray-800 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-gray-700 active:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150 disabled:opacity-25 disabled:cursor-not-allowed w-2/3"
+                                                    {{ $disabledAttr }}
                                                     @click.prevent="if (confirm('{{ __('Are you sure you want to activate the user?') }}')) $el.closest('form').submit();">
                                                     {{ __('Activate') }}
-                                                </x-neev-component::button>
+                                                </button>
                                             @else
-                                                <x-neev-component::danger-button
+                                                <button
                                                     type="submit"
-                                                    class="w-2/3" 
-                                                    x-bind:disabled="{{$team->user_id === $member->id || ($team->user_id !== $user->id && $user->id !== $member->id) || ($team->domain?->verified_at && $member->id === $user->id)}}"
+                                                    class="inline-flex cursor-pointer items-center justify-center px-4 py-2 bg-red-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-red-500 active:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 dark:focus:ring-offset-gray-800 transition ease-in-out duration-150 disabled:opacity-25 disabled:cursor-not-allowed w-2/3"
+                                                    {{ $disabledAttr }}
                                                     @click.prevent="if (confirm('{{ $user->id === $member->id ? __('Are you sure you want to leave the team?') : __('Are you sure you want to remove/deactivate user from the team?') }}')) $el.closest('form').submit();">
                                                     {{ $user->id === $member->id ? __('Leave') : ($team->domain?->verified_at && str_ends_with(strtolower($member->email), '@' . strtolower($team->domain?->domain)) ? __('Deactivate') : __('Remove')) }}
-                                                </x-neev-component::danger-button>
+                                                </button>
                                             @endif
                                         </form>
                                     </td>

@@ -547,4 +547,58 @@ return [
     | Note: Set to 0 to disable password expiry entirely
     */
     'password_hard_expiry_days' => 90,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Token & OTP Expiry Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Time limits for various tokens and one-time passwords used throughout
+    | the authentication system. Values are in minutes for consistency.
+    |
+    */
+
+    /*
+    | URL Token Expiry Time
+    | ---------------------
+    | Minutes before magic links, password reset links, and email verification
+    | links expire. Shorter times are more secure but less user-friendly.
+    | Recommended: 15-60 minutes
+    */
+    'url_expiry_time' => 60,
+
+    /*
+    | OTP Expiry Time
+    | ---------------
+    | Minutes before one-time passwords (email OTP, MFA codes) expire.
+    | Should be short enough to prevent replay attacks but long enough
+    | for users to receive and enter the code. Recommended: 5-15 minutes
+    */
+    'otp_expiry_time' => 15,
+
+    /*
+    |--------------------------------------------------------------------------
+    | OTP Generation Range
+    |--------------------------------------------------------------------------
+    |
+    | Numeric range for generating one-time passwords. Defines minimum and
+    | maximum values for 6-digit OTP codes sent via email or SMS.
+    |
+    */
+
+    /*
+    | OTP Minimum Value
+    | -----------------
+    | Smallest possible OTP value. Set to 100000 to ensure all OTPs
+    | are exactly 6 digits (no leading zeros displayed to users).
+    */
+    'otp_min' => 100000,
+
+    /*
+    | OTP Maximum Value
+    | -----------------
+    | Largest possible OTP value. Set to 999999 to ensure all OTPs
+    | are exactly 6 digits for consistent user experience.
+    */
+    'otp_max' => 999999,
 ];

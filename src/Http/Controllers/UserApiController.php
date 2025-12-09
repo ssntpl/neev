@@ -2,7 +2,6 @@
 
 namespace Ssntpl\Neev\Http\Controllers;
 
-use Carbon\Carbon;
 use Exception;
 use Hash;
 use Illuminate\Http\Request;
@@ -19,7 +18,7 @@ class UserApiController extends Controller
     public function emailUpdate(Request $request)
     {
         $email = Email::find($request->email_id);
-        if (!$email || $email->user->id !== $request->user()?->id) {
+        if (!$email || $email->user?->id !== $request->user()?->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Email was not updated.'
@@ -40,8 +39,8 @@ class UserApiController extends Controller
     public function getUser(Request $request)
     {   
         $user = $request->user();
-        $user->emails;
-        $user->teams;
+        $user?->emails;
+        $user?->teams;
         return response()->json([
             'status' => 'Success',
             'data' => $user,
@@ -54,9 +53,9 @@ class UserApiController extends Controller
             'auth_method' => ['required'],
         ]);
 
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
 
-        $res = $user->addMultiFactorAuth($request->auth_method);
+        $res = $user?->addMultiFactorAuth($request->auth_method);
         if (!$res) {
             return response()->json([
                 'status' => 'Failed',
@@ -72,8 +71,8 @@ class UserApiController extends Controller
             'auth_method' => ['required'],
         ]);
 
-        $user = User::model()->find($request->user()->id);
-        $auth = $user->multiFactorAuth($request->auth_method);
+        $user = User::model()->find($request->user()?->id);
+        $auth = $user?->multiFactorAuth($request->auth_method);
         if (!$auth) {
             return response()->json([
                 'status' => 'Failed',
@@ -81,9 +80,9 @@ class UserApiController extends Controller
             ], 403);
         }
 
-        if ($auth->prefered && count($user->multiFactorAuths) > 1) {
+        if ($auth->preferred && count($user->multiFactorAuths) > 1) {
             $method = $user->multiFactorAuths()->whereNot('method', $auth->method)->first();
-            $method->prefered = true;
+            $method->preferred = true;
             $method->save();
         }
         $auth->delete();
@@ -102,7 +101,7 @@ class UserApiController extends Controller
     {   
         try {
             
-            $user = User::model()->find($request->user()->id);
+            $user = User::model()->find($request->user()?->id);
             if ($request->name) {
                 $user->name = $request->name;
             }
@@ -141,8 +140,8 @@ class UserApiController extends Controller
             'password' => ['required'],
         ]);
 
-        $user = User::model()->find($request->user()->id);
-        if (!Hash::check($request->password, $user->password->password)) {
+        $user = User::model()->find($request->user()?->id);
+        if (!Hash::check($request->password, $user->password?->password)) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Password is Wrong.',
@@ -157,10 +156,13 @@ class UserApiController extends Controller
     }
 
     public static function sendMailVerification($email) {
-        $user = $email->user;
+        $user = $email?->user;
+        if (!$user) {
+            return false;
+        }
         $signedUrl = URL::temporarySignedRoute(
             'mail.verify',
-            Carbon::now()->addMinutes(60),
+            now()->addMinutes(config('neev.url_expiry_time', 60)),
             ['id' => $email->id]
         );
     
@@ -171,8 +173,9 @@ class UserApiController extends Controller
     }
     
     public static function sendMailOTP(Email $email, $mfa = false) {
-        $otp = rand(100000, 999999);
-        $expires_at = now()->addMinutes(15);
+        $otp = random_int(config('neev.otp_min', 100000), config('neev.otp_max', 999999));
+        $expiryMinutes = config('neev.otp_expiry_time', 15);
+        $expires_at = now()->addMinutes($expiryMinutes);
         if ($mfa) {
             $auth = $email->user?->multiFactorAuth('email');
             if (!$auth) {
@@ -191,12 +194,18 @@ class UserApiController extends Controller
             ]);
         }
         
-        Mail::to($email)->send(new EmailOTP($email->user->name, $otp, 15));
+        Mail::to($email?->email)->send(new EmailOTP($email->user?->name, $otp, $expiryMinutes));
     }
 
     public function addEmail(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found.',
+            ]);
+        }
         if (Email::where('email', $request->email)->first()) {
             return response()->json([
                 'status' => 'Success',
@@ -219,9 +228,9 @@ class UserApiController extends Controller
 
     public function deleteEmail(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
 
-        $email = $user?->emails->where('email', $request->email)->first();
+        $email = $user?->emails?->where('email', $request->email)->first();
         if (!$email) {
             return response()->json([
                 'status' => 'Failed',
@@ -246,8 +255,8 @@ class UserApiController extends Controller
 
     public function primaryEmail(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        $email = $user?->emails->where('email', $request->email)->first();
+        $user = User::model()->find($request->user()?->id);
+        $email = $user?->emails?->where('email', $request->email)->first();
         if (!$email || !$email?->verified_at) {
             return response()->json([
                 'status' => 'Failed',
@@ -277,7 +286,13 @@ class UserApiController extends Controller
 
     public function sessions(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found.',
+            ]);
+        }
         $sessions = $user->loginTokens()->orderBy('last_used_at', 'desc')->get();
 
         foreach ($sessions as $session) {
@@ -292,7 +307,13 @@ class UserApiController extends Controller
 
     public function loginAttempts(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found.',
+            ]);
+        }
         $attempts = $user?->loginAttempts()?->orderBy('created_at', 'desc')?->get();
         return response()->json([
             'status' => 'Success',
@@ -335,7 +356,13 @@ class UserApiController extends Controller
 
     public function getApiTokens(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found.',
+            ]);
+        }
         $tokens = $user->apiTokens()->orderBy('created_at', 'desc')->get();
 
         return response()->json([
@@ -346,7 +373,13 @@ class UserApiController extends Controller
 
     public function addApiTokens(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found.',
+            ]);
+        }
         $token = $user->createApiToken($request->name, $request->permissions, $request->expiry);
 
         return response()->json([
@@ -358,8 +391,8 @@ class UserApiController extends Controller
 
     public function updateApiTokens(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        $token = $user->accessTokens->find($request->token_id);
+        $user = User::model()->find($request->user()?->id);
+        $token = $user?->accessTokens?->find($request->token_id);
         if (!$token) {
             return response()->json([
                 'status' => 'Failed',
@@ -388,8 +421,14 @@ class UserApiController extends Controller
 
     public function deleteApiTokens(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        $user->accessTokens->find($request->token_id)->delete();
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found.',
+            ]);
+        }
+        $user->accessTokens?->find($request->token_id)->delete();
 
         return response()->json([
             'status' => 'Success',
@@ -399,7 +438,13 @@ class UserApiController extends Controller
 
     public function deleteAllApiTokens(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found.',
+            ]);
+        }
         $user->apiTokens()->delete();
 
         return response()->json([
@@ -410,8 +455,14 @@ class UserApiController extends Controller
 
     public function getRecoveryCodes(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        if (count($user->multiFactorAuths) === 0) {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found.',
+            ]);
+        }
+        if (count($user?->multiFactorAuths) === 0) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Enable MFA first.',
@@ -427,7 +478,13 @@ class UserApiController extends Controller
 
     public function generateRecoveryCodes(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found.',
+            ]);
+        }
         if (count($user->multiFactorAuths) === 0) {
             return response()->json([
                 'status' => 'Failed',
