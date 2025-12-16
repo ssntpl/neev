@@ -17,7 +17,7 @@ return new class extends Migration
             $table->string('method');
             $table->text('secret')->nullable();
             $table->integer('otp')->nullable();
-            $table->boolean('prefered')->default(false);
+            $table->boolean('preferred')->default(false);
             $table->timestamp('expires_at')->nullable();
             $table->timestamp('last_used')->nullable();
             $table->timestamps();

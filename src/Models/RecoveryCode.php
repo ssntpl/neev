@@ -13,7 +13,7 @@ class RecoveryCode extends Model
     ];
 
     protected $casts = [
-        'code' => 'encrypted',
+        'code' => 'hashed',
     ];
 
     public function user()

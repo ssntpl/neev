@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Hash;
 use Illuminate\Http\Request;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Models\Domain;
@@ -21,8 +22,11 @@ class UserController extends Controller
 
     public function emails(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        $emailDomain = substr(strrchr($user->email->email, "@"), 1);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return redirect()->route('neev.login');
+        }
+        $emailDomain = substr(strrchr($user->email?->email, "@"), 1);
 
         $addEmail = true;
         if (config('neev.team') && config('neev.domain_federation')) {
@@ -36,13 +40,16 @@ class UserController extends Controller
 
     public function security(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        $emailDomain = substr(strrchr($user->email->email, "@"), 1);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return redirect()->route('neev.login');
+        }
+        $emailDomain = substr(strrchr($user->email?->email, "@"), 1);
 
         $deleteAccount = true;
         if (config('neev.team') && config('neev.domain_federation')) {
             $domain = Domain::where('domain', $emailDomain)->first();
-            if ($domain?->verified_at && $domain?->team->users->contains($user)) {
+            if ($domain?->verified_at && $domain?->team?->users->contains($user)) {
                 $deleteAccount = false;
             }
         }
@@ -51,13 +58,16 @@ class UserController extends Controller
 
     public function tokens(Request $request)
     {
-        return view('neev::account.tokens', ['user' => User::model()->find($request->user()->id), 'allPermissions' => Permission::all()]);
+        return view('neev::account.tokens', ['user' => User::model()->find($request->user()?->id), 'allPermissions' => Permission::all()]);
     }
 
     public function teams(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        $emailDomain = substr(strrchr($user->email->email, "@"), 1);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return redirect()->route('neev.login');
+        }
+        $emailDomain = substr(strrchr($user->email?->email, "@"), 1);
 
         $join_team = true;
         if (config('neev.domain_federation')) {
@@ -75,28 +85,31 @@ class UserController extends Controller
             ->where('user_id', auth()->id())
             ->orderBy('last_activity', 'desc')
             ->get()
-            ->map(function ($session) {
+            ?->map(function ($session) {
                 $agent = LoginAttempt::getClientDetails(userAgent: $session->user_agent);
 
                 return (object)[
                     'id' => $session->id,
                     'ip_address' => $session->ip_address,
                     'is_current_device' => $session->id === session()->getId(),
-                    'last_active' => \Carbon\Carbon::createFromTimestamp($session->last_activity)->diffForHumans(),
+                    'last_active' => Carbon::createFromTimestamp($session->last_activity)?->diffForHumans(),
                     'agent' => $agent,
                 ];
             });
 
         return view('neev::account.sessions', [
-            'user' => User::model()->find($request->user()->id),
+            'user' => User::model()->find($request->user()?->id),
             'sessions' => $sessions
         ]);
     }
 
     public function loginAttempts(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        $attempts = User::model()->find($user->id)?->loginAttempts()?->orderBy('created_at', 'desc')?->get();
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return redirect()->route('neev.login');
+        }
+        $attempts = User::model()->find($user->id)?->loginAttempts()?->orderBy('created_at', 'desc')->get();
         return view('neev::account.login-attempt', [
             'user' => $user,
             'attempts' => $attempts,
@@ -115,13 +128,16 @@ class UserController extends Controller
             $usernameRules = array_filter($usernameRules, function($rule) {
                 return !str_contains($rule, 'unique:');
             });
-            $usernameRules[] = 'unique:users,username,' . $request->user()->id;
+            $usernameRules[] = 'unique:users,username,' . $request->user()?->id;
             $validationRules['username'] = $usernameRules;
         }
         
         $request->validate($validationRules);
         
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return back()->withErrors(['message' => 'User not found.']);
+        }
         $user->name = $request->name;
         if (config('neev.support_username')) {
             $user->username = $request->username;
@@ -132,7 +148,10 @@ class UserController extends Controller
 
     public function addEmail(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return back()->withErrors(['message' => 'User not found.']);
+        }
         if (Email::where('email', $request->email)->first()) {
             return back()->withErrors(['message' => 'Email already exist.']);
         }
@@ -141,7 +160,7 @@ class UserController extends Controller
             'email' => $request->email
         ]);
 
-        $auth = new UserAuthController;
+        $auth = app(UserAuthController::class);
         $auth->emailVerifySend($request);
 
         return back()->with('status', 'Email has been Added.');
@@ -149,9 +168,9 @@ class UserController extends Controller
 
     public function deleteEmail(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
 
-        $email = $user->emails->find($request->email_id);
+        $email = $user?->emails?->find($request->email_id);
         if (!$email) {
             return back()->withErrors(['message' => 'Email does not exist.']);
         }
@@ -167,9 +186,9 @@ class UserController extends Controller
 
     public function primaryEmail(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        $email = $user->emails->where('email', $request->email)->first();
-        if (!$user || !$email?->verified_at) {
+        $user = User::model()->find($request->user()?->id);
+        $email = $user?->emails?->where('email', $request->email)->first();
+        if ( !$user || !$email || !$email?->verified_at) {
             return back()->withErrors(['message' => 'Your primary email was not changed.']);
         }
         
@@ -189,8 +208,8 @@ class UserController extends Controller
             'password' => config('neev.password'),
         ]);
 
-        $user = User::model()->find($request->user()->id);
-        if (!Hash::check($request->current_password, $user->password->password)) {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user || !Hash::check($request->current_password, $user->password?->password)) {
             return back()->withErrors([
                 'message' => 'Current Password is Wrong.'
             ]);
@@ -207,8 +226,8 @@ class UserController extends Controller
         $request->validate([
             'password' => ['required'],
         ]);
-        $user = User::model()->find($request->user()->id);
-        if (!Hash::check($request->password, $user->password->password)) {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user || !Hash::check($request->password, $user->password?->password)) {
             return back()->withErrors([
                 'message' => 'Password is Wrong.'
             ]);
@@ -223,16 +242,19 @@ class UserController extends Controller
             'auth_method' => ['required'],
         ]);
 
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return back()->withErrors(['message' => 'User not found.']);
+        }
         if ($request->action === 'delete') {
             $auth = $user->multiFactorAuth($request->auth_method);
             if (!$auth) {
                 return back()->withErrors(['message' => 'Auth was not deleted.']);
             }
 
-            if ($auth->prefered && count($user->multiFactorAuths) > 1) {
+            if ($auth->preferred && count($user->multiFactorAuths) > 1) {
                 $method = $user->multiFactorAuths()->whereNot('method', $auth->method)->first();
-                $method->prefered = true;
+                $method->preferred = true;
                 $method->save();
             }
             $auth->delete();
@@ -250,69 +272,93 @@ class UserController extends Controller
         return back()->with($res);
     }
 
-    public function preferedMultiFactorAuth(Request $request)
+    public function preferredMultiFactorAuth(Request $request)
     {
         $request->validate([
             'auth_method' => ['required'],
         ]);
 
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         $auth = $user?->multiFactorAuth($request->auth_method);
         if (!$user || !$auth) {
-            return back()->withErrors(['message' => 'Prefered auth was not updated.']);
+            return back()->withErrors(['message' => 'preferred auth was not updated.']);
         }
-        $prefered = $user->preferedMultiFactorAuth;
-        $prefered->prefered = false;
-        $prefered->save();
-        $auth->prefered = true;
+        $preferred = $user->preferredMultiFactorAuth;
+        $preferred->preferred = false;
+        $preferred->save();
+        $auth->preferred = true;
         $auth->save();
-        return back()->with('status', 'Prefered auth has been updated.');
+        return back()->with('status', 'preferred auth has been updated.');
     }
 
     public function recoveryCodes(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        if (count($user->multiFactorAuths) === 0) {
+        $user = User::model()->find($request->user()?->id);
+        if (count($user?->multiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
-        return view('neev::account.recovery-codes', ['user' => $user]);
+
+        if (count($user->recoveryCodes) === 0) {
+            $codes = $user->generateRecoveryCodes();
+        }
+
+        return view('neev::account.recovery-codes', ['codes' => $codes ?? []]);
     }
 
     public function generateRecoveryCodes(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        if (count($user->multiFactorAuths) === 0) {
+        $user = User::model()->find($request->user()?->id);
+        if (count($user?->multiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
-        $user->generateRecoveryCodes();
-        return back()->with('status', 'New recovery codes are generated.');
+        $user->recoveryCodes()->delete();
+        return redirect()->route('recovery.codes');
     }
 
     public function tokenStore(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return back()->withErrors(['message' => 'User not found.']);
+        }
         $token = $user->createApiToken($request->name, $request->permissions, $request->expiry);
+        if (!$token) {
+            return back()->withErrors(['message' => 'Token was not created.']);
+        }
         return back()->with('token', $token->plainTextToken);
     }
 
     public function tokenDelete(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        $user->accessTokens->find($request->token_id)->delete();
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return back()->withErrors(['message' => 'User not found.']);
+        }
+        $token = $user->accessTokens->find($request->token_id);
+        if (!$token) {
+            return back()->withErrors(['message' => 'Token was not deleted.']);
+        }
+        $token->delete();
         return back()->with('status', 'Token has been deleted.');
     }
 
     public function tokenDeleteAll(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return back()->withErrors(['message' => 'User not found.']);
+        }
         $user->apiTokens()->delete();
         return back()->with('status', 'All tokens have been deleted.');
     }
 
     public function tokenUpdate(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
-        $token = $user->accessTokens->find($request->token_id);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return back()->withErrors(['message' => 'User not found.']);
+        }
+        $token = $user->accessTokens?->find($request->token_id);
         if (!$token) {
             return back()->withErrors(['message' => 'Token was not updated.']);
         }

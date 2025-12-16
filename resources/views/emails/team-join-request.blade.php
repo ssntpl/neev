@@ -16,7 +16,7 @@
     </p>
 
     <p>
-        <a href="{{ env('APP_URL').'/teams'.'/'.$teamId.'/members' }}" style="
+        <a href="{{ config('app.url').'/teams'.'/'.$teamId.'/members' }}" style="
             background-color: #4CAF50;
             color: white;
             padding: 10px 20px;
@@ -27,6 +27,6 @@
         </a>
     </p>
 
-    <p>Regards,<br>{{env('APP_NAME')}}</p>
+    <p>Regards,<br>{{ config('app.name') }}</p>
 </body>
 </html>

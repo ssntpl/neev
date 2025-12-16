@@ -70,7 +70,7 @@
                                         @csrf
                                         @method('PUT')
                                         <label for="enforce" class="flex items-center">
-                                            <x-neev-component::checkbox onchange="this.form.submit()" id="enforce" name="enforce" class="cursor-pointer" x-bind:checked="{{$domain->enforce}}"/>
+                                            <x-neev-component::checkbox onchange="this.form.submit()" id="enforce" name="enforce" class="cursor-pointer" x-bind:checked="{{$domain->enforce ? 'true' : 'false'}}"/>
                                             <span class="ms-2 text-sm text-gray-600 dark:text-gray-400">{{ __('Enforce Domain') }}</span>
                                         </label>
                                     </form>

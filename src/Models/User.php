@@ -40,7 +40,7 @@ class User extends Authenticatable
         if ($this->profile_photo_url ?? false) {
             return $this->profile_photo_url;
         }
-        return collect(explode(' ', $this->name))->map(fn($word) => strtoupper(substr($word, 0, 1)))->join('');;
+        return collect(explode(' ', $this->name))->map(fn($word) => strtoupper(substr($word, 0, 1)))->join('');
     }
 
     public function emails()

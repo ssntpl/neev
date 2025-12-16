@@ -2,7 +2,6 @@
 
 namespace Ssntpl\Neev\Http\Controllers;
 
-use Carbon\Carbon;
 use Exception;
 use Illuminate\Http\Request;
 use Log;
@@ -64,7 +63,13 @@ class TeamApiController extends Controller
     {
         $user = $request->user();
         try {
-            $user = User::model()->find($user->id);
+            $user = User::model()->find($user?->id);
+            if (!$user) {
+                return response()->json([
+                    'status' => 'Failed',
+                    'message' => 'User not found',
+                ], 400);
+            }
             $team = $user->ownedTeams()->forceCreate([
                 'name' => $request->name,
                 'is_public' => (bool) $request->public,
@@ -125,7 +130,7 @@ class TeamApiController extends Controller
     
     public function deleteTeam(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         try {
             $team = Team::model()->find($request->team_id);
             if ($user->id != $team->user_id || count($user->ownedTeams) < 2) {
@@ -152,7 +157,7 @@ class TeamApiController extends Controller
 
     public function changeTeamOwner(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         try {
             $team = Team::model()->find($request->team_id);
             $member = User::model()->find($request->user_id);
@@ -192,7 +197,7 @@ class TeamApiController extends Controller
     
     public function inviteMember(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         try {
             $team = Team::model()->find($request->team_id);
             if ($user->id != $team->user_id || ($team->domain?->enforce && $team->domain?->verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->domain?->domain)))) {
@@ -204,7 +209,7 @@ class TeamApiController extends Controller
             $email = Email::where('email', $request->email)->first();
             $member = $email?->user;
             if (!$member) {
-                $expiry = Carbon::now()->addDays(7);
+                $expiry = now()->addDays(7);
 
                 $invitation = $team->invitations()->updateOrCreate(
                     ['email' => $request->email],
@@ -268,7 +273,7 @@ class TeamApiController extends Controller
 
     public function inviteAction(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         try {
             if ($request->invitation_id) {
                 $invitation = \Ssntpl\Neev\Models\TeamInvitation::find($request->invitation_id);
@@ -287,7 +292,7 @@ class TeamApiController extends Controller
                     ]);
                 } elseif ($request->action == 'accept') {
                     if ($team->users->contains($user)) {
-                        return back()->with('status', 'Already Added.');
+                        return response()->json(['status' => 'Failed', 'message' => 'Already Added.'], 400);
                     }
                     if (!$team->allUsers->contains($user)) {
                         $team->allUsers()->attach($user, ['joined' => true, 'role' => $invitation->role]);
@@ -342,7 +347,7 @@ class TeamApiController extends Controller
     
     public function leave(Request $request)
     {
-        $user = User::model()->find($request->user_id ?? $request->user()->id);
+        $user = User::model()->find($request->user_id ?? $request->user()?->id);
         try {
             $team = Team::model()->find($request->team_id);
             if ($request->has('invitation_id')) {
@@ -400,7 +405,7 @@ class TeamApiController extends Controller
     
     public function request(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         try {
             $team = Team::model()->find($request->team_id);
             if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
@@ -437,7 +442,7 @@ class TeamApiController extends Controller
 
     public function requestAction(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         try {
             $team = Team::model()->find($request->team_id);
             $member = User::model()->find($request->user_id);
@@ -516,7 +521,7 @@ class TeamApiController extends Controller
     
     public function domainFederate(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         $team = Team::model()->find($request->team_id);
         if (!$user || !$team) {
             return response()->json([
@@ -558,7 +563,7 @@ class TeamApiController extends Controller
     
     public function updateDomain(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
         if (!$domain || !$user || $domain?->team->user_id !== $user->id) {
             return response()->json([
@@ -638,9 +643,9 @@ class TeamApiController extends Controller
     
     public function deleteDomain(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$domain || !$user || $domain?->team->user_id !== $user->id) {
+        if (!$domain || !$user || $domain?->team?->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You have not required permissions to delete domain.',
@@ -652,7 +657,7 @@ class TeamApiController extends Controller
 
             return response()->json([
                 'status' => 'Success',
-                'message' => 'Domain has been delete.',
+                'message' => 'Domain has been deleted.',
             ]);
         } catch (Exception $e) {
             Log::error($e);
@@ -665,9 +670,9 @@ class TeamApiController extends Controller
     
     public function updateDomainRule(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$domain || $domain?->team->user_id !== $user->id) {
+        if (!$user || !$domain || $domain?->team?->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You have not required permissions to update domain.',
@@ -697,9 +702,9 @@ class TeamApiController extends Controller
     
     public function getDomainRule(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$domain || !$user || !$domain->team->users->contains($user)) {
+        if (!$domain || !$user || !$domain->team?->users->contains($user)) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You have not required permissions to get domain rules.',
@@ -714,9 +719,9 @@ class TeamApiController extends Controller
 
     public function primaryDomain(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$user || !$domain || !$domain?->verified_at || !$domain->team->users->contains($user)) {
+        if (!$user || !$domain || !$domain?->verified_at || !$domain->team?->users->contains($user)) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You have not required permissions to change primary domain.',

@@ -19,7 +19,7 @@ class TeamInvitation extends Model
 
     public function getProfilePhotoUrlAttribute()
     {
-        return collect(explode(' ', $this->email))->map(fn($word) => strtoupper(substr($word, 0, 2)))->join('');;
+        return collect(explode(' ', $this->email))->map(fn($word) => strtoupper(substr($word, 0, 2)))->join('');
     }
 
     public function team()

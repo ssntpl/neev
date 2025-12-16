@@ -15,13 +15,13 @@
             {{-- Action --}}
             <x-slot name="action" class="flex">
                 <div>
-                    <div x-show="!changePasswordOpen" x-on:click="changePasswordOpen = true" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                    <div x-show="!changePasswordOpen" x-on:click="changePasswordOpen = true" class="cursor-pointer border-2 border-gray-500 text-gray-500 rounded-full shadow">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
                             <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
                         </svg>
                     </div>
 
-                    <div x-show="changePasswordOpen" x-on:click="changePasswordOpen = false" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                    <div x-show="changePasswordOpen" x-on:click="changePasswordOpen = false" class="cursor-pointer border-2 border-gray-500 text-gray-500 rounded-full shadow">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd" />
                         </svg>
@@ -72,12 +72,12 @@
                                 <h1 class="font-bold">Preferred MFA method</h1>
                                 <p class="text-sm">Set your preferred method to use for multi-factor authentication when login.</p>
                             </div>
-                            <form method="POST" action="{{route('multi.prefered')}}">
+                            <form method="POST" action="{{route('multi.preferred')}}">
                                 @csrf
                                 @method('PUT')
                                 <select name="auth_method" class="border rounded-md px-2 py-1" onchange="this.form.submit()">
                                     @foreach ($user->multiFactorAuths as $method)
-                                        <option value="{{$method->method}}" {{ $method->id === $user->preferedMultiFactorAuth?->id ? 'selected' : '' }}>{{$method->method}}</option>
+                                        <option value="{{$method->method}}" {{ $method->id === $user->preferredMultiFactorAuth?->id ? 'selected' : '' }}>{{$method->method}}</option>
                                     @endforeach
                                 </select>
                             </form>
@@ -151,7 +151,7 @@
                                     </div>
                                     <div class="text-end">
                                         <a href="{{route('recovery.codes')}}" target="_blank">
-                                            <x-neev-component::secondary-button>{{ __('View') }}</x-neev-component::secondary-button>
+                                            <x-neev-component::secondary-button>{{ $user->recoveryCodes?->count() > 0 ? __('Reset') : 'Create' }}</x-neev-component::secondary-button>
                                         </a>
                                     </div>
                                 </div>
@@ -172,13 +172,13 @@
             {{-- Action --}}
             <x-slot name="action" class="flex">
                 <div>
-                    <div x-show="!openPasskey" x-on:click="openPasskey = true" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                    <div x-show="!openPasskey" x-on:click="openPasskey = true" class="cursor-pointer border-2 border-gray-500 text-gray-500 rounded-full shadow">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
                             <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
                         </svg>
                     </div>
 
-                    <div x-show="openPasskey" x-on:click="openPasskey = false" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                    <div x-show="openPasskey" x-on:click="openPasskey = false" class="cursor-pointer border-2 border-gray-500 text-gray-500 rounded-full shadow">
                         <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
                             <path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd" />
                         </svg>

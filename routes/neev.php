@@ -1,7 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
-use Ssntpl\Neev\Http\Controllers\Auth\AuthController;
+use Ssntpl\Neev\Http\Controllers\Auth\UserAuthApiController;
 use Ssntpl\Neev\Http\Controllers\Auth\OAuthController;
 use Ssntpl\Neev\Http\Controllers\Auth\PasskeyController;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
@@ -57,7 +57,7 @@ Route::middleware('web')->group(function () {
         ->name('reset.request');
     
     Route::post('/update-password', [UserAuthController::class, 'updatePasswordStore'])
-        ->name('password.update');
+        ->name('user-password.update');
 
     Route::post('/passkeys/login/options',[PasskeyController::class,'generateLoginOptions'])
         ->name('passkeys.login.options');
@@ -79,7 +79,7 @@ Route::middleware('web')->group(function () {
             ->name('verification.notice');
         
         Route::get('/email/send', [UserAuthController::class, 'emailVerifySend'])
-            ->name('verification.send');
+            ->name('email.verification.send');
         
         Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
             ->name('email.change');
@@ -108,8 +108,8 @@ Route::middleware('web')->group(function () {
     
             Route::post('/multiFactorAuth', [UserController::class, 'addMultiFactorAuth'])
                 ->name('multi.auth');
-            Route::put('/multiFactorAuth', [UserController::class, 'preferedMultiFactorAuth'])
-                ->name('multi.prefered');
+            Route::put('/multiFactorAuth', [UserController::class, 'preferredMultiFactorAuth'])
+                ->name('multi.preferred');
             Route::get('/recovery/codes', [UserController::class, 'recoveryCodes'])
                 ->name('recovery.codes');
             Route::post('/recovery/codes', [UserController::class, 'generateRecoveryCodes'])
@@ -193,27 +193,26 @@ Route::middleware('web')->group(function () {
 
 //APIs
 Route::prefix('/neev')->group(function () {
-    Route::post('/register', [AuthController::class, 'register']);
-    Route::post('/login', [AuthController::class, 'login']);
-    Route::post('/sendLoginLink', [AuthController::class, 'sendLoginLink']);
-    Route::get('/loginUsingLink', [AuthController::class, 'loginUsingLink'])->name('loginUsingLink');
-    Route::post('/email/otp/send', [AuthController::class, 'sendEmailOTP']);
-    Route::post('/email/otp/verify', [AuthController::class, 'verifyEmailOTP']);
-    Route::post('/forgotPassword', [AuthController::class, 'forgotPassword']);
+    Route::post('/register', [UserAuthApiController::class, 'register']);
+    Route::post('/login', [UserAuthApiController::class, 'login']);
+    Route::post('/sendLoginLink', [UserAuthApiController::class, 'sendLoginLink']);
+    Route::get('/loginUsingLink', [UserAuthApiController::class, 'loginUsingLink'])->name('loginUsingLink');
+    Route::post('/email/otp/send', [UserAuthApiController::class, 'sendEmailOTP']);
+    Route::post('/email/otp/verify', [UserAuthApiController::class, 'verifyEmailOTP']);
+    Route::post('/forgotPassword', [UserAuthApiController::class, 'forgotPassword']);
     Route::get('/passkeys/login/options',[PasskeyController::class,'generateLoginOptions']);
     Route::post('/passkeys/login',[PasskeyController::class,'loginViaAPI']);
 
     Route::middleware('neev:api')->group(function () {
-        Route::post('/logout', [AuthController::class, 'logout']);
-        Route::post('/logoutAll', [AuthController::class, 'logoutAll']);
+        Route::post('/logout', [UserAuthApiController::class, 'logout']);
+        Route::post('/logoutAll', [UserAuthApiController::class, 'logoutAll']);
 
-        Route::post('/email/send', [AuthController::class, 'sendMailVerificationLink']);
-        Route::get('/email/verify', [AuthController::class, 'emailVerify'])->name('mail.verify');
+        Route::post('/email/send', [UserAuthApiController::class, 'sendMailVerificationLink']);
+        Route::get('/email/verify', [UserAuthApiController::class, 'emailVerify'])->name('mail.verify');
         Route::post('/email/update', [UserApiController::class, 'emailUpdate']);
         Route::post('/mfa/add', [UserApiController::class, 'addMultiFactorAuthentication']);
         Route::delete('/mfa/delete', [UserApiController::class, 'deleteMultiFactorAuthentication']);
-        Route::post('/mfa/otp/verify', [AuthController::class, 'verifyMFAOTP']);
-        Route::get('/recoveryCodes', [UserApiController::class, 'getRecoveryCodes']);
+        Route::post('/mfa/otp/verify', [UserAuthApiController::class, 'verifyMFAOTP']);
         Route::post('/recoveryCodes', [UserApiController::class, 'generateRecoveryCodes']);
 
         Route::get('/users', [UserApiController::class, 'getUser']);

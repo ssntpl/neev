@@ -2,7 +2,6 @@
 
 namespace Ssntpl\Neev\Http\Controllers;
 
-use Carbon\Carbon;
 use Exception;
 use Illuminate\Http\Request;
 use Log;
@@ -22,16 +21,16 @@ class TeamController extends Controller
     public function profile(Request $request, Team $team)
     {
         return view('neev::team.profile', [
-            'user' => User::model()->find($request->user()->id),
+            'user' => User::model()->find($request->user()?->id),
             'team' => $team,
         ]);
     }
     
     public function members(Request $request, Team $team)
     {
-        $user = User::model()->find($request->user()->id);
-        if (!$user->allTeams->find($team->id)) {
-            return response(null, 404);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user?->allTeams?->find($team->id)) {
+            return back()->withErrors(['message' => 'You have not required permissions to view members.']);
         }
         return view('neev::team.members', [
             'user' => $user,
@@ -42,9 +41,9 @@ class TeamController extends Controller
     
     public function domain(Request $request, Team $team)
     {
-        $user = User::model()->find($request->user()->id);
-        if (!$user->allTeams->find($team->id) || $team->user_id !== $user->id || !config('neev.domain_federation')) {
-            return response(null, 404);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user?->allTeams?->find($team->id) || $team->user_id !== $user?->id || !config('neev.domain_federation')) {
+            return back()->withErrors(['message' => 'You have not required permissions to view domain federation.']);
         }
 
         $domains = $team->domains;
@@ -52,7 +51,7 @@ class TeamController extends Controller
             $count = 0;
             if ($domain?->enforce && $domain?->verified_at) {
                 foreach ($team->users ?? [] as $member) {
-                    if (!str_ends_with(strtolower($member->email->email), '@' . strtolower($domain?->domain))) {
+                    if (!str_ends_with(strtolower($member->email?->email), '@' . strtolower($domain?->domain))) {
                         $count++;
                     }
                 }
@@ -69,9 +68,9 @@ class TeamController extends Controller
     
     public function settings(Request $request, Team $team)
     {
-        $user = User::model()->find($request->user()->id);
-        if (!$user->allTeams->find($team->id)) {
-            return response(null, 404);
+        $user = User::model()->find($request->user()?->id);
+        if (!$user?->allTeams?->find($team->id)) {
+            return back()->withErrors(['message' => 'You have not required permissions to view settings.']);
         }
         return view('neev::team.settings', [
             'user' => $user,
@@ -104,7 +103,7 @@ class TeamController extends Controller
                 $user->assignRole($team->default_role ?? '', $team);
             }
         } catch (Exception $e) {
-            Log::error($e->getMessage());
+            Log::error($e);
             return back()->withErrors(['message' => 'Failed to create team.']);
         }
 
@@ -119,7 +118,7 @@ class TeamController extends Controller
             $team->is_public = (bool) $request->public;
             $team->save();
         } catch (Exception $e) {
-            Log::error($e->getMessage());
+            Log::error($e);
             return back()->withErrors(['message' => 'Failed to update team.']);
         }
 
@@ -128,7 +127,7 @@ class TeamController extends Controller
     
     public function delete(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         try {
             $team = Team::model()->find($request->team_id);
             if ($user->id != $team->user_id || count($user->ownedTeams) < 2) {
@@ -137,16 +136,16 @@ class TeamController extends Controller
             $user->removeRole($team);
             $team->delete();
         } catch (Exception $e) {
-            Log::error($e->getMessage());
+            Log::error($e);
             return back()->withErrors(['message' => 'Failed to delete team.']);
         }
 
-        return redirect(route('teams.profile', $user->ownedTeams[0]->id));
+        return redirect(route('teams.profile', $user?->ownedTeams[0]?->id));
     }
     
     public function inviteMember(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         try {
             $team = Team::model()->find($request->team_id);
             if ($user->id != $team->user_id || ($team->domain?->enforce && $team->verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->domain?->domain)))) {
@@ -155,7 +154,7 @@ class TeamController extends Controller
             $email = Email::where('email', $request->email)->first();
             $member = $email?->user;
             if (!$member) {
-                $expiry = Carbon::now()->addDays(7);
+                $expiry = now()->addDays(7);
 
                 $invitation = $team->invitations()->updateOrCreate(
                     ['email' => $request->email],
@@ -194,7 +193,7 @@ class TeamController extends Controller
 
             Mail::to($member->email->email)->send(new TeamInvitation($team->name, $member->name));
         } catch (Exception $e) {
-            Log::error($e->getMessage());
+            Log::error($e);
             return back()->withErrors(['message' => 'Failed to invite member.']);
         }
         
@@ -203,7 +202,7 @@ class TeamController extends Controller
     
     public function leave(Request $request)
     {
-        $user = User::model()->find($request->user_id ?? $request->user()->id);
+        $user = User::model()->find($request->user_id ?? $request->user()?->id);
         try {
             $team = Team::model()->find($request->team_id);
             if ($request->has('invitation_id')) {
@@ -231,11 +230,11 @@ class TeamController extends Controller
             $team->users()->detach($user);
             $user->removeRole($team);
         } catch (Exception $e) {
-            Log::error($e->getMessage());
+            Log::error($e);
             return back()->withErrors(['message' => 'Failed to leave from team.']);
         }
         
-        if ($request->user()->id == $request->user_id) {
+        if ($request->user()?->id == $request->user_id) {
             return redirect(route('account.teams'));
         }
         return back()->with('status', 'Removed Successfully');
@@ -243,7 +242,7 @@ class TeamController extends Controller
     
     public function inviteAction(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         try {
             if ($request->invitation_id) {
                 $invitation = \Ssntpl\Neev\Models\TeamInvitation::find($request->invitation_id);
@@ -278,7 +277,7 @@ class TeamController extends Controller
                 }
             }
         } catch (Exception $e) {
-            Log::error($e->getMessage());
+            Log::error($e);
             return back()->withErrors(['message' => 'Failed to Accept/Reject Request.']);
         }
         
@@ -287,7 +286,7 @@ class TeamController extends Controller
     
     public function request(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         try {
             $email = Email::where('email', $request->email)->first();
             $owner = $email?->user;
@@ -308,7 +307,7 @@ class TeamController extends Controller
             }
 
         } catch (Exception $e) {
-            Log::error($e->getMessage());
+            Log::error($e);
             return back()->withErrors(['message' => 'Failed to Send Request.']);
         }
         
@@ -317,7 +316,7 @@ class TeamController extends Controller
 
     public function requestAction(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         try {
             $team = Team::model()->find($request->team_id);
             $member = User::model()->find($request->user_id);
@@ -335,7 +334,7 @@ class TeamController extends Controller
                 return back()->with('status', 'Request Accepted');
             }
         } catch (Exception $e) {
-            Log::error($e->getMessage());
+            Log::error($e);
             return back()->withErrors(['message' => 'Failed to Accept/Reject Request.']);
         }
 
@@ -344,7 +343,7 @@ class TeamController extends Controller
 
     public function ownerChange(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         try {
             $team = Team::model()->find($request->team_id);
             $member = User::model()->find($request->user_id);
@@ -354,8 +353,8 @@ class TeamController extends Controller
                 return back()->with('status', 'Owner has been changed.');
             }
         } catch (Exception $e) {
-            Log::error($e->getMessage());
-            return back()->withErrors(['message' => 'Failed to proccess change owner request.']);
+            Log::error($e);
+            return back()->withErrors(['message' => 'Failed to process change owner request.']);
         }
 
         return back()->withErrors(['message' => 'You cannot change owner.']);
@@ -363,8 +362,8 @@ class TeamController extends Controller
     
     public function federateDomain(Request $request, Team $team)
     {
-        $user = User::model()->find($request->user()->id);
-        if ($team->user_id !== $user->id) {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user || $team->user_id !== $user?->id) {
             //  || !str_ends_with(strtolower($user->email->email), '@' . strtolower($request->domain))
             return back()->withErrors(['message' => 'You have not required permissions to federate domain.']);
         }
@@ -380,15 +379,15 @@ class TeamController extends Controller
 
             return back()->with('token', $token);
         } catch (Exception $e) {
-            Log::error($e->getMessage());
+            Log::error($e);
             return back()->withErrors(['message' => 'Failed to federate domain.']);
         }
     }
     
     public function updateDomain(Request $request, Domain $domain)
     {
-        $user = User::model()->find($request->user()->id);
-        if ($domain?->team->user_id !== $user->id) {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user || $domain?->team->user_id !== $user?->id) {
             return back()->withErrors(['message' => 'You have not required permissions to update domain.']);
         }
         try {
@@ -418,15 +417,15 @@ class TeamController extends Controller
             $domain->save();
             return back()->with('status', 'domain has been updated.');
         } catch (Exception $e) {
-            Log::error($e->getMessage());
+            Log::error($e);
             return back()->withErrors(['message' => 'Failed to update domain.']);
         }
     }
 
     public function verify($domain)
     {
-        $records = dns_get_record($domain->domain, DNS_TXT);
-        $verified = collect($records)->pluck('txt')->contains($domain->verification_token);
+        $records = dns_get_record($domain?->domain, DNS_TXT);
+        $verified = collect($records)->pluck('txt')->contains($domain?->verification_token);
 
         if ($verified) {
             $domain->verification_token = null;
@@ -440,24 +439,24 @@ class TeamController extends Controller
     
     public function deleteDomain(Request $request, Domain $domain)
     {
-        $user = User::model()->find($request->user()->id);
-        if ($domain?->team->user_id !== $user->id) {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user || $domain?->team->user_id !== $user?->id) {
             return back()->withErrors(['message' => 'You have not required permissions to delete domain.']);
         }
         try {
             $domain->rules()->delete();
             $domain->delete();
-            return back()->with('status', 'Domain has been delete.');
+            return back()->with('status', 'Domain has been deleted.');
         } catch (Exception $e) {
-            Log::error($e->getMessage());
+            Log::error($e);
             return back()->withErrors(['message' => 'Failed to delete domain.']);
         }
     }
     
     public function updateDomainRule(Request $request, Domain $domain)
     {
-        $user = User::model()->find($request->user()->id);
-        if ($domain?->team->user_id !== $user->id) {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user || $domain?->team->user_id !== $user?->id) {
             return back()->withErrors(['message' => 'You have not required permissions to update domain.']);
         }
         try {
@@ -468,23 +467,23 @@ class TeamController extends Controller
             
             return back()->with('status', 'Domain Rules have been updated.');
         } catch (Exception $e) {
-            Log::error($e->getMessage());
+            Log::error($e);
             return back()->withErrors(['message' => 'Failed to update domain rules.']);
         }
     }
 
     public function primaryDomain(Request $request)
     {
-        $user = User::model()->find($request->user()->id);
+        $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
         if (!$user || !$domain || !$domain?->verified_at || !$domain->team->users->contains($user)) {
             return back()->withErrors(['message' => 'Primary domain was not changed.']);
         }
         
-        $pdomain = $domain->team->domain;
+        $pdomain = $domain->team?->domain;
         if ($pdomain) {
             if ($pdomain->id == $domain->id) {
-                return back()->with('status', 'Primary domain was aready changed.');
+                return back()->with('status', 'Primary domain was already changed.');
             }
             $pdomain->is_primary = false;
             $pdomain->save();

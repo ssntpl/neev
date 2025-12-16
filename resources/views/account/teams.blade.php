@@ -13,13 +13,13 @@
                     </x-slot>
                     <x-slot name="action" class="flex">
                         <div>
-                            <div x-show="!joinTeamOpen" x-on:click="joinTeamOpen = true" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                            <div x-show="!joinTeamOpen" x-on:click="joinTeamOpen = true" class="cursor-pointer border-2 border-gray-500 text-gray-500 rounded-full shadow">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
                                     <path d="M10 5a1 1 0 011 1v3h3a1 1 0 110 2h-3v3a1 1 0 11-2 0v-3H6a1 1 0 110-2h3V6a1 1 0 011-1z" />
                                 </svg>
                             </div>
 
-                            <div x-show="joinTeamOpen" x-on:click="joinTeamOpen = false" class="cursor-pointer border border-2 border-gray-500 text-gray-500 rounded-full shadow">
+                            <div x-show="joinTeamOpen" x-on:click="joinTeamOpen = false" class="cursor-pointer border-2 border-gray-500 text-gray-500 rounded-full shadow">
                                 <svg xmlns="http://www.w3.org/2000/svg" class="w-6 h-6" viewBox="0 0 20 20" fill="currentColor">
                                     <path fill-rule="evenodd" d="M5 10a1 1 0 011-1h8a1 1 0 110 2H6a1 1 0 01-1-1z" clip-rule="evenodd" />
                                 </svg>

@@ -68,7 +68,7 @@
                                 <td class="px-6 py-2 text-end">
                                     <div class="flex gap-4 justify-end">
                                         @if (!$email->verified_at)
-                                            <form method="GET" action="{{ route('verification.send') }}">
+                                            <form method="GET" action="{{ route('email.verification.send') }}">
                                                 @csrf
                                                 <input type="hidden" name="email" value="{{$email->email}}">
                                                 <div>

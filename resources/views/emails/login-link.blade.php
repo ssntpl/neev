@@ -23,6 +23,6 @@
 
     <p>This link is valid for {{ $expiry ?? '15' }} minutes after you receive this email. If you didn’t request this, you can safely ignore this email.</p>
 
-    <p>Regards,<br>{{env('APP_NAME')}}</p>
+    <p>Regards,<br>{{config('app.name')}}</p>
 </body>
 </html>

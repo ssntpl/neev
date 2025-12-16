@@ -18,6 +18,6 @@
         If you have any questions, contact our support team.
     </p>
 
-    <p>Thanks,<br>{{ env('APP_NAME') }}</p>
+    <p>Thanks,<br>{{ config('app.name') }}</p>
 </body>
 </html>

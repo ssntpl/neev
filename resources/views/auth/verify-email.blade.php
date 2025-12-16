@@ -28,7 +28,7 @@
                 {{ __('Change Email') }}</a>
         </div>
         <div class="mt-4 flex items-center justify-between">
-            <form method="GET" action="{{ route('verification.send') }}">
+            <form method="GET" action="{{ route('email.verification.send') }}">
                 @csrf
 
                 <div>

@@ -14,7 +14,7 @@ class MultiFactorAuth extends Model
         'otp',
         'expires_at',
         'last_used',
-        'prefered'
+        'preferred'
     ];
 
     protected $hidden = [
@@ -26,7 +26,7 @@ class MultiFactorAuth extends Model
         'expires_at' => 'datetime',
         'last_used' => 'datetime',
         'secret' => 'encrypted',
-        'prefered' => 'bool'
+        'preferred' => 'bool'
     ];
 
     public function user()
