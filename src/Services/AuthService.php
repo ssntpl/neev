@@ -1,6 +1,7 @@
 <?php
 namespace Ssntpl\Neev\Services;
 
+use Ssntpl\Neev\Events\LoggedInEvent;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -26,6 +27,8 @@ class AuthService
         }
 
         $request->session()->regenerate();
+        
+        event(new LoggedInEvent($user));
 
         try {
             if ($attempt) {

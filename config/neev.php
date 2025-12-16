@@ -409,7 +409,7 @@ return [
     'password' => [
         'required',
         'confirmed',                                                // Must match password_confirmation field
-    Password::min(8)                                          // Minimum 8 characters
+        Password::min(8)                                      // Minimum 8 characters
             ->max(72)                                         // Maximum 72 characters (bcrypt limit)
             ->letters()                                             // Must contain letters
             ->mixedCase()                                           // Must contain both upper and lowercase

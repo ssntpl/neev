@@ -2,6 +2,8 @@
 
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
+use Ssntpl\Neev\Events\LoggedInEvent;
+use Ssntpl\Neev\Events\LoggedOutEvent;
 use DB;
 use Exception;
 use Hash;
@@ -222,6 +224,8 @@ class UserAuthApiController extends Controller
             $accessToken->attempt_id = $attempt->id;
             $accessToken->save();
 
+            event(new LoggedInEvent($user));
+
             return $token->plainTextToken;
         } catch (Exception $e) {
             Log::error($e);
@@ -263,7 +267,18 @@ class UserAuthApiController extends Controller
             ]);
         }
 
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'Invalid Token.',
+            ]);
+        }
+
         $accessToken->delete();
+
+        event(new LoggedOutEvent($user));
+
         return response()->json([
             'status' => 'Success',
             'message' => 'Logged out successfully.',
@@ -281,6 +296,8 @@ class UserAuthApiController extends Controller
         }
 
         $user->loginTokens()->delete();
+
+        event(new LoggedOutEvent($user));
 
         return response()->json([
             'status' => 'Success',

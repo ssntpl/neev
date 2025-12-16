@@ -40,9 +40,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
         }
 
         $this->callSilent('vendor:publish', ['--tag' => 'neev-config', '--force' => true]);
-        $this->callSilent('vendor:publish', ['--tag' => 'neev-migrations', '--force' => true]);
-        $this->callSilent('vendor:publish', ['--tag' => 'neev-views', '--force' => true]);
-        $this->callSilent('vendor:publish', ['--tag' => 'neev-routes', '--force' => true]);
         
         $file = config_path('neev.php');
 
@@ -53,7 +50,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
 
         if ($this->argument('domain_federation') === 'yes') {
             $this->replaceInFile("'domain_federation' => false,", "'domain_federation' => true,", $file);
-            $this->callSilent('vendor:publish', ['--tag' => 'neev-domain-federation-migrations', '--force' => true]);
         }
         
         if ($this->argument('verification') === 'yes') {
@@ -67,8 +63,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
 
     protected function installTeam() {
         $this->replaceInFile("'team' => false", "'team' => true", config_path('neev.php'));
-        
-        $this->callSilent('vendor:publish', ['--tag' => 'neev-team-migrations', '--force' => true]);
     }
 
     /**

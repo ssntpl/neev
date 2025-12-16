@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
+use Ssntpl\Neev\Events\LoggedOutEvent;
 use Auth;
 use DB;
 use Exception;
@@ -474,9 +475,15 @@ class UserAuthController extends Controller
     */
     public function destroy(Request $request)
     {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return redirect(route('login'));
+        }
         Auth::logoutCurrentDevice();
 
         $request->session()->invalidate();
+
+        event(new LoggedOutEvent($user));
 
         return redirect(route('login'));
     }
@@ -511,7 +518,9 @@ class UserAuthController extends Controller
             DB::table('sessions')->where('id', $request->session_id )->delete();
         }
 
-       return back()->with('logoutStatus', __('Logged out from other sessions.'));
+        event(new LoggedOutEvent($user));
+
+        return back()->with('logoutStatus', __('Logged out from other sessions.'));
     }
 
     public function verifyMFAOTPCreate($method)
