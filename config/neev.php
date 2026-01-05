@@ -38,6 +38,32 @@ return [
     'email_verified' => false,
 
     /*
+    | Company Email Requirement
+    | -------------------------
+    | When enabled: Users registering with free email providers (Gmail, Yahoo, etc.)
+    | will have their team created in an inactive state (waitlisted).
+    | They can still register, verify email, and access dashboard with a notice.
+    | Admin can activate the team later.
+    | Requires: 'team' feature to be enabled
+    | Default: false (all email domains allowed equally)
+    */
+    'require_company_email' => false,
+
+    /*
+    | Additional Free Email Domains
+    | -----------------------------
+    | Add custom domains to the default free email provider list.
+    | These domains will be considered "free" and subject to waitlist if
+    | 'require_company_email' is enabled. Use this to block additional domains.
+    | The default list already includes: Gmail, Yahoo, Hotmail, Outlook,
+    | iCloud, ProtonMail, AOL, and many other common providers.
+    */
+    'free_email_domains' => [
+        // 'example.com',
+        // 'tempmail.org',
+    ],
+
+    /*
     | Domain-Based Team Federation
     | ----------------------------
     | When enabled: Users with matching email domains can automatically join teams
@@ -47,6 +73,162 @@ return [
     | Default: false (manual team management only)
     */
     'domain_federation' => false,
+
+    /*
+    | Tenant Isolation (Multi-Tenancy)
+    | ---------------------------------
+    | When enabled: Teams are isolated by domain/subdomain. Each tenant runs on
+    | their own domain (tenant1.yourapp.com) or custom domain (tenant1.com).
+    | Requires: 'team' feature to be enabled
+    | Database: Requires tenant_domains table
+    | Middleware: Adds 'neev:tenant' and 'neev:tenant-api' middleware groups
+    | Use case: SaaS applications with isolated tenants
+    | Default: false (no domain-based tenant isolation)
+    */
+    'tenant_isolation' => false,
+
+    /*
+    | Tenant Isolation Options
+    | ------------------------
+    | Configuration options for tenant isolation feature.
+    | Only active when 'tenant_isolation' is enabled.
+    */
+    'tenant_isolation_options' => [
+        /*
+        | Subdomain Suffix
+        | ----------------
+        | The base domain suffix for subdomain-based tenants.
+        | Example: '.yourapp.com' means tenants use tenant1.yourapp.com
+        | Set to null to disable subdomain support and require full domain lookup.
+        */
+        'subdomain_suffix' => env('NEEV_SUBDOMAIN_SUFFIX', null),
+
+        /*
+        | Allow Custom Domains
+        | --------------------
+        | When true: Tenants can use their own custom domains (e.g., tenant.com)
+        | Custom domains require DNS verification before activation.
+        */
+        'allow_custom_domains' => true,
+
+        /*
+        | Single Tenant Users
+        | -------------------
+        | When true: Users can only belong to one team/tenant.
+        | New users are automatically assigned to the current tenant on registration.
+        | When false: Users can belong to multiple teams (standard neev behavior).
+        */
+        'single_tenant_users' => false,
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Team Slug Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for team slugs which are used as URL-friendly identifiers.
+    | Slugs are auto-generated from team names if not provided explicitly.
+    |
+    */
+    'slug' => [
+        /*
+        | Minimum Slug Length
+        | -------------------
+        | The minimum allowed length for team slugs.
+        | Slugs shorter than this will be padded.
+        */
+        'min_length' => 2,
+
+        /*
+        | Maximum Slug Length
+        | -------------------
+        | The maximum allowed length for team slugs.
+        | Set to 63 to comply with DNS label limits for subdomains.
+        */
+        'max_length' => 63,
+
+        /*
+        | Reserved Slugs
+        | --------------
+        | Slugs that cannot be used by teams.
+        | Add common subdomains you want to reserve for your application.
+        */
+        'reserved' => ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn', 'assets', 'static'],
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Tenant-Driven Authentication
+    |--------------------------------------------------------------------------
+    |
+    | When enabled, each tenant can configure their own authentication method.
+    | Tenants choose between password authentication (default) or SSO via
+    | external identity providers (Microsoft Entra ID, Google, Okta, etc.).
+    | Requires: 'tenant_isolation' feature to be enabled.
+    |
+    */
+
+    /*
+    | Enable Tenant-Driven Authentication
+    | ------------------------------------
+    | When true: Tenants can configure their authentication method (password or SSO).
+    | The auth method is checked on login and users are routed accordingly.
+    | Requires: 'tenant_isolation' = true
+    | Default: false
+    */
+    'tenant_auth' => false,
+
+    /*
+    | Tenant Authentication Options
+    | -----------------------------
+    | Configuration options for tenant-driven authentication.
+    | Only active when 'tenant_auth' is enabled.
+    */
+    'tenant_auth_options' => [
+        /*
+        | Default Authentication Method
+        | -----------------------------
+        | The authentication method used when a tenant has no custom settings.
+        | Options: 'password' (username/password) or 'sso' (external identity provider)
+        | Recommended: 'password' (most tenants will use this)
+        */
+        'default_method' => 'password',
+
+        /*
+        | Supported SSO Providers
+        | -----------------------
+        | List of SSO providers that tenants can configure.
+        | Each provider requires the corresponding Socialite driver.
+        | Add providers as needed for your application.
+        |
+        | Built-in support:
+        | 'entra'  - Microsoft Entra ID (Azure AD)
+        | 'google' - Google Workspace
+        | 'okta'   - Okta Identity
+        |
+        | Note: Tenants can only configure providers listed here.
+        */
+        'sso_providers' => ['entra', 'google', 'okta'],
+
+        /*
+        | Auto-Provisioning Default
+        | -------------------------
+        | When true: Users authenticated via SSO who are not yet members of
+        | the tenant will be automatically added as members.
+        | When false: Only existing members can authenticate; others are rejected.
+        |
+        | This is the default value; tenants can override per-tenant.
+        */
+        'auto_provision' => false,
+
+        /*
+        | Auto-Provision Default Role
+        | ---------------------------
+        | The role assigned to users who are auto-provisioned via SSO.
+        | Set to null for no role, or a role name string.
+        */
+        'auto_provision_role' => null,
+    ],
 
     /*
     | Username Authentication Support

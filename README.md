@@ -1,48 +1,96 @@
-# Neev - Complete Laravel User Management Package
+# Neev - Enterprise User Management for Laravel
 
-Neev is a powerful Laravel package that provides everything you need for user management in modern web applications. It includes authentication, team management, security features, and much more - all designed to be simple to use while being highly secure.
+Neev is a comprehensive Laravel package that provides enterprise-grade user authentication, team management, and security features. It's designed as a complete starter kit for SaaS applications, eliminating the need to build complex user management systems from scratch.
 
-## What Does Neev Do?
+[![Latest Version](https://img.shields.io/packagist/v/ssntpl/neev.svg?style=flat-square)](https://packagist.org/packages/ssntpl/neev)
+[![License](https://img.shields.io/packagist/l/ssntpl/neev.svg?style=flat-square)](https://packagist.org/packages/ssntpl/neev)
 
-Neev handles all the complex user management tasks so you can focus on building your application:
+---
 
-- **User Registration & Login** - Complete authentication system
-- **Multi-Factor Authentication** - Extra security with authenticator apps and email codes
-- **Team Management** - Users can create teams, invite members, and collaborate
-- **API Tokens** - Secure API access for your applications
-- **Security Monitoring** - Track login attempts, device information, and suspicious activity
-- **Email Management** - Multiple email addresses per user with verification
-- **Password Security** - Strong password rules, history tracking, and expiry policies
-- **Modern Authentication** - Support for passkeys (WebAuthn) and social login
+## Table of Contents
+
+- [Features](#features)
+- [Quick Start](#quick-start)
+- [Authentication Methods](#authentication-methods)
+- [API Reference](#api-reference)
+- [Web Routes](#web-routes)
+- [Multi-Factor Authentication](#multi-factor-authentication)
+- [Team Management](#team-management)
+- [Multi-Tenancy](#multi-tenancy)
+- [Security Features](#security-features)
+- [Configuration](#configuration)
+- [Console Commands](#console-commands)
+- [Database Schema](#database-schema)
+- [Detailed Documentation](#detailed-documentation)
+
+---
+
+## Features
+
+### Authentication Methods
+- **Password-based login** with strong password policies
+- **Magic link authentication** (passwordless login via email)
+- **Passkey/WebAuthn support** (biometric authentication, hardware keys)
+- **OAuth/Social login** (Google, GitHub, Microsoft, Apple)
+- **Tenant SSO** (Microsoft Entra ID, Google Workspace, Okta)
+
+### Multi-Factor Authentication
+- **TOTP authenticator apps** (Google Authenticator, Authy, 1Password)
+- **Email OTP** (6-digit codes via email)
+- **Recovery codes** (single-use backup codes)
+
+### Team Management
+- Create and manage teams/organizations
+- Invite members via email
+- Role-based access control
+- Domain-based auto-joining (federation)
+- Team switching for multi-team users
+
+### Security Features
+- Brute force protection with progressive delays
+- Account lockout after failed attempts
+- Password history to prevent reuse
+- Password expiry policies
+- Login attempt tracking with GeoIP
+- Session management
+- Suspicious login detection
+
+### Multi-Tenancy
+- Subdomain-based tenant isolation
+- Custom domain support with DNS verification
+- Per-tenant authentication configuration
+- Per-tenant SSO integration
+
+---
 
 ## Quick Start
 
-### 1. Install the Package
+### 1. Install via Composer
 
 ```bash
 composer require ssntpl/neev
 ```
 
-### 2. Run the Setup Command
+### 2. Run the Installation Command
 
 ```bash
 php artisan neev:install
 ```
 
-The installer will ask you a few questions:
-- Do you want team support? (recommended: yes)
-- Do you want email verification? (recommended: yes for production)
-- Do you want domain federation? (for organizations)
+### 3. Configure Environment
 
-### 3. Run Migrations
+```env
+NEEV_DASHBOARD_URL="${APP_URL}/dashboard"
+MAXMIND_LICENSE_KEY="your-maxmind-key"
+```
+
+### 4. Run Migrations
 
 ```bash
 php artisan migrate
 ```
 
-### 4. Update Your User Model
-
-Add these traits to your User model:
+### 5. Update Your User Model
 
 ```php
 use Ssntpl\Neev\Traits\HasTeams;
@@ -52,533 +100,631 @@ use Ssntpl\Neev\Traits\HasAccessToken;
 class User extends Authenticatable
 {
     use HasTeams, HasMultiAuth, HasAccessToken;
-    
-    // Your existing code...
 }
 ```
 
-That's it! Neev is now ready to use.
+---
 
-## Core Features
+## Authentication Methods
 
-### 🔐 Authentication Methods
+### Password Authentication
 
-**Password Login**
-- Secure password-based authentication
-- Strong password requirements
-- Password history to prevent reuse
-- Automatic password expiry policies
+```bash
+# Register
+curl -X POST https://yourapp.com/neev/register \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "John Doe",
+    "email": "john@example.com",
+    "password": "SecurePass123!",
+    "password_confirmation": "SecurePass123!"
+  }'
 
-**Magic Link Login**
-- Passwordless authentication via email
-- Secure, time-limited login links
-- Perfect for users who prefer not to remember passwords
-
-**Social Login (OAuth)**
-- Support for Google, GitHub, Microsoft, Apple
-- Easy setup with Laravel Socialite
-- Automatic account linking
-
-**Passkeys (WebAuthn)**
-- Modern biometric authentication
-- Works with fingerprint, face recognition, or security keys
-- Most secure authentication method available
-
-### 🛡️ Multi-Factor Authentication (MFA)
-
-**Authenticator Apps**
-```php
-// Enable authenticator app MFA
-$user->addMultiFactorAuth('authenticator');
-// Returns QR code for setup
+# Login
+curl -X POST https://yourapp.com/neev/login \
+  -H "Content-Type: application/json" \
+  -d '{
+    "email": "john@example.com",
+    "password": "SecurePass123!"
+  }'
 ```
 
-**Email OTP**
+**Response:**
+
+```json
+{
+  "status": "Success",
+  "token": "1|abc123def456...",
+  "email_verified": true,
+  "preferred_mfa": null
+}
+```
+
+### Magic Link (Passwordless)
+
+```bash
+# Send login link
+curl -X POST https://yourapp.com/neev/sendLoginLink \
+  -d '{"email": "john@example.com"}'
+
+# Login via link
+curl -X GET "https://yourapp.com/neev/loginUsingLink?id=1&signature=..."
+```
+
+### Passkey / WebAuthn
+
+```bash
+# Get registration options
+curl -X GET https://yourapp.com/neev/passkeys/register/options \
+  -H "Authorization: Bearer {token}"
+
+# Register passkey
+curl -X POST https://yourapp.com/neev/passkeys/register \
+  -H "Authorization: Bearer {token}" \
+  -d '{"attestation": "{...}", "name": "My MacBook"}'
+
+# Login with passkey
+curl -X POST https://yourapp.com/neev/passkeys/login \
+  -d '{"email": "john@example.com", "assertion": "{...}"}'
+```
+
+### OAuth / Social Login
+
+Enable in configuration:
+
 ```php
-// Enable email-based OTP
+// config/neev.php
+'oauth' => ['google', 'github', 'microsoft', 'apple'],
+```
+
+Redirect URLs:
+- `GET /oauth/{provider}` - Redirect to provider
+- `GET /oauth/{provider}/callback` - Handle callback
+
+---
+
+## API Reference
+
+All API routes are prefixed with `/neev`. Include the Bearer token for authenticated endpoints.
+
+### Authentication Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/neev/register` | Register new user | No |
+| POST | `/neev/login` | Login with credentials | No |
+| POST | `/neev/sendLoginLink` | Send magic link | No |
+| GET | `/neev/loginUsingLink` | Login via magic link | No |
+| POST | `/neev/logout` | Logout current session | Yes |
+| POST | `/neev/logoutAll` | Logout all sessions | Yes |
+| POST | `/neev/forgotPassword` | Reset password with OTP | No |
+
+### Email Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/neev/email/send` | Send verification email | Yes |
+| GET | `/neev/email/verify` | Verify email address | Yes |
+| POST | `/neev/email/update` | Update email address | Yes |
+| POST | `/neev/email/otp/send` | Send email OTP | No |
+| POST | `/neev/email/otp/verify` | Verify email OTP | No |
+| POST | `/neev/emails` | Add email address | Yes |
+| DELETE | `/neev/emails` | Delete email address | Yes |
+| PUT | `/neev/emails` | Set primary email | Yes |
+
+### MFA Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| POST | `/neev/mfa/add` | Enable MFA method | Yes |
+| DELETE | `/neev/mfa/delete` | Disable MFA method | Yes |
+| POST | `/neev/mfa/otp/verify` | Verify MFA code | MFA Token |
+| POST | `/neev/recoveryCodes` | Generate recovery codes | Yes |
+
+### Passkey Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/neev/passkeys/register/options` | Get registration options | Yes |
+| POST | `/neev/passkeys/register` | Register passkey | Yes |
+| POST | `/neev/passkeys/login/options` | Get login options | No |
+| POST | `/neev/passkeys/login` | Login with passkey | No |
+| PUT | `/neev/passkeys` | Update passkey name | Yes |
+| DELETE | `/neev/passkeys` | Delete passkey | Yes |
+
+### User Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/neev/users` | Get current user | Yes |
+| PUT | `/neev/users` | Update user profile | Yes |
+| DELETE | `/neev/users` | Delete user account | Yes |
+| PUT | `/neev/changePassword` | Change password | Yes |
+| GET | `/neev/sessions` | Get active sessions | Yes |
+| GET | `/neev/loginAttempts` | Get login history | Yes |
+
+### API Token Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/neev/apiTokens` | List API tokens | Yes |
+| POST | `/neev/apiTokens` | Create API token | Yes |
+| PUT | `/neev/apiTokens` | Update API token | Yes |
+| DELETE | `/neev/apiTokens` | Delete API token | Yes |
+| DELETE | `/neev/apiTokens/deleteAll` | Delete all API tokens | Yes |
+
+### Team Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/neev/teams` | List user's teams | Yes |
+| GET | `/neev/teams/{id}` | Get team details | Yes |
+| POST | `/neev/teams` | Create team | Yes |
+| PUT | `/neev/teams` | Update team | Yes |
+| DELETE | `/neev/teams` | Delete team | Yes |
+| POST | `/neev/changeTeamOwner` | Transfer ownership | Yes |
+| POST | `/neev/teams/inviteUser` | Invite member | Yes |
+| PUT | `/neev/teams/inviteUser` | Accept/reject invitation | Yes |
+| PUT | `/neev/teams/leave` | Leave team | Yes |
+| POST | `/neev/teams/request` | Request to join | Yes |
+| PUT | `/neev/teams/request` | Accept/reject request | Yes |
+| PUT | `/neev/role/change` | Change member role | Yes |
+
+### Domain Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/neev/domains` | List team domains | Yes |
+| POST | `/neev/domains` | Add domain | Yes |
+| PUT | `/neev/domains` | Update/verify domain | Yes |
+| DELETE | `/neev/domains` | Delete domain | Yes |
+| GET | `/neev/domains/rules` | Get domain rules | Yes |
+| PUT | `/neev/domains/rules` | Update domain rules | Yes |
+| PUT | `/neev/domains/primary` | Set primary domain | Yes |
+
+### Tenant Domain Endpoints
+
+| Method | Endpoint | Description | Auth |
+|--------|----------|-------------|------|
+| GET | `/neev/tenant-domains` | List tenant domains | Yes |
+| POST | `/neev/tenant-domains` | Add custom domain | Yes |
+| GET | `/neev/tenant-domains/{id}` | Get domain details | Yes |
+| DELETE | `/neev/tenant-domains/{id}` | Delete domain | Yes |
+| POST | `/neev/tenant-domains/{id}/verify` | Verify domain | Yes |
+| POST | `/neev/tenant-domains/{id}/primary` | Set as primary | Yes |
+
+---
+
+## Web Routes
+
+### Public Routes
+
+| Method | Route | Name | Description |
+|--------|-------|------|-------------|
+| GET | `/register` | `register` | Registration form |
+| POST | `/register` | - | Process registration |
+| GET | `/login` | `login` | Login form |
+| PUT | `/login` | `login.password` | Show password form |
+| POST | `/login` | - | Process login |
+| POST | `/login/link` | `login.link.send` | Send magic link |
+| GET | `/login/{id}` | `login.link` | Login via magic link |
+| GET | `/forgot-password` | `password.request` | Forgot password form |
+| POST | `/forgot-password` | `password.email` | Send reset link |
+| GET | `/update-password/{id}/{hash}` | `reset.request` | Reset password form |
+| POST | `/update-password` | `user-password.update` | Process reset |
+| GET | `/otp/mfa/{method}` | `otp.mfa.create` | MFA verification |
+| POST | `/otp/mfa` | `otp.mfa.store` | Verify MFA code |
+| GET | `/oauth/{service}` | `oauth.redirect` | OAuth redirect |
+| GET | `/oauth/{service}/callback` | `oauth.callback` | OAuth callback |
+| GET | `/sso/redirect` | `sso.redirect` | Tenant SSO redirect |
+| GET | `/sso/callback` | `sso.callback` | Tenant SSO callback |
+
+### Authenticated Routes (neev:web middleware)
+
+| Method | Route | Name | Description |
+|--------|-------|------|-------------|
+| GET | `/email/verify` | `verification.notice` | Verification pending |
+| GET | `/email/send` | `email.verification.send` | Resend verification |
+| GET | `/email/change` | `email.change` | Change email form |
+| PUT | `/email/change` | `email.update` | Process email change |
+| POST | `/logout` | `logout` | Logout |
+
+### Account Routes (/account prefix)
+
+| Method | Route | Name | Description |
+|--------|-------|------|-------------|
+| GET | `/account/profile` | `account.profile` | Profile page |
+| GET | `/account/emails` | `account.emails` | Email management |
+| GET | `/account/security` | `account.security` | Security settings |
+| GET | `/account/tokens` | `account.tokens` | API tokens |
+| GET | `/account/teams` | `account.teams` | Teams list |
+| GET | `/account/sessions` | `account.sessions` | Active sessions |
+| GET | `/account/loginAttempts` | `account.loginAttempts` | Login history |
+| PUT | `/account/profileUpdate` | `profile.update` | Update profile |
+| POST | `/account/change-password` | `password.change` | Change password |
+| POST | `/account/multiFactorAuth` | `multi.auth` | Add MFA |
+| PUT | `/account/multiFactorAuth` | `multi.preferred` | Set preferred MFA |
+| GET | `/account/recovery/codes` | `recovery.codes` | View recovery codes |
+| POST | `/account/recovery/codes` | `recovery.generate` | Generate new codes |
+| POST | `/account/passkeys/register/options` | `passkeys.register.options` | Passkey options |
+| POST | `/account/passkeys/register` | `passkeys.register` | Register passkey |
+| DELETE | `/account/passkeys` | `passkeys.delete` | Delete passkey |
+| POST | `/account/logoutSessions` | `logout.sessions` | Logout other sessions |
+
+### Team Routes (/teams prefix)
+
+| Method | Route | Name | Description |
+|--------|-------|------|-------------|
+| GET | `/teams/create` | `teams.create` | Create team form |
+| POST | `/teams/create` | `teams.store` | Store new team |
+| GET | `/teams/{team}/profile` | `teams.profile` | Team profile |
+| GET | `/teams/{team}/members` | `teams.members` | Team members |
+| GET | `/teams/{team}/domain` | `teams.domain` | Domain settings |
+| GET | `/teams/{team}/settings` | `teams.settings` | Team settings |
+| PUT | `/teams/switch` | `teams.switch` | Switch team |
+| PUT | `/teams/update` | `teams.update` | Update team |
+| DELETE | `/teams/delete` | `teams.delete` | Delete team |
+| PUT | `/teams/members/invite` | `teams.invite` | Invite member |
+| PUT | `/teams/members/invite/action` | `teams.invite.action` | Accept/reject |
+| DELETE | `/teams/members/leave` | `teams.leave` | Leave team |
+| POST | `/teams/members/request` | `teams.request` | Request to join |
+| PUT | `/teams/members/request/action` | `teams.request.action` | Accept/reject request |
+| PUT | `/teams/owner/change` | `teams.owner.change` | Transfer ownership |
+| PUT | `/teams/roles/change` | `teams.roles.change` | Change role |
+
+---
+
+## Multi-Factor Authentication
+
+### Enable Authenticator App
+
+```php
+// Returns QR code and secret
+$result = $user->addMultiFactorAuth('authenticator');
+// $result['qr_code'] - SVG QR code
+// $result['secret'] - TOTP secret
+```
+
+### Enable Email OTP
+
+```php
 $user->addMultiFactorAuth('email');
 ```
 
-**Recovery Codes**
-```php
-// Generate backup codes
-$user->generateRecoveryCodes();
-```
+### Verify MFA
 
-**Verify MFA**
 ```php
-// Verify any MFA method
-if ($user->verifyMFAOTP($method, $otp)) {
-    // MFA verified successfully
+if ($user->verifyMFAOTP('authenticator', '123456')) {
+    // MFA verified
 }
 ```
 
-### 👥 Team Management
+### Recovery Codes
 
-**Create Teams**
+```php
+// Generate 8 recovery codes
+$codes = $user->generateRecoveryCodes();
+// Store these securely - shown only once!
+```
+
+### API Usage
+
+```bash
+# Enable MFA
+curl -X POST https://yourapp.com/neev/mfa/add \
+  -H "Authorization: Bearer {token}" \
+  -d '{"auth_method": "authenticator"}'
+
+# Verify MFA during login
+curl -X POST https://yourapp.com/neev/mfa/otp/verify \
+  -H "Authorization: Bearer {mfa_token}" \
+  -d '{"auth_method": "authenticator", "otp": "123456"}'
+```
+
+---
+
+## Team Management
+
+### Create Team
+
 ```php
 $team = Team::create([
     'name' => 'My Company',
     'user_id' => auth()->id(),
-    'is_public' => false, // Private team
+    'is_public' => false,
 ]);
 ```
 
-**Invite Members**
+### User's Teams
+
 ```php
-// Invite by email
-$team->invitations()->create([
-    'email' => 'user@example.com',
-    'role' => 'member'
-]);
+$user->teams;          // Teams user belongs to
+$user->ownedTeams;     // Teams user owns
+$user->teamRequests;   // Pending invitations
+$user->switchTeam($team); // Switch active team
 ```
 
-**Switch Between Teams**
+### Team Relationships
+
 ```php
-// User can switch active team
-$user->switchTeam($team);
+$team->owner;          // Team owner
+$team->users;          // Team members
+$team->invitedUsers;   // Pending invitations
+$team->joinRequests;   // Join requests
+$team->domains;        // Federated domains
 ```
 
-**Team Relationships**
-```php
-$user->teams();        // Teams user belongs to
-$user->ownedTeams();   // Teams user owns
-$user->teamRequests(); // Pending invitations
-```
+### API Usage
 
-### 🔑 API Token Management
-
-**Create API Tokens**
-```php
-// Create token with specific permissions
-$token = $user->createApiToken(
-    name: 'Mobile App Token',
-    permissions: ['read', 'write'],
-    expiry: 60 // minutes
-);
-
-echo $token->plainTextToken; // Give this to the client
-```
-
-**Create Login Tokens**
-```php
-// For magic link authentication
-$token = $user->createLoginToken(expiry: 15); // 15 minutes
-```
-
-**Token Permissions**
-```php
-// Check if token has permission
-if ($token->can('write')) {
-    // Allow write operations
-}
-```
-
-### 🛡️ Roles & Permissions System
-
-Neev includes a comprehensive ACL (Access Control List) system for managing user roles and permissions.
-
-**User Roles Management**
-```php
-// Add HasRoles trait to your User model
-use Ssntpl\LaravelAcl\Traits\HasRoles;
-
-class User extends Authenticatable
-{
-    use HasRoles;
-    // Your existing code...
-}
-```
-
-**Assign Roles to Users**
-```php
-// Assign role to user globally
-$user->assignRole('admin');
-
-// Assign role to user for specific resource (e.g., team)
-$user->assignRole('manager', $team);
-
-// Assign role with expiry
-$user->assignRole('editor', $team, now()->addDays(30));
-```
-
-**Check User Roles**
-```php
-// Check if user has role globally
-if ($user->hasRole('admin')) {
-    // User is admin
-}
-
-// Check if user has role for specific resource
-if ($user->hasRole('manager', $team)) {
-    // User is manager of this team
-}
-
-// Get user's role for a resource
-$role = $user->getRole($team);
-```
-
-**Permission Management**
-```php
-// Check if role has permission
-if ($role->can('create_posts')) {
-    // Role can create posts
-}
-
-// Check if permission is denied
-if ($role->hasDeniedPermission('delete_users')) {
-    // Permission explicitly denied
-}
-
-// Get all role permissions
-$permissions = $role->permissions();
-```
-
-**Permission Implications**
-```php
-// Permissions can imply other permissions
-// If user has 'manage_team', they automatically get 'view_team'
-$managePermission = Permission::where('name', 'manage_team')->first();
-$viewPermission = Permission::where('name', 'view_team')->first();
-
-// Set up implication
-$managePermission->children()->attach($viewPermission->id);
-```
-
-### 📧 Email Management
-
-**Multiple Emails per User**
-```php
-// Add additional email
-$user->emails()->create([
-    'email' => 'work@example.com',
-    'is_primary' => false
-]);
-```
-
-**Email Verification**
-- Automatic verification emails
-- Configurable verification requirements
-- Resend verification links
-
-### 🔍 Security & Monitoring
-
-**Login Tracking**
-- Every login attempt is recorded
-- Device and browser information
-- Geographic location (with GeoIP)
-- Suspicious activity detection
-
-**Session Management**
-```php
-// View all active sessions
-$user->sessions();
-
-// Logout from all devices
-$user->logoutFromAllDevices();
-```
-
-**Failed Login Protection**
-- Progressive delays after failed attempts
-- Temporary account lockouts
-- IP-based rate limiting
-
-### 🌍 Geographic Features
-
-**GeoIP Location Tracking**
 ```bash
-# Download GeoIP database
-php artisan neev:download-geolite
+# Create team
+curl -X POST https://yourapp.com/neev/teams \
+  -H "Authorization: Bearer {token}" \
+  -d '{"name": "My Team", "public": false}'
+
+# Invite member
+curl -X POST https://yourapp.com/neev/teams/inviteUser \
+  -H "Authorization: Bearer {token}" \
+  -d '{"team_id": 1, "email": "user@example.com", "role": "member"}'
+
+# Accept invitation
+curl -X PUT https://yourapp.com/neev/teams/inviteUser \
+  -H "Authorization: Bearer {token}" \
+  -d '{"team_id": 1, "action": "accept"}'
 ```
 
-**Domain Federation**
-- Automatic team joining based on email domain
-- Perfect for organizations
-- Custom domain rules and policies
+---
 
-## Configuration
+## Multi-Tenancy
 
-Neev is highly configurable through `config/neev.php`:
+### Enable Tenant Isolation
 
-### Feature Toggles
 ```php
-'team' => true,              // Enable team management
-'email_verified' => true,    // Require email verification
-'domain_federation' => true, // Enable domain-based teams
-'support_username' => false, // Allow username login
-'magicauth' => true,        // Enable magic link login
-```
-
-### Security Settings
-```php
-'login_soft_attempts' => 5,    // Soft limit before delays
-'login_hard_attempts' => 20,   // Hard limit before lockout
-'login_block_minutes' => 1,    // Lockout duration
-
-'password_soft_expiry_days' => 30, // Warning period
-'password_hard_expiry_days' => 90, // Forced change
-```
-
-### MFA Configuration
-```php
-'multi_factor_auth' => [
-    'authenticator', // TOTP apps
-    'email',        // Email OTP
+// config/neev.php
+'team' => true,
+'tenant_isolation' => true,
+'tenant_isolation_options' => [
+    'subdomain_suffix' => env('NEEV_SUBDOMAIN_SUFFIX', '.yourapp.com'),
+    'allow_custom_domains' => true,
+    'single_tenant_users' => false,
 ],
-'recovery_codes' => 8, // Number of backup codes
 ```
 
-## Available Routes
-
-Neev provides all necessary routes out of the box:
-
-### Authentication Routes
-- `GET /register` - Registration form
-- `POST /register` - Process registration
-- `GET /login` - Login form
-- `PUT /login` - Process login
-- `POST /login/link` - Send magic link
-- `GET /login/{id}/{hash}` - Magic link login
-- `POST /logout` - Logout
-
-### MFA Routes
-- `GET /otp/mfa/{method}` - MFA verification form
-- `POST /otp/mfa` - Verify MFA code
-- `POST /otp/mfa/send` - Send email OTP
-
-### Account Management
-- `GET /account/profile` - User profile
-- `GET /account/security` - Security settings
-- `GET /account/tokens` - API tokens
-- `GET /account/sessions` - Active sessions
-- `GET /account/teams` - Team management
-
-### Team Routes
-- `GET /teams/create` - Create team
-- `GET /teams/{team}/members` - Team members
-- `POST /teams/create` - Store new team
-- `PUT /teams/switch` - Switch active team
-
-## Console Commands
-
-### Setup Commands
-```bash
-# Install Neev with interactive setup
-php artisan neev:install
-
-# Create permissions with implied permissions
-php artisan acl:create-permission "manage_users" --implied="view_users|edit_users"
-php artisan acl:create-permission "delete_posts" "App\Models\Post"
-
-# Create roles with permissions
-php artisan acl:create-role "admin" null "manage_users|delete_posts"
-php artisan acl:create-role "editor" "App\Models\Team" "edit_posts|view_posts"
-```
-
-### Maintenance Commands
-```bash
-# Clean old login records (should run in scheduler)
-php artisan neev:clean-login-attempts
-
-# Clean old password history (should run in scheduler)
-php artisan neev:clean-passwords
-
-# Download/update GeoIP database (should run monthly)
-php artisan neev:download-geoip
-```
-
-### 🌍 GeoLite Database Setup
-
-Neev uses MaxMind's GeoLite2 database for IP geolocation tracking.
-
-**Initial Setup**
-1. Get a free MaxMind license key:
-   - Register at https://www.maxmind.com/en/geolite2/signup
-   - Generate a license key in your account
-
-2. Add to your `.env` file:
-```env
-MAXMIND_LICENSE_KEY=your_license_key_here
-MAXMIND_EDITION=GeoLite2-City
-```
-
-3. Download the database:
-```bash
-php artisan neev:download-geoip
-```
-
-**Configuration Options**
-```php
-// In config/neev.php
-'geo_ip_db' => 'app/geoip/GeoLite2-City.mmdb',
-'edition' => env('MAXMIND_EDITION', 'GeoLite2-City'),
-'maxmind_license_key' => env('MAXMIND_LICENSE_KEY'),
-```
-
-**Available Editions**
-- `GeoLite2-City` - Free, city-level accuracy (recommended)
-- `GeoLite2-Country` - Free, country-level accuracy only
-- `GeoIP2-City` - Paid, higher accuracy (requires subscription)
-
-**Usage in Code**
-```php
-// GeoIP data is automatically added to login attempts
-$loginAttempt = LoginAttempt::latest()->first();
-echo $loginAttempt->city;     // "New York"
-echo $loginAttempt->country;  // "United States"
-echo $loginAttempt->latitude; // "40.7128"
-```
-
-### ⏰ Scheduler Configuration
-
-Add these commands to your `app/Console/Kernel.php` scheduler:
+### Tenant SSO
 
 ```php
-protected function schedule(Schedule $schedule)
+// config/neev.php
+'tenant_auth' => true,
+'tenant_auth_options' => [
+    'default_method' => 'password',
+    'sso_providers' => ['entra', 'google', 'okta'],
+    'auto_provision' => true,
+],
+```
+
+### Get Tenant Auth Config
+
+```bash
+curl -X GET https://acme.yourapp.com/api/tenant/auth
+```
+
+Response:
+```json
 {
-    // Clean old login attempts daily
-    $schedule->command('neev:clean-login-attempts')
-             ->daily()
-             ->description('Clean old login attempt records');
-    
-    // Clean old password history weekly
-    $schedule->command('neev:clean-passwords')
-             ->weekly()
-             ->description('Clean old password history records');
-    
-    // Update GeoIP database monthly
-    $schedule->command('neev:download-geoip')
-             ->monthly()
-             ->description('Update MaxMind GeoLite2 database');
+  "auth_method": "sso",
+  "sso_enabled": true,
+  "sso_provider": "entra",
+  "sso_redirect_url": "https://acme.yourapp.com/sso/redirect"
 }
 ```
 
-**Scheduler Commands Explained**
+### Middleware Groups
 
-1. **`neev:clean-login-attempts`** (Daily)
-   - Removes login attempt records older than configured days
-   - Prevents database bloat from login tracking
-   - Respects `last_login_attempts_in_days` config setting
+| Middleware | Description |
+|------------|-------------|
+| `neev:web` | Web authentication with MFA |
+| `neev:api` | API token authentication |
+| `neev:tenant` | Tenant resolution from domain |
+| `neev:tenant-web` | Tenant + web auth |
+| `neev:tenant-api` | Tenant + API auth |
 
-2. **`neev:clean-passwords`** (Weekly)
-   - Removes old password history beyond the configured limit
-   - Keeps only the number of passwords specified in password rules
-   - Maintains password reuse prevention while cleaning old data
+---
 
-3. **`neev:download-geoip`** (Monthly)
-   - Downloads latest GeoLite2 database from MaxMind
-   - MaxMind updates their database monthly
-   - Ensures accurate geolocation data for login tracking
+## Security Features
 
-**Manual Execution**
-```bash
-# Run scheduler manually (for testing)
-php artisan schedule:run
-
-# Run specific commands manually
-php artisan neev:clean-login-attempts
-php artisan neev:clean-passwords
-php artisan neev:download-geoip
-
-## Advanced Features
-
-### Custom Models
-You can use your own models:
+### Brute Force Protection
 
 ```php
-// In config/neev.php
-'user_model' => App\Models\User::class,
-'team_model' => App\Models\Organization::class,
+// config/neev.php
+'login_soft_attempts' => 5,    // Delays start
+'login_hard_attempts' => 20,   // Lockout
+'login_block_minutes' => 1,    // Lockout duration
 ```
 
-### Password Rules
-Customize password requirements:
+### Password Policies
 
 ```php
+// config/neev.php
 'password' => [
     'required',
     'confirmed',
-    Password::min(8)->mixedCase()->numbers()->symbols(),
-    PasswordHistory::notReused(5), // Can't reuse last 5 passwords
-    PasswordUserData::notContain(['name', 'email']), // Can't contain personal info
+    Password::min(8)->max(72)->letters()->mixedCase()->numbers()->symbols(),
+    PasswordHistory::notReused(5),
+    PasswordUserData::notContain(['name', 'email']),
 ],
+'password_soft_expiry_days' => 30,  // Warning
+'password_hard_expiry_days' => 90,  // Forced change
 ```
 
-### Username Support
-Enable username-based authentication:
+### Login Tracking
+
+Each login attempt records:
+- Login method (password, passkey, sso, etc.)
+- MFA method used
+- IP address and geolocation
+- Browser, platform, device
+- Success/failure status
+
+### GeoIP Setup
+
+```bash
+# Get MaxMind license key from maxmind.com
+# Add to .env:
+MAXMIND_LICENSE_KEY=your-key
+
+# Download database
+php artisan neev:download-geoip
+```
+
+---
+
+## Configuration
+
+### Feature Toggles
 
 ```php
-'support_username' => true,
-'username' => [
-    'required', 'string', 'min:3', 'max:20',
-    'regex:/^(?![._])(?!.*[._]{2})[a-zA-Z0-9._]+(?<![._])$/',
-    'unique:users,username',
+// config/neev.php
+'team' => true,                    // Team management
+'email_verified' => true,          // Require verification
+'require_company_email' => false,  // Waitlist free emails
+'domain_federation' => true,       // Domain-based joining
+'tenant_isolation' => false,       // Multi-tenancy
+'tenant_auth' => false,            // Per-tenant auth
+'support_username' => false,       // Username login
+'magicauth' => true,               // Magic link login
+```
+
+### URLs
+
+```php
+'dashboard_url' => env('NEEV_DASHBOARD_URL', env('APP_URL').'/dashboard'),
+'frontend_url' => env('APP_URL'),
+```
+
+### MFA
+
+```php
+'multi_factor_auth' => ['authenticator', 'email'],
+'recovery_codes' => 8,
+'otp_expiry_time' => 15,  // minutes
+```
+
+### OAuth Providers
+
+```php
+'oauth' => [
+    'google',
+    'github',
+    'microsoft',
+    'apple',
 ],
 ```
 
-## Security Best Practices
+### Token Expiry
 
-1. **Always use HTTPS** in production
-2. **Enable email verification** for new accounts
-3. **Set up GeoIP tracking** to detect suspicious logins
-4. **Configure strong password rules**
-5. **Enable MFA** for admin accounts
-6. **Regularly clean old data** using provided commands
-7. **Monitor login attempts** for unusual patterns
-
-## Database Tables
-
-Neev creates these tables:
-
-- `users` - User accounts
-- `teams` - Team information
-- `memberships` - Team memberships
-- `team_invitations` - Team invitations
-- `access_tokens` - API and login tokens
-- `multi_factor_auths` - MFA configurations
-- `recovery_codes` - MFA backup codes
-- `login_attempts` - Login history and tracking
-- `user_devices` - Device registration for push notifications
-- `passkeys` - WebAuthn credentials
-- `otps` - One-time passwords
-- `domain_rules` - Domain federation rules
-- `password_histories` - Password change history
-
-## Troubleshooting
-
-### Common Issues
-
-**GeoIP not working?**
-```bash
-# Make sure you have a MaxMind license key
-php artisan neev:download-geolite
+```php
+'url_expiry_time' => 60,  // Magic links, reset links
+'otp_expiry_time' => 15,  // OTP codes
 ```
 
-**Teams not showing?**
-- Make sure you enabled teams during installation
-- Check that your User model uses the `HasTeams` trait
+---
 
-**MFA codes not working?**
-- Check system time is synchronized
-- Verify the secret key is correctly stored
+## Console Commands
 
-**Emails not sending?**
-- Configure your mail settings in `.env`
-- Check Laravel's mail configuration
+### Setup
 
-### Getting Help
+```bash
+php artisan neev:install              # Interactive setup
+php artisan neev:download-geoip       # Download GeoIP database
+```
 
-If you need help:
-1. Check the [GitHub issues](https://github.com/ssntpl/neev/issues)
-2. Review the configuration file comments
-3. Enable Laravel debugging to see detailed errors
+### Maintenance
+
+```bash
+php artisan neev:clean-login-attempts # Clean old login records
+php artisan neev:clean-passwords      # Clean password history
+```
+
+### Scheduled Tasks
+
+```php
+// app/Console/Kernel.php
+protected function schedule(Schedule $schedule)
+{
+    $schedule->command('neev:clean-login-attempts')->daily();
+    $schedule->command('neev:clean-passwords')->weekly();
+    $schedule->command('neev:download-geoip')->monthly();
+}
+```
+
+---
+
+## Database Schema
+
+### Core Tables
+
+| Table | Description |
+|-------|-------------|
+| `users` | User accounts |
+| `emails` | Multiple emails per user |
+| `passwords` | Password history |
+| `otps` | One-time passwords |
+| `passkeys` | WebAuthn credentials |
+| `multi_factor_auths` | MFA configurations |
+| `recovery_codes` | MFA backup codes |
+| `access_tokens` | API and login tokens |
+| `login_attempts` | Login history |
+
+### Team Tables
+
+| Table | Description |
+|-------|-------------|
+| `teams` | Teams/organizations |
+| `memberships` | Team-user relationships |
+| `team_invitations` | Pending invitations |
+| `domains` | Email domain federation |
+| `domain_rules` | Domain security rules |
+
+### Tenant Tables
+
+| Table | Description |
+|-------|-------------|
+| `tenant_domains` | Custom tenant domains |
+| `team_auth_settings` | Per-tenant auth config |
+
+---
+
+## Detailed Documentation
+
+For comprehensive documentation, see the [docs folder](./docs/):
+
+| Document | Description |
+|----------|-------------|
+| [Installation](./docs/installation.md) | Complete setup guide |
+| [Configuration](./docs/configuration.md) | All configuration options |
+| [Authentication](./docs/authentication.md) | Auth flows and methods |
+| [API Reference](./docs/api-reference.md) | Complete API documentation |
+| [Web Routes](./docs/web-routes.md) | All web route details |
+| [MFA](./docs/mfa.md) | Multi-factor authentication |
+| [Teams](./docs/teams.md) | Team management guide |
+| [Multi-Tenancy](./docs/multi-tenancy.md) | SaaS multi-tenant setup |
+| [Security](./docs/security.md) | Security features & best practices |
+
+---
 
 ## Requirements
 
-- PHP 8.1 or higher
-- Laravel 10.0 or higher
-- MySQL, PostgreSQL, or SQLite database
-- Redis (recommended for caching and sessions)
+- PHP 8.1+
+- Laravel 10.x or 11.x
+- MySQL, PostgreSQL, or SQLite
+
+---
+
+## License
+
+MIT License. See [LICENSE](LICENSE) for details.
+
+---
 
 ## Credits
 
@@ -586,4 +732,4 @@ Created and maintained by [Abhishek Sharma](https://ssntpl.com) at [SSNTPL](http
 
 ---
 
-**Ready to get started?** Run `composer require ssntpl/neev` and `php artisan neev:install` to begin!
+**Ready to get started?** Run `composer require ssntpl/neev` and `php artisan neev:install`!

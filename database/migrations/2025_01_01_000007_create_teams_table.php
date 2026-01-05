@@ -15,9 +15,13 @@ return new class extends Migration
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('name');
+            $table->string('slug')->unique()->nullable();
             $table->boolean('is_public')->default(true);
+            $table->timestamp('activated_at')->nullable();
+            $table->string('inactive_reason')->nullable();
             $table->timestamps();
             $table->unique(['name', 'user_id']);
+            $table->index('slug');
         });
 
         Schema::create('team_user', function (Blueprint $table) {

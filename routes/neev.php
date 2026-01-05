@@ -4,10 +4,12 @@ use Illuminate\Support\Facades\Route;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthApiController;
 use Ssntpl\Neev\Http\Controllers\Auth\OAuthController;
 use Ssntpl\Neev\Http\Controllers\Auth\PasskeyController;
+use Ssntpl\Neev\Http\Controllers\Auth\TenantSSOController;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Http\Controllers\RoleController;
 use Ssntpl\Neev\Http\Controllers\TeamApiController;
 use Ssntpl\Neev\Http\Controllers\TeamController;
+use Ssntpl\Neev\Http\Controllers\TenantDomainController;
 use Ssntpl\Neev\Http\Controllers\UserApiController;
 use Ssntpl\Neev\Http\Controllers\UserController;
 use Ssntpl\Neev\Models\Team;
@@ -70,6 +72,12 @@ Route::middleware('web')->group(function () {
         ->name('oauth.redirect');
     Route::get('/oauth/{service}/callback', [OAuthController::class, 'callback'])
         ->name('oauth.callback');
+
+    // Tenant SSO (for tenant-driven authentication)
+    Route::get('/sso/redirect', [TenantSSOController::class, 'redirect'])
+        ->name('sso.redirect');
+    Route::get('/sso/callback', [TenantSSOController::class, 'callback'])
+        ->name('sso.callback');
 
     Route::get('/email/verify/{id}/{hash}', [UserAuthController::class, 'emailVerifyStore'])
         ->name('verification.verify');
@@ -257,5 +265,17 @@ Route::prefix('/neev')->group(function () {
         Route::put('/domains/primary', [TeamApiController::class, 'primaryDomain']);
         
         Route::put('/role/change', [RoleController::class, 'roleChangeViaAPI']);
+
+        // Tenant Domain Management (requires tenant_isolation config)
+        Route::prefix('/tenant-domains')->group(function () {
+            Route::get('/', [TenantDomainController::class, 'index']);
+            Route::post('/', [TenantDomainController::class, 'store']);
+            Route::get('/current', [TenantDomainController::class, 'currentTenant']);
+            Route::get('/{id}', [TenantDomainController::class, 'show']);
+            Route::delete('/{id}', [TenantDomainController::class, 'destroy']);
+            Route::post('/{id}/verify', [TenantDomainController::class, 'verify']);
+            Route::post('/{id}/regenerate-token', [TenantDomainController::class, 'regenerateToken']);
+            Route::post('/{id}/primary', [TenantDomainController::class, 'setPrimary']);
+        });
     });
 });
