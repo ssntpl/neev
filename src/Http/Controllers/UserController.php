@@ -265,9 +265,15 @@ class UserController extends Controller
 
             return back()->with('status', 'Auth has been deleted.');
         }
+        $attemptID = session('attempt_id');
+        $attempt = $user->loginAttempts()->where('id', $attemptID)->first();
+        if ($attempt) {
+            $attempt->multi_factor_method = $request->auth_method;
+            $attempt->save();
+        }
         $res = $user->addMultiFactorAuth($request->auth_method);
         if (!$res) {
-            return back()->withErrors(['message' => 'Auth was not deleted.']);
+            return back()->withErrors(['message' => 'Auth was not added.']);
         }
         return back()->with($res);
     }
