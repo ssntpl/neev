@@ -24,6 +24,7 @@ use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\TenantResolver;
 use URL;
 use Log;
 
@@ -185,12 +186,27 @@ class UserAuthController extends Controller
 
     /**
      * Show the login page.
+     *
+     * If tenant-driven auth is enabled and the current tenant requires SSO,
+     * redirects to the SSO provider instead of showing the login form.
     */
     public function loginCreate(Request $request)
     {
         if ($request->user()?->id) {
             return redirect(config('neev.dashboard_url'));
         }
+
+        // Check if tenant-driven authentication is enabled
+        if (config('neev.tenant_auth', false) && config('neev.tenant_isolation', false)) {
+            $tenantResolver = app(TenantResolver::class);
+            $tenant = $tenantResolver->current();
+
+            // If tenant requires SSO and has it configured, redirect to SSO
+            if ($tenant && $tenant->requiresSSO() && $tenant->hasSSOConfigured()) {
+                return redirect()->route('sso.redirect');
+            }
+        }
+
         return view('neev::auth.login', ['redirect' => $request->redirect]);
     }
 

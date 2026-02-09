@@ -10,6 +10,8 @@ class LoginAttempt extends Model
     public const Password = 'password';
     public const Passkey = 'passkey';
     public const MagicAuth = 'magic auth';
+    public const SSO = 'sso';
+    public const OAuth = 'oauth';
 
     protected $fillable = [
         'user_id',

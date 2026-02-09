@@ -19,8 +19,11 @@ use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
+use Ssntpl\Neev\Models\TenantDomain;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\EmailDomainValidator;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\TenantResolver;
 use URL;
 use Log;
 
@@ -85,7 +88,56 @@ class UserAuthApiController extends Controller
                         $user->assignRole($invitation->role, $team);
                     }
                     $invitation->delete();
+                } elseif (config('neev.tenant_isolation') && config('neev.tenant_isolation_options.single_tenant_users')) {
+                    // Tenant isolation with single tenant users: auto-assign to current tenant
+                    $tenantResolver = app(TenantResolver::class);
+                    $currentTenant = $tenantResolver->current();
+
+                    if (!$currentTenant) {
+                        // Try to resolve tenant from request host
+                        $host = $request->getHost();
+                        $tenantDomain = TenantDomain::findByHost($host);
+                        if ($tenantDomain && $tenantDomain->isVerified()) {
+                            $currentTenant = $tenantDomain->team;
+                        }
+                    }
+
+                    if (!$currentTenant) {
+                        DB::rollBack();
+                        return response()->json([
+                            'status' => 'Failed',
+                            'message' => 'Registration must be done through a valid tenant domain.',
+                        ], 400);
+                    }
+
+                    // Check if user already exists in another tenant (by email)
+                    $existingEmail = Email::where('email', $request->email)->first();
+                    if ($existingEmail) {
+                        DB::rollBack();
+                        return response()->json([
+                            'status' => 'Failed',
+                            'message' => 'An account with this email already exists.',
+                        ], 400);
+                    }
+
+                    $team = $currentTenant;
+                    $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
+                    if ($team->default_role) {
+                        $user->assignRole($team->default_role ?? '', $team);
+                    }
                 } else {
+                    // Determine team activation status based on email domain
+                    $shouldActivate = true;
+                    $inactiveReason = null;
+
+                    if (config('neev.require_company_email')) {
+                        $emailValidator = new EmailDomainValidator();
+                        if ($emailValidator->isFreeEmail($request->email)) {
+                            $shouldActivate = false;
+                            $inactiveReason = 'free_email_provider';
+                        }
+                    }
+
                     if (config('neev.domain_federation')) {
                         $emailDomain = substr(strrchr($request->email, "@"), 1);
                         $domain = Domain::where('domain', $emailDomain)->first();
@@ -94,6 +146,8 @@ class UserAuthApiController extends Controller
                                 'name' => explode(' ', $user->name, 2)[0]."'s Team",
                                 'user_id' => $user->id,
                                 'is_public' => false,
+                                'activated_at' => $shouldActivate ? now() : null,
+                                'inactive_reason' => $inactiveReason,
                             ]);
                         }
                     } else {
@@ -101,6 +155,8 @@ class UserAuthApiController extends Controller
                             'name' => explode(' ', $user->name, 2)[0]."'s Team",
                             'user_id' => $user->id,
                             'is_public' => false,
+                            'activated_at' => $shouldActivate ? now() : null,
+                            'inactive_reason' => $inactiveReason,
                         ]);
                     }
                     $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
