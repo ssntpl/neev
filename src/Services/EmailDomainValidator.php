@@ -4,6 +4,15 @@ namespace Ssntpl\Neev\Services;
 
 class EmailDomainValidator
 {
+
+    // TODO: Look at these resources as they provide a centralized list of free email providers.
+    // https://gist.github.com/ammarshah/f5c2624d767f91a7cbdc4e54db8dd0bf
+    // https://github.com/disposable/disposable-email-domains
+    // https://github.com/disposable/disposable
+    // 
+    // This can also be extracted as a package. with option to score email addresses like if its temporary, free, or check mx record if its company, etc.
+
+
     /**
      * Common free email providers.
      * This list can be extended via config.
