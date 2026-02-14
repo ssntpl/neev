@@ -3,8 +3,8 @@
 namespace Ssntpl\Neev\Services;
 
 use Illuminate\Http\Request;
+use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Team;
-use Ssntpl\Neev\Models\TenantDomain;
 
 class TenantResolver
 {
@@ -14,12 +14,23 @@ class TenantResolver
     protected ?Team $currentTenant = null;
 
     /**
-     * The current tenant domain.
+     * How the tenant was resolved ('header', 'subdomain', 'custom').
      */
-    protected ?TenantDomain $currentTenantDomain = null;
+    protected ?string $resolvedVia = null;
+
+    /**
+     * The domain or value used to resolve the tenant.
+     */
+    protected ?string $resolvedDomain = null;
+
+    /**
+     * The custom domain model (only set for custom domain resolution).
+     */
+    protected ?Domain $resolvedCustomDomain = null;
 
     /**
      * Resolve the tenant from the request.
+     * Priority: X-Tenant header → subdomain → custom domain.
      */
     public function resolve(Request $request): ?Team
     {
@@ -27,16 +38,111 @@ class TenantResolver
             return null;
         }
 
-        $host = $request->getHost();
-        $tenantDomain = TenantDomain::findByHost($host);
+        // 1. Try X-Tenant header resolution
+        $headerValue = $request->header('X-Tenant');
+        if ($headerValue !== null) {
+            $result = $this->resolveFromHeader($headerValue);
+            if ($result) {
+                return $this->setResolved($result['team'], $result['via'], $result['domain'], $result['customDomain'] ?? null);
+            }
+        }
 
-        if ($tenantDomain) {
-            $this->currentTenantDomain = $tenantDomain;
-            $this->currentTenant = $tenantDomain->team;
-            return $this->currentTenant;
+        // 2. Fall back to host-based resolution (subdomain + custom domain)
+        $result = $this->resolveFromHost($request->getHost());
+        if ($result) {
+            return $this->setResolved($result['team'], $result['via'], $result['domain'], $result['customDomain'] ?? null);
         }
 
         return null;
+    }
+
+    /**
+     * Resolve tenant from X-Tenant header value.
+     * Tries: team ID (numeric) → slug → domain (subdomain or custom).
+     */
+    protected function resolveFromHeader(string $headerValue): ?array
+    {
+        $headerValue = trim($headerValue);
+
+        if ($headerValue === '') {
+            return null;
+        }
+
+        // Try by ID
+        if (ctype_digit($headerValue)) {
+            $team = Team::model()->find((int) $headerValue);
+            if ($team) {
+                return ['team' => $team, 'via' => 'header', 'domain' => $headerValue];
+            }
+        }
+
+        // Try by slug
+        $team = Team::model()->where('slug', $headerValue)->first();
+        if ($team) {
+            return ['team' => $team, 'via' => 'header', 'domain' => $headerValue];
+        }
+
+        // Try by domain (subdomain or custom domain)
+        return $this->resolveFromHost($headerValue);
+    }
+
+    /**
+     * Resolve tenant from a host string (subdomain or custom domain).
+     */
+    protected function resolveFromHost(string $host): ?array
+    {
+        $subdomainSuffix = config('neev.tenant_isolation_options.subdomain_suffix');
+
+        // Check if it's a subdomain
+        if ($subdomainSuffix) {
+            $suffix = '.' . ltrim($subdomainSuffix, '.');
+            if (str_ends_with($host, $suffix)) {
+                $slug = str_replace($suffix, '', $host);
+                $team = Team::model()->where('slug', $slug)->first();
+                if ($team) {
+                    return ['team' => $team, 'via' => 'subdomain', 'domain' => $host];
+                }
+            }
+        }
+
+        // Check custom domains in domains table
+        $domain = Domain::findByHost($host);
+        if ($domain) {
+            return ['team' => $domain->team, 'via' => 'custom', 'domain' => $host, 'customDomain' => $domain];
+        }
+
+        return null;
+    }
+
+    /**
+     * Set the resolved tenant and metadata.
+     */
+    protected function setResolved(Team $team, string $via, string $domain, ?Domain $customDomain = null): Team
+    {
+        $this->currentTenant = $team;
+        $this->resolvedVia = $via;
+        $this->resolvedDomain = $domain;
+        $this->resolvedCustomDomain = $customDomain;
+
+        return $team;
+    }
+
+    /**
+     * Check if the resolved domain is verified.
+     * Subdomains and header-resolved tenants are always verified.
+     * Custom domains require explicit verification.
+     */
+    public function isResolvedDomainVerified(): bool
+    {
+        if ($this->resolvedVia === 'subdomain' || $this->resolvedVia === 'header') {
+            return true;
+        }
+
+        if ($this->resolvedVia === 'custom') {
+            return $this->resolvedCustomDomain?->isVerified() ?? false;
+        }
+
+        return false;
     }
 
     /**
@@ -48,11 +154,19 @@ class TenantResolver
     }
 
     /**
-     * Get the current tenant domain.
+     * How the tenant was resolved ('header', 'subdomain', 'custom').
      */
-    public function currentDomain(): ?TenantDomain
+    public function resolvedVia(): ?string
     {
-        return $this->currentTenantDomain;
+        return $this->resolvedVia;
+    }
+
+    /**
+     * The domain or value used to resolve the tenant.
+     */
+    public function resolvedDomain(): ?string
+    {
+        return $this->resolvedDomain;
     }
 
     /**
@@ -61,15 +175,6 @@ class TenantResolver
     public function setCurrentTenant(Team $team): void
     {
         $this->currentTenant = $team;
-    }
-
-    /**
-     * Set the current tenant domain.
-     */
-    public function setCurrentTenantDomain(TenantDomain $tenantDomain): void
-    {
-        $this->currentTenantDomain = $tenantDomain;
-        $this->currentTenant = $tenantDomain->team;
     }
 
     /**
@@ -86,7 +191,9 @@ class TenantResolver
     public function clear(): void
     {
         $this->currentTenant = null;
-        $this->currentTenantDomain = null;
+        $this->resolvedVia = null;
+        $this->resolvedDomain = null;
+        $this->resolvedCustomDomain = null;
     }
 
     /**

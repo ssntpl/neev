@@ -19,7 +19,7 @@ use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
-use Ssntpl\Neev\Models\TenantDomain;
+
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\EmailDomainValidator;
 use Ssntpl\Neev\Services\GeoIP;
@@ -94,11 +94,10 @@ class UserAuthApiController extends Controller
                     $currentTenant = $tenantResolver->current();
 
                     if (!$currentTenant) {
-                        // Try to resolve tenant from request host
-                        $host = $request->getHost();
-                        $tenantDomain = TenantDomain::findByHost($host);
-                        if ($tenantDomain && $tenantDomain->isVerified()) {
-                            $currentTenant = $tenantDomain->team;
+                        // Try to resolve tenant from request
+                        $currentTenant = $tenantResolver->resolve($request);
+                        if ($currentTenant && !$tenantResolver->isResolvedDomainVerified()) {
+                            $currentTenant = null;
                         }
                     }
 

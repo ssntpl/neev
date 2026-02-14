@@ -63,7 +63,7 @@ class NeevServiceProvider extends ServiceProvider
             __DIR__.'/../database/migrations/2025_01_01_000007_create_teams_table.php' => database_path('migrations/2025_01_01_000007_create_teams_table.php'),
             __DIR__.'/../database/migrations/2025_01_01_000008_create_team_invitations_table.php' => database_path('migrations/2025_01_01_000008_create_team_invitations_table.php'),
             __DIR__.'/../database/migrations/2025_01_01_000009_create_domains_table.php' => database_path('migrations/2025_01_01_000009_create_domains_table.php'),
-            __DIR__.'/../database/migrations/2025_01_01_000010_create_tenant_domains_table.php' => database_path('migrations/2025_01_01_000010_create_tenant_domains_table.php'),
+
             __DIR__.'/../database/migrations/2025_01_01_000011_create_team_auth_settings_table.php' => database_path('migrations/2025_01_01_000011_create_team_auth_settings_table.php'),
         ], 'neev-migrations');
         

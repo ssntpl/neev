@@ -6,7 +6,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Log;
 use Ssntpl\Neev\Models\Team;
-use Ssntpl\Neev\Models\TenantDomain;
+use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\TenantResolver;
 use Str;
@@ -39,7 +39,7 @@ class TenantDomainController extends Controller
             ], 403);
         }
 
-        $domains = $team->tenantDomains;
+        $domains = $team->domains;
 
         return response()->json([
             'status' => 'Success',
@@ -71,7 +71,7 @@ class TenantDomainController extends Controller
         }
 
         $request->validate([
-            'domain' => 'required|string|unique:tenant_domains,domain',
+            'domain' => 'required|string|unique:domains,domain',
             'type' => 'in:subdomain,custom',
         ]);
 
@@ -96,11 +96,11 @@ class TenantDomainController extends Controller
                 ], 400);
             }
 
-            $tenantDomain = new TenantDomain([
+            $tenantDomain = new Domain([
                 'team_id' => $team->id,
                 'domain' => $domain,
                 'type' => $type,
-                'is_primary' => $team->tenantDomains()->count() === 0, // First domain is primary
+                'is_primary' => $team->domains()->count() === 0, // First domain is primary
             ]);
 
             // Subdomains are auto-verified, custom domains need verification
@@ -143,7 +143,7 @@ class TenantDomainController extends Controller
     public function show(Request $request, $id)
     {
         $user = User::model()->find($request->user()?->id);
-        $tenantDomain = TenantDomain::find($id);
+        $tenantDomain = Domain::find($id);
 
         if (!$tenantDomain) {
             return response()->json([
@@ -172,7 +172,7 @@ class TenantDomainController extends Controller
     public function destroy(Request $request, $id)
     {
         $user = User::model()->find($request->user()?->id);
-        $tenantDomain = TenantDomain::find($id);
+        $tenantDomain = Domain::find($id);
 
         if (!$tenantDomain) {
             return response()->json([
@@ -190,7 +190,7 @@ class TenantDomainController extends Controller
         }
 
         // Don't allow deleting the last domain
-        if ($team->tenantDomains()->count() <= 1) {
+        if ($team->domains()->count() <= 1) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Cannot delete the last domain. Team must have at least one domain.',
@@ -203,7 +203,7 @@ class TenantDomainController extends Controller
 
             // If we deleted the primary domain, set another as primary
             if ($wasPrimary) {
-                $newPrimary = $team->tenantDomains()->first();
+                $newPrimary = $team->domains()->first();
                 if ($newPrimary) {
                     $newPrimary->markAsPrimary();
                 }
@@ -228,7 +228,7 @@ class TenantDomainController extends Controller
     public function verify(Request $request, $id)
     {
         $user = User::model()->find($request->user()?->id);
-        $tenantDomain = TenantDomain::find($id);
+        $tenantDomain = Domain::find($id);
 
         if (!$tenantDomain) {
             return response()->json([
@@ -300,7 +300,7 @@ class TenantDomainController extends Controller
     public function regenerateToken(Request $request, $id)
     {
         $user = User::model()->find($request->user()?->id);
-        $tenantDomain = TenantDomain::find($id);
+        $tenantDomain = Domain::find($id);
 
         if (!$tenantDomain) {
             return response()->json([
@@ -354,7 +354,7 @@ class TenantDomainController extends Controller
     public function setPrimary(Request $request, $id)
     {
         $user = User::model()->find($request->user()?->id);
-        $tenantDomain = TenantDomain::find($id);
+        $tenantDomain = Domain::find($id);
 
         if (!$tenantDomain) {
             return response()->json([

@@ -128,15 +128,6 @@ class TenantSSOController extends Controller
         $host = $parsedUrl['host'];
 
         // Check against tenant domains
-        if (method_exists($tenant, 'tenantDomains')) {
-            foreach ($tenant->tenantDomains as $domain) {
-                if ($domain->domain === $host || str_ends_with($host, '.' . $domain->domain)) {
-                    return true;
-                }
-            }
-        }
-
-        // Check against federated domains
         if (method_exists($tenant, 'domains')) {
             foreach ($tenant->domains as $domain) {
                 if ($domain->domain === $host || str_ends_with($host, '.' . $domain->domain)) {
