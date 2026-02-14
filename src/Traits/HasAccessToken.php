@@ -11,10 +11,10 @@ trait HasAccessToken
 {
     public function createApiToken(?string $name = null, ?array $permissions = null, ?int $expiry = null)
     {
-        if (count($permissions ?? []) === count(Permission::all())) {
+        if ($permissions !== null && count($permissions) === Permission::count()) {
             $permissions = ['*'];
         }
-        $plainTextToken = hash('sha256', Str::random(40));
+        $plainTextToken = Str::random(40);
         $token = $this->accessTokens()->create([
             'name' => $name ?? 'api token',
             'token' => $plainTextToken,
@@ -28,7 +28,7 @@ trait HasAccessToken
     
     public function createLoginToken(?int $expiry)
     {
-        $plainTextToken = hash('sha256', Str::random(40));
+        $plainTextToken = Str::random(40);
         $token = $this->accessTokens()->create([
             'name' => AccessToken::login,
             'token' => $plainTextToken,

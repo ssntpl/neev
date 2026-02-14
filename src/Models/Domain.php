@@ -22,6 +22,7 @@ class Domain extends Model
 
     protected $casts = [
         'enforce' => 'bool',
+        'is_primary' => 'boolean',
         'verified_at' => 'datetime',
         'verification_token' => 'hashed',
     ];

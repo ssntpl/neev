@@ -21,6 +21,7 @@ class OTP extends Model
 
     protected $casts = [
         'expires_at' => 'datetime',
+        'otp' => 'hashed',
     ];
 
     public function owner(): MorphTo

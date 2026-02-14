@@ -99,9 +99,7 @@ trait HasMultiAuth
                 return false;
 
             case 'email':
-                $otpStored = (string) $auth->otp;
-                $otpGiven  = (string) $otp;
-                if (hash_equals($otpStored, $otpGiven) && now()->lt($auth->expires_at)) {
+                if (Hash::check((string) $otp, $auth->otp) && now()->lt($auth->expires_at)) {
                     $auth->otp = null;
                     $auth->expires_at = null;
                     $auth->last_used = now();

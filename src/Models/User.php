@@ -69,7 +69,7 @@ class User extends Authenticatable
 
     public function password()
     {
-        return $this->hasOne(Password::class)->orderByDesc('created_at')->limit(1);
+        return $this->hasOne(Password::class)->latestOfMany();
     }
 
     public function loginAttempts()

@@ -26,6 +26,7 @@ class MultiFactorAuth extends Model
         'expires_at' => 'datetime',
         'last_used' => 'datetime',
         'secret' => 'encrypted',
+        'otp' => 'hashed',
         'preferred' => 'bool'
     ];
 

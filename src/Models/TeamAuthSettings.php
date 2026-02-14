@@ -41,6 +41,7 @@ class TeamAuthSettings extends Model
      * @var array<string>
      */
     protected $hidden = [
+        'sso_client_id',
         'sso_client_secret',
     ];
 

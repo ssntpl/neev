@@ -411,7 +411,7 @@ class UserAuthApiController extends Controller
         
         $otp = $email?->otp;
 
-        if (!$email || !$otp || $otp->expires_at < now() || !hash_equals((string) $otp->otp, (string) $request->otp)) {
+        if (!$email || !$otp || $otp->expires_at < now() || !Hash::check((string) $request->otp, $otp->otp)) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Code verification was failed.'
@@ -442,7 +442,7 @@ class UserAuthApiController extends Controller
             }
 
             $otp = $email->otp;
-            if (!$otp || $otp->expires_at < now() || !hash_equals((string) $otp->otp, (string) $request->otp)) {
+            if (!$otp || $otp->expires_at < now() || !Hash::check((string) $request->otp, $otp->otp)) {
                 return response()->json([
                     'status' => 'Failed',
                     'message' => 'Code verification was failed.',
