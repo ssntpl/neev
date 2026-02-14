@@ -374,7 +374,7 @@ class TeamController extends Controller
             ],[
                 'enforce' => (bool) $request->enforce,
                 'verification_token' => $token,
-                'is_primary' => $team->domain ? false : true,
+                'is_primary' => !$team->domain,
             ]);
 
             return back()->with('token', $token);

@@ -109,15 +109,8 @@ class NeevServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/neev.php', 'neev');
 
-        // Register TenantResolver as a singleton
-        $this->app->singleton(TenantResolver::class, function ($app) {
-            return new TenantResolver();
-        });
-
-        // Register TenantSSOManager as a singleton
-        $this->app->singleton(TenantSSOManager::class, function ($app) {
-            return new TenantSSOManager();
-        });
+        $this->app->singleton(TenantResolver::class);
+        $this->app->singleton(TenantSSOManager::class);
 
         $this->commands([
             InstallNeev::class,

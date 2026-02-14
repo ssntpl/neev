@@ -12,48 +12,19 @@ class EmailOTP extends Mailable
 {
     use Queueable, SerializesModels;
 
-    public $username;
+    public function __construct(
+        public $username,
+        public $otp,
+        public $expiry,
+    ) {}
 
-    public $otp;
-    public $expiry;
-
-    /**
-     * Create a new message instance.
-     */
-    public function __construct($username, $otp, $expiry)
-    {
-        $this->username = $username;
-        $this->otp = $otp;
-        $this->expiry = $expiry;
-    }
-
-    /**
-     * Get the message envelope.
-     */
     public function envelope(): Envelope
     {
-        return new Envelope(
-            subject: 'Verification Code',
-        );
+        return new Envelope(subject: 'Verification Code');
     }
 
-    /**
-     * Get the message content definition.
-     */
     public function content(): Content
     {
-        return new Content(
-            view: 'neev::emails.email-otp',
-        );
-    }
-
-    /**
-     * Get the attachments for the message.
-     *
-     * @return array<int, \Illuminate\Mail\Mailables\Attachment>
-     */
-    public function attachments(): array
-    {
-        return [];
+        return new Content(view: 'neev::emails.email-otp');
     }
 }

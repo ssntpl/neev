@@ -35,7 +35,8 @@ class NeevMiddleware
             return redirect(route('login')); 
         }
 
-        if (config('neev.email_verified') && !$user->email?->verified_at && !$request->is('email/verify*') && !$request->is('email/send') && !$request->is('logout') && !$request->is('email/change') && !$request->is('email/update')) {
+        $emailBypassPaths = ['email/verify*', 'email/send', 'logout', 'email/change', 'email/update'];
+        if (config('neev.email_verified') && !$user->email?->verified_at && !$request->is($emailBypassPaths)) {
             return redirect(route('verification.notice'));
         }
         

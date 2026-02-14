@@ -40,7 +40,7 @@ class Team extends Model
     ];
 
     protected $casts = [
-        'is_public' => 'bool',
+        'is_public' => 'boolean',
         'activated_at' => 'datetime',
     ];
 
@@ -116,48 +116,37 @@ class Team extends Model
 
     public function allUsers()
     {
-        $relation = $this->belongsToMany(User::getClass(), Membership::class)
+        return $this->belongsToMany(User::getClass(), Membership::class)
             ->withPivot(['role', 'joined'])
             ->withTimestamps()
             ->as('membership');
-
-        return $relation;
     }
 
     public function users()
     {
-        $relation = $this->belongsToMany(User::getClass(), Membership::class)
+        return $this->belongsToMany(User::getClass(), Membership::class)
             ->withPivot(['role', 'joined'])
             ->withTimestamps()
-            ->as('membership')->where('joined', true);
-
-        return $relation;
+            ->as('membership')
+            ->where('joined', true);
     }
-    
+
     public function joinRequests()
     {
-        $relation = $this->belongsToMany(User::getClass(), Membership::class)
+        return $this->belongsToMany(User::getClass(), Membership::class)
             ->withPivot(['role', 'joined', 'action'])
             ->withTimestamps()
-            ->as('membership')->where([
-                'joined' => false,
-                'action' => 'request_from_user'
-            ]);
-
-        return $relation;
+            ->as('membership')
+            ->where(['joined' => false, 'action' => 'request_from_user']);
     }
-    
+
     public function invitedUsers()
     {
-        $relation = $this->belongsToMany(User::getClass(), Membership::class)
+        return $this->belongsToMany(User::getClass(), Membership::class)
             ->withPivot(['role', 'joined', 'action'])
             ->withTimestamps()
-            ->as('membership')->where([
-                'joined' => false,
-                'action' => 'request_to_user'
-            ]);
-
-        return $relation;
+            ->as('membership')
+            ->where(['joined' => false, 'action' => 'request_to_user']);
     }
 
     public function removeUser($user)

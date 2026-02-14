@@ -19,10 +19,7 @@ class TeamApiController extends Controller
 {
     public function teams(Request $request)
     {
-        $teams = User::model()->find($request->user()?->id)?->teams;
-        foreach ($teams as $team) {
-            $team->owner;
-        }
+        $teams = User::model()->find($request->user()?->id)?->teams?->load('owner');
 
         return response()->json([
             'status' => 'Success',
@@ -47,11 +44,7 @@ class TeamApiController extends Controller
             ], 400);
         }
 
-        $team->owner;
-        $team->users;
-        $team->joinRequests;
-        $team->invitedUsers;
-        $team->invitations;
+        $team->load('owner', 'users', 'joinRequests', 'invitedUsers', 'invitations');
 
         return response()->json([
             'status' => 'Success',
@@ -87,8 +80,7 @@ class TeamApiController extends Controller
             ], 400);
         }
 
-        $team->owner;
-        $team->users;
+        $team->load('owner', 'users');
 
         return response()->json([
             'status' => 'Success',
@@ -391,8 +383,8 @@ class TeamApiController extends Controller
             $user->removeRole($team);
 
             return response()->json([
-                'status' => 'success',
-                'message' => 'Remove Successfully',
+                'status' => 'Success',
+                'message' => 'Removed Successfully',
             ]);
         } catch (Exception $e) {
             Log::error($e);
@@ -497,19 +489,18 @@ class TeamApiController extends Controller
             ], 400);
         }
 
-        $domains = $team->domains;
-        
-        foreach ($domains ?? [] as $domain) {
-            if ($domain?->enforce && $domain?->verified_at) {
+        $domains = $team->domains->load('rules');
+
+        foreach ($domains as $domain) {
+            if ($domain->enforce && $domain->verified_at) {
                 $count = 0;
                 foreach ($team->users ?? [] as $member) {
-                    if (!str_ends_with(strtolower($member->email->email), '@' . strtolower($domain?->domain))) {
+                    if (!str_ends_with(strtolower($member->email->email), '@' . strtolower($domain->domain))) {
                         $count++;
                     }
                 }
                 $domain->outside_members = $count;
             }
-            $domain?->rules;
         }
 
         return response()->json([
@@ -528,8 +519,8 @@ class TeamApiController extends Controller
                 'status' => 'Failed',
                 'message' => 'Not found.',
             ], 400);
-        
         }
+
         if ($team->user_id !== $user->id) {
             //  || !str_ends_with(strtolower($user->email->email), '@' . strtolower($request->domain))
             return response()->json([
@@ -544,7 +535,7 @@ class TeamApiController extends Controller
             ],[
                 'enforce' => (bool) $request->enforce,
                 'verification_token' => $token,
-                'is_primary' => $team->domain ? false : true,
+                'is_primary' => !$team->domain,
             ]);
 
             return response()->json([

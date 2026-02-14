@@ -21,7 +21,7 @@ class Domain extends Model
     ];
 
     protected $casts = [
-        'enforce' => 'bool',
+        'enforce' => 'boolean',
         'is_primary' => 'boolean',
         'verified_at' => 'datetime',
         'verification_token' => 'hashed',
@@ -39,7 +39,7 @@ class Domain extends Model
 
     public function rule($name)
     {
-        return $this->hasMany(DomainRule::class)->where('name', $name)->first();
+        return $this->rules()->where('name', $name)->first();
     }
 
     /**

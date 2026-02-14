@@ -18,12 +18,10 @@ use Ssntpl\Neev\Services\GeoIP;
 
 class OAuthController extends Controller
 {
-    protected AuthService $auth;
+    public function __construct(
+        protected AuthService $auth,
+    ) {}
 
-    public function __construct(AuthService $auth)
-    {
-        $this->auth = $auth;
-    }
     public function redirect(Request $request, string $service)
     {
         if (!in_array($service, config('neev.oauth', []))) {
@@ -80,22 +78,18 @@ class OAuthController extends Controller
             return null;
         }
         DB::beginTransaction();
+        $userData = ['name' => $oauthUser->name];
+
         if (!config('neev.support_username')) {
-            $email = explode('@', $oauthUser->email)[0];
-            $username = $email;
+            $base = explode('@', $oauthUser->email)[0];
+            $username = $base;
             while (User::getModel()->where('username', $username)->first()) {
-                $username = $email.'_'.Str::random(4);
+                $username = $base . '_' . Str::random(4);
             }
-            
-            $user = User::model()->create([
-                'name' => $oauthUser->name,
-                'username' => $username,
-            ]);
-        } else {
-            $user = User::model()->create([
-                'name' => $oauthUser->name,
-            ]);
+            $userData['username'] = $username;
         }
+
+        $user = User::model()->create($userData);
 
         if (!$user) {
             DB::rollBack();
@@ -110,26 +104,18 @@ class OAuthController extends Controller
             ]);
 
             if (config('neev.team')) {
-                if (config('neev.domain_federation')) {
-                    $emailDomain = substr(strrchr($oauthUser->email, "@"), 1);
-                    $domain = Domain::where('domain', $emailDomain)->first();
-                    if (!$domain?->verified_at) {
-                        $team = Team::model()->forceCreate([
-                            'name' => explode(' ', $user->name, 2)[0]."'s Team",
-                            'user_id' => $user->id,
-                            'is_public' => false,
-                        ]);
-                    }
-                } else {
+                $shouldCreateTeam = !config('neev.domain_federation') || !$this->isDomainVerified($oauthUser->email);
+
+                if ($shouldCreateTeam) {
                     $team = Team::model()->forceCreate([
-                        'name' => explode(' ', $user->name, 2)[0]."'s Team",
+                        'name' => explode(' ', $user->name, 2)[0] . "'s Team",
                         'user_id' => $user->id,
                         'is_public' => false,
                     ]);
-                }
-                $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
-                if ($team->default_role) {
-                    $user->assignRole($team->default_role ?? '', $team);
+                    $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
+                    if ($team->default_role) {
+                        $user->assignRole($team->default_role, $team);
+                    }
                 }
             }
         } catch (Exception $e) {
@@ -139,5 +125,13 @@ class OAuthController extends Controller
         }
         DB::commit();
         return $user;
+    }
+
+    private function isDomainVerified(string $email): bool
+    {
+        $emailDomain = substr(strrchr($email, "@"), 1);
+        $domain = Domain::where('domain', $emailDomain)->first();
+
+        return $domain?->verified_at !== null;
     }
 }

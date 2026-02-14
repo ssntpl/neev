@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\Log;
 
 class GeoIP
 {
-     protected $reader;
+    protected ?Reader $reader = null;
 
     public function __construct()
     {
@@ -20,7 +20,7 @@ class GeoIP
         }
     }
 
-    public function getLocation(string $ip): array|null
+    public function getLocation(string $ip): ?array
     {
         try {
             $record = $this->reader?->city($ip);

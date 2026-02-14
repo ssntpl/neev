@@ -53,7 +53,8 @@ class NeevAPIMiddleware
 
         $accessToken->update(['last_used_at' => now()]);
 
-        if (config('neev.email_verified') && !$user->hasVerifiedEmail() && !$request->is('neev/email/send') && !$request->is('neev/logout') && !$request->is('neev/email/update') && !$request->is('neev/email/verify') && !$request->is('neev/email/otp/send') && !$request->is('neev/email/otp/verify') && !$request->is('neev/users')) {
+        $emailBypassPaths = ['neev/email/send', 'neev/logout', 'neev/email/update', 'neev/email/verify', 'neev/email/otp/send', 'neev/email/otp/verify', 'neev/users'];
+        if (config('neev.email_verified') && !$user->hasVerifiedEmail() && !$request->is($emailBypassPaths)) {
             return response()->json([
                 'message' => 'Email not verified.'
             ], 401);
@@ -67,11 +68,6 @@ class NeevAPIMiddleware
 
     protected function getTokenFromRequest(Request $request): ?string
     {
-        $authHeader = $request->bearerToken();
-        if ($authHeader) {
-            return $authHeader;
-        }
-
-        return $request->input('token') ?? $request->query('token');
+        return $request->bearerToken() ?? $request->input('token') ?? $request->query('token');
     }
 }

@@ -136,30 +136,20 @@ class UserAuthApiController extends Controller
                         }
                     }
 
-                    if (config('neev.domain_federation')) {
-                        $emailDomain = substr(strrchr($request->email, "@"), 1);
-                        $domain = Domain::where('domain', $emailDomain)->first();
-                        if (!$domain?->verified_at) {
-                            $team = Team::model()->forceCreate([
-                                'name' => explode(' ', $user->name, 2)[0]."'s Team",
-                                'user_id' => $user->id,
-                                'is_public' => false,
-                                'activated_at' => $shouldActivate ? now() : null,
-                                'inactive_reason' => $inactiveReason,
-                            ]);
-                        }
-                    } else {
+                    $shouldCreateTeam = !config('neev.domain_federation') || !$this->isDomainVerified($request->email);
+
+                    if ($shouldCreateTeam) {
                         $team = Team::model()->forceCreate([
-                            'name' => explode(' ', $user->name, 2)[0]."'s Team",
+                            'name' => explode(' ', $user->name, 2)[0] . "'s Team",
                             'user_id' => $user->id,
                             'is_public' => false,
                             'activated_at' => $shouldActivate ? now() : null,
                             'inactive_reason' => $inactiveReason,
                         ]);
-                    }
-                    $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
-                    if ($team->default_role) {
-                        $user->assignRole($team->default_role ?? '', $team);
+                        $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
+                        if ($team->default_role) {
+                            $user->assignRole($team->default_role, $team);
+                        }
                     }
                 }
             }
@@ -243,7 +233,7 @@ class UserAuthApiController extends Controller
         ]);
     }
 
-    public function getToken(Request $request, GeoIP $geoIP, $user, $method, $mfa = null, $attempt = null) 
+    public function getToken(Request $request, GeoIP $geoIP, $user, $method, $mfa = null, $attempt = null)
     {
         if (!$user?->active) {
             throw ValidationException::withMessages([
@@ -265,7 +255,7 @@ class UserAuthApiController extends Controller
                     'browser' => $clientDetails['browser'] ?? '',
                     'device' => $clientDetails['device'] ?? '',
                     'ip_address' => $request->ip(),
-                    'is_success' => $mfa ? false : true,
+                    'is_success' => !$mfa,
                 ]);
             }
 
@@ -276,7 +266,7 @@ class UserAuthApiController extends Controller
                 if ($mfa == 'email') {
                     UserApiController::sendMailOTP($user->email, true);
                 }
-                $accessToken->token_type = $mfa ? AccessToken::mfa_token : null;
+                $accessToken->token_type = AccessToken::mfa_token;
             }
             $accessToken->attempt_id = $attempt->id;
             $accessToken->save();
@@ -362,7 +352,8 @@ class UserAuthApiController extends Controller
         ]);
     }
 
-    public function emailVerify(Request $request) {
+    public function emailVerify(Request $request)
+    {
         $email = Email::find($request->id);
         if (!$request->hasValidSignature() || !$email || $email?->user?->id != $request->user()?->id) {
             return response()->json([
@@ -532,7 +523,16 @@ class UserAuthApiController extends Controller
         ]);
     }
 
-    public function verifyMFAOTP(Request $request, GeoIP $geoIP) {
+    private function isDomainVerified(string $email): bool
+    {
+        $emailDomain = substr(strrchr($email, "@"), 1);
+        $domain = Domain::where('domain', $emailDomain)->first();
+
+        return $domain?->verified_at !== null;
+    }
+
+    public function verifyMFAOTP(Request $request, GeoIP $geoIP)
+    {
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([

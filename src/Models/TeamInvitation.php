@@ -10,7 +10,7 @@ class TeamInvitation extends Model
         'team_id',
         'role',
         'email',
-        'expires_at'
+        'expires_at',
     ];
 
     protected $casts = [
@@ -24,6 +24,6 @@ class TeamInvitation extends Model
 
     public function team()
     {
-        return $this->belongsTo(Team::getClass(),  'team_id');
+        return $this->belongsTo(Team::getClass(), 'team_id');
     }
 }

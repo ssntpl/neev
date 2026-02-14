@@ -109,7 +109,7 @@ class UserController extends Controller
         if (!$user) {
             return redirect()->route('neev.login');
         }
-        $attempts = User::model()->find($user->id)?->loginAttempts()?->orderBy('created_at', 'desc')->get();
+        $attempts = $user->loginAttempts()->orderBy('created_at', 'desc')->get();
         return view('neev::account.login-attempt', [
             'user' => $user,
             'attempts' => $attempts,

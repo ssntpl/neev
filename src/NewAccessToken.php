@@ -6,39 +6,12 @@ use Ssntpl\Neev\Models\AccessToken;
 
 class NewAccessToken
 {
-    /**
-     * The access token instance.
-     *
-     * @var \Ssntpl\Neev\Models\AccessToken
-     */
-    public $accessToken;
+    public function __construct(
+        public AccessToken $accessToken,
+        public string $plainTextToken,
+    ) {}
 
-    /**
-     * The plain text version of the token.
-     *
-     * @var string
-     */
-    public $plainTextToken;
-
-    /**
-     * Create a new access token result.
-     *
-     * @param  \Ssntpl\Neev\Models\AccessToken  $accessToken
-     * @param  string  $plainTextToken
-     * @return void
-     */
-    public function __construct(AccessToken $accessToken, string $plainTextToken)
-    {
-        $this->accessToken = $accessToken;
-        $this->plainTextToken = $plainTextToken;
-    }
-
-    /**
-     * Get the instance as an array.
-     *
-     * @return array<string, string>
-     */
-    public function toArray()
+    public function toArray(): array
     {
         return [
             'accessToken' => $this->accessToken,
@@ -46,13 +19,7 @@ class NewAccessToken
         ];
     }
 
-    /**
-     * Convert the object to its JSON representation.
-     *
-     * @param  int  $options
-     * @return string
-     */
-    public function toJson($options = 0)
+    public function toJson($options = 0): string
     {
         return json_encode($this->toArray(), $options);
     }

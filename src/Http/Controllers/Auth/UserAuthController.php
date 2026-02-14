@@ -30,12 +30,9 @@ use Ssntpl\Neev\Services\TenantResolver;
 
 class UserAuthController extends Controller
 {
-    protected AuthService $auth;
-
-    public function __construct(AuthService $auth)
-    {
-        $this->auth = $auth;
-    }
+    public function __construct(
+        protected AuthService $auth,
+    ) {}
     /**
      * Show the register page.
     */
@@ -478,7 +475,8 @@ class UserAuthController extends Controller
         return back()->with('status', __('verification-link-sent'));
     }
 
-    public function emailVerifyStore(Request $request, $id, $hash) {
+    public function emailVerifyStore(Request $request, $id, $hash)
+    {
         $user = User::model()->findOrFail($id);
         $loggedInUser = User::model()->find($request->user()?->id);
         if (!$user || !$loggedInUser || $loggedInUser?->id != $user?->id) {
@@ -605,7 +603,8 @@ class UserAuthController extends Controller
         return back()->with('status', 'Verification link has been sent.');
     }
 
-    public function verifyMFAOTPStore(LoginRequest $request, GeoIP $geoIP) {
+    public function verifyMFAOTPStore(LoginRequest $request, GeoIP $geoIP)
+    {
         $email = Email::where('email', $request->email)->first();
         $user = $email?->user ?? User::model()->find($request->user()?->id);
 

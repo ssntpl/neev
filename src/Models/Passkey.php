@@ -19,17 +19,17 @@ class Passkey extends Model
     ];
 
     protected $hidden = [
-        'public_key'
+        'public_key',
     ];
 
     protected $casts = [
         'transports' => 'array',
         'location' => 'array',
-        'last_used' => 'datetime'
+        'last_used' => 'datetime',
     ];
 
     public function user()
     {
-        return $this->belongsTo(User::getClass(),'user_id');
+        return $this->belongsTo(User::getClass(), 'user_id');
     }
 }

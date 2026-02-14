@@ -34,7 +34,6 @@ class AuthService
             if ($attempt) {
                 $attempt->is_success = true;
                 $attempt->save();
-
             } else {
                 $clientDetails = LoginAttempt::getClientDetails($request);
 

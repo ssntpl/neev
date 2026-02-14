@@ -10,9 +10,9 @@ trait VerifyEmail
     {
         if ($email) {
             $email = Email::where('email', $email)->first();
-            return $email?->verified_at ? true : false;
+            return $email?->verified_at !== null;
         }
 
-        return $this->email?->verified_at ? true : false;
+        return $this->email?->verified_at !== null;
     }
 }

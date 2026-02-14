@@ -3,10 +3,9 @@
 namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Ssntpl\Neev\Models\User;
 
 class MultiFactorAuth extends Model
-{   
+{
     protected $fillable = [
         'user_id',
         'method',
@@ -14,7 +13,7 @@ class MultiFactorAuth extends Model
         'otp',
         'expires_at',
         'last_used',
-        'preferred'
+        'preferred',
     ];
 
     protected $hidden = [
@@ -27,11 +26,11 @@ class MultiFactorAuth extends Model
         'last_used' => 'datetime',
         'secret' => 'encrypted',
         'otp' => 'hashed',
-        'preferred' => 'bool'
+        'preferred' => 'boolean',
     ];
 
     public function user()
     {
-        return $this->belongsTo(User::getClass(),'user_id');
+        return $this->belongsTo(User::getClass(), 'user_id');
     }
 }

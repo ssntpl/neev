@@ -23,7 +23,7 @@ class AccessToken extends Model
     ];
 
     protected $hidden = [
-        'token'
+        'token',
     ];
 
     protected $casts = [
@@ -35,16 +35,18 @@ class AccessToken extends Model
 
     public function user()
     {
-        return $this->belongsTo(User::getClass(),'user_id');
+        return $this->belongsTo(User::getClass(), 'user_id');
     }
 
     public function attempt()
     {
-        return $this->belongsTo(LoginAttempt::class,'attempt_id');
+        return $this->belongsTo(LoginAttempt::class, 'attempt_id');
     }
 
     public function can(string $permission): bool
     {
-        return in_array('*', $this->permissions ?? []) || in_array($permission, $this->permissions ?? []);
+        $permissions = $this->permissions ?? [];
+
+        return in_array('*', $permissions) || in_array($permission, $permissions);
     }
 }

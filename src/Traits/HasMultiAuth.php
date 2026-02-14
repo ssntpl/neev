@@ -35,7 +35,8 @@ trait HasMultiAuth
         return $this->hasMany(RecoveryCode::class);
     }
 
-    public function addMultiFactorAuth($method) {
+    public function addMultiFactorAuth($method)
+    {
         switch ($method) {
             case 'authenticator':
                 $auth = $this->multiFactorAuth($method);
@@ -82,7 +83,8 @@ trait HasMultiAuth
         }
     }
 
-    public function verifyMFAOTP($method, $otp): bool {
+    public function verifyMFAOTP($method, $otp): bool
+    {
         $auth = $this->multiFactorAuth($method ?? $this->preferredMultiFactorAuth?->method);
         if (!$auth && $method !== 'recovery') {
             return false;
@@ -122,7 +124,8 @@ trait HasMultiAuth
         return false;
     }
 
-    public function generateRecoveryCodes() {
+    public function generateRecoveryCodes()
+    {
         $this->recoveryCodes()->delete();
         $codes = [];
         for ($i = 1; $i <= config('neev.recovery_codes'); $i++) {

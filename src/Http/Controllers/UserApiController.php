@@ -37,13 +37,10 @@ class UserApiController extends Controller
     }
     
     public function getUser(Request $request)
-    {   
-        $user = $request->user();
-        $user?->emails;
-        $user?->teams;
+    {
         return response()->json([
             'status' => 'Success',
-            'data' => $user,
+            'data' => $request->user()?->load('emails', 'teams'),
         ]);
     }
 
@@ -65,7 +62,7 @@ class UserApiController extends Controller
         return response()->json($res);
     }
 
-    public function deleteMultiFactorAuthentication(Request $request) 
+    public function deleteMultiFactorAuthentication(Request $request)
     {
         $request->validate([
             'auth_method' => ['required'],
@@ -98,9 +95,8 @@ class UserApiController extends Controller
     }
 
     public function updateUser(Request $request)
-    {   
+    {
         try {
-            
             $user = User::model()->find($request->user()?->id);
             if ($request->name) {
                 $user->name = $request->name;
@@ -131,7 +127,6 @@ class UserApiController extends Controller
                 'message' => $e->getMessage(),
             ], 500);
         }
-        
     }
 
     public function deleteUser(Request $request)
@@ -155,7 +150,8 @@ class UserApiController extends Controller
         ]);
     }
 
-    public static function sendMailVerification($email) {
+    public static function sendMailVerification($email)
+    {
         $user = $email?->user;
         if (!$user) {
             return false;
@@ -172,7 +168,8 @@ class UserApiController extends Controller
         Mail::to($email->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', 60));
     }
     
-    public static function sendMailOTP(Email $email, $mfa = false) {
+    public static function sendMailOTP(Email $email, $mfa = false)
+    {
         $otp = random_int(config('neev.otp_min', 100000), config('neev.otp_max', 999999));
         $expiryMinutes = config('neev.otp_expiry_time', 15);
         $expires_at = now()->addMinutes($expiryMinutes);
@@ -293,11 +290,7 @@ class UserApiController extends Controller
                 'message' => 'User not found.',
             ]);
         }
-        $sessions = $user->loginTokens()->orderBy('last_used_at', 'desc')->get();
-
-        foreach ($sessions as $session) {
-            $session->attempt;
-        }
+        $sessions = $user->loginTokens()->with('attempt')->orderBy('last_used_at', 'desc')->get();
 
         return response()->json([
             'status' => 'Success',

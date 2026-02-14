@@ -10,11 +10,10 @@ use Illuminate\Support\Str;
 
 class PasswordUserData implements ValidationRule 
 {
-    protected $columns;
-
-    public function __construct($columns = [])
-    {
-        $this->columns = is_array($columns) ? $columns : [$columns];
+    public function __construct(
+        protected string|array $columns = [],
+    ) {
+        $this->columns = (array) $columns;
     }
 
     public static function notContain($columns)

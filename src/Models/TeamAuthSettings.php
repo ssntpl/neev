@@ -7,11 +7,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class TeamAuthSettings extends Model
 {
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var array<string>
-     */
     protected $fillable = [
         'team_id',
         'auth_method',
@@ -24,22 +19,12 @@ class TeamAuthSettings extends Model
         'auto_provision_role',
     ];
 
-    /**
-     * The attributes that should be cast.
-     *
-     * @var array<string, string>
-     */
     protected $casts = [
         'sso_client_secret' => 'encrypted',
         'sso_extra_config' => 'array',
         'auto_provision' => 'boolean',
     ];
 
-    /**
-     * The attributes that should be hidden for serialization.
-     *
-     * @var array<string>
-     */
     protected $hidden = [
         'sso_client_id',
         'sso_client_secret',

@@ -47,12 +47,9 @@ use Ssntpl\Neev\Http\Controllers\Controller;
 
 class PasskeyController extends Controller
 {
-    protected AuthService $auth;
-
-    public function __construct(AuthService $auth)
-    {
-        $this->auth = $auth;
-    }
+    public function __construct(
+        protected AuthService $auth,
+    ) {}
 
     public function generateRegistrationOptions(Request $request)
     {
@@ -234,7 +231,8 @@ class PasskeyController extends Controller
         return $passkey;
     }
 
-    public function deletePasskey(Request $request) {
+    public function deletePasskey(Request $request)
+    {
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return back()->withErrors([
@@ -251,7 +249,8 @@ class PasskeyController extends Controller
         return back()->with('status', 'Passkey has been deleted.');
     }
 
-    public function updatePasskeyName(Request $request) {
+    public function updatePasskeyName(Request $request)
+    {
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
@@ -456,7 +455,8 @@ class PasskeyController extends Controller
         }
     }
 
-    public function deletePasskeyViaAPI(Request $request) {
+    public function deletePasskeyViaAPI(Request $request)
+    {
         $user = User::model()->find($request->user()?->id);
         $passkey = Passkey::find($request->passkey_id);
         if (!$user || !$passkey || $passkey?->user_id != $user?->id) {

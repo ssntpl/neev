@@ -11,12 +11,9 @@ use Ssntpl\Neev\Models\User;
 
 class PasswordHistory implements ValidationRule 
 {
-    protected $count;
-
-    public function __construct($count = 5)
-    {
-        $this->count = $count;
-    }
+    public function __construct(
+        protected int $count = 5,
+    ) {}
 
     public static function notReused($count = 5)
     {
