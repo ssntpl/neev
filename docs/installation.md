@@ -99,7 +99,7 @@ This creates the following tables:
 | `access_tokens` | API and login tokens |
 | `login_attempts` | Login history and tracking |
 | `teams` | Teams/organizations |
-| `memberships` | Team-user relationships |
+| `team_user` | Team-user membership pivot table |
 | `team_invitations` | Pending invitations |
 | `domains` | Email domains for federation |
 | `domain_rules` | Domain-specific security rules |

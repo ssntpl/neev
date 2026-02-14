@@ -15,7 +15,7 @@
     @if ($userExist)
         you may check this invitation by clicking the button below:    
     @else
-        To accept the invitation, please create an account using the link below. This invitation link will expires at {{ $expiry }}.
+        To accept the invitation, please create an account using the link below.@if($expiry) This invitation link will expire at {{ $expiry }}.@endif
     @endif
     </p>
 

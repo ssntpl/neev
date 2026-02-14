@@ -2,7 +2,7 @@
 
 namespace Ssntpl\Neev\Http\Controllers;
 
-use Hash;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;

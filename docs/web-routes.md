@@ -335,18 +335,21 @@ Then modify `routes/neev.php` as needed.
 
 ---
 
-## Disabling Routes
+## Customizing Routes
 
-To disable specific route groups, modify your `NeevServiceProvider` or create a custom service provider:
+To customize Neev's routes, publish them and modify the published file:
 
-```php
-// In a service provider
-public function register()
-{
-    $this->app['config']->set('neev.routes.web', false);
-    $this->app['config']->set('neev.routes.api', true);
-}
+```bash
+php artisan vendor:publish --tag=neev-routes
 ```
+
+This copies the route file to your application's `routes/neev.php`. The service provider will use your published version instead of the package's default routes.
+
+You can then:
+- Remove routes you don't need
+- Add middleware to specific routes
+- Change route prefixes or names
+- Add rate limiting
 
 ---
 

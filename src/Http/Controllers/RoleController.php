@@ -4,7 +4,7 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
-use Log;
+use Illuminate\Support\Facades\Log;
 use Ssntpl\Neev\Models\User;
 
 class RoleController extends Controller

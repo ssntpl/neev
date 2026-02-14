@@ -3,7 +3,6 @@
 namespace Ssntpl\Neev\Traits;
 
 use Ssntpl\Neev\Models\Email;
-use Ssntpl\Neev\Models\User;
 
 trait VerifyEmail
 {
@@ -14,7 +13,6 @@ trait VerifyEmail
             return $email?->verified_at ? true : false;
         }
 
-        $user = User::model()->find($this->id);
-        return $user?->email?->verified_at ? true : false;
+        return $this->email?->verified_at ? true : false;
     }
 }

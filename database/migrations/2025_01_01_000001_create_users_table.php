@@ -49,6 +49,7 @@ return new class extends Migration
             $table->timestamp('verified_at')->nullable();
             $table->timestamps();
             $table->unique(['user_id', 'email']);
+            $table->index('email');
         });
 
         Schema::create('login_attempts', function (Blueprint $table) {
@@ -56,7 +57,7 @@ return new class extends Migration
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('method');
             $table->string('multi_factor_method')->nullable();
-            $table->text('location')->nullable();
+            $table->json('location')->nullable();
             $table->string('platform')->nullable();
             $table->string('browser')->nullable();
             $table->string('device')->nullable();

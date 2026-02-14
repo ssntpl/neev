@@ -4,7 +4,7 @@ namespace Ssntpl\Neev\Http\Controllers\Auth;
 
 use Exception;
 use Illuminate\Http\Request;
-use Log;
+use Illuminate\Support\Facades\Log;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Services\AuthService;

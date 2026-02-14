@@ -3,7 +3,8 @@
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
 use Exception;
-use Log;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Passkey;
@@ -43,6 +44,7 @@ use Webauthn\PublicKeyCredentialRequestOptions;
 use Webauthn\TrustPath\EmptyTrustPath;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Http\Controllers\Controller;
+
 class PasskeyController extends Controller
 {
     protected AuthService $auth;
@@ -51,6 +53,7 @@ class PasskeyController extends Controller
     {
         $this->auth = $auth;
     }
+
     public function generateRegistrationOptions(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
@@ -62,17 +65,14 @@ class PasskeyController extends Controller
         }
         $rpName = config('app.name', 'Neev');
         $rpId = parse_url(config('neev.frontend_url', config('app.url')), PHP_URL_HOST);
-        $rpEntity = new PublicKeyCredentialRpEntity($rpName, $rpId);
 
         $userId = strval($user->id);
-        $userEntity = new PublicKeyCredentialUserEntity(
-            id: $userId,
-            name: $user->email?->email,
-            displayName: $user->name
-        );
 
         $challenge = random_bytes(32);
         $base64Challenge = Base64UrlSafe::encode($challenge);
+
+        // Store challenge server-side for verification
+        Cache::put("passkey_reg_challenge:{$user->id}", $base64Challenge, 300);
 
         $authenticatorSelection = new AuthenticatorSelectionCriteria(
             residentKey: 'required',
@@ -119,10 +119,13 @@ class PasskeyController extends Controller
         $input = json_decode($request->attestation, true);
 
         $rpId = parse_url(config('neev.frontend_url', config('app.url')), PHP_URL_HOST);
-        $challenge = Base64UrlSafe::decode($input['challenge']);
-        if (!$challenge) {
-            return throw new Exception('passkey was not added.');
+
+        // Retrieve challenge from server-side storage (not from client)
+        $storedChallenge = Cache::pull("passkey_reg_challenge:{$user->id}");
+        if (!$storedChallenge) {
+            throw new Exception('Challenge expired or not found. Please try again.');
         }
+        $challenge = Base64UrlSafe::decode($storedChallenge);
 
         $clientDataJson = $input['response']['clientDataJSON'];
         $attestationObjectRaw = $input['response']['attestationObject'];
@@ -142,10 +145,10 @@ class PasskeyController extends Controller
             $input['response']['transports'] ?? []
         );
         try {
-            $credential = new PublicKeyCredential( $type, $rawId, $response);
+            $credential = new PublicKeyCredential($type, $rawId, $response);
         } catch (Throwable $e) {
             Log::error($e);
-            return throw $e;
+            throw $e;
         }
 
         // Rebuild PublicKeyCredentialCreationOptions
@@ -204,7 +207,7 @@ class PasskeyController extends Controller
             );
         } catch (Throwable $e) {
             Log::error($e);
-            return throw $e;
+            throw $e;
         }
 
         $passkey = $user->passkeys->where('aaguid', $credentialSource->aaguid->toRfc4122())->first();
@@ -230,7 +233,7 @@ class PasskeyController extends Controller
 
         return $passkey;
     }
-    
+
     public function deletePasskey(Request $request) {
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
@@ -247,7 +250,7 @@ class PasskeyController extends Controller
         $passkey->delete();
         return back()->with('status', 'Passkey has been deleted.');
     }
-    
+
     public function updatePasskeyName(Request $request) {
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
@@ -292,6 +295,11 @@ class PasskeyController extends Controller
             $rpId = parse_url(config('neev.frontend_url', config('app.url')), PHP_URL_HOST);
             $challenge = random_bytes(32);
             $base64Challenge = Base64UrlSafe::encode($challenge);
+
+            // Store challenge server-side for verification
+            $cacheKey = 'passkey_login_challenge:' . hash('sha256', $request->email);
+            Cache::put($cacheKey, $base64Challenge, 300);
+
             $options = new PublicKeyCredentialRequestOptions(
                 challenge: $challenge,
                 rpId: $rpId,
@@ -314,7 +322,7 @@ class PasskeyController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage()
+                'message' => 'Unable to generate login options.'
             ]);
         }
     }
@@ -342,7 +350,14 @@ class PasskeyController extends Controller
         $credential = new PublicKeyCredential($type, $rawId, $response);
 
         $rpId = parse_url(config('neev.frontend_url', config('app.url')), PHP_URL_HOST);
-        $challenge = Base64UrlSafe::decode($input['challenge']);
+
+        // Retrieve challenge from server-side storage (not from client)
+        $cacheKey = 'passkey_login_challenge:' . hash('sha256', $request->email);
+        $storedChallenge = Cache::pull($cacheKey);
+        if (!$storedChallenge) {
+            throw new Exception('Challenge expired or not found. Please try again.');
+        }
+        $challenge = Base64UrlSafe::decode($storedChallenge);
 
         $options = new PublicKeyCredentialRequestOptions(
             challenge: $challenge,
@@ -370,7 +385,7 @@ class PasskeyController extends Controller
         $passkey = $user?->passkeys?->where('credential_id', Base64UrlSafe::encode(Base64UrlSafe::decode($rawId)))->first();
 
         if (!$passkey || !$user || $user?->id != (int) base64_decode($input['response']['userHandle'])) {
-            return throw new Exception('Wrong Credentials.');
+            throw new Exception('Wrong Credentials.');
         }
 
         $data = Base64UrlSafe::decode($passkey->public_key);
@@ -408,7 +423,7 @@ class PasskeyController extends Controller
 
         $passkey->last_used = now();
         $passkey->save();
-        
+
         return [$user, $attempt ?? null];
     }
 

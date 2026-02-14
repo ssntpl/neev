@@ -2,14 +2,16 @@
 
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
+use Exception;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedInEvent;
 use Ssntpl\Neev\Events\LoggedOutEvent;
-use DB;
-use Exception;
-use Hash;
-use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
-use Mail;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Controllers\UserApiController;
 use Ssntpl\Neev\Mail\LoginUsingLink;
@@ -19,13 +21,10 @@ use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
-
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\EmailDomainValidator;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\TenantResolver;
-use URL;
-use Log;
 
 class UserAuthApiController extends Controller
 {
@@ -181,12 +180,15 @@ class UserAuthApiController extends Controller
                 'token' => $token,
                 'email_verified' => $user->hasVerifiedEmail(),
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (Exception $e) {
             DB::rollBack();
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'Unable to register user.',
             ], 500);
         }
     }
@@ -409,7 +411,7 @@ class UserAuthApiController extends Controller
         
         $otp = $email?->otp;
 
-        if (!$email || !$otp || $otp?->expires_at < now() || $otp?->otp !== $request->otp) {
+        if (!$email || !$otp || $otp->expires_at < now() || !hash_equals((string) $otp->otp, (string) $request->otp)) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Code verification was failed.'
@@ -439,7 +441,8 @@ class UserAuthApiController extends Controller
                 ]);
             }
 
-            if ($email->otp?->otp !== $request->otp) {
+            $otp = $email->otp;
+            if (!$otp || $otp->expires_at < now() || !hash_equals((string) $otp->otp, (string) $request->otp)) {
                 return response()->json([
                     'status' => 'Failed',
                     'message' => 'Code verification was failed.',
@@ -463,11 +466,13 @@ class UserAuthApiController extends Controller
                 'status' => 'Success',
                 'message' => 'Password has been updated.'
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'Password reset failed.',
             ], 500);
         }
     }

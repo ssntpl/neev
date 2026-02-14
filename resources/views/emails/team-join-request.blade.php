@@ -8,7 +8,7 @@
     <h2>Hello {{ $owner }},</h2>
 
     <p>
-        {{$username}} want to join the {{ $team }} team!
+        {{ $username }} wants to join the {{ $team }} team!
     </p>
 
     <p>

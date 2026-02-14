@@ -4,7 +4,6 @@ use Illuminate\Support\Facades\Route;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthApiController;
 use Ssntpl\Neev\Http\Controllers\Auth\OAuthController;
 use Ssntpl\Neev\Http\Controllers\Auth\PasskeyController;
-use Ssntpl\Neev\Http\Controllers\Auth\TenantSSOController;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Http\Controllers\RoleController;
 use Ssntpl\Neev\Http\Controllers\TeamApiController;
@@ -72,12 +71,6 @@ Route::middleware('web')->group(function () {
         ->name('oauth.redirect');
     Route::get('/oauth/{service}/callback', [OAuthController::class, 'callback'])
         ->name('oauth.callback');
-
-    // Tenant SSO (for tenant-driven authentication)
-    Route::get('/sso/redirect', [TenantSSOController::class, 'redirect'])
-        ->name('sso.redirect');
-    Route::get('/sso/callback', [TenantSSOController::class, 'callback'])
-        ->name('sso.callback');
 
     Route::get('/email/verify/{id}/{hash}', [UserAuthController::class, 'emailVerifyStore'])
         ->name('verification.verify');
@@ -201,15 +194,17 @@ Route::middleware('web')->group(function () {
 
 //APIs
 Route::prefix('/neev')->group(function () {
-    Route::post('/register', [UserAuthApiController::class, 'register']);
-    Route::post('/login', [UserAuthApiController::class, 'login']);
-    Route::post('/sendLoginLink', [UserAuthApiController::class, 'sendLoginLink']);
+    Route::middleware('throttle:10,1')->group(function () {
+        Route::post('/register', [UserAuthApiController::class, 'register']);
+        Route::post('/login', [UserAuthApiController::class, 'login']);
+        Route::post('/sendLoginLink', [UserAuthApiController::class, 'sendLoginLink']);
+        Route::post('/email/otp/send', [UserAuthApiController::class, 'sendEmailOTP']);
+        Route::post('/email/otp/verify', [UserAuthApiController::class, 'verifyEmailOTP']);
+        Route::post('/forgotPassword', [UserAuthApiController::class, 'forgotPassword']);
+        Route::get('/passkeys/login/options',[PasskeyController::class,'generateLoginOptions']);
+        Route::post('/passkeys/login',[PasskeyController::class,'loginViaAPI']);
+    });
     Route::get('/loginUsingLink', [UserAuthApiController::class, 'loginUsingLink'])->name('loginUsingLink');
-    Route::post('/email/otp/send', [UserAuthApiController::class, 'sendEmailOTP']);
-    Route::post('/email/otp/verify', [UserAuthApiController::class, 'verifyEmailOTP']);
-    Route::post('/forgotPassword', [UserAuthApiController::class, 'forgotPassword']);
-    Route::get('/passkeys/login/options',[PasskeyController::class,'generateLoginOptions']);
-    Route::post('/passkeys/login',[PasskeyController::class,'loginViaAPI']);
 
     Route::middleware('neev:api')->group(function () {
         Route::post('/logout', [UserAuthApiController::class, 'logout']);

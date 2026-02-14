@@ -14,6 +14,6 @@ class DomainRule extends Model
 
     public function domain()
     {
-        return $this->belongsTo(Team::getClass(), 'domain_id');
+        return $this->belongsTo(Domain::class);
     }
 }

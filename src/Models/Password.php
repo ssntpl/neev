@@ -8,7 +8,11 @@ use Illuminate\Support\Carbon;
 class Password extends Model
 {
     protected $fillable = [
-        'user_id', 
+        'user_id',
+        'password',
+    ];
+
+    protected $hidden = [
         'password',
     ];
 
@@ -43,8 +47,8 @@ class Password extends Model
 
     public static function isLoginBlock($user) {
         $password = config('neev');
-        if ($user || $password) {
-            return;
+        if (!$user || !$password) {
+            return false;
         }
 
         $currentPassword = Password::where('user_id', $user->id)->orderByDesc('id')->first();

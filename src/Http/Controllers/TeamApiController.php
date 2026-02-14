@@ -4,16 +4,16 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
-use Log;
-use Mail;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
-use Str;
-use URL;
 
 class TeamApiController extends Controller
 {

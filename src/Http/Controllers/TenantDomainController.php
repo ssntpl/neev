@@ -4,12 +4,12 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
-use Log;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\TenantResolver;
-use Str;
 
 class TenantDomainController extends Controller
 {

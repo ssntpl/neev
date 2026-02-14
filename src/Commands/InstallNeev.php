@@ -2,10 +2,10 @@
 
 namespace Ssntpl\Neev\Commands;
 
-use DB;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\PromptsForMissingInput;
-use Schema;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use function Laravel\Prompts\select;
 
 class InstallNeev extends Command implements PromptsForMissingInput

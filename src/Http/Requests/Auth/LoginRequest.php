@@ -2,7 +2,7 @@
 
 namespace Ssntpl\Neev\Http\Requests\Auth;
 
-use Hash;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Auth\Events\Lockout;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Auth;
@@ -78,7 +78,7 @@ class LoginRequest extends FormRequest
     {
         $softFail = config('neev.login_soft_attempts', 5);
         $hardFail = config('neev.login_hard_attempts', 20);
-        $blockMinutes = config('neev.password.login_block_minutes', 1);
+        $blockMinutes = config('neev.login_block_minutes', 1);
         
         $key = $this->throttleKey();
         $attempts = Cache::get($key . ':attempts', 0) + 1;

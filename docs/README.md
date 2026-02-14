@@ -137,11 +137,13 @@ Neev provides several middleware groups for protecting your routes:
 
 | Middleware | Description |
 |------------|-------------|
-| `neev:web` | Web authentication with MFA and email verification |
+| `neev:web` | Web authentication with MFA, email verification, and active account check |
 | `neev:api` | API token authentication |
 | `neev:tenant` | Tenant isolation (resolves tenant from domain) |
-| `neev:tenant-web` | Tenant + web authentication |
-| `neev:tenant-api` | Tenant + API authentication |
+| `neev:tenant-web` | Tenant + membership check + web authentication |
+| `neev:tenant-api` | Tenant + membership check + API authentication |
+| `neev:active-team` | Blocks access when the user's team is inactive/waitlisted |
+| `neev:tenant-member` | Ensures user is a member of the current tenant |
 
 ### Usage Example
 

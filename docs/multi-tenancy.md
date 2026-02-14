@@ -70,6 +70,43 @@ NEEV_SUBDOMAIN_SUFFIX=.yourapp.com
 
 ---
 
+## Tenant Resolution
+
+The `TenantResolver` singleton resolves the current tenant using the following priority order:
+
+1. **X-Tenant Header** -- Resolve by team ID, slug, or domain via the `X-Tenant` request header
+2. **Subdomain** -- Extract slug from subdomain (e.g., `acme.yourapp.com` -> slug `acme`)
+3. **Custom Domain** -- Look up the full domain in the `domains` table
+
+### Using the X-Tenant Header (API)
+
+For API requests where subdomain routing isn't available, use the `X-Tenant` header:
+
+```bash
+# By team ID
+curl -H "X-Tenant: 42" -H "Authorization: Bearer {token}" https://api.yourapp.com/resource
+
+# By team slug
+curl -H "X-Tenant: acme-corp" -H "Authorization: Bearer {token}" https://api.yourapp.com/resource
+
+# By domain
+curl -H "X-Tenant: app.acme.com" -H "Authorization: Bearer {token}" https://api.yourapp.com/resource
+```
+
+### Accessing the Current Tenant
+
+```php
+use Ssntpl\Neev\Services\TenantResolver;
+
+$resolver = app(TenantResolver::class);
+
+$tenant = $resolver->getCurrentTenant();   // Returns Team model or null
+$resolver->resolvedVia;                     // 'subdomain', 'header', or 'custom_domain'
+$resolver->isResolvedDomainVerified();      // Whether the domain is verified
+```
+
+---
+
 ## Subdomain-Based Tenancy
 
 ### How It Works
@@ -419,7 +456,7 @@ Automatically create users on SSO login.
 // Per-tenant override
 $team->authSettings()->update([
     'auto_provision' => true,
-    'default_role' => 'viewer',
+    'auto_provision_role' => 'viewer',
 ]);
 ```
 
@@ -494,7 +531,7 @@ $ssoManager->ensureMembership($user, $tenant);
 
 ## Database Schema
 
-### tenant_domains Table
+### domains Table
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -518,10 +555,9 @@ $ssoManager->ensureMembership($user, $tenant);
 | sso_client_id | string | OAuth client ID |
 | sso_client_secret | text | Encrypted client secret |
 | sso_tenant_id | string | Provider tenant ID |
-| sso_base_url | string | Provider base URL |
-| sso_domain | string | Restrict to domain |
+| sso_extra_config | json | Additional provider config (base URL, domain restrictions, etc.) |
 | auto_provision | boolean | Auto-create users |
-| default_role | string | Role for new users |
+| auto_provision_role | string | Role for auto-provisioned users |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 

@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
             $table->foreignId('team_id')->constrained()->onDelete('cascade');
             $table->boolean('enforce')->default(false);
-            $table->string('domain');
+            $table->string('domain')->index();
             $table->string('verification_token')->nullable();
             $table->boolean('is_primary')->default(false);
             $table->timestamp('verified_at')->nullable();

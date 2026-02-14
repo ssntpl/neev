@@ -11,6 +11,7 @@
 
             <div class="block">
                 <x-neev-component::input id="email" class="block mt-1 w-full" type="hidden" name="email" :value="$email" required autofocus />
+                <input type="hidden" name="reset_token" value="{{ $reset_token }}" />
             </div>
 
             <div class="mt-4">

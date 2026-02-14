@@ -4,7 +4,7 @@ namespace Ssntpl\Neev\Services;
 
 use Exception;
 use GeoIp2\Database\Reader;
-use Log;
+use Illuminate\Support\Facades\Log;
 
 class GeoIP
 {

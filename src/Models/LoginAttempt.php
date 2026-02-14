@@ -27,7 +27,9 @@ class LoginAttempt extends Model
     ];
 
     protected $casts = [
-        'location' => 'array'
+        'location' => 'array',
+        'is_success' => 'boolean',
+        'is_suspicious' => 'boolean',
     ];
 
     public function user()

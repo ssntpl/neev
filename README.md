@@ -680,7 +680,7 @@ protected function schedule(Schedule $schedule)
 | Table | Description |
 |-------|-------------|
 | `teams` | Teams/organizations |
-| `memberships` | Team-user relationships |
+| `team_user` | Team-user membership pivot table |
 | `team_invitations` | Pending invitations |
 | `domains` | Email domain federation |
 | `domain_rules` | Domain security rules |
@@ -689,7 +689,7 @@ protected function schedule(Schedule $schedule)
 
 | Table | Description |
 |-------|-------------|
-| `tenant_domains` | Custom tenant domains |
+| `domains` | Custom tenant domains and domain federation |
 | `team_auth_settings` | Per-tenant auth config |
 
 ---

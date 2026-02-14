@@ -2,9 +2,9 @@
 
 namespace Ssntpl\Neev;
 
-use Blade;
+use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
-use Route;
 use Ssntpl\Neev\Commands\CleanOldLoginAttempts;
 use Ssntpl\Neev\Commands\CleanOldPasswords;
 use Ssntpl\Neev\Commands\DownloadGeoLiteDb;

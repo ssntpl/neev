@@ -133,7 +133,7 @@ For each login attempt:
 ```php
 LoginAttempt::Password     // password
 LoginAttempt::Passkey      // passkey
-LoginAttempt::MagicAuth    // magic_auth
+LoginAttempt::MagicAuth    // magic auth
 LoginAttempt::OAuth        // oauth
 LoginAttempt::SSO          // sso
 ```
@@ -203,7 +203,7 @@ use Ssntpl\Neev\Services\GeoIP;
 $geoIP = app(GeoIP::class);
 $location = $geoIP->getLocation('8.8.8.8');
 
-// Returns: "Mountain View, California, US"
+// Returns: ['city' => 'Mountain View', 'state' => 'California', 'country' => 'United States', 'country_iso' => 'US', 'latitude' => 37.386, 'longitude' => -122.0838, 'timezone' => 'America/Los_Angeles']
 ```
 
 ### Automatic Updates

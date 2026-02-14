@@ -12,6 +12,10 @@ class RecoveryCode extends Model
         'code'
     ];
 
+    protected $hidden = [
+        'code',
+    ];
+
     protected $casts = [
         'code' => 'hashed',
     ];

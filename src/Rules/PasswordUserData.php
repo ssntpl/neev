@@ -6,7 +6,7 @@ use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\User;
-use Str;
+use Illuminate\Support\Str;
 
 class PasswordUserData implements ValidationRule 
 {
@@ -38,13 +38,13 @@ class PasswordUserData implements ValidationRule
         foreach ($this->columns as $column) {
             if ($column === 'email') {
                 $emailValue = $user->email?->email;
-                if ($emailValue && (str_contains(Str::lower($value), Str::lower($emailValue)) || str_contains(Str::lower($emailValue), Str::lower($value)))) {
+                if ($emailValue && strlen($emailValue) >= 3 && str_contains(Str::lower($value), Str::lower($emailValue))) {
                     $fail("Password should not contain your email.");
                     return;
                 }
             } else {
                 $columnValue = $user->{$column} ?? null;
-                if ($columnValue && (str_contains(Str::lower($value), Str::lower($columnValue)) || str_contains(Str::lower($columnValue), Str::lower($value)))) {
+                if ($columnValue && strlen($columnValue) >= 3 && str_contains(Str::lower($value), Str::lower($columnValue))) {
                     $fail("Password should not contain your {$column}.");
                     return;
                 }

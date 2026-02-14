@@ -45,6 +45,6 @@ class AccessToken extends Model
 
     public function can(string $permission): bool
     {
-        return empty($permission) || in_array('*', $this->permissions ?? []) || in_array($permission, $this->permissions ?? []);
+        return in_array('*', $this->permissions ?? []) || in_array($permission, $this->permissions ?? []);
     }
 }

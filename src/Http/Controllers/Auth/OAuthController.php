@@ -2,11 +2,12 @@
 
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
-use DB;
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
-use Log;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
@@ -14,7 +15,6 @@ use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
-use Str;
 
 class OAuthController extends Controller
 {
@@ -26,6 +26,10 @@ class OAuthController extends Controller
     }
     public function redirect(Request $request, string $service)
     {
+        if (!in_array($service, config('neev.oauth', []))) {
+            abort(404);
+        }
+
         $email = $request->email;
 
         $params = [];
@@ -39,6 +43,10 @@ class OAuthController extends Controller
    
     public function callback(Request $request, string $service, GeoIP $geoIP)
     {
+        if (!in_array($service, config('neev.oauth', []))) {
+            abort(404);
+        }
+
         if (!$request->code) {
             return redirect(route('login'));
         }

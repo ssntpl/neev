@@ -556,7 +556,7 @@ When `require_company_email` is enabled:
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 
-### memberships Table
+### team_user Table (Memberships)
 
 | Column | Type | Description |
 |--------|------|-------------|

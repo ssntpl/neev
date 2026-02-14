@@ -71,7 +71,7 @@ When enabled (requires `team` feature):
 When enabled (requires `team` feature):
 - Teams are isolated by subdomain or custom domain
 - Enables multi-tenant SaaS architecture
-- Requires `tenant_domains` table
+- Requires `domains` table
 
 ### Tenant Isolation Options
 

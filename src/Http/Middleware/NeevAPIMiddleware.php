@@ -3,7 +3,7 @@
 namespace Ssntpl\Neev\Http\Middleware;
 
 use Closure;
-use Hash;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Ssntpl\Neev\Models\AccessToken;
 use Symfony\Component\HttpFoundation\Response;
@@ -19,7 +19,7 @@ class NeevAPIMiddleware
     {
         $token = $this->getTokenFromRequest($request);
 
-        if (! $token) {
+        if (! $token || ! str_contains($token, '|')) {
             return response()->json([
                 'message' => 'Missing token'
             ], 401);
@@ -27,17 +27,33 @@ class NeevAPIMiddleware
 
         [$id, $token] = explode('|', $token, 2);
         $accessToken = AccessToken::find($id);
-        
+
         if (!$accessToken || !Hash::check($token, $accessToken->token) || ($accessToken->token_type == AccessToken::mfa_token && !$request->is('neev/mfa/otp/verify'))) {
             return response()->json([
                 'message' => 'Invalid or expired token'
             ], 401);
         }
 
-        $accessToken->update(['last_used_at' => now()]);
+        // Check token expiry
+        if ($accessToken->expires_at && $accessToken->expires_at->isPast()) {
+            $accessToken->delete();
+            return response()->json([
+                'message' => 'Invalid or expired token'
+            ], 401);
+        }
+
         $user = $accessToken->user;
 
-        if (config('neev.email_verified') && !$user?->hasVerifiedEmail() && !$request->is('neev/email/send') && !$request->is('neev/logout') && !$request->is('neev/email/update') && !$request->is('neev/email/verify') && !$request->is('neev/email/otp/send') && !$request->is('neev/email/otp/verify') && !$request->is('neev/users')) {
+        // Check if user account is active
+        if (!$user || !$user->active) {
+            return response()->json([
+                'message' => 'Your account is deactivated.'
+            ], 403);
+        }
+
+        $accessToken->update(['last_used_at' => now()]);
+
+        if (config('neev.email_verified') && !$user->hasVerifiedEmail() && !$request->is('neev/email/send') && !$request->is('neev/logout') && !$request->is('neev/email/update') && !$request->is('neev/email/verify') && !$request->is('neev/email/otp/send') && !$request->is('neev/email/otp/verify') && !$request->is('neev/users')) {
             return response()->json([
                 'message' => 'Email not verified.'
             ], 401);
@@ -45,7 +61,7 @@ class NeevAPIMiddleware
 
         $request->setUserResolver(fn () => $user);
         $request->attributes->set('token_id', $id);
-        
+
         return $next($request);
     }
 

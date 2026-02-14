@@ -35,10 +35,19 @@ class User extends Authenticatable
         'active',
     ];
 
+    protected $hidden = [
+        'remember_token',
+    ];
+
+    protected $casts = [
+        'active' => 'boolean',
+    ];
+
     public function getProfilePhotoUrlAttribute()
     {
-        if ($this->profile_photo_url ?? false) {
-            return $this->profile_photo_url;
+        $photoUrl = $this->attributes['profile_photo_url'] ?? null;
+        if ($photoUrl) {
+            return $photoUrl;
         }
         return collect(explode(' ', $this->name))->map(fn($word) => strtoupper(substr($word, 0, 1)))->join('');
     }

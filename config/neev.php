@@ -80,7 +80,7 @@ return [
     | When enabled: Teams are isolated by domain/subdomain. Each tenant runs on
     | their own domain (tenant1.yourapp.com) or custom domain (tenant1.com).
     | Requires: 'team' feature to be enabled
-    | Database: Requires tenant_domains table
+    | Database: Requires domains table
     | Middleware: Adds 'neev:tenant' and 'neev:tenant-api' middleware groups
     | Use case: SaaS applications with isolated tenants
     | Default: false (no domain-based tenant isolation)
@@ -319,6 +319,13 @@ return [
     */
     'dashboard_url' => env('NEEV_DASHBOARD_URL', env('APP_URL').'/dashboard'),
 
+    /*
+    | Frontend Application URL
+    | ------------------------
+    | Base URL for the frontend application. Used to construct redirect URLs
+    | in API authentication flows (magic links, SSO callbacks).
+    | Defaults to APP_URL. Override if your frontend runs on a different domain.
+    */
     'frontend_url' => env('APP_URL'),
 
     /*
@@ -455,7 +462,7 @@ return [
     | Used to determine city, country, and coordinates from IP addresses.
     |
     | Setup:
-    | 1. Run 'php artisan neev:download-geolite' to download database
+    | 1. Run 'php artisan neev:download-geoip' to download database
     | 2. Database updates monthly, set up cron job for automatic updates
     | 3. File size: ~70MB, ensure adequate storage space
     |

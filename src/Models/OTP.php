@@ -15,6 +15,10 @@ class OTP extends Model
         'expires_at',
     ];
 
+    protected $hidden = [
+        'otp',
+    ];
+
     protected $casts = [
         'expires_at' => 'datetime',
     ];

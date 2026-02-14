@@ -24,6 +24,10 @@ return new class extends Migration
             $table->index('slug');
         });
 
+        Schema::table('users', function (Blueprint $table) {
+            $table->foreignId('current_team_id')->nullable()->constrained('teams')->nullOnDelete();
+        });
+
         Schema::create('team_user', function (Blueprint $table) {
             $table->id();
             $table->foreignId('team_id')->constrained()->onDelete('cascade');
@@ -42,6 +46,9 @@ return new class extends Migration
     public function down(): void
     {
         Schema::dropIfExists('team_user');
+        Schema::table('users', function (Blueprint $table) {
+            $table->dropConstrainedForeignId('current_team_id');
+        });
         Schema::dropIfExists('teams');
     }
 };

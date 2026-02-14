@@ -2,15 +2,17 @@
 
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
-use Ssntpl\Neev\Events\LoggedOutEvent;
-use Auth;
-use DB;
 use Exception;
-use Hash;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Session;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
-use Mail;
-use Session;
+use Ssntpl\Neev\Events\LoggedOutEvent;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
 use Ssntpl\Neev\Mail\EmailOTP;
@@ -25,8 +27,6 @@ use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\TenantResolver;
-use URL;
-use Log;
 
 class UserAuthController extends Controller
 {
@@ -76,7 +76,12 @@ class UserAuthController extends Controller
         if (!$user || !$email) {
             return back()->withErrors(['message' => 'User not found.']);
         }
+        $request->validate([
+            'email' => 'required|string|email|max:255',
+        ]);
+
         $email->email = $request->email;
+        $email->verified_at = null;
         $email->save();
 
         $expiryMinutes = config('neev.url_expiry_time', 60);
@@ -329,7 +334,7 @@ class UserAuthController extends Controller
             return redirect(route('otp.mfa.create', $user->preferredMultiAuth?->method ?? $user->multiFactorAuths()->first()?->method));
         }
 
-        if ($request->redirect && $request->redirect != '/') {
+        if ($request->redirect && $request->redirect != '/' && str_starts_with($request->redirect, '/')) {
             return redirect($request->redirect);
         }
         
@@ -394,7 +399,9 @@ class UserAuthController extends Controller
                 continue;
             }
             
-            return view('neev::auth.reset-password', ['email' => $email->email]);
+            $resetToken = bin2hex(random_bytes(32));
+            session(['password_reset_token' => $resetToken, 'password_reset_email' => $email->email]);
+            return view('neev::auth.reset-password', ['email' => $email->email, 'reset_token' => $resetToken]);
         }
 
         return redirect(route('password.request'))->withErrors(['message' => 'Invalid verification link.']);
@@ -405,7 +412,15 @@ class UserAuthController extends Controller
         $request->validate([
             'email' => 'required|string|email|max:255',
             'password' => config('neev.password'),
+            'reset_token' => 'required|string',
         ]);
+
+        // Verify the reset token matches the session
+        $sessionToken = session()->pull('password_reset_token');
+        $sessionEmail = session()->pull('password_reset_email');
+        if (!$sessionToken || !hash_equals($sessionToken, $request->reset_token) || $sessionEmail !== $request->email) {
+            return redirect(route('password.request'))->withErrors(['message' => 'Invalid or expired reset link. Please request a new one.']);
+        }
 
         $email = Email::where('email', $request->email)->first();
         $user = $email?->user;
@@ -531,7 +546,10 @@ class UserAuthController extends Controller
                     'error' => __('You cannot logout your current session.'),
                 ]);
             }
-            DB::table('sessions')->where('id', $request->session_id )->delete();
+            DB::table('sessions')
+                ->where('id', $request->session_id)
+                ->where('user_id', $user->id)
+                ->delete();
         }
 
         event(new LoggedOutEvent($user));

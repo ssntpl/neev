@@ -3,15 +3,15 @@
 namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
-use Hash;
 use Illuminate\Http\Request;
-use Log;
-use Mail;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\User;
-use URL;
 
 class UserApiController extends Controller
 {

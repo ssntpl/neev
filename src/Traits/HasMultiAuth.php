@@ -6,12 +6,12 @@ use BaconQrCode\Renderer\Image\SvgImageBackEnd;
 use BaconQrCode\Renderer\ImageRenderer;
 use BaconQrCode\Renderer\RendererStyle\RendererStyle;
 use BaconQrCode\Writer;
-use Hash;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
 use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\RecoveryCode;
-use Str;
 
 trait HasMultiAuth
 {
@@ -91,9 +91,12 @@ trait HasMultiAuth
         switch ($auth?->method ?? $method) {
             case 'authenticator':
                 $totp = TOTP::create(secret: $auth->secret);
-                $auth->last_used = now();
-                $auth->save();
-                return $totp->verify(otp: $otp, timestamp: null, leeway: 29);
+                if ($totp->verify(otp: $otp, timestamp: null, leeway: 29)) {
+                    $auth->last_used = now();
+                    $auth->save();
+                    return true;
+                }
+                return false;
 
             case 'email':
                 $otpStored = (string) $auth->otp;

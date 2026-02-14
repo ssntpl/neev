@@ -2,8 +2,8 @@
 
 namespace Ssntpl\Neev\Rules;
 
-use Hash;
 use Closure;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Password;
