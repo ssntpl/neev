@@ -574,44 +574,123 @@ Route::middleware(['neev:tenant-web'])->group(function () {
 });
 ```
 
-### 2. Tenant-Aware Controllers
+### 2. Tenant-Scoped Models
+
+Use the `BelongsToTenant` trait to automatically scope any model to the current tenant.
+
+#### Migration
+
+Add a `tenant_id` column to your table:
 
 ```php
-class DashboardController extends Controller
+Schema::create('projects', function (Blueprint $table) {
+    $table->id();
+    $table->foreignId('tenant_id')->constrained('teams')->cascadeOnDelete();
+    $table->string('name');
+    $table->timestamps();
+
+    // Tip: make unique constraints tenant-aware
+    $table->unique(['tenant_id', 'name']);
+});
+```
+
+#### Model
+
+```php
+use Ssntpl\Neev\Traits\BelongsToTenant;
+
+class Project extends Model
 {
-    public function index(Request $request, TenantResolver $resolver)
-    {
-        $tenant = $resolver->current();
-
-        $data = SomeModel::where('team_id', $tenant->id)->get();
-
-        return view('dashboard', compact('tenant', 'data'));
-    }
+    use BelongsToTenant;
 }
 ```
 
-### 3. Tenant Scopes
+That's it. All queries on `Project` are now automatically scoped to the current tenant, and `tenant_id` is auto-filled when creating new records.
+
+#### How It Works
+
+- **Querying**: A `WHERE tenant_id = <current_tenant_id>` clause is added to every query automatically.
+- **Creating**: `tenant_id` is set from the resolved tenant. You can override it by setting the value explicitly.
+- **No tenant context**: When there is no resolved tenant (console commands, queue jobs without tenant context, or when `tenant_isolation` is disabled), the scope is a no-op — queries run unscoped.
+
+#### Querying
 
 ```php
-// Create a global scope for tenant isolation
-class TenantScope implements Scope
-{
-    public function apply(Builder $builder, Model $model)
-    {
-        $tenant = app(TenantResolver::class)->current();
+// Automatically scoped to current tenant
+$projects = Project::all();
+$project = Project::where('status', 'active')->first();
 
-        if ($tenant) {
-            $builder->where('team_id', $tenant->id);
-        }
-    }
-}
+// Cross-tenant queries (admin dashboards, reports, etc.)
+$allProjects = Project::withoutTenantScope()->get();
+$allProjects = Project::withoutTenantScope()->where('status', 'active')->paginate();
+```
 
-// Apply to models
+#### Creating Records
+
+```php
+// tenant_id is set automatically from the resolved tenant
+$project = Project::create(['name' => 'My Project']);
+
+// You can override tenant_id explicitly
+$project = Project::create(['name' => 'My Project', 'tenant_id' => $otherTeamId]);
+```
+
+#### Tenant Relationship
+
+The trait provides a `tenant()` relationship:
+
+```php
+$project->tenant;       // Returns the Team model
+$project->tenant->name; // 'Acme Corporation'
+```
+
+#### Custom Column Name
+
+If your table uses a different column name (e.g., `team_id`), define a constant on your model:
+
+```php
 class Project extends Model
 {
-    protected static function booted()
+    use BelongsToTenant;
+
+    const TENANT_ID_COLUMN = 'team_id';
+}
+```
+
+#### Console & Queue Context
+
+In artisan commands or queue jobs, there is no HTTP request, so no tenant is resolved. You can manually set the tenant:
+
+```php
+// In an artisan command or queue job
+$resolver = app(TenantResolver::class);
+$resolver->setCurrentTenant($team);
+
+// Now scoped queries work
+$projects = Project::all(); // Scoped to $team
+```
+
+### 3. Tenant-Aware Controllers
+
+With `BelongsToTenant`, controllers no longer need manual filtering:
+
+```php
+class ProjectController extends Controller
+{
+    public function index()
     {
-        static::addGlobalScope(new TenantScope);
+        // Automatically scoped to current tenant
+        $projects = Project::paginate(20);
+
+        return view('projects.index', compact('projects'));
+    }
+
+    public function store(Request $request)
+    {
+        // tenant_id auto-set
+        $project = Project::create($request->validated());
+
+        return redirect()->route('projects.show', $project);
     }
 }
 ```
