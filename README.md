@@ -720,8 +720,8 @@ For comprehensive documentation, see the [docs folder](./docs/):
 
 ## Requirements
 
-- PHP 8.1+
-- Laravel 10.x or 11.x
+- PHP 8.3+
+- Laravel 10.x, 11.x, or 12.x
 - MySQL, PostgreSQL, or SQLite
 
 ---
