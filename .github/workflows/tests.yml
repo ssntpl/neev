@@ -35,6 +35,7 @@ jobs:
           - php: '8.3'
             laravel: '12.*'
             testbench: '10.*'
+            coverage: true
           - php: '8.4'
             laravel: '11.*'
             testbench: '9.*'
@@ -53,7 +54,7 @@ jobs:
         with:
           php-version: ${{ matrix.php }}
           extensions: mbstring, xml, pdo_sqlite
-          coverage: none
+          coverage: ${{ matrix.coverage && 'pcov' || 'none' }}
 
       - name: Install dependencies
         run: |
@@ -61,4 +62,15 @@ jobs:
           composer update --prefer-stable --prefer-dist --no-interaction
 
       - name: Run tests
+        if: ${{ !matrix.coverage }}
         run: vendor/bin/phpunit
+
+      - name: Run tests with coverage
+        if: ${{ matrix.coverage }}
+        run: vendor/bin/phpunit --coverage-clover coverage.xml
+
+      - name: Upload coverage to Codecov
+        if: ${{ matrix.coverage }}
+        uses: codecov/codecov-action@v5
+        with:
+          files: coverage.xml

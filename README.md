@@ -6,6 +6,10 @@ Neev is a comprehensive Laravel package that provides enterprise-grade user auth
 [![License](https://img.shields.io/packagist/l/ssntpl/neev.svg?style=flat-square)](https://packagist.org/packages/ssntpl/neev)
 [![Code Style](https://github.com/ssntpl/neev/actions/workflows/code-style.yml/badge.svg)](https://github.com/ssntpl/neev/actions/workflows/code-style.yml)
 [![Static Analysis](https://github.com/ssntpl/neev/actions/workflows/static-analysis.yml/badge.svg)](https://github.com/ssntpl/neev/actions/workflows/static-analysis.yml)
+[![Tests](https://github.com/ssntpl/neev/actions/workflows/tests.yml/badge.svg)](https://github.com/ssntpl/neev/actions/workflows/tests.yml)
+[![Coverage](https://codecov.io/gh/ssntpl/neev/branch/main/graph/badge.svg)](https://codecov.io/gh/ssntpl/neev)
+[![PHP Version](https://img.shields.io/packagist/dependency-v/ssntpl/neev/php?style=flat-square)](https://packagist.org/packages/ssntpl/neev)
+[![Total Downloads](https://img.shields.io/packagist/dt/ssntpl/neev.svg?style=flat-square)](https://packagist.org/packages/ssntpl/neev)
 
 ---
 
