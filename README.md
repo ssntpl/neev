@@ -721,7 +721,7 @@ For comprehensive documentation, see the [docs folder](./docs/):
 ## Requirements
 
 - PHP 8.3+
-- Laravel 10.x, 11.x, or 12.x
+- Laravel 11.x or 12.x
 - MySQL, PostgreSQL, or SQLite
 
 ---

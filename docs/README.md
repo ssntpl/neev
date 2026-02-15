@@ -235,7 +235,7 @@ class LogSuccessfulLogin
 ## Requirements
 
 - PHP 8.3+
-- Laravel 10.x, 11.x, or 12.x
+- Laravel 11.x or 12.x
 - Database (MySQL, PostgreSQL, SQLite)
 
 ### Optional Dependencies
