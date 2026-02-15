@@ -10,7 +10,8 @@ use Illuminate\Queue\SerializesModels;
 
 class TeamInvitation extends Mailable
 {
-    use Queueable, SerializesModels;
+    use Queueable;
+    use SerializesModels;
 
     public function __construct(
         public $team,
@@ -18,7 +19,8 @@ class TeamInvitation extends Mailable
         public $url = null,
         public $expiry = null,
         public $userExist = true,
-    ) {}
+    ) {
+    }
 
     public function envelope(): Envelope
     {

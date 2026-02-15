@@ -121,19 +121,19 @@ class UserController extends Controller
         $validationRules = [
             'name' => 'required|string|max:255',
         ];
-        
+
         if (config('neev.support_username')) {
             $usernameRules = config('neev.username');
             // Remove unique rule for current user
-            $usernameRules = array_filter($usernameRules, function($rule) {
+            $usernameRules = array_filter($usernameRules, function ($rule) {
                 return !str_contains($rule, 'unique:');
             });
             $usernameRules[] = 'unique:users,username,' . $request->user()?->id;
             $validationRules['username'] = $usernameRules;
         }
-        
+
         $request->validate($validationRules);
-        
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return back()->withErrors(['message' => 'User not found.']);
@@ -174,7 +174,7 @@ class UserController extends Controller
         if (!$email) {
             return back()->withErrors(['message' => 'Email does not exist.']);
         }
-        
+
         if ($email->is_primary) {
             return back()->withErrors(['message' => 'Cannot delete primary email.']);
         }
@@ -188,10 +188,10 @@ class UserController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         $email = $user?->emails?->where('email', $request->email)->first();
-        if ( !$user || !$email || !$email?->verified_at) {
+        if (!$user || !$email || !$email?->verified_at) {
             return back()->withErrors(['message' => 'Your primary email was not changed.']);
         }
-        
+
         $pemail = $user->email;
         $pemail->is_primary = false;
         $pemail->save();
@@ -368,11 +368,11 @@ class UserController extends Controller
         if (!$token) {
             return back()->withErrors(['message' => 'Token was not updated.']);
         }
-        
+
         if (!empty($request->permissions)) {
             $token->permissions = $request->permissions;
         }
-        
+
         $token->save();
         return back()->with('status', 'Token has been updated.');
     }

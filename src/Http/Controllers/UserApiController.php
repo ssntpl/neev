@@ -24,18 +24,18 @@ class UserApiController extends Controller
                 'message' => 'Email was not updated.'
             ]);
         }
-        
+
         $email->email = $request->email;
         $email->save();
 
         self::sendMailVerification($email);
-        
+
         return response()->json([
             'status' => 'Success',
             'message' => 'Email has been updated.'
         ]);
     }
-    
+
     public function getUser(Request $request)
     {
         return response()->json([
@@ -104,12 +104,12 @@ class UserApiController extends Controller
             if ($request->username) {
                 $usernameRules = config('neev.username');
                 // Remove unique rule for current user
-                $usernameRules = array_filter($usernameRules, function($rule) {
+                $usernameRules = array_filter($usernameRules, function ($rule) {
                     return !str_contains($rule, 'unique:');
                 });
                 $usernameRules[] = 'unique:users,username,' . $request->user()->id;
                 $validationRules['username'] = $usernameRules;
-                
+
                 $request->validate($validationRules);
                 $user->username = $request->username;
             }
@@ -142,7 +142,7 @@ class UserApiController extends Controller
                 'message' => 'Password is Wrong.',
             ], 403);
         }
-        
+
         $user->delete();
         return response()->json([
             'status' => 'Success',
@@ -161,13 +161,13 @@ class UserApiController extends Controller
             now()->addMinutes(config('neev.url_expiry_time', 60)),
             ['id' => $email->id]
         );
-    
+
         $query = parse_url($signedUrl, PHP_URL_QUERY);
         $frontendUrl = config('neev.frontend_url');
         $url = "{$frontendUrl}/verify-email?{$query}";
         Mail::to($email->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', 60));
     }
-    
+
     public static function sendMailOTP(Email $email, $mfa = false)
     {
         $otp = random_int(config('neev.otp_min', 100000), config('neev.otp_max', 999999));
@@ -190,7 +190,7 @@ class UserApiController extends Controller
                 'expires_at' => $expires_at,
             ]);
         }
-        
+
         Mail::to($email?->email)->send(new EmailOTP($email->user?->name, $otp, $expiryMinutes));
     }
 
@@ -234,7 +234,7 @@ class UserApiController extends Controller
                 'message' => 'Email does not exist.',
             ], 403);
         }
-        
+
         if ($email->is_primary) {
             return response()->json([
                 'status' => 'Failed',
@@ -260,7 +260,7 @@ class UserApiController extends Controller
                 'message' => 'Your primary email was not changed.',
             ]);
         }
-        
+
         $pemail = $user->email;
         if ($pemail) {
             if ($pemail->id == $email->id) {
@@ -276,7 +276,7 @@ class UserApiController extends Controller
         $email->save();
 
         return response()->json([
-            'status' => 'Success', 
+            'status' => 'Success',
             'message' => 'Your primary email has been changed.'
         ]);
     }
@@ -335,7 +335,7 @@ class UserApiController extends Controller
             ]);
 
             return response()->json([
-                'status' => 'Success', 
+                'status' => 'Success',
                 'message' => 'Password has been successfully updated.',
             ]);
         } catch (Exception $e) {
@@ -392,7 +392,7 @@ class UserApiController extends Controller
                 'message' => 'Token was not updated.',
             ], 400);
         }
-        
+
         if ($request->permissions) {
             $token->permissions = $request->permissions;
         }
@@ -402,7 +402,7 @@ class UserApiController extends Controller
         if (isset($request->expiry)) {
             $token->expires_at = $request->expiry ? now()->addMinutes($request->expiry) : null;
         }
-        
+
         $token->save();
 
         return response()->json([

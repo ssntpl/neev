@@ -32,14 +32,14 @@ class NeevMiddleware
                 return redirect(route('otp.mfa.create', $user->preferredMultiAuth?->method ?? $user->multiFactorAuths()->first()?->method));
             }
         } elseif (!$attempt && count($user->multiFactorAuths ?? []) > 0) {
-            return redirect(route('login')); 
+            return redirect(route('login'));
         }
 
         $emailBypassPaths = ['email/verify*', 'email/send', 'logout', 'email/change', 'email/update'];
         if (config('neev.email_verified') && !$user->email?->verified_at && !$request->is($emailBypassPaths)) {
             return redirect(route('verification.notice'));
         }
-        
+
         return $next($request);
     }
 }

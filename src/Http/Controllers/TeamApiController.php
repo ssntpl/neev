@@ -26,7 +26,7 @@ class TeamApiController extends Controller
             'data' => $teams,
         ]);
     }
-    
+
     public function getTeam(Request $request, $id)
     {
         $team = Team::model()->find($id);
@@ -87,7 +87,7 @@ class TeamApiController extends Controller
             'data' => $team,
         ]);
     }
-    
+
     public function updateTeam(Request $request)
     {
         try {
@@ -119,7 +119,7 @@ class TeamApiController extends Controller
             ], 400);
         }
     }
-    
+
     public function deleteTeam(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
@@ -186,7 +186,7 @@ class TeamApiController extends Controller
             'message' => 'You cannot change owner.',
         ], 400);
     }
-    
+
     public function inviteMember(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
@@ -208,7 +208,7 @@ class TeamApiController extends Controller
                     ['expires_at' => $expiry]
                 );
 
-                if(!$invitation) {
+                if (!$invitation) {
                     return response()->json([
                         'status' => 'Failed',
                         'message' => 'Failed to create invitation.',
@@ -230,13 +230,13 @@ class TeamApiController extends Controller
                     'message' => 'Invite link sent successfully.',
                     'data' => $invitation
                 ]);
-            } 
+            }
             if ($team->users->contains($member)) {
                 return response()->json([
                     'status' => 'Failed',
                     'message' => 'User already added.',
                 ], 400);
-            } else if (!$team->allUsers->contains($member)) {
+            } elseif (!$team->allUsers->contains($member)) {
                 $team->users()->attach($member, ['role' => $request->role]);
                 if ($request->role) {
                     $member->assignRole($request->role, $team);
@@ -279,7 +279,7 @@ class TeamApiController extends Controller
                 if ($request->action == 'reject') {
                     $invitation->delete();
                     return response()->json([
-                        'status' => 'Success', 
+                        'status' => 'Success',
                         'message' => 'Invitation Revoked Successfully',
                     ]);
                 } elseif ($request->action == 'accept') {
@@ -336,7 +336,7 @@ class TeamApiController extends Controller
             'message' => 'Invalid Action.',
         ], 400);
     }
-    
+
     public function leave(Request $request)
     {
         $user = User::model()->find($request->user_id ?? $request->user()?->id);
@@ -362,7 +362,7 @@ class TeamApiController extends Controller
                     'message' => 'You cannot leave from this team.',
                 ], 400);
             }
-            
+
             if ($team->domain?->verified_at && str_ends_with(strtolower($user->email->email), '@' . strtolower($team->domain?->domain))) {
                 if ($user->active) {
                     $user->deactivate();
@@ -394,7 +394,7 @@ class TeamApiController extends Controller
             ], 400);
         }
     }
-    
+
     public function request(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
@@ -410,7 +410,7 @@ class TeamApiController extends Controller
                 if (!$team->allUsers->contains($user)) {
                     $team->allUsers()->attach($user, ['action' => 'request_from_user']);
                 }
-                
+
                 Mail::to($team->owner->email->email)->send(new TeamJoinRequest($team->name, $user->name, $team->owner->name, $team->id));
 
                 return response()->json([
@@ -425,7 +425,7 @@ class TeamApiController extends Controller
                 'message' => $e->getMessage(),
             ], 400);
         }
-        
+
         return response()->json([
             'status' => 'Failed',
             'message' => 'Team not found.',
@@ -509,7 +509,7 @@ class TeamApiController extends Controller
             'data' => $domains,
         ]);
     }
-    
+
     public function domainFederate(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
@@ -532,7 +532,7 @@ class TeamApiController extends Controller
             $token = Str::random(32);
             $team->domains()->updateOrCreate([
                 'domain' => $request->domain
-            ],[
+            ], [
                 'enforce' => (bool) $request->enforce,
                 'verification_token' => $token,
                 'is_primary' => !$team->domain,
@@ -551,7 +551,7 @@ class TeamApiController extends Controller
             ]);
         }
     }
-    
+
     public function updateDomain(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
@@ -597,7 +597,7 @@ class TeamApiController extends Controller
                     'token' => $token
                 ]);
             }
-            
+
             if (isset($request->enforce)) {
                 $domain->enforce = (bool) $request->enforce;
             }
@@ -631,7 +631,7 @@ class TeamApiController extends Controller
 
         return false;
     }
-    
+
     public function deleteDomain(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
@@ -658,7 +658,7 @@ class TeamApiController extends Controller
             ], 400);
         }
     }
-    
+
     public function updateDomainRule(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
@@ -676,7 +676,7 @@ class TeamApiController extends Controller
                 }
                 $rule->save();
             }
-            
+
             return response()->json([
                 'status' => 'Success',
                 'message' => 'Domain Rules have been updated.',
@@ -690,7 +690,7 @@ class TeamApiController extends Controller
             ], 400);
         }
     }
-    
+
     public function getDomainRule(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
@@ -701,7 +701,7 @@ class TeamApiController extends Controller
                 'message' => 'You have not required permissions to get domain rules.',
             ], 400);
         }
-        
+
         return response()->json([
             'status' => 'Success',
             'data' => $domain->rules
@@ -718,7 +718,7 @@ class TeamApiController extends Controller
                 'message' => 'You have not required permissions to change primary domain.',
             ], 400);
         }
-        
+
         $pdomain = $domain->team->domain;
         if ($pdomain) {
             if ($pdomain->id == $domain->id) {

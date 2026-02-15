@@ -66,11 +66,11 @@ class NeevServiceProvider extends ServiceProvider
 
             __DIR__.'/../database/migrations/2025_01_01_000011_create_team_auth_settings_table.php' => database_path('migrations/2025_01_01_000011_create_team_auth_settings_table.php'),
         ], 'neev-migrations');
-        
+
         $this->publishes([
             __DIR__.'/../resources/views' => resource_path('views/vendor/neev'),
         ], 'neev-views');
-        
+
         $this->publishes([
             __DIR__.'/../routes/neev.php' => base_path('/routes/neev.php'),
         ], 'neev-routes');
@@ -93,16 +93,18 @@ class NeevServiceProvider extends ServiceProvider
         $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'neev');
 
         Blade::anonymousComponentPath(
-            file_exists(resource_path('views/vendor/neev/components')) 
+            file_exists(resource_path('views/vendor/neev/components'))
                 ? resource_path('views/vendor/neev/components')
-                : __DIR__.'/../resources/views/components', 
-            'neev-component');
+                : __DIR__.'/../resources/views/components',
+            'neev-component'
+        );
 
         Blade::anonymousComponentPath(
             file_exists(resource_path('views/vendor/neev/layouts'))
                 ? resource_path('views/vendor/neev/layouts')
-                : __DIR__.'/../resources/views/layouts', 
-            'neev-layout');
+                : __DIR__.'/../resources/views/layouts',
+            'neev-layout'
+        );
     }
 
     public function register()

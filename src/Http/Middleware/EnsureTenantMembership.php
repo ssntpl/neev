@@ -20,7 +20,8 @@ class EnsureTenantMembership
 {
     public function __construct(
         protected TenantResolver $tenantResolver
-    ) {}
+    ) {
+    }
 
     /**
      * Handle an incoming request.

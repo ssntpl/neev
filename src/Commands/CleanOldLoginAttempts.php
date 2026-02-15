@@ -14,7 +14,7 @@ class CleanOldLoginAttempts extends Command
     {
         if (config('neev.last_login_attempts_in_days')) {
             $count = LoginAttempt::where('created_at', '<', now()->subDays(config('neev.last_login_attempts_in_days')))->delete();
-    
+
             $this->info("Deleted $count login attempts record(s) older than ".config('neev.last_login_attempts_in_days')." days.");
         }
     }

@@ -5,7 +5,6 @@ namespace Ssntpl\Neev\Http\Controllers;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\User;
@@ -15,7 +14,8 @@ class TenantDomainController extends Controller
 {
     public function __construct(
         protected TenantResolver $tenantResolver
-    ) {}
+    ) {
+    }
 
     /**
      * List all tenant domains for a team.

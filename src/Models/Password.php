@@ -19,7 +19,7 @@ class Password extends Model
         'password' => 'hashed',
     ];
 
-    const UPDATED_AT = null;
+    public const UPDATED_AT = null;
 
     public static function checkPasswordWarning($user)
     {

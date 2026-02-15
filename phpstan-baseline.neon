@@ -1,0 +1,1117 @@
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Http\\Client\\Response\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Commands/DownloadGeoLiteDb.php
+
+		-
+			message: '#^Access to an undefined property Laravel\\Socialite\\Contracts\\User\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/OAuthController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/OAuthController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/OAuthController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/OAuthController.php
+
+		-
+			message: '#^Call to an undefined method Laravel\\Socialite\\Contracts\\Provider\:\:with\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/OAuthController.php
+
+		-
+			message: '#^Negated boolean expression is always false\.$#'
+			identifier: booleanNot.alwaysFalse
+			count: 1
+			path: src/Http/Controllers/Auth/OAuthController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\Email\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Http/Controllers/Auth/OAuthController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Passkey\>\|Ssntpl\\Neev\\Models\\Passkey\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/PasskeyController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Passkey\>\|Ssntpl\\Neev\\Models\\Passkey\:\:\$user_id\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Http/Controllers/Auth/PasskeyController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/Auth/PasskeyController.php
+
+		-
+			message: '#^Offset ''counter'' on string on left side of \?\? does not exist\.$#'
+			identifier: nullCoalesce.offset
+			count: 1
+			path: src/Http/Controllers/Auth/PasskeyController.php
+
+		-
+			message: '#^Parameter \#1 \$authenticatorAttestationResponse of method Webauthn\\AuthenticatorAttestationResponseValidator\:\:check\(\) expects Webauthn\\AuthenticatorAttestationResponse, Webauthn\\AuthenticatorResponse given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/Auth/PasskeyController.php
+
+		-
+			message: '#^Parameter \$allowCredentials of class Webauthn\\PublicKeyCredentialRequestOptions constructor expects array\<Webauthn\\PublicKeyCredentialDescriptor\>, list\<array\<string, mixed\>\> given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/Auth/PasskeyController.php
+
+		-
+			message: '#^Parameter \$authenticatorAssertionResponse of method Webauthn\\AuthenticatorAssertionResponseValidator\:\:check\(\) expects Webauthn\\AuthenticatorAssertionResponse, Webauthn\\AuthenticatorResponse given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/Auth/PasskeyController.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Services\\GeoIP\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 3
+			path: src/Http/Controllers/Auth/PasskeyController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Passkey\>\|Ssntpl\\Neev\\Models\\Passkey\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 3
+			path: src/Http/Controllers/Auth/PasskeyController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Webauthn\\AuthenticatorSelectionCriteria\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Http/Controllers/Auth/PasskeyController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type mixed\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Http/Controllers/Auth/PasskeyController.php
+
+		-
+			message: '#^Call to an undefined method Laravel\\Socialite\\Contracts\\Provider\:\:with\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/TenantSSOController.php
+
+		-
+			message: '#^Cannot access property \$domains on class\-string\|object\.$#'
+			identifier: property.nonObject
+			count: 1
+			path: src/Http/Controllers/Auth/TenantSSOController.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Services\\GeoIP\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/Auth/TenantSSOController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\AccessToken\>\|Ssntpl\\Neev\\Models\\AccessToken\:\:\$attempt\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\AccessToken\>\|Ssntpl\\Neev\\Models\\AccessToken\:\:\$token_type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\AccessToken\>\|Ssntpl\\Neev\\Models\\AccessToken\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Email\>\|Ssntpl\\Neev\\Models\\Email\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Email\>\|Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Email\>\|Ssntpl\\Neev\\Models\\Email\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\:\:\$role\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\:\:\$team\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$expires_at\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$otp\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$default_role\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Negated boolean expression is always false\.$#'
+			identifier: booleanNot.alwaysFalse
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Services\\GeoIP\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>method" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\AccessToken\>\|Ssntpl\\Neev\\Models\\AccessToken\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Email\>\|Ssntpl\\Neev\\Models\\Email\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Email\>\|Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Email\>\|Ssntpl\\Neev\\Models\\Email\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\LoginAttempt\>\|Ssntpl\\Neev\\Models\\LoginAttempt\:\:\$is_success\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\LoginAttempt\>\|Ssntpl\\Neev\\Models\\LoginAttempt\:\:\$multi_factor_method\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\:\:\$role\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\:\:\$team\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 4
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 6
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$default_role\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\User\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Negated boolean expression is always false\.$#'
+			identifier: booleanNot.alwaysFalse
+			count: 2
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Parameter \#1 \$view of function view expects view\-string\|null, string given\.$#'
+			identifier: argument.type
+			count: 9
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Services\\GeoIP\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>email" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>method" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>user" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Email\>\|Ssntpl\\Neev\\Models\\Email\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 3
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\Email\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type mixed\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 4
+			path: src/Http/Controllers/Auth/UserAuthController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$domain\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$enforce\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$is_primary\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$rules\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$team\.$#'
+			identifier: property.notFound
+			count: 5
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$verification_token\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\:\:\$role\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\:\:\$team\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>rules" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 4
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type mixed\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 3
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Variable \$domain_rules on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.variable
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$is_primary\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$team\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\:\:\$role\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\:\:\$team\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$enforce\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$rules\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$team\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$verification_token\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$domain\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$domains\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$user_id\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Parameter \#1 \$view of function view expects view\-string\|null, string given\.$#'
+			identifier: argument.type
+			count: 5
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Models\\Domain\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>rules" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\Domain\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 3
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type mixed\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 7
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Variable \$domain_rules on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.variable
+			count: 1
+			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$is_primary\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TenantDomainController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$team\.$#'
+			identifier: property.notFound
+			count: 5
+			path: src/Http/Controllers/TenantDomainController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TenantDomainController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TenantDomainController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TenantDomainController.php
+
+		-
+			message: '#^Call to an undefined method Ssntpl\\Neev\\Services\\TenantResolver\:\:currentDomain\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Http/Controllers/TenantDomainController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Email\>\|Ssntpl\\Neev\\Models\\Email\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/UserApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Email\>\|Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/UserApiController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/UserApiController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/UserApiController.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type mixed\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/UserApiController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\Email\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/UserApiController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type mixed\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/UserApiController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$team\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/UserController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Http/Controllers/UserController.php
+
+		-
+			message: '#^Parameter \#1 \$view of function view expects view\-string\|null, string given\.$#'
+			identifier: argument.type
+			count: 8
+			path: src/Http/Controllers/UserController.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Support\\Carbon\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/UserController.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Support\\Collection\<int, stdClass\>\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/UserController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\Domain\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 2
+			path: src/Http/Controllers/UserController.php
+
+		-
+			message: '#^Using nullsafe property access on non\-nullable type mixed\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Controllers/UserController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Foundation\\Auth\\User\:\:\$teams\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Middleware/EnsureTeamIsActive.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Foundation\\Auth\\User\:\:belongsToTeam\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Http/Middleware/EnsureTenantMembership.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\AccessToken\:\:\$expires_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Middleware/NeevAPIMiddleware.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\AccessToken\:\:\$token\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Middleware/NeevAPIMiddleware.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\AccessToken\:\:\$token_type\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Middleware/NeevAPIMiddleware.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\AccessToken\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Middleware/NeevAPIMiddleware.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>method" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Http/Middleware/NeevMiddleware.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Http/Requests/Auth/LoginRequest.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$domain\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Domain.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$is_primary\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Domain.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$team_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Domain.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$verification_token\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Models/Domain.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Models/Domain.php
+
+		-
+			message: '#^Strict comparison using \=\=\= between false and false will always evaluate to true\.$#'
+			identifier: identical.alwaysTrue
+			count: 1
+			path: src/Models/LoginAttempt.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Password\:\:\$created_at\.$#'
+			identifier: property.notFound
+			count: 4
+			path: src/Models/Password.php
+
+		-
+			message: '#^Ternary operator condition is always true\.$#'
+			identifier: ternary.alwaysTrue
+			count: 1
+			path: src/Models/Password.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$activated_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$primaryDomain\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$slug\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Models/Team.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$user_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$users\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$auth_method\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$auto_provision\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$auto_provision_role\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$sso_provider\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>auth_method" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>auto_provision" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>auto_provision_role" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$auth_method\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Models/TeamAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$auto_provision\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TeamAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$auto_provision_role\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TeamAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$sso_client_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TeamAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$sso_client_secret\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TeamAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$sso_extra_config\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TeamAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$sso_provider\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TeamAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$sso_tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TeamAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamInvitation\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TeamInvitation.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$verified_at\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/User.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\User\:\:\$active\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Models/User.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\User\:\:\$email\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Models/User.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\User\:\:\$multiFactorAuths\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/User.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\User\:\:\$name\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/User.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\User\:\:\$preferredMultiFactorAuth\.$#'
+			identifier: property.notFound
+			count: 3
+			path: src/Models/User.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\User\:\:\$recoveryCodes\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/User.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>method" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Models/User.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>secret" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Models/User.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Rules/PasswordHistory.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Password\:\:\$password\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Rules/PasswordHistory.php
+
+		-
+			message: '#^Unsafe usage of new static\(\)\.$#'
+			identifier: new.static
+			count: 1
+			path: src/Rules/PasswordHistory.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Rules/PasswordUserData.php
+
+		-
+			message: '#^Unsafe usage of new static\(\)\.$#'
+			identifier: new.static
+			count: 1
+			path: src/Rules/PasswordUserData.php
+
+		-
+			message: '#^Call to an undefined method TModel of Illuminate\\Database\\Eloquent\\Model\:\:getQualifiedTenantIdColumn\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Scopes/TenantScope.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Http\\Request\:\:authenticate\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Services/AuthService.php
+
+		-
+			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Services\\GeoIP\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Services/AuthService.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>id" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Services/AuthService.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$team\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/TenantResolver.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Services/TenantSSOManager.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$sso_provider\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Services/TenantSSOManager.php
+
+		-
+			message: '#^Class SocialiteProviders\\Azure\\Provider not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/Services/TenantSSOManager.php
+
+		-
+			message: '#^Class SocialiteProviders\\Okta\\Provider not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: src/Services/TenantSSOManager.php
+
+		-
+			message: '#^Trait Ssntpl\\Neev\\Traits\\BelongsToTenant is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/Traits/BelongsToTenant.php

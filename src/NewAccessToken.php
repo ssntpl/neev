@@ -9,7 +9,8 @@ class NewAccessToken
     public function __construct(
         public AccessToken $accessToken,
         public string $plainTextToken,
-    ) {}
+    ) {
+    }
 
     public function toArray(): array
     {

@@ -1,4 +1,5 @@
 <?php
+
 namespace Ssntpl\Neev\Services;
 
 use Ssntpl\Neev\Events\LoggedInEvent;
@@ -8,7 +9,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Exception;
 use Ssntpl\Neev\Models\LoginAttempt;
-use Ssntpl\Neev\Services\GeoIP;
 
 class AuthService
 {
@@ -27,7 +27,7 @@ class AuthService
         }
 
         $request->session()->regenerate();
-        
+
         event(new LoggedInEvent($user));
 
         try {

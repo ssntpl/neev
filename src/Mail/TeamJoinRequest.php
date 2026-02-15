@@ -10,14 +10,16 @@ use Illuminate\Queue\SerializesModels;
 
 class TeamJoinRequest extends Mailable
 {
-    use Queueable, SerializesModels;
+    use Queueable;
+    use SerializesModels;
 
     public function __construct(
         public $team,
         public $username,
         public $owner,
         public $teamId,
-    ) {}
+    ) {
+    }
 
     public function envelope(): Envelope
     {

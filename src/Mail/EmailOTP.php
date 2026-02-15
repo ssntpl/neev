@@ -10,13 +10,15 @@ use Illuminate\Queue\SerializesModels;
 
 class EmailOTP extends Mailable
 {
-    use Queueable, SerializesModels;
+    use Queueable;
+    use SerializesModels;
 
     public function __construct(
         public $username,
         public $otp,
         public $expiry,
-    ) {}
+    ) {
+    }
 
     public function envelope(): Envelope
     {

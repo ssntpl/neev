@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Notifications\Notifiable;
 use Ssntpl\LaravelAcl\Traits\HasRoles;
+use Ssntpl\Neev\Database\Factories\UserFactory;
 use Ssntpl\Neev\Traits\HasAccessToken;
 use Ssntpl\Neev\Traits\HasMultiAuth;
 use Ssntpl\Neev\Traits\HasTeams;
@@ -13,19 +14,27 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 
 class User extends Authenticatable
 {
-    use HasFactory, Notifiable;
+    use HasFactory;
+    use Notifiable;
     use HasTeams;
     use HasRoles;
     use HasMultiAuth;
     use HasAccessToken;
     use VerifyEmail;
-    
-    public static function model() {
-        $class = config('neev.user_model', User::class);
-        return new $class;
+
+    protected static function newFactory()
+    {
+        return UserFactory::new();
     }
-    
-    public static function getClass() {
+
+    public static function model()
+    {
+        $class = config('neev.user_model', User::class);
+        return new $class();
+    }
+
+    public static function getClass()
+    {
         return config('neev.user_model', User::class);
     }
 
@@ -49,7 +58,7 @@ class User extends Authenticatable
         if ($photoUrl) {
             return $photoUrl;
         }
-        return collect(explode(' ', $this->name))->map(fn($word) => strtoupper(substr($word, 0, 1)))->join('');
+        return collect(explode(' ', $this->name))->map(fn ($word) => strtoupper(substr($word, 0, 1)))->join('');
     }
 
     public function emails()
@@ -61,7 +70,7 @@ class User extends Authenticatable
     {
         return $this->hasOne(Email::class)->where('is_primary', true);
     }
-    
+
     public function passwords()
     {
         return $this->hasMany(Password::class);

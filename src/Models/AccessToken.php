@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Model;
 
 class AccessToken extends Model
 {
-
     public const api_token = 'api_token';
     public const mfa_token = 'mfa_token';
     public const login = 'login';

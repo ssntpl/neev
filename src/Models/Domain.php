@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Hash;
 
 class Domain extends Model
-{   
+{
     protected $fillable = [
         'team_id',
         'enforce',

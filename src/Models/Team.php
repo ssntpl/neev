@@ -21,12 +21,14 @@ class Team extends Model
         });
     }
 
-    public static function model() {
+    public static function model()
+    {
         $class = config('neev.team_model', Team::class);
-        return new $class;
+        return new $class();
     }
-    
-    public static function getClass() {
+
+    public static function getClass()
+    {
         return config('neev.team_model', Team::class);
     }
 

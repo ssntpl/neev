@@ -24,7 +24,8 @@ class TenantSSOController extends Controller
         protected TenantResolver $tenantResolver,
         protected TenantSSOManager $ssoManager,
         protected AuthService $authService
-    ) {}
+    ) {
+    }
 
     /**
      * Get the tenant's authentication configuration.

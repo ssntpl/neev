@@ -51,7 +51,7 @@ class RoleController extends Controller
                 $membership->role = $request->role;
                 $membership->save();
             }
-        } else if ($request->invitation_id) {
+        } elseif ($request->invitation_id) {
             $invitation = $resource->invitations()->find($request->invitation_id);
             $invitation->role = $request->role;
             $invitation->save();

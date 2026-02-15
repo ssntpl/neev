@@ -7,9 +7,11 @@ use Illuminate\Queue\SerializesModels;
 
 class LoggedOutEvent
 {
-    use Dispatchable, SerializesModels;
+    use Dispatchable;
+    use SerializesModels;
 
     public function __construct(
         public $user,
-    ) {}
+    ) {
+    }
 }

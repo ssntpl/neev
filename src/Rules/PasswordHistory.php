@@ -9,18 +9,19 @@ use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Password;
 use Ssntpl\Neev\Models\User;
 
-class PasswordHistory implements ValidationRule 
+class PasswordHistory implements ValidationRule
 {
     public function __construct(
         protected int $count = 5,
-    ) {}
+    ) {
+    }
 
     public static function notReused($count = 5)
     {
         return new static($count);
     }
 
-    public function validate(string $attribute, mixed $value, Closure $fail): void 
+    public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         $user = User::model()->find(request()->user()?->id);
         $email = request()->input('email');

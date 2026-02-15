@@ -35,11 +35,11 @@ class UserAuthApiController extends Controller
             'email' => 'required|string|email|max:255|unique:'.Email::class,
             'password' => config('neev.password'),
         ];
-        
+
         if (config('neev.support_username')) {
             $validationRules['username'] = config('neev.username');
         }
-        
+
         try {
             $request->validate($validationRules);
             DB::beginTransaction();
@@ -49,7 +49,7 @@ class UserAuthApiController extends Controller
             ]);
 
             $user = User::model()->find($user->id);
-            
+
             $email = $user?->emails()->create([
                 'email' => $request->email,
                 'is_primary' => true
@@ -62,7 +62,7 @@ class UserAuthApiController extends Controller
                     'message' => 'Unable to create user email.',
                 ], 500);
             }
-            
+
             $user->passwords()->create([
                 'password' => Hash::make($request->password),
             ]);
@@ -297,7 +297,7 @@ class UserAuthApiController extends Controller
         }
 
         UserApiController::sendMailVerification($email);
-        
+
         return response()->json([
             'status' => 'Success',
             'message' => 'Login link has been sent.',
@@ -368,10 +368,10 @@ class UserAuthApiController extends Controller
                 'message' => 'Email verification already done.'
             ]);
         }
-        
+
         $email->verified_at = now();
         $email->save();
-        
+
         return response()->json([
             'status' => 'Success',
             'message' => 'Email verification done.'
@@ -399,7 +399,7 @@ class UserAuthApiController extends Controller
     public function verifyEmailOTP(Request $request)
     {
         $email = Email::where('email', $request->email)->first();
-        
+
         $otp = $email?->otp;
 
         if (!$email || !$otp || $otp->expires_at < now() || !Hash::check((string) $request->otp, $otp->otp)) {
@@ -408,7 +408,7 @@ class UserAuthApiController extends Controller
                 'message' => 'Code verification was failed.'
             ], 401);
         }
-        
+
         return response()->json([
             'status' => 'Success',
             'message' => 'Verification code has been verified.'
@@ -488,9 +488,9 @@ class UserAuthApiController extends Controller
         $query = parse_url($signedUrl, PHP_URL_QUERY);
         $frontendUrl = config('neev.frontend_url');
         $url = "{$frontendUrl}/login-link?{$query}";
-    
+
         Mail::to($email->email)->send(new LoginUsingLink($url, $expiryMinutes));
-        
+
         return response()->json([
             'status' => 'Success',
             'message' => 'Login link has been sent.',

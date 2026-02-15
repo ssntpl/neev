@@ -14,9 +14,9 @@ use Ssntpl\Neev\Http\Controllers\UserController;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 
-Route::bind('user', fn($value) => User::model()->findOrFail($value));
+Route::bind('user', fn ($value) => User::model()->findOrFail($value));
 
-Route::bind('team', fn($value) => Team::model()->findOrFail($value));
+Route::bind('team', fn ($value) => Team::model()->findOrFail($value));
 
 //web routes
 Route::middleware('web')->group(function () {
@@ -27,7 +27,7 @@ Route::middleware('web')->group(function () {
 
     Route::get('/login', [UserAuthController::class, 'loginCreate'])
         ->name('login');
-    
+
     Route::put('/login', [UserAuthController::class, 'loginPassword'])
         ->name('login.password');
 
@@ -53,17 +53,17 @@ Route::middleware('web')->group(function () {
 
     Route::post('/forgot-password', [UserAuthController::class, 'forgotPasswordLink'])
         ->name('password.email');
-    
+
     Route::get('/update-password/{id}/{hash}', [UserAuthController::class, 'updatePasswordCreate'])
         ->name('reset.request');
-    
+
     Route::post('/update-password', [UserAuthController::class, 'updatePasswordStore'])
         ->name('user-password.update');
 
-    Route::post('/passkeys/login/options',[PasskeyController::class,'generateLoginOptions'])
+    Route::post('/passkeys/login/options', [PasskeyController::class,'generateLoginOptions'])
         ->name('passkeys.login.options');
 
-    Route::post('/passkeys/login',[PasskeyController::class,'loginViaWeb'])
+    Route::post('/passkeys/login', [PasskeyController::class,'loginViaWeb'])
         ->name('passkeys.login');
 
     //OAuth
@@ -74,24 +74,24 @@ Route::middleware('web')->group(function () {
 
     Route::get('/email/verify/{id}/{hash}', [UserAuthController::class, 'emailVerifyStore'])
         ->name('verification.verify');
-    
-    Route::middleware( ['neev:web'])->group(function () {
+
+    Route::middleware(['neev:web'])->group(function () {
         Route::get('/email/verify', [UserAuthController::class, 'emailVerifyCreate'])
             ->name('verification.notice');
-        
+
         Route::get('/email/send', [UserAuthController::class, 'emailVerifySend'])
             ->name('email.verification.send');
-        
+
         Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
             ->name('email.change');
-        
+
         Route::put('/email/change', [UserAuthController::class, 'emailChangeStore'])
             ->name('email.update');
-    
+
         Route::post('/logout', [UserAuthController::class, 'destroy'])
             ->name('logout');
-        
-        Route::prefix('account')->group(function (){
+
+        Route::prefix('account')->group(function () {
             Route::get('/profile', [UserController::class, 'profile'])
                 ->name('account.profile');
             Route::get('/emails', [UserController::class, 'emails'])
@@ -106,7 +106,7 @@ Route::middleware('web')->group(function () {
                 ->name('account.sessions');
             Route::get('/loginAttempts', [UserController::class, 'loginAttempts'])
                 ->name('account.loginAttempts');
-    
+
             Route::post('/multiFactorAuth', [UserController::class, 'addMultiFactorAuth'])
                 ->name('multi.auth');
             Route::put('/multiFactorAuth', [UserController::class, 'preferredMultiFactorAuth'])
@@ -115,14 +115,14 @@ Route::middleware('web')->group(function () {
                 ->name('recovery.codes');
             Route::post('/recovery/codes', [UserController::class, 'generateRecoveryCodes'])
                 ->name('recovery.generate');
-    
-            Route::post('/passkeys/register/options',[PasskeyController::class,'generateRegistrationOptions'])
+
+            Route::post('/passkeys/register/options', [PasskeyController::class,'generateRegistrationOptions'])
                 ->name('passkeys.register.options');
-            Route::post('/passkeys/register',[PasskeyController::class,'registerViaWeb'])
+            Route::post('/passkeys/register', [PasskeyController::class,'registerViaWeb'])
                 ->name('passkeys.register');
-            Route::delete('/passkeys',[PasskeyController::class,'deletePasskey'])
+            Route::delete('/passkeys', [PasskeyController::class,'deletePasskey'])
                 ->name('passkeys.delete');
-            
+
             Route::put('/profileUpdate', [UserController::class, 'profileUpdate'])
                 ->name('profile.update');
             Route::post('/change-password', [UserController::class, 'changePassword'])
@@ -146,8 +146,8 @@ Route::middleware('web')->group(function () {
             Route::put('/tokens/update', [UserController::class, 'tokenUpdate'])
                 ->name('tokens.update');
         });
-    
-        Route::prefix('teams')->group(function (){
+
+        Route::prefix('teams')->group(function () {
             Route::get('/{team}/profile', [TeamController::class, 'profile'])
                 ->name('teams.profile');
             Route::put('/switch', [TeamController::class, 'switch'])
@@ -160,7 +160,7 @@ Route::middleware('web')->group(function () {
                 ->name('teams.domain');
             Route::get('/{team}/settings', [TeamController::class, 'settings'])
                 ->name('teams.settings');
-    
+
             Route::post('/create', [TeamController::class, 'store'])
                 ->name('teams.store');
             Route::put('/update', [TeamController::class, 'update'])
@@ -201,8 +201,8 @@ Route::prefix('/neev')->group(function () {
         Route::post('/email/otp/send', [UserAuthApiController::class, 'sendEmailOTP']);
         Route::post('/email/otp/verify', [UserAuthApiController::class, 'verifyEmailOTP']);
         Route::post('/forgotPassword', [UserAuthApiController::class, 'forgotPassword']);
-        Route::get('/passkeys/login/options',[PasskeyController::class,'generateLoginOptions']);
-        Route::post('/passkeys/login',[PasskeyController::class,'loginViaAPI']);
+        Route::get('/passkeys/login/options', [PasskeyController::class,'generateLoginOptions']);
+        Route::post('/passkeys/login', [PasskeyController::class,'loginViaAPI']);
     });
     Route::get('/loginUsingLink', [UserAuthApiController::class, 'loginUsingLink'])->name('loginUsingLink');
 
@@ -228,17 +228,17 @@ Route::prefix('/neev')->group(function () {
         Route::get('/loginAttempts', [UserApiController::class, 'loginAttempts']);
         Route::put('/changePassword', [UserApiController::class, 'changePassword']);
 
-        Route::get('/passkeys/register/options',[PasskeyController::class,'generateRegistrationOptions']);
-        Route::post('/passkeys/register',[PasskeyController::class,'registerViaAPI']);
-        Route::delete('/passkeys',[PasskeyController::class,'deletePasskeyViaAPI']);
-        Route::put('/passkeys',[PasskeyController::class,'updatePasskeyName']);
+        Route::get('/passkeys/register/options', [PasskeyController::class,'generateRegistrationOptions']);
+        Route::post('/passkeys/register', [PasskeyController::class,'registerViaAPI']);
+        Route::delete('/passkeys', [PasskeyController::class,'deletePasskeyViaAPI']);
+        Route::put('/passkeys', [PasskeyController::class,'updatePasskeyName']);
 
         Route::get('/apiTokens', [UserApiController::class, 'getApiTokens']);
         Route::post('/apiTokens', [UserApiController::class, 'addApiTokens']);
         Route::put('/apiTokens', [UserApiController::class, 'updateApiTokens']);
         Route::delete('/apiTokens', [UserApiController::class, 'deleteApiTokens']);
         Route::delete('/apiTokens/deleteAll', [UserApiController::class, 'deleteAllApiTokens']);
-        
+
         Route::get('/teams', [TeamApiController::class, 'teams']);
         Route::get('/teams/{id}', [TeamApiController::class, 'getTeam']);
         Route::post('/teams', [TeamApiController::class, 'createTeam']);
@@ -250,7 +250,7 @@ Route::prefix('/neev')->group(function () {
         Route::put('/teams/leave', [TeamApiController::class, 'leave']);
         Route::post('/teams/request', [TeamApiController::class, 'request']);
         Route::put('/teams/request', [TeamApiController::class, 'requestAction']);
-        
+
         Route::get('/domains', [TeamApiController::class, 'getDomains']);
         Route::post('/domains', [TeamApiController::class, 'domainFederate']);
         Route::put('/domains', [TeamApiController::class, 'updateDomain']);
@@ -258,7 +258,7 @@ Route::prefix('/neev')->group(function () {
         Route::put('/domains/rules', [TeamApiController::class, 'updateDomainRule']);
         Route::get('/domains/rules', [TeamApiController::class, 'getDomainRule']);
         Route::put('/domains/primary', [TeamApiController::class, 'primaryDomain']);
-        
+
         Route::put('/role/change', [RoleController::class, 'roleChangeViaAPI']);
 
         // Tenant Domain Management (requires tenant_isolation config)

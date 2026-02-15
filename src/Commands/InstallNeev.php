@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\PromptsForMissingInput;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+
 use function Laravel\Prompts\select;
 
 class InstallNeev extends Command implements PromptsForMissingInput
@@ -40,28 +41,29 @@ class InstallNeev extends Command implements PromptsForMissingInput
         }
 
         $this->callSilent('vendor:publish', ['--tag' => 'neev-config', '--force' => true]);
-        
+
         $file = config_path('neev.php');
 
         if ($this->argument('teams') === 'yes') {
             $this->installTeam();
         }
-        
+
 
         if ($this->argument('domain_federation') === 'yes') {
             $this->replaceInFile("'domain_federation' => false,", "'domain_federation' => true,", $file);
         }
-        
+
         if ($this->argument('verification') === 'yes') {
             $this->replaceInFile("'email_verified' => false,", "'email_verified' => true,", $file);
         }
-        
+
         // $this->call('migrate');
-        
+
         $this->info('✅ Neev installed successfully!');
     }
 
-    protected function installTeam() {
+    protected function installTeam()
+    {
         $this->replaceInFile("'team' => false", "'team' => true", config_path('neev.php'));
     }
 

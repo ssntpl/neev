@@ -10,14 +10,16 @@ use Illuminate\Queue\SerializesModels;
 
 class VerifyUserEmail extends Mailable
 {
-    use Queueable, SerializesModels;
+    use Queueable;
+    use SerializesModels;
 
     public function __construct(
         public $url,
         public $username,
         public $purpose = '',
         public $expiry = 15,
-    ) {}
+    ) {
+    }
 
     public function envelope(): Envelope
     {

@@ -1,4 +1,5 @@
 <?php
+
 namespace Ssntpl\Neev\Commands;
 
 use Illuminate\Console\Command;

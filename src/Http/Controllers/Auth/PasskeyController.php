@@ -49,7 +49,8 @@ class PasskeyController extends Controller
 {
     public function __construct(
         protected AuthService $auth,
-    ) {}
+    ) {
+    }
 
     public function generateRegistrationOptions(Request $request)
     {

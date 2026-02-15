@@ -32,7 +32,8 @@ class UserAuthController extends Controller
 {
     public function __construct(
         protected AuthService $auth,
-    ) {}
+    ) {
+    }
     /**
      * Show the register page.
     */
@@ -53,7 +54,7 @@ class UserAuthController extends Controller
         }
         $input = $request->email;
         $isEmail = filter_var($input, FILTER_VALIDATE_EMAIL);
-        
+
         return view('neev::auth.register', [
             'email' => $isEmail ? $input : null,
             'username' => !$isEmail ? $input : null
@@ -102,11 +103,11 @@ class UserAuthController extends Controller
             'email' => 'required|string|email|max:255|unique:'.Email::class,
             'password' => config('neev.password'),
         ];
-        
+
         if (config('neev.support_username')) {
             $validationRules['username'] = config('neev.username');
         }
-        
+
         $request->validate($validationRules);
 
         try {
@@ -120,14 +121,14 @@ class UserAuthController extends Controller
                 $user = User::model()->create([
                     'name' => $request->name,
                 ]);
-            } 
+            }
             $user = User::model()->find($user->id);
-            
+
             $email = $user->emails()->create([
                 'email' => $request->email,
                 'is_primary' => true
             ]);
-            
+
             $user->passwords()->create([
                 'password' => Hash::make($request->password),
             ]);
@@ -150,7 +151,7 @@ class UserAuthController extends Controller
                     $invitation->delete();
                 } else {
                     $shouldCreateTeam = !config('neev.domain_federation') || !$this->isDomainVerified($request->email);
-                    
+
                     if ($shouldCreateTeam) {
                         $team = $this->createUserTeam($user);
                         $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
@@ -170,9 +171,9 @@ class UserAuthController extends Controller
                     now()->addMinutes($expiryMinutes),
                     ['id' => $user->id, 'hash' => sha1($email->email)]
                 );
-            
+
                 Mail::to($email->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email', $expiryMinutes));
-                
+
                 if (config('neev.email_verified')) {
                     return redirect(route('verification.notice'));
                 }
@@ -224,7 +225,7 @@ class UserAuthController extends Controller
                 $request->merge(['email' => $user->email->email]);
             }
         }
-        
+
         $user = $request->checkEmail();
         if (!$user) {
             throw ValidationException::withMessages([
@@ -235,7 +236,7 @@ class UserAuthController extends Controller
         $isDomainFederated = false;
         if (config('neev.team') && config('neev.domain_federation')) {
             $emailDomain = substr(strrchr($request->email, "@"), 1);
-            
+
             $domain = Domain::where('domain', $emailDomain)->first();
             if ($domain?->verified_at) {
                 $isDomainFederated = true;
@@ -246,7 +247,7 @@ class UserAuthController extends Controller
         if (count($user->passkeys) > 0) {
             $loginOptions[] = 'passkey';
         }
-        
+
         $viewData = [
             'email' => $request->email,
             'isDomainFederated' => $isDomainFederated,
@@ -254,7 +255,7 @@ class UserAuthController extends Controller
             'email_verified' => $user->hasVerifiedEmail(),
             'login_options' => $loginOptions
         ];
-        
+
         if (config('neev.support_username') && !empty($request->username)) {
             $viewData['username'] = $request->username;
         }
@@ -275,9 +276,9 @@ class UserAuthController extends Controller
             now()->addMinutes($expiryMinutes),
             ['id' => $email->id]
         );
-    
+
         Mail::to($email->email)->send(new LoginUsingLink($signedUrl, $expiryMinutes));
-        
+
         return back()->with('status', 'Login link has been sent.');
     }
 
@@ -299,7 +300,7 @@ class UserAuthController extends Controller
 
         return redirect(config('neev.dashboard_url'));
     }
-    
+
     /**
      * Show the login store.
     */
@@ -310,7 +311,7 @@ class UserAuthController extends Controller
         if (!$email || !$user) {
             return back()->withErrors(['message' => 'Credentials are wrong.']);
         }
-        
+
         if (config('neev.record_failed_login_attempts')) {
             $clientDetails = LoginAttempt::getClientDetails($request);
             $attempt = $user->loginAttempts()->create([
@@ -334,7 +335,7 @@ class UserAuthController extends Controller
         if ($request->redirect && $request->redirect != '/' && str_starts_with($request->redirect, '/')) {
             return redirect($request->redirect);
         }
-        
+
         if (!$email->verified_at && config('neev.email_verified')) {
             return redirect(route('verification.notice'));
         }
@@ -375,18 +376,18 @@ class UserAuthController extends Controller
             now()->addMinutes($expiryMinutes),
             ['id' => $user->id, 'hash' => sha1($email->email)]
         );
-    
+
         Mail::to($email->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Forgot Password', $expiryMinutes));
         return back()->with('status', __('Link has been sent to your email address.'));
     }
-    
+
     public function updatePasswordCreate(Request $request, $id, $hash)
     {
         if ($request->user()?->id) {
             return redirect(config('neev.dashboard_url'));
         }
         $user = User::model()->findOrFail($id);
-    
+
         if (!$user || !$request->hasValidSignature()) {
             return redirect(route('password.request'))->withErrors(['message' => 'Invalid verification link.']);
         }
@@ -395,7 +396,7 @@ class UserAuthController extends Controller
             if (sha1($email->email) !== $hash || (config('neev.email_verified') && !$email?->verified_at)) {
                 continue;
             }
-            
+
             $resetToken = bin2hex(random_bytes(32));
             session(['password_reset_token' => $resetToken, 'password_reset_email' => $email->email]);
             return view('neev::auth.reset-password', ['email' => $email->email, 'reset_token' => $resetToken]);
@@ -403,7 +404,7 @@ class UserAuthController extends Controller
 
         return redirect(route('password.request'))->withErrors(['message' => 'Invalid verification link.']);
     }
-    
+
     public function updatePasswordStore(Request $request)
     {
         $request->validate([
@@ -437,15 +438,15 @@ class UserAuthController extends Controller
     {
         $userId = $request->user()?->id;
         $user = User::model()->find($userId);
-        
+
         if (!$user) {
             return redirect(route('login'));
         }
-        
+
         if ($user->email?->verified_at) {
             return redirect(config('neev.dashboard_url'));
         }
-        
+
         return view('neev::auth.verify-email', [
             'email' => $user->email?->email
         ]);
@@ -470,7 +471,7 @@ class UserAuthController extends Controller
             now()->addMinutes($expiryMinutes),
             ['id' => $user->id, 'hash' => sha1($email->email)]
         );
-    
+
         Mail::to($email->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email', $expiryMinutes));
         return back()->with('status', __('verification-link-sent'));
     }
@@ -482,7 +483,7 @@ class UserAuthController extends Controller
         if (!$user || !$loggedInUser || $loggedInUser?->id != $user?->id) {
             return redirect(route('login') . '?redirect=' . urlencode($request->fullUrl()))->withErrors(['message' => __('Please login first to verify your email.')]);
         }
-        
+
         $email = null;
         foreach ($user->emails as $item) {
             if (sha1($item->email) == $hash) {
@@ -490,12 +491,12 @@ class UserAuthController extends Controller
                 break;
             }
         }
-        
+
         if ($email && $request->hasValidSignature()) {
             $email->verified_at = now();
             $email->save();
         }
-        
+
         return redirect(config('neev.dashboard_url'));
     }
 
@@ -529,7 +530,7 @@ class UserAuthController extends Controller
                     'password' => __('The password is incorrect.'),
                 ]);
             }
-    
+
             if (config('session.driver') === 'database') {
                 DB::table('sessions')
                     ->where('user_id', $user->id)
@@ -559,7 +560,7 @@ class UserAuthController extends Controller
     {
         $email = session('email');
         $attemptID = session('attempt_id');
-        
+
         if ($method === 'email') {
             $user = Email::where('email', $email)->first()?->user;
             $auth = $user?->multiFactorAuth($method);
@@ -578,10 +579,10 @@ class UserAuthController extends Controller
                 Mail::to($email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
             }
         }
-        
+
         return view('neev::auth.otp-mfa', [
-            'email' => $email, 
-            'method' => $method, 
+            'email' => $email,
+            'method' => $method,
             'attempt_id' => $attemptID
         ]);
     }
@@ -620,7 +621,7 @@ class UserAuthController extends Controller
         if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
             if ($request->action === 'verify') {
                 return back()->with('status', 'Code verified.');
-            } 
+            }
 
             $this->auth->login($request, $geoIP, $user, LoginAttempt::Password, $request->auth_method, $attempt ?? null);
             return redirect(config('neev.dashboard_url'));

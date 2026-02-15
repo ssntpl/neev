@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Questions & Discussions
+    url: https://github.com/ssntpl/neev/discussions
+    about: Ask questions and discuss ideas here
+  - name: Security Vulnerabilities
+    url: https://github.com/ssntpl/neev/blob/main/SECURITY.md
+    about: Please report security vulnerabilities following our security policy

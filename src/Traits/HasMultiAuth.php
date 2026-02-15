@@ -43,7 +43,7 @@ trait HasMultiAuth
                 $secret = $auth?->secret ?? Base32::encodeUpper(random_bytes(32));
                 $totp = TOTP::create($secret);
                 $totp->setLabel($this->email?->email);
-                $totp->setIssuer(config('app.name', 'Neev')); 
+                $totp->setIssuer(config('app.name', 'Neev'));
                 if (!$auth) {
                     $this->multiFactorAuths()->create([
                         'method' => $method,
@@ -64,20 +64,20 @@ trait HasMultiAuth
                     'secret' => $totp->getSecret(),
                     'method' => $method,
                 ];
-                
+
             case 'email':
                 $auth = $this->multiFactorAuth($method);
                 if ($auth) {
                     return ['message' => 'Email already Configured.'];
                 }
-                
+
                 $this->multiFactorAuths()->create([
                     'method' => $method,
                     'preferred' => !$this->preferredMultiFactorAuth?->preferred,
                 ]);
-                
+
                 return ['message' => 'Email Configured.'];
-                
+
             default:
                 return null;
         }
@@ -109,7 +109,7 @@ trait HasMultiAuth
                     return true;
                 }
                 break;
-            
+
             case 'recovery':
                 $code = $this->recoveryCodes?->first(function ($recoveryCode) use ($otp) {
                     return Hash::check($otp, $recoveryCode->code);
@@ -135,7 +135,7 @@ trait HasMultiAuth
             ]);
             $codes[] = $code;
         }
-        
+
         return $codes;
     }
 }

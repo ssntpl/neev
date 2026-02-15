@@ -7,3 +7,4 @@ TODO.md
 .DS_Store
 .cursor/
 .vscode/
+.phpunit.cache/

@@ -44,15 +44,15 @@ class LoginRequest extends FormRequest
         $this->ensureIsNotRateLimited();
 
         $email = Email::where('email', $this->input('email'))->first();
-    
+
         if (!$email || !Hash::check($this->input('password'), $email->user->password->password)) {
             $this->handleFailedAttempt();
-    
+
             throw ValidationException::withMessages([
                 'user' => __('auth.failed'),
             ]);
         }
-    
+
         Auth::login($email->user, $this->boolean('remember'));
         Cache::forget($this->throttleKey() . ':attempts');
         RateLimiter::clear($this->throttleKey());
@@ -79,11 +79,11 @@ class LoginRequest extends FormRequest
         $softFail = config('neev.login_soft_attempts', 5);
         $hardFail = config('neev.login_hard_attempts', 20);
         $blockMinutes = config('neev.login_block_minutes', 1);
-        
+
         $key = $this->throttleKey();
         $attempts = Cache::get($key . ':attempts', 0) + 1;
         Cache::put($key . ':attempts', $attempts, 3600);
-        
+
         if ($hardFail > 0 && $attempts >= $hardFail) {
             RateLimiter::hit($key, 60 * 60 * 24 * 365);
         } elseif ($softFail > 0 && $attempts >= $softFail) {

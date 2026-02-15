@@ -20,7 +20,8 @@ class OAuthController extends Controller
 {
     public function __construct(
         protected AuthService $auth,
-    ) {}
+    ) {
+    }
 
     public function redirect(Request $request, string $service)
     {
@@ -38,7 +39,7 @@ class OAuthController extends Controller
 
         return Socialite::driver($service)->with($params)->redirect();
     }
-   
+
     public function callback(Request $request, string $service, GeoIP $geoIP)
     {
         if (!in_array($service, config('neev.oauth', []))) {
@@ -52,7 +53,7 @@ class OAuthController extends Controller
         $oauthUser = Socialite::driver($service)->user();
         if (!$oauthUser) {
             return redirect(route('login'));
-        }  
+        }
 
         $email = Email::where('email', $oauthUser->email)->first();
         if ($email) {
@@ -68,7 +69,7 @@ class OAuthController extends Controller
         }
 
         $this->auth->login($request, $geoIP, $user, $service);
-        
+
         return redirect(config('neev.dashboard_url'));
     }
 

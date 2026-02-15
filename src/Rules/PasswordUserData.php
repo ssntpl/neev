@@ -8,7 +8,7 @@ use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\User;
 use Illuminate\Support\Str;
 
-class PasswordUserData implements ValidationRule 
+class PasswordUserData implements ValidationRule
 {
     public function __construct(
         protected string|array $columns = [],
@@ -21,7 +21,7 @@ class PasswordUserData implements ValidationRule
         return new static($columns);
     }
 
-    public function validate(string $attribute, mixed $value, Closure $fail): void 
+    public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         $user = User::model()->find(request()->user()?->id);
         $email = request()->input('email');

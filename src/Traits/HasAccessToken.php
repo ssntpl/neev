@@ -25,7 +25,7 @@ trait HasAccessToken
 
         return new NewAccessToken($token, $token->getKey().'|'.$plainTextToken);
     }
-    
+
     public function createLoginToken(?int $expiry)
     {
         $plainTextToken = Str::random(40);

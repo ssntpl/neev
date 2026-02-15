@@ -10,12 +10,14 @@ use Illuminate\Queue\SerializesModels;
 
 class LoginUsingLink extends Mailable
 {
-    use Queueable, SerializesModels;
+    use Queueable;
+    use SerializesModels;
 
     public function __construct(
         public $url,
         public $expiry = 15,
-    ) {}
+    ) {
+    }
 
     public function envelope(): Envelope
     {
