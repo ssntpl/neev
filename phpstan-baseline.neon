@@ -223,7 +223,13 @@ parameters:
 			path: src/Http/Controllers/Auth/UserAuthApiController.php
 
 		-
-			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$default_role\.$#'
+			message: '#^Call to an undefined method Ssntpl\\Neev\\Contracts\\ContextContainerInterface\:\:users\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/UserAuthApiController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Contracts\\ContextContainerInterface\:\:\$default_role\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Http/Controllers/Auth/UserAuthApiController.php
@@ -655,12 +661,6 @@ parameters:
 			path: src/Http/Controllers/TenantDomainController.php
 
 		-
-			message: '#^Call to an undefined method Ssntpl\\Neev\\Services\\TenantResolver\:\:currentDomain\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: src/Http/Controllers/TenantDomainController.php
-
-		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Email\>\|Ssntpl\\Neev\\Models\\Email\:\:\$email\.$#'
 			identifier: property.notFound
 			count: 1
@@ -750,11 +750,6 @@ parameters:
 			count: 1
 			path: src/Http/Middleware/EnsureTeamIsActive.php
 
-		-
-			message: '#^Call to an undefined method Illuminate\\Foundation\\Auth\\User\:\:belongsToTeam\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: src/Http/Middleware/EnsureTenantMembership.php
 
 		-
 			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\AccessToken\:\:\$expires_at\.$#'
@@ -861,7 +856,7 @@ parameters:
 		-
 			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$slug\.$#'
 			identifier: property.notFound
-			count: 2
+			count: 3
 			path: src/Models/Team.php
 
 		-
@@ -873,6 +868,18 @@ parameters:
 		-
 			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$users\.$#'
 			identifier: property.notFound
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$team\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Team.php
+
+		-
+			message: '#^Method Ssntpl\\Neev\\Models\\Team\:\:resolveBySlug\(\) should return static\(Ssntpl\\Neev\\Models\\Team\)\|null but returns Ssntpl\\Neev\\Models\\Team\|null\.$#'
+			identifier: return.type
 			count: 1
 			path: src/Models/Team.php
 
@@ -917,6 +924,126 @@ parameters:
 			identifier: nullsafe.neverNull
 			count: 1
 			path: src/Models/Team.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$tenant\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Tenant.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Tenant\:\:\$slug\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Tenant.php
+
+		-
+			message: '#^Method Ssntpl\\Neev\\Models\\Tenant\:\:resolveBySlug\(\) should return static\(Ssntpl\\Neev\\Models\\Tenant\)\|null but returns Ssntpl\\Neev\\Models\\Tenant\|null\.$#'
+			identifier: return.type
+			count: 1
+			path: src/Models/Tenant.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$auth_method\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Tenant.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>auth_method" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Models/Tenant.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:hasSSOConfigured\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Models/Tenant.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$sso_provider\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Tenant.php
+
+		-
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:getSocialiteConfig\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Models/Tenant.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$auto_provision\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Tenant.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>auto_provision" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Models/Tenant.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$auto_provision_role\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/Tenant.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>auto_provision_role" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Models/Tenant.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TenantAuthSettings\:\:\$auth_method\.$#'
+			identifier: property.notFound
+			count: 2
+			path: src/Models/TenantAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TenantAuthSettings\:\:\$sso_client_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TenantAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TenantAuthSettings\:\:\$sso_client_secret\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TenantAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TenantAuthSettings\:\:\$sso_provider\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TenantAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TenantAuthSettings\:\:\$sso_tenant_id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TenantAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TenantAuthSettings\:\:\$sso_extra_config\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TenantAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TenantAuthSettings\:\:\$auto_provision\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TenantAuthSettings.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TenantAuthSettings\:\:\$auto_provision_role\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Models/TenantAuthSettings.php
 
 		-
 			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$auth_method\.$#'
@@ -1081,21 +1208,27 @@ parameters:
 			path: src/Services/AuthService.php
 
 		-
-			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$team\.$#'
+			message: '#^Call to an undefined static method Ssntpl\\Neev\\Contracts\\ResolvableContextInterface\:\:find\(\)\.$#'
+			identifier: staticMethod.notFound
+			count: 1
+			path: src/Services/TenantResolver.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$tenant\.$#'
 			identifier: property.notFound
 			count: 1
+			path: src/Services/TenantResolver.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Domain\:\:\$team\.$#'
+			identifier: property.notFound
+			count: 2
 			path: src/Services/TenantResolver.php
 
 		-
 			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Email\:\:\$user\.$#'
 			identifier: property.notFound
 			count: 1
-			path: src/Services/TenantSSOManager.php
-
-		-
-			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\TeamAuthSettings\:\:\$sso_provider\.$#'
-			identifier: property.notFound
-			count: 2
 			path: src/Services/TenantSSOManager.php
 
 		-
@@ -1115,3 +1248,63 @@ parameters:
 			identifier: trait.unused
 			count: 1
 			path: src/Traits/BelongsToTenant.php
+
+		-
+			message: '#^Call to an undefined method Ssntpl\\Neev\\Contracts\\ContextContainerInterface\:\:getAuthMethod\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/TenantSSOController.php
+
+		-
+			message: '#^Call to an undefined method Ssntpl\\Neev\\Contracts\\ContextContainerInterface\:\:hasSSOConfigured\(\)\.$#'
+			identifier: method.notFound
+			count: 2
+			path: src/Http/Controllers/Auth/TenantSSOController.php
+
+		-
+			message: '#^Call to an undefined method Ssntpl\\Neev\\Contracts\\ContextContainerInterface\:\:getSSOProvider\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/TenantSSOController.php
+
+		-
+			message: '#^Call to an undefined method Ssntpl\\Neev\\Contracts\\ContextContainerInterface\:\:requiresSSO\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/TenantSSOController.php
+
+		-
+			message: '#^Parameter \#1 \$owner of method Ssntpl\\Neev\\Services\\TenantSSOManager\:\:buildSocialiteDriver\(\) expects Ssntpl\\Neev\\Contracts\\IdentityProviderOwnerInterface, Ssntpl\\Neev\\Contracts\\ContextContainerInterface given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/Auth/TenantSSOController.php
+
+		-
+			message: '#^Parameter \#1 \$owner of method Ssntpl\\Neev\\Services\\TenantSSOManager\:\:handleCallback\(\) expects Ssntpl\\Neev\\Contracts\\IdentityProviderOwnerInterface, Ssntpl\\Neev\\Contracts\\ContextContainerInterface given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/Auth/TenantSSOController.php
+
+		-
+			message: '#^Parameter \#1 \$owner of method Ssntpl\\Neev\\Services\\TenantSSOManager\:\:findOrCreateUser\(\) expects Ssntpl\\Neev\\Contracts\\IdentityProviderOwnerInterface, Ssntpl\\Neev\\Contracts\\ContextContainerInterface given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/Auth/TenantSSOController.php
+
+		-
+			message: '#^Access to an undefined property Ssntpl\\Neev\\Contracts\\ContextContainerInterface\:\:\$id\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/Auth/TenantSSOController.php
+
+		-
+			message: '#^Call to an undefined method TModel of Illuminate\\Database\\Eloquent\\Model\:\:getQualifiedTeamIdColumn\(\)\.$#'
+			identifier: method.notFound
+			count: 1
+			path: src/Scopes/TeamScope.php
+
+		-
+			message: '#^Trait Ssntpl\\Neev\\Traits\\BelongsToTeam is used zero times and is not analysed\.$#'
+			identifier: trait.unused
+			count: 1
+			path: src/Traits/BelongsToTeam.php

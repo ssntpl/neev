@@ -57,7 +57,31 @@ class TenantMiddlewareTest extends TestCase
     // Tenant not found
     // -----------------------------------------------------------------
 
-    public function test_returns_404_when_tenant_not_found(): void
+    public function test_returns_404_when_tenant_not_found_in_required_mode(): void
+    {
+        $this->enableTenantIsolation('test.com');
+
+        $request = Request::create('http://unknown.test.com/api/test');
+
+        $response = $this->middleware->handle($request, $this->passThrough(), 'required');
+
+        $this->assertEquals(404, $response->getStatusCode());
+        $this->assertStringContainsString('Tenant not found', $response->getContent());
+    }
+
+    public function test_returns_404_when_no_tenant_header_or_subdomain_matches_in_required_mode(): void
+    {
+        $this->enableTenantIsolation('test.com');
+
+        $request = Request::create('http://example.com/api/test');
+        $request->headers->set('X-Tenant', 'nonexistent-slug');
+
+        $response = $this->middleware->handle($request, $this->passThrough(), 'required');
+
+        $this->assertEquals(404, $response->getStatusCode());
+    }
+
+    public function test_passes_through_when_tenant_not_found_in_optional_mode(): void
     {
         $this->enableTenantIsolation('test.com');
 
@@ -65,20 +89,7 @@ class TenantMiddlewareTest extends TestCase
 
         $response = $this->middleware->handle($request, $this->passThrough());
 
-        $this->assertEquals(404, $response->getStatusCode());
-        $this->assertStringContainsString('Tenant not found', $response->getContent());
-    }
-
-    public function test_returns_404_when_no_tenant_header_or_subdomain_matches(): void
-    {
-        $this->enableTenantIsolation('test.com');
-
-        $request = Request::create('http://example.com/api/test');
-        $request->headers->set('X-Tenant', 'nonexistent-slug');
-
-        $response = $this->middleware->handle($request, $this->passThrough());
-
-        $this->assertEquals(404, $response->getStatusCode());
+        $this->assertEquals(200, $response->getStatusCode());
     }
 
     // -----------------------------------------------------------------
@@ -220,7 +231,7 @@ class TenantMiddlewareTest extends TestCase
     // Unverified custom domain returns 404 (not found by findByHost)
     // -----------------------------------------------------------------
 
-    public function test_returns_404_for_unverified_custom_domain(): void
+    public function test_returns_404_for_unverified_custom_domain_in_required_mode(): void
     {
         $this->enableTenantIsolation('test.com');
 
@@ -235,7 +246,7 @@ class TenantMiddlewareTest extends TestCase
 
         $request = Request::create('http://unverified.example.org/dashboard');
 
-        $response = $this->middleware->handle($request, $this->passThrough());
+        $response = $this->middleware->handle($request, $this->passThrough(), 'required');
 
         $this->assertEquals(404, $response->getStatusCode());
     }

@@ -466,4 +466,55 @@ class TeamTest extends TestCase
         $this->assertCount(2, $team->invitations);
         $this->assertInstanceOf(TeamInvitation::class, $team->invitations->first());
     }
+
+    // -----------------------------------------------------------------
+    // ResolvableContextInterface
+    // -----------------------------------------------------------------
+
+    public function test_resolve_by_slug_returns_team(): void
+    {
+        $team = TeamFactory::new()->create(['slug' => 'acme']);
+
+        $resolved = Team::resolveBySlug('acme');
+
+        $this->assertNotNull($resolved);
+        $this->assertTrue($resolved->is($team));
+    }
+
+    public function test_resolve_by_slug_returns_null_when_not_found(): void
+    {
+        $this->assertNull(Team::resolveBySlug('nonexistent'));
+    }
+
+    public function test_resolve_by_domain_returns_team_for_verified_domain(): void
+    {
+        $team = TeamFactory::new()->create();
+
+        DomainFactory::new()->verified()->create([
+            'team_id' => $team->id,
+            'domain' => 'custom.example.com',
+        ]);
+
+        $resolved = Team::resolveByDomain('custom.example.com');
+
+        $this->assertNotNull($resolved);
+        $this->assertTrue($resolved->is($team));
+    }
+
+    public function test_resolve_by_domain_returns_null_for_unverified_domain(): void
+    {
+        $team = TeamFactory::new()->create();
+
+        DomainFactory::new()->create([
+            'team_id' => $team->id,
+            'domain' => 'unverified.example.com',
+        ]);
+
+        $this->assertNull(Team::resolveByDomain('unverified.example.com'));
+    }
+
+    public function test_resolve_by_domain_returns_null_when_not_found(): void
+    {
+        $this->assertNull(Team::resolveByDomain('nonexistent.com'));
+    }
 }

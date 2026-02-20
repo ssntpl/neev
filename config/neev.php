@@ -75,13 +75,23 @@ return [
     'domain_federation' => false,
 
     /*
+    | Identity Strategy
+    | -----------------
+    | 'shared'   — Users are global. Same user may belong to multiple teams.
+    |              Tenant concept is hidden. (Default, backward compatible)
+    | 'isolated' — Users are scoped inside a tenant. Same email may exist
+    |              in multiple tenants. Tenant resolved before authentication.
+    */
+    'identity_strategy' => 'shared',
+
+    /*
     | Tenant Isolation (Multi-Tenancy)
     | ---------------------------------
     | When enabled: Teams are isolated by domain/subdomain. Each tenant runs on
     | their own domain (tenant1.yourapp.com) or custom domain (tenant1.com).
     | Requires: 'team' feature to be enabled
     | Database: Requires domains table
-    | Middleware: Adds 'neev:tenant' and 'neev:tenant-api' middleware groups
+    | Middleware: Activates tenant resolution in 'neev:web' and 'neev:api' middleware groups
     | Use case: SaaS applications with isolated tenants
     | Default: false (no domain-based tenant isolation)
     */
@@ -161,19 +171,19 @@ return [
     | Tenant-Driven Authentication
     |--------------------------------------------------------------------------
     |
-    | When enabled, each tenant can configure their own authentication method.
-    | Tenants choose between password authentication (default) or SSO via
+    | When enabled, each tenant or team can configure their own authentication method.
+    | They choose between password authentication (default) or SSO via
     | external identity providers (Microsoft Entra ID, Google, Okta, etc.).
-    | Requires: 'tenant_isolation' feature to be enabled.
+    | In shared mode, teams own SSO config. In isolated mode, tenants own SSO config.
     |
     */
 
     /*
     | Enable Tenant-Driven Authentication
     | ------------------------------------
-    | When true: Tenants can configure their authentication method (password or SSO).
+    | When true: Tenants/teams can configure their authentication method (password or SSO).
     | The auth method is checked on login and users are routed accordingly.
-    | Requires: 'tenant_isolation' = true
+    | Works in both shared mode (team-level SSO) and isolated mode (tenant-level SSO).
     | Default: false
     */
     'tenant_auth' => false,
@@ -262,6 +272,17 @@ return [
     | Your custom models must implement the same interfaces and use required traits.
     |
     */
+
+    /*
+    | Tenant Model Class
+    | ------------------
+    | The Eloquent model used for tenant management in isolated identity mode.
+    | Custom model requirements:
+    | - Must extend Ssntpl\Neev\Models\Tenant or implement same interfaces
+    | - Must implement: ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface
+    | Example: App\Models\Tenant::class
+    */
+    'tenant_model' => Ssntpl\Neev\Models\Tenant::class,
 
     /*
     | Team Model Class

@@ -12,6 +12,7 @@ class AccessToken extends Model
 
     protected $fillable = [
         'user_id',
+        'tenant_id',
         'attempt_id',
         'name',
         'token',
@@ -35,6 +36,11 @@ class AccessToken extends Model
     public function user()
     {
         return $this->belongsTo(User::getClass(), 'user_id');
+    }
+
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::getClass(), 'tenant_id');
     }
 
     public function attempt()

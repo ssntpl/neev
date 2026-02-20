@@ -47,6 +47,7 @@ class TenantSSOTest extends TestCase
     {
         $resolver = Mockery::mock(TenantResolver::class);
         $resolver->shouldReceive('current')->andReturn($tenant);
+        $resolver->shouldReceive('resolvedContext')->andReturn($tenant);
         $resolver->shouldReceive('currentDomain')->andReturn(null);
         $resolver->shouldReceive('resolve')->andReturn($tenant);
         $this->app->instance(TenantResolver::class, $resolver);

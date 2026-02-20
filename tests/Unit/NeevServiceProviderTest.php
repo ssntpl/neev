@@ -3,10 +3,13 @@
 namespace Ssntpl\Neev\Tests\Unit;
 
 use Illuminate\Support\Facades\Route;
+use Ssntpl\Neev\Http\Middleware\BindContextMiddleware;
+use Ssntpl\Neev\Http\Middleware\EnsureContextSSO;
 use Ssntpl\Neev\Http\Middleware\EnsureTeamIsActive;
 use Ssntpl\Neev\Http\Middleware\EnsureTenantMembership;
 use Ssntpl\Neev\Http\Middleware\NeevAPIMiddleware;
 use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
+use Ssntpl\Neev\Http\Middleware\ResolveTeamMiddleware;
 use Ssntpl\Neev\Http\Middleware\TenantMiddleware;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Services\TenantSSOManager;
@@ -45,7 +48,11 @@ class NeevServiceProviderTest extends TestCase
         $groups = Route::getMiddlewareGroups();
 
         $this->assertArrayHasKey('neev:web', $groups);
+        $this->assertContains(TenantMiddleware::class, $groups['neev:web']);
+        $this->assertContains(ResolveTeamMiddleware::class, $groups['neev:web']);
         $this->assertContains(NeevMiddleware::class, $groups['neev:web']);
+        $this->assertContains(EnsureTenantMembership::class, $groups['neev:web']);
+        $this->assertContains(BindContextMiddleware::class, $groups['neev:web']);
     }
 
     public function test_registers_neev_api_middleware_group(): void
@@ -53,7 +60,11 @@ class NeevServiceProviderTest extends TestCase
         $groups = Route::getMiddlewareGroups();
 
         $this->assertArrayHasKey('neev:api', $groups);
+        $this->assertContains(TenantMiddleware::class, $groups['neev:api']);
+        $this->assertContains(ResolveTeamMiddleware::class, $groups['neev:api']);
         $this->assertContains(NeevAPIMiddleware::class, $groups['neev:api']);
+        $this->assertContains(EnsureTenantMembership::class, $groups['neev:api']);
+        $this->assertContains(BindContextMiddleware::class, $groups['neev:api']);
     }
 
     public function test_registers_neev_tenant_middleware_group(): void
@@ -61,27 +72,51 @@ class NeevServiceProviderTest extends TestCase
         $groups = Route::getMiddlewareGroups();
 
         $this->assertArrayHasKey('neev:tenant', $groups);
-        $this->assertContains(TenantMiddleware::class, $groups['neev:tenant']);
+        $this->assertContains(TenantMiddleware::class . ':required', $groups['neev:tenant']);
+        $this->assertContains(ResolveTeamMiddleware::class, $groups['neev:tenant']);
+        $this->assertContains(BindContextMiddleware::class, $groups['neev:tenant']);
     }
 
-    public function test_registers_neev_tenant_api_middleware_group(): void
+    public function test_api_middleware_authenticates_before_membership_check(): void
     {
         $groups = Route::getMiddlewareGroups();
+        $group = $groups['neev:api'];
 
-        $this->assertArrayHasKey('neev:tenant-api', $groups);
-        $this->assertContains(TenantMiddleware::class, $groups['neev:tenant-api']);
-        $this->assertContains(EnsureTenantMembership::class, $groups['neev:tenant-api']);
-        $this->assertContains(NeevAPIMiddleware::class, $groups['neev:tenant-api']);
+        $authIndex = array_search(NeevAPIMiddleware::class, $group);
+        $membershipIndex = array_search(EnsureTenantMembership::class, $group);
+
+        $this->assertLessThan($membershipIndex, $authIndex, 'NeevAPIMiddleware must run before EnsureTenantMembership');
     }
 
-    public function test_registers_neev_tenant_web_middleware_group(): void
+    public function test_web_middleware_authenticates_before_membership_check(): void
     {
         $groups = Route::getMiddlewareGroups();
+        $group = $groups['neev:web'];
 
-        $this->assertArrayHasKey('neev:tenant-web', $groups);
-        $this->assertContains(TenantMiddleware::class, $groups['neev:tenant-web']);
-        $this->assertContains(EnsureTenantMembership::class, $groups['neev:tenant-web']);
-        $this->assertContains(NeevMiddleware::class, $groups['neev:tenant-web']);
+        $authIndex = array_search(NeevMiddleware::class, $group);
+        $membershipIndex = array_search(EnsureTenantMembership::class, $group);
+
+        $this->assertLessThan($membershipIndex, $authIndex, 'NeevMiddleware must run before EnsureTenantMembership');
+    }
+
+    public function test_bind_context_middleware_runs_last_in_api_group(): void
+    {
+        $groups = Route::getMiddlewareGroups();
+        $group = $groups['neev:api'];
+
+        $bindIndex = array_search(BindContextMiddleware::class, $group);
+
+        $this->assertEquals(count($group) - 1, $bindIndex, 'BindContextMiddleware must be last in neev:api');
+    }
+
+    public function test_bind_context_middleware_runs_last_in_web_group(): void
+    {
+        $groups = Route::getMiddlewareGroups();
+        $group = $groups['neev:web'];
+
+        $bindIndex = array_search(BindContextMiddleware::class, $group);
+
+        $this->assertEquals(count($group) - 1, $bindIndex, 'BindContextMiddleware must be last in neev:web');
     }
 
     // =================================================================
@@ -102,6 +137,22 @@ class NeevServiceProviderTest extends TestCase
 
         $this->assertArrayHasKey('neev:tenant-member', $aliases);
         $this->assertSame(EnsureTenantMembership::class, $aliases['neev:tenant-member']);
+    }
+
+    public function test_middleware_alias_neev_resolve_team(): void
+    {
+        $aliases = Route::getMiddleware();
+
+        $this->assertArrayHasKey('neev:resolve-team', $aliases);
+        $this->assertSame(ResolveTeamMiddleware::class, $aliases['neev:resolve-team']);
+    }
+
+    public function test_middleware_alias_neev_ensure_sso(): void
+    {
+        $aliases = Route::getMiddleware();
+
+        $this->assertArrayHasKey('neev:ensure-sso', $aliases);
+        $this->assertSame(EnsureContextSSO::class, $aliases['neev:ensure-sso']);
     }
 
     // =================================================================

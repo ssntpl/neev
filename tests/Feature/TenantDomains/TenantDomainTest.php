@@ -393,7 +393,7 @@ class TenantDomainTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
-        $resolver = Mockery::mock(TenantResolver::class);
+        $resolver = Mockery::mock(TenantResolver::class)->shouldIgnoreMissing();
         $resolver->shouldReceive('current')->andReturn($team);
         $resolver->shouldReceive('currentDomain')->andReturn(null);
         $this->app->instance(TenantResolver::class, $resolver);
@@ -410,7 +410,7 @@ class TenantDomainTest extends TestCase
     {
         [$user, $token] = $this->authenticatedUser();
 
-        $resolver = Mockery::mock(TenantResolver::class);
+        $resolver = Mockery::mock(TenantResolver::class)->shouldIgnoreMissing();
         $resolver->shouldReceive('current')->andReturn(null);
         $resolver->shouldReceive('currentDomain')->andReturn(null);
         $this->app->instance(TenantResolver::class, $resolver);

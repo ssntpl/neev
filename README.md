@@ -528,11 +528,18 @@ Response:
 
 | Middleware | Description |
 |------------|-------------|
-| `neev:web` | Web authentication with MFA |
-| `neev:api` | API token authentication |
-| `neev:tenant` | Tenant resolution from domain |
-| `neev:tenant-web` | Tenant + web auth |
-| `neev:tenant-api` | Tenant + API auth |
+| `neev:web` | Web authentication (includes tenant resolution when enabled) |
+| `neev:api` | API authentication (includes tenant resolution when enabled) |
+| `neev:tenant` | Tenant resolution from domain (no auth) |
+
+### Middleware Aliases
+
+| Alias | Description |
+|-------|-------------|
+| `neev:active-team` | Blocks access when team is inactive/waitlisted |
+| `neev:tenant-member` | Ensures user is a member of the current tenant |
+| `neev:resolve-team` | Resolves team from route parameter |
+| `neev:ensure-sso` | Enforces SSO-only access for the current context |
 
 ---
 
@@ -594,6 +601,7 @@ php artisan neev:download-geoip
 'email_verified' => true,          // Require verification
 'require_company_email' => false,  // Waitlist free emails
 'domain_federation' => true,       // Domain-based joining
+'identity_strategy' => 'shared',   // 'shared' or 'isolated'
 'tenant_isolation' => false,       // Multi-tenancy
 'tenant_auth' => false,            // Per-tenant auth
 'support_username' => false,       // Username login
@@ -695,8 +703,10 @@ protected function schedule(Schedule $schedule)
 
 | Table | Description |
 |-------|-------------|
+| `tenants` | Tenant organizations (isolated identity mode) |
 | `domains` | Custom tenant domains and domain federation |
-| `team_auth_settings` | Per-tenant auth config |
+| `team_auth_settings` | Per-team auth/SSO config |
+| `tenant_auth_settings` | Per-tenant auth/SSO config (isolated mode) |
 
 ---
 
@@ -715,6 +725,8 @@ For comprehensive documentation, see the [docs folder](./docs/):
 | [Teams](./docs/teams.md) | Team management guide |
 | [Multi-Tenancy](./docs/multi-tenancy.md) | SaaS multi-tenant setup |
 | [Security](./docs/security.md) | Security features & best practices |
+| [Architecture](./docs/architecture.md) | Identity strategy, tenancy & team design |
+| [Architecture Internals](./docs/architecture-internals.md) | Interfaces, patterns & coding standards |
 
 ---
 
@@ -723,6 +735,14 @@ For comprehensive documentation, see the [docs folder](./docs/):
 - PHP 8.3+
 - Laravel 11.x or 12.x
 - MySQL, PostgreSQL, or SQLite
+
+---
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions, coding standards, and how to submit pull requests.
+
+Report security vulnerabilities following the process in [SECURITY.md](SECURITY.md).
 
 ---
 

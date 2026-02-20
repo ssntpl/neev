@@ -399,4 +399,6 @@ Check that redirect URIs match exactly (including trailing slashes).
 
 - [Configuration Reference](./configuration.md)
 - [Authentication Guide](./authentication.md)
+- [Multi-Tenancy](./multi-tenancy.md) -- tenant isolation, identity strategy, SSO
+- [Architecture](./architecture.md) -- design decisions and conceptual model
 - [API Reference](./api-reference.md)

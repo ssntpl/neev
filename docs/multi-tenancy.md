@@ -2,16 +2,52 @@
 
 Complete guide to implementing multi-tenant SaaS applications with Neev.
 
+> For the architectural rationale behind these concepts, see [Architecture](./architecture.md).
+
 ---
 
 ## Overview
 
 Neev's multi-tenancy features allow you to:
 
-- Isolate teams/organizations by subdomain or custom domain
+- Choose between **shared** and **isolated** identity strategies
+- Isolate organizations by subdomain or custom domain
 - Configure per-tenant authentication methods
 - Support enterprise SSO (Microsoft Entra ID, Google Workspace, Okta)
 - Auto-provision users from identity providers
+- Scope any Eloquent model to the current tenant or team automatically
+
+---
+
+## Identity Strategy
+
+Neev supports two identity strategies, configured at install time:
+
+### Shared Identity (default)
+
+Users are global. A single user can belong to multiple teams. There is no tenant boundary — teams serve as collaboration containers.
+
+```php
+// config/neev.php
+'identity_strategy' => 'shared',
+```
+
+Best for: GitHub-style platforms, project management tools, collaborative SaaS.
+
+### Isolated Identity
+
+Users are scoped inside a **tenant** (an identity boundary). The same email can exist in different tenants. The tenant must be resolved *before* authentication so Neev knows which identity provider to use.
+
+```php
+// config/neev.php
+'identity_strategy' => 'isolated',
+```
+
+Best for: white-label SaaS, reseller platforms, regulated industries.
+
+In isolated mode, Neev resolves a `Tenant` model (instead of a `Team`) from the request. Teams still exist as collaboration containers *within* a tenant.
+
+> **Key distinction**: Tenant = identity boundary (who can log in). Team = collaboration boundary (who works together). See [Architecture](./architecture.md) for the full conceptual model.
 
 ---
 
@@ -36,6 +72,52 @@ Neev's multi-tenancy features allow you to:
 ```env
 NEEV_SUBDOMAIN_SUFFIX=.yourapp.com
 ```
+
+---
+
+## Isolation Approaches
+
+Neev supports two approaches to tenant isolation. Choose the one that fits your data model.
+
+### Membership-Based Isolation (Default)
+
+Users can belong to multiple tenants via team memberships. The `EnsureTenantMembership` middleware validates that the authenticated user belongs to the current tenant on each request. Data models use the `BelongsToTenant` trait to scope queries by `tenant_id`.
+
+- Users exist independently of any single tenant
+- A user can switch between tenants
+- Best for: collaboration platforms, project management tools, consulting firms
+
+### Hard User Isolation (`tenant_id` on Users Table)
+
+Each user belongs to exactly one tenant via a `tenant_id` foreign key on the `users` table. The User model itself uses the `BelongsToTenant` trait, so all user queries are automatically scoped to the current tenant.
+
+- Users are permanently bound to a single tenant
+- Best for: regulated industries, data-sensitive applications, single-employer SaaS
+
+To enable hard user isolation during installation:
+
+```bash
+php artisan neev:install
+# Answer "Yes" to "Would you like to enable hard user-level tenant isolation?"
+```
+
+This publishes a migration adding `tenant_id` to the `users` table. Then add the trait to your User model:
+
+```php
+use Ssntpl\Neev\Traits\BelongsToTenant;
+
+class User extends Authenticatable
+{
+    use BelongsToTenant;
+    // ...
+}
+```
+
+### Config vs Trait
+
+The `tenant_isolation` config key controls the **infrastructure**: tenant resolver, middleware, SSO routes. It determines whether Neev resolves tenants from subdomains, headers, and custom domains.
+
+The `BelongsToTenant` trait controls **per-model scoping**. Adding the trait to a model opts that model into automatic query scoping and `tenant_id` auto-assignment — regardless of the `tenant_isolation` config value. This means you can use `BelongsToTenant` on your own models even in simpler setups where you manage the tenant context manually via `TenantResolver::setCurrentTenant()`.
 
 ---
 
@@ -100,9 +182,20 @@ use Ssntpl\Neev\Services\TenantResolver;
 
 $resolver = app(TenantResolver::class);
 
-$tenant = $resolver->getCurrentTenant();   // Returns Team model or null
-$resolver->resolvedVia;                     // 'subdomain', 'header', or 'custom_domain'
-$resolver->isResolvedDomainVerified();      // Whether the domain is verified
+// Shared mode — returns the resolved Team (backward compat)
+$team = $resolver->current();
+
+// Isolated mode — returns the resolved Tenant
+$tenant = $resolver->currentTenant();
+
+// Either mode — returns the resolved context container (Team or Tenant)
+$context = $resolver->resolvedContext();
+
+// Resolution metadata
+$resolver->resolvedVia();                  // 'subdomain', 'header', or 'custom'
+$resolver->isResolvedDomainVerified();     // Whether the domain is verified
+$resolver->currentId();                     // Context ID (Team ID or Tenant ID)
+$resolver->isIsolated();                    // true if identity_strategy is 'isolated'
 ```
 
 ---
@@ -204,40 +297,52 @@ $team->webDomain;  // Returns primary verified domain or subdomain
 
 ---
 
-## Tenant Resolution
+## ContextManager
 
-### TenantResolver Service
-
-```php
-use Ssntpl\Neev\Services\TenantResolver;
-
-$resolver = app(TenantResolver::class);
-
-// Get current tenant
-$tenant = $resolver->current();
-
-// Resolve by host
-$tenant = $resolver->resolveFromHost('acme.yourapp.com');
-
-// Set current tenant
-$resolver->setCurrent($team);
-```
-
-### In Middleware
+The `ContextManager` is a request-scoped singleton that holds the resolved tenant, team, and user for the current request. It is populated by middleware and becomes immutable after binding.
 
 ```php
-// Tenant is automatically resolved and available
-$tenant = $request->attributes->get('tenant');
+use Ssntpl\Neev\Services\ContextManager;
+
+$context = app(ContextManager::class);
+
+$context->currentTenant();    // Tenant model or null
+$context->currentTeam();      // Team model or null
+$context->currentUser();      // User model or null
+$context->currentContext();   // Tenant (isolated) or Team (shared), or null
+$context->isBound();          // true after BindContextMiddleware runs
 ```
+
+The context lifecycle:
+1. **TenantMiddleware** resolves tenant/team from the request
+2. **ResolveTeamMiddleware** resolves team from route parameter
+3. **Auth middleware** authenticates the user
+4. **EnsureTenantMembership** checks membership
+5. **BindContextMiddleware** locks the context (immutable after this)
+6. Context is cleared after the response is sent
 
 ### In Controllers
 
 ```php
-public function index(Request $request, TenantResolver $resolver)
+public function index(ContextManager $context)
 {
-    $tenant = $resolver->current();
+    $tenant = $context->currentTenant();
+    $team = $context->currentTeam();
+    $user = $context->currentUser();
     // ...
 }
+```
+
+### Console & Queue Context
+
+In artisan commands or queue jobs, set the context manually via `TenantResolver`:
+
+```php
+$resolver = app(TenantResolver::class);
+$resolver->setCurrentTenant($team);
+
+// Now scoped queries and ContextManager work
+$projects = Project::all(); // Scoped to $team
 ```
 
 ---
@@ -248,23 +353,33 @@ public function index(Request $request, TenantResolver $resolver)
 
 | Middleware | Description |
 |------------|-------------|
-| `neev:tenant` | Resolves tenant from domain |
-| `neev:tenant-web` | Tenant + web authentication |
-| `neev:tenant-api` | Tenant + API authentication |
+| `neev:web` | Web authentication (includes tenant resolution when enabled) |
+| `neev:api` | API authentication (includes tenant resolution when enabled) |
+| `neev:tenant` | Resolves tenant from domain (no auth) |
 
 ### Using Middleware
 
 ```php
 // routes/web.php
-Route::middleware(['neev:tenant-web'])->group(function () {
+Route::middleware(['neev:web'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index']);
 });
 
 // routes/api.php
-Route::middleware(['neev:tenant-api'])->group(function () {
+Route::middleware(['neev:api'])->group(function () {
     Route::get('/data', [DataController::class, 'index']);
 });
 ```
+
+### Middleware Ordering
+
+The middleware groups run in this order:
+
+**`neev:web`**: TenantMiddleware (resolve tenant) → ResolveTeamMiddleware (resolve team) → NeevMiddleware (authenticate user) → EnsureTenantMembership (check membership) → BindContextMiddleware (lock context)
+
+**`neev:api`**: TenantMiddleware (resolve tenant) → ResolveTeamMiddleware (resolve team) → NeevAPIMiddleware (authenticate user) → EnsureTenantMembership (check membership) → BindContextMiddleware (lock context)
+
+When `tenant_isolation` is disabled, the tenant-specific middleware are no-ops. Authentication always runs before the membership check. This ensures `$request->user()` is available when `EnsureTenantMembership` validates that the user belongs to the current tenant.
 
 ### Middleware Behavior
 
@@ -531,18 +646,34 @@ $ssoManager->ensureMembership($user, $tenant);
 
 ## Database Schema
 
+### tenants Table (isolated mode)
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | bigint | Primary key |
+| name | string | Tenant name |
+| slug | string | Unique URL-friendly identifier |
+| managed_by_tenant_id | bigint (nullable) | Parent tenant (reseller model) |
+| created_at | timestamp | Creation time |
+| updated_at | timestamp | Last update time |
+
 ### domains Table
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | bigint | Primary key |
-| team_id | bigint | Team reference |
-| domain | string | Custom domain |
+| team_id | bigint (nullable) | Team reference (shared mode, domain federation) |
+| tenant_id | bigint (nullable) | Tenant reference (isolated mode) |
+| domain | string | Custom domain or email domain |
 | verification_token | string | DNS verification token |
 | verified_at | timestamp | When verified |
 | is_primary | boolean | Primary custom domain |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
+
+The `domains` table serves two purposes:
+- **Domain federation** (shared mode): email domains claimed by teams for auto-join rules
+- **Custom domains** (tenant isolation): custom domains for tenant/team access (e.g., `app.acme.com`)
 
 ### team_auth_settings Table
 
@@ -560,6 +691,10 @@ $ssoManager->ensureMembership($user, $tenant);
 | auto_provision_role | string | Role for auto-provisioned users |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
+
+### tenant_auth_settings Table (isolated mode)
+
+Same schema as `team_auth_settings`, but with `tenant_id` instead of `team_id`. Used when `identity_strategy` is `'isolated'` and SSO is configured at the tenant level.
 
 ---
 
@@ -603,16 +738,23 @@ Route::middleware('web')->group(function () {
     Route::get('/', [HomeController::class, 'index']);
 });
 
-// Tenant routes
-Route::middleware(['neev:tenant-web'])->group(function () {
+// Authenticated routes (tenant-aware when tenant_isolation is enabled)
+Route::middleware(['neev:web'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index']);
     Route::get('/settings', [SettingsController::class, 'index']);
 });
 ```
 
-### 2. Tenant-Scoped Models
+### 2. Scoped Models
 
-Use the `BelongsToTenant` trait to automatically scope any model to the current tenant.
+Neev provides two scoping traits:
+
+- **`BelongsToTenant`** -- scopes models by `tenant_id` (uses `TenantScope`). The column references either the `teams` or `tenants` table depending on your identity strategy.
+- **`BelongsToTeam`** -- scopes models by `team_id` (uses `TeamScope`). Useful when you need team-level scoping within a tenant.
+
+Both traits auto-assign the ID on creation and add a global scope that filters queries automatically.
+
+#### BelongsToTenant
 
 #### Migration
 
@@ -647,7 +789,7 @@ That's it. All queries on `Project` are now automatically scoped to the current 
 
 - **Querying**: A `WHERE tenant_id = <current_tenant_id>` clause is added to every query automatically.
 - **Creating**: `tenant_id` is set from the resolved tenant. You can override it by setting the value explicitly.
-- **No tenant context**: When there is no resolved tenant (console commands, queue jobs without tenant context, or when `tenant_isolation` is disabled), the scope is a no-op — queries run unscoped.
+- **No tenant context**: When there is no resolved tenant (console commands, queue jobs without tenant context), the scope is a no-op — queries run unscoped.
 
 #### Querying
 
@@ -695,16 +837,7 @@ class Project extends Model
 
 #### Console & Queue Context
 
-In artisan commands or queue jobs, there is no HTTP request, so no tenant is resolved. You can manually set the tenant:
-
-```php
-// In an artisan command or queue job
-$resolver = app(TenantResolver::class);
-$resolver->setCurrentTenant($team);
-
-// Now scoped queries work
-$projects = Project::all(); // Scoped to $team
-```
+In artisan commands or queue jobs, there is no HTTP request. See the [ContextManager section](#contextmanager) above for how to set the tenant manually.
 
 ### 3. Tenant-Aware Controllers
 
@@ -735,6 +868,7 @@ class ProjectController extends Controller
 
 ## Next Steps
 
-- [Security Features](./security.md)
-- [Teams Guide](./teams.md)
-- [API Reference](./api-reference.md)
+- [Architecture](./architecture.md) -- conceptual foundations for identity strategy, tenant vs team
+- [Security Features](./security.md) -- brute force protection, login tracking, session management
+- [Teams Guide](./teams.md) -- team management, invitations, domain federation
+- [API Reference](./api-reference.md) -- complete API endpoint reference

@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Ssntpl\Neev\Models\AccessToken;
+use Ssntpl\Neev\Services\ContextManager;
 use Symfony\Component\HttpFoundation\Response;
 
 class NeevAPIMiddleware
@@ -62,6 +63,10 @@ class NeevAPIMiddleware
 
         $request->setUserResolver(fn () => $user);
         $request->attributes->set('token_id', $id);
+
+        if (app()->bound(ContextManager::class)) {
+            app(ContextManager::class)->setUser($user);
+        }
 
         return $next($request);
     }

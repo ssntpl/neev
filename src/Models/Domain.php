@@ -9,6 +9,7 @@ class Domain extends Model
 {
     protected $fillable = [
         'team_id',
+        'tenant_id',
         'enforce',
         'domain',
         'verification_token',
@@ -30,6 +31,38 @@ class Domain extends Model
     public function team()
     {
         return $this->belongsTo(Team::getClass(), 'team_id');
+    }
+
+    /**
+     * Get the tenant that owns this domain (isolated mode).
+     */
+    public function tenant()
+    {
+        return $this->belongsTo(Tenant::getClass(), 'tenant_id');
+    }
+
+    /**
+     * Find a verified domain by host and tenant.
+     * Used for tenant-level domain resolution in isolated mode.
+     */
+    public static function findByHostForTenant(string $host, int $tenantId): ?self
+    {
+        return static::where('domain', $host)
+            ->where('tenant_id', $tenantId)
+            ->whereNotNull('verified_at')
+            ->first();
+    }
+
+    /**
+     * Find a verified domain by host with tenant_id set.
+     * Used for tenant resolution via custom domains in isolated mode.
+     */
+    public static function findByHostWithTenant(string $host): ?self
+    {
+        return static::where('domain', $host)
+            ->whereNotNull('tenant_id')
+            ->whereNotNull('verified_at')
+            ->first();
     }
 
     public function rules()

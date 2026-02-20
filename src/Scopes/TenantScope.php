@@ -31,10 +31,6 @@ class TenantScope implements Scope
 
     protected function shouldApplyScope(): bool
     {
-        if (!config('neev.tenant_isolation', false)) {
-            return false;
-        }
-
         if (!app()->bound(TenantResolver::class)) {
             return false;
         }

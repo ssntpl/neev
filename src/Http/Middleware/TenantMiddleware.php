@@ -18,10 +18,10 @@ class TenantMiddleware
      * Handle an incoming request.
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  string  $mode  'required' to 404 when no tenant found, 'optional' to pass through
      */
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, string $mode = 'optional'): Response
     {
-        // Skip if tenant isolation is not enabled
         if (!config('neev.tenant_isolation', false)) {
             return $next($request);
         }
@@ -29,19 +29,21 @@ class TenantMiddleware
         $tenant = $this->tenantResolver->resolve($request);
 
         if (!$tenant) {
-            return response()->json([
-                'message' => 'Tenant not found',
-            ], 404);
+            if ($mode === 'required') {
+                return response()->json([
+                    'message' => 'Tenant not found',
+                ], 404);
+            }
+
+            return $next($request);
         }
 
-        // Check if the domain is verified (custom domains need verification)
         if (!$this->tenantResolver->isResolvedDomainVerified()) {
             return response()->json([
                 'message' => 'Domain not verified',
             ], 403);
         }
 
-        // Store tenant info in the request for easy access
         $request->attributes->set('tenant', $tenant);
 
         return $next($request);

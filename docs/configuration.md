@@ -62,6 +62,19 @@ When enabled (requires `team` feature):
 - Domain verification via DNS TXT records
 - Domain-based security policies
 
+### Identity Strategy
+
+```php
+'identity_strategy' => 'shared',
+```
+
+| Value | Description |
+|-------|-------------|
+| `'shared'` | Users are global. Same user can belong to multiple teams. Tenant concept is hidden. (Default) |
+| `'isolated'` | Users are scoped inside a tenant. Same email can exist in different tenants. Tenant resolved before authentication. |
+
+See [Architecture](./architecture.md) for the full conceptual model.
+
 ### Tenant Isolation
 
 ```php
@@ -69,7 +82,7 @@ When enabled (requires `team` feature):
 ```
 
 When enabled (requires `team` feature):
-- Teams are isolated by subdomain or custom domain
+- Organizations are isolated by subdomain or custom domain
 - Enables multi-tenant SaaS architecture
 - Requires `domains` table
 
@@ -163,6 +176,7 @@ When enabled:
 ## Model Configuration
 
 ```php
+'tenant_model' => Ssntpl\Neev\Models\Tenant::class,
 'team_model' => Ssntpl\Neev\Models\Team::class,
 'user_model' => Ssntpl\Neev\Models\User::class,
 ```
@@ -408,6 +422,7 @@ return [
     'require_company_email' => false,
     'free_email_domains' => [],
     'domain_federation' => true,
+    'identity_strategy' => 'shared',   // 'shared' or 'isolated'
     'tenant_isolation' => false,
     'tenant_isolation_options' => [
         'subdomain_suffix' => env('NEEV_SUBDOMAIN_SUFFIX', null),
@@ -508,4 +523,6 @@ return [
 ## Next Steps
 
 - [Authentication Guide](./authentication.md)
+- [Multi-Tenancy](./multi-tenancy.md)
+- [Architecture](./architecture.md) -- identity strategy design decisions
 - [API Reference](./api-reference.md)

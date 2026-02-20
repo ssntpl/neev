@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\ContextManager;
 use Symfony\Component\HttpFoundation\Response;
 
 class NeevMiddleware
@@ -19,6 +20,10 @@ class NeevMiddleware
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return redirect(route('login'));
+        }
+
+        if (app()->bound(ContextManager::class)) {
+            app(ContextManager::class)->setUser($user);
         }
 
         if (!$user->active) {

@@ -40,31 +40,11 @@ class TenantScopeTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Does not apply scope when tenant_isolation disabled
-    // -----------------------------------------------------------------
-
-    public function test_does_not_apply_scope_when_tenant_isolation_disabled(): void
-    {
-        config(['neev.tenant_isolation' => false]);
-
-        $scope = new TenantScope();
-        $model = new TenantScopeTestModel();
-        $builder = $model->newQuery();
-
-        $scope->apply($builder, $model);
-
-        // No where clause should be added
-        $this->assertStringNotContainsString('tenant_id', $builder->toSql());
-    }
-
-    // -----------------------------------------------------------------
     // Does not apply scope when TenantResolver not bound
     // -----------------------------------------------------------------
 
     public function test_does_not_apply_scope_when_tenant_resolver_not_bound(): void
     {
-        config(['neev.tenant_isolation' => true]);
-
         // Forget the TenantResolver binding
         $this->app->forgetInstance(TenantResolver::class);
         $this->app->offsetUnset(TenantResolver::class);
@@ -84,8 +64,6 @@ class TenantScopeTest extends TestCase
 
     public function test_does_not_apply_scope_when_no_current_tenant(): void
     {
-        $this->enableTenantIsolation();
-
         // TenantResolver is bound (by the service provider) but has no tenant set
         $resolver = app(TenantResolver::class);
         $resolver->clear();
@@ -105,8 +83,6 @@ class TenantScopeTest extends TestCase
 
     public function test_applies_where_clause_when_tenant_is_set(): void
     {
-        $this->enableTenantIsolation();
-
         $team = TeamFactory::new()->create();
 
         $resolver = app(TenantResolver::class);
@@ -128,8 +104,6 @@ class TenantScopeTest extends TestCase
 
     public function test_applies_correct_tenant_id_in_where_clause(): void
     {
-        $this->enableTenantIsolation();
-
         $team = TeamFactory::new()->create();
 
         $resolver = app(TenantResolver::class);
@@ -168,8 +142,6 @@ class TenantScopeTest extends TestCase
 
     public function test_belongs_to_tenant_trait_applies_scope_on_queries(): void
     {
-        $this->enableTenantIsolation();
-
         $team = TeamFactory::new()->create();
 
         $resolver = app(TenantResolver::class);

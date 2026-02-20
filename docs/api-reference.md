@@ -240,7 +240,7 @@ Authorization: Bearer {token}
 ```json
 {
     "status": "Success",
-    "message": "Login link has been sent."
+    "message": "Verification email has been sent."
 }
 ```
 

@@ -57,14 +57,14 @@ class TenantSSOManagerTest extends TestCase
         $this->assertFalse($this->manager->isTenantAuthEnabled());
     }
 
-    public function test_is_tenant_auth_enabled_returns_false_when_only_tenant_auth_enabled(): void
+    public function test_is_tenant_auth_enabled_returns_true_when_only_tenant_auth_enabled(): void
     {
         config([
             'neev.tenant_auth' => true,
             'neev.tenant_isolation' => false,
         ]);
 
-        $this->assertFalse($this->manager->isTenantAuthEnabled());
+        $this->assertTrue($this->manager->isTenantAuthEnabled());
     }
 
     public function test_is_tenant_auth_enabled_returns_false_when_only_tenant_isolation_enabled(): void

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Services\AuthService;
+use Ssntpl\Neev\Services\ContextManager;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Services\TenantSSOManager;
@@ -37,7 +38,7 @@ class TenantSSOController extends Controller
      */
     public function authConfig(Request $request)
     {
-        $tenant = $this->tenantResolver->current();
+        $tenant = $this->tenantResolver->resolvedContext();
 
         // Default to password auth if no tenant context
         if (!$tenant) {
@@ -71,7 +72,7 @@ class TenantSSOController extends Controller
      */
     public function redirect(Request $request)
     {
-        $tenant = $this->tenantResolver->current();
+        $tenant = $this->tenantResolver->resolvedContext();
 
         // Ensure we have a tenant context
         if (!$tenant) {
@@ -153,7 +154,7 @@ class TenantSSOController extends Controller
      */
     public function callback(Request $request, GeoIP $geoIP)
     {
-        $tenant = $this->tenantResolver->current();
+        $tenant = $this->tenantResolver->resolvedContext();
 
         // Ensure we have a tenant context
         if (!$tenant) {
@@ -163,7 +164,7 @@ class TenantSSOController extends Controller
         // Check for OAuth error response
         if ($request->error) {
             Log::warning('Tenant SSO callback error', [
-                'tenant_id' => $tenant->id,
+                'tenant_id' => $tenant->getContextId(),
                 'error' => $request->error,
                 'error_description' => $request->error_description,
             ]);
@@ -183,8 +184,12 @@ class TenantSSOController extends Controller
             // Find or create the user (global identity)
             $user = $this->ssoManager->findOrCreateUser($tenant, $ssoUser);
 
-            // Ensure user has membership in this tenant
-            $this->ssoManager->ensureMembership($user, $tenant);
+            // Ensure user has membership in the team
+            $team = $this->tenantResolver->current()
+                ?? app(ContextManager::class)->currentTeam();
+            if ($team) {
+                $this->ssoManager->ensureMembership($user, $team);
+            }
 
             // Check if we need to redirect to a SPA (redirect_uri was stored)
             $redirectUri = session()->pull('sso_redirect_uri');
@@ -201,10 +206,13 @@ class TenantSSOController extends Controller
             // Web flow: use session-based authentication
             $this->authService->login($request, $geoIP, $user, LoginAttempt::SSO);
 
+            // Mark session as SSO-authenticated for EnsureContextSSO middleware
+            session(['auth_method' => 'sso']);
+
             return redirect()->intended(config('neev.dashboard_url'));
         } catch (Exception $e) {
             Log::error('Tenant SSO callback error', [
-                'tenant_id' => $tenant->id,
+                'tenant_id' => $tenant->getContextId(),
                 'error' => $e->getMessage(),
             ]);
 

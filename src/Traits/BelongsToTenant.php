@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Traits;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Scopes\TenantScope;
 use Ssntpl\Neev\Services\TenantResolver;
 
@@ -14,10 +15,6 @@ trait BelongsToTenant
         static::addGlobalScope(new TenantScope());
 
         static::creating(function ($model) {
-            if (!config('neev.tenant_isolation', false)) {
-                return;
-            }
-
             if ($model->{$model->getTenantIdColumn()} !== null) {
                 return;
             }
@@ -36,7 +33,11 @@ trait BelongsToTenant
 
     public function tenant(): BelongsTo
     {
-        return $this->belongsTo(Team::getClass(), $this->getTenantIdColumn());
+        $parentModel = config('neev.identity_strategy', 'shared') === 'isolated'
+            ? Tenant::getClass()
+            : Team::getClass();
+
+        return $this->belongsTo($parentModel, $this->getTenantIdColumn());
     }
 
     public function getTenantIdColumn(): string

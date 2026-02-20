@@ -1,102 +1,40 @@
-# Neev - Enterprise User Management for Laravel
+# Neev Documentation
 
-Neev is a comprehensive Laravel package that provides enterprise-grade user authentication, team management, and security features. It's designed as a complete starter kit for SaaS applications, eliminating the need to build complex user management systems from scratch.
-
-## Table of Contents
-
-1. [Installation](./installation.md)
-2. [Configuration](./configuration.md)
-3. [Authentication](./authentication.md)
-4. [API Reference](./api-reference.md)
-5. [Web Routes](./web-routes.md)
-6. [Team Management](./teams.md)
-7. [Multi-Factor Authentication](./mfa.md)
-8. [Multi-Tenancy](./multi-tenancy.md)
-9. [Security Features](./security.md)
+Neev is an enterprise-grade Laravel package for user authentication, team management, and multi-tenancy in SaaS applications. See the [main README](../README.md) for a quick overview and getting started guide.
 
 ---
 
-## Features Overview
+## Guides
 
-### Authentication Methods
-- **Password-based login** with strong password policies
-- **Magic link authentication** (passwordless login via email)
-- **Passkey/WebAuthn support** (biometric authentication, hardware keys)
-- **OAuth/Social login** (Google, GitHub, Microsoft, Apple)
-- **Tenant SSO** (Microsoft Entra ID, Google Workspace, Okta)
+Start here to set up and use Neev in your application.
 
-### Multi-Factor Authentication
-- **TOTP authenticator apps** (Google Authenticator, Authy, 1Password)
-- **Email OTP** (6-digit codes via email)
-- **Recovery codes** (single-use backup codes)
+| Guide | Description |
+|-------|-------------|
+| [Installation](./installation.md) | Step-by-step setup: Composer, migrations, environment, publishing assets |
+| [Configuration](./configuration.md) | All `config/neev.php` options with explanations |
+| [Authentication](./authentication.md) | Password, magic link, passkey, OAuth, and SSO login flows |
+| [MFA](./mfa.md) | Authenticator apps (TOTP), email OTP, and recovery codes |
+| [Teams](./teams.md) | Team creation, invitations, roles, domain federation |
+| [Multi-Tenancy](./multi-tenancy.md) | Identity strategy, tenant isolation, subdomain/custom domain, enterprise SSO |
+| [Security](./security.md) | Brute force protection, password policies, login tracking, session management |
 
-### Team Management
-- Create and manage teams/organizations
-- Invite members via email
-- Role-based access control
-- Domain-based auto-joining (federation)
-- Team switching for multi-team users
+## Reference
 
-### Security Features
-- Brute force protection with progressive delays
-- Account lockout after failed attempts
-- Password history to prevent reuse
-- Password expiry policies
-- Login attempt tracking with GeoIP
-- Session management
-- Suspicious login detection
+Endpoint and route details for building against Neev.
 
-### Multi-Tenancy
-- Subdomain-based tenant isolation
-- Custom domain support with DNS verification
-- Per-tenant authentication configuration
-- Per-tenant SSO integration
+| Reference | Description |
+|-----------|-------------|
+| [API Reference](./api-reference.md) | Every REST endpoint with request/response examples |
+| [Web Routes](./web-routes.md) | All Blade-rendered web routes and view files |
 
----
+## Architecture
 
-## Quick Start
+Design decisions and internal patterns — useful when extending Neev or contributing.
 
-### 1. Install via Composer
-
-```bash
-composer require ssntpl/neev
-```
-
-### 2. Run the Installation Command
-
-```bash
-php artisan neev:install
-```
-
-This interactive command will guide you through the setup process.
-
-### 3. Configure Environment
-
-Add the following to your `.env` file:
-
-```env
-NEEV_DASHBOARD_URL="${APP_URL}/dashboard"
-MAXMIND_LICENSE_KEY="your-maxmind-key"
-```
-
-### 4. Run Migrations
-
-```bash
-php artisan migrate
-```
-
-### 5. Publish Assets (Optional)
-
-```bash
-# Publish configuration
-php artisan vendor:publish --tag=neev-config
-
-# Publish views
-php artisan vendor:publish --tag=neev-views
-
-# Publish migrations
-php artisan vendor:publish --tag=neev-migrations
-```
+| Document | Description |
+|----------|-------------|
+| [Architecture](./architecture.md) | Identity strategy (shared vs isolated), tenant/team concepts, context lifecycle |
+| [Architecture Internals](./architecture-internals.md) | Interfaces, traits, services, coding standards, anti-patterns |
 
 ---
 
@@ -105,57 +43,68 @@ php artisan vendor:publish --tag=neev-migrations
 ```
 neev/
 ├── config/
-│   └── neev.php              # Main configuration file
+│   └── neev.php              # Configuration file
 ├── database/
+│   ├── factories/            # Model factories (testing)
 │   └── migrations/           # Database migrations
 ├── resources/
-│   ├── lang/                 # Translations
-│   └── views/                # Blade templates
+│   └── views/                # Blade templates (64 files)
 ├── routes/
-│   ├── neev.php             # Web and API routes
-│   └── sso.php              # Tenant SSO routes
+│   ├── neev.php              # Web and API routes
+│   └── sso.php               # Tenant SSO routes (loaded when tenant_auth enabled)
 └── src/
-    ├── Commands/             # Artisan commands
-    ├── Events/               # Event classes
+    ├── Commands/              # Artisan commands
+    ├── Contracts/             # Interfaces (ContextContainer, HasMembers, etc.)
+    ├── Events/                # LoggedInEvent, LoggedOutEvent
     ├── Http/
-    │   ├── Controllers/      # Route handlers
-    │   ├── Middleware/       # Request middleware
-    │   └── Requests/         # Form requests
-    ├── Mail/                 # Email templates
-    ├── Models/               # Eloquent models
-    ├── Rules/                # Validation rules
-    ├── Services/             # Business logic
-    ├── Support/              # Helper classes
-    └── Traits/               # Reusable traits
+    │   ├── Controllers/       # Auth, User, Team, Role, TenantDomain, TenantSSO
+    │   └── Middleware/        # Auth, tenant, team, context middleware
+    ├── Mail/                  # 5 Mailables (verification, OTP, login link, etc.)
+    ├── Models/                # User, Team, Tenant, AccessToken, Domain, etc.
+    ├── Rules/                 # PasswordHistory, PasswordUserData
+    ├── Scopes/                # TenantScope, TeamScope
+    ├── Services/              # ContextManager, TenantResolver, TenantSSOManager, etc.
+    └── Traits/                # HasTeams, HasMultiAuth, BelongsToTenant, BelongsToTeam, etc.
 ```
 
 ---
 
-## Middleware Groups
+## Middleware
 
-Neev provides several middleware groups for protecting your routes:
+### Middleware Groups
 
-| Middleware | Description |
-|------------|-------------|
-| `neev:web` | Web authentication with MFA, email verification, and active account check |
-| `neev:api` | API token authentication |
-| `neev:tenant` | Tenant isolation (resolves tenant from domain) |
-| `neev:tenant-web` | Tenant + membership check + web authentication |
-| `neev:tenant-api` | Tenant + membership check + API authentication |
-| `neev:active-team` | Blocks access when the user's team is inactive/waitlisted |
+These are pre-composed groups you apply to route groups.
+
+| Group | Pipeline |
+|-------|----------|
+| `neev:web` | TenantMiddleware > ResolveTeamMiddleware > NeevMiddleware (session auth) > EnsureTenantMembership > BindContextMiddleware |
+| `neev:api` | TenantMiddleware > ResolveTeamMiddleware > NeevAPIMiddleware (token auth) > EnsureTenantMembership > BindContextMiddleware |
+| `neev:tenant` | TenantMiddleware (required) > ResolveTeamMiddleware > BindContextMiddleware |
+
+When `tenant_isolation` is disabled, tenant-specific middleware are no-ops.
+
+### Middleware Aliases
+
+These can be applied individually to specific routes.
+
+| Alias | Description |
+|-------|-------------|
+| `neev:active-team` | Blocks access when team is inactive/waitlisted |
 | `neev:tenant-member` | Ensures user is a member of the current tenant |
+| `neev:resolve-team` | Resolves team from route parameter (slug or ID) |
+| `neev:ensure-sso` | Enforces SSO-only access for the current context |
 
-### Usage Example
+### Usage
 
 ```php
-// In your routes/web.php
+// Apply a middleware group to your routes
 Route::middleware(['neev:web'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index']);
 });
 
-// In your routes/api.php
-Route::middleware(['neev:api'])->group(function () {
-    Route::get('/profile', [ProfileController::class, 'show']);
+// Apply individual middleware aliases
+Route::middleware(['neev:web', 'neev:active-team'])->group(function () {
+    Route::get('/projects', [ProjectController::class, 'index']);
 });
 ```
 
@@ -163,57 +112,40 @@ Route::middleware(['neev:api'])->group(function () {
 
 ## Extending Models
 
-You can extend Neev's models with your own:
+Extend Neev's models with your own, then update the config:
 
 ```php
 // app/Models/User.php
-namespace App\Models;
-
-use Ssntpl\Neev\Models\User as NeevUser;
-
-class User extends NeevUser
+class User extends \Ssntpl\Neev\Models\User
 {
-    protected $fillable = [
-        'name',
-        'username',
-        'active',
-        'custom_field',
-    ];
+    protected $fillable = ['name', 'username', 'active', 'custom_field'];
 }
 ```
-
-Then update your configuration:
 
 ```php
 // config/neev.php
 'user_model' => App\Models\User::class,
 'team_model' => App\Models\Team::class,
+'tenant_model' => App\Models\Tenant::class,
 ```
 
 ---
 
 ## Events
 
-Neev fires the following events that you can listen to:
-
-| Event | Description |
-|-------|-------------|
-| `Ssntpl\Neev\Events\LoggedInEvent` | Fired when a user logs in |
-| `Ssntpl\Neev\Events\LoggedOutEvent` | Fired when a user logs out |
-
-### Example Listener
+| Event | Fired when |
+|-------|------------|
+| `Ssntpl\Neev\Events\LoggedInEvent` | User logs in (any method) |
+| `Ssntpl\Neev\Events\LoggedOutEvent` | User logs out |
 
 ```php
 // app/Listeners/LogSuccessfulLogin.php
-namespace App\Listeners;
-
 use Ssntpl\Neev\Events\LoggedInEvent;
 
 class LogSuccessfulLogin
 {
     public function handle(LoggedInEvent $event)
     {
-        // $event->user contains the logged-in user
         activity()->log("User {$event->user->name} logged in");
     }
 }
@@ -236,24 +168,17 @@ class LogSuccessfulLogin
 
 - PHP 8.3+
 - Laravel 11.x or 12.x
-- Database (MySQL, PostgreSQL, SQLite)
+- MySQL, PostgreSQL, or SQLite
 
-### Optional Dependencies
+### Optional
 
-- MaxMind GeoLite2 account (for IP geolocation)
-- Redis/Memcached (for rate limiting)
-- Mail server (for email verification and OTP)
-
----
-
-## License
-
-MIT License. See [LICENSE](../LICENSE) for details.
+- MaxMind GeoLite2 account (IP geolocation for login tracking)
+- Redis/Memcached (distributed rate limiting)
+- Mail server (email verification, OTP, magic links, invitations)
 
 ---
 
 ## Support
 
-- Documentation: This folder
-- Issues: [GitHub Issues](https://github.com/ssntpl/neev/issues)
+- [GitHub Issues](https://github.com/ssntpl/neev/issues)
 - Email: support@ssntpl.com

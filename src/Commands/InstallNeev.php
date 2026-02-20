@@ -18,7 +18,8 @@ class InstallNeev extends Command implements PromptsForMissingInput
      */
     protected $signature = 'neev:install    {teams : Indicates if team support should be installed}
                                             {verification : Indicates if email verification support should be installed}
-                                            {domain_federation : Indicates if domain federation support should be installed}';
+                                            {domain_federation : Indicates if domain federation support should be installed}
+                                            {tenant_isolation : Indicates if hard user-level tenant isolation should be installed}';
 
     /**
      * The console command description.
@@ -57,6 +58,10 @@ class InstallNeev extends Command implements PromptsForMissingInput
             $this->replaceInFile("'email_verified' => false,", "'email_verified' => true,", $file);
         }
 
+        if ($this->argument('tenant_isolation') === 'yes') {
+            $this->installTenantIsolation();
+        }
+
         // $this->call('migrate');
 
         $this->info('✅ Neev installed successfully!');
@@ -65,6 +70,25 @@ class InstallNeev extends Command implements PromptsForMissingInput
     protected function installTeam()
     {
         $this->replaceInFile("'team' => false", "'team' => true", config_path('neev.php'));
+    }
+
+    protected function installTenantIsolation()
+    {
+        $file = config_path('neev.php');
+
+        $this->replaceInFile("'identity_strategy' => 'shared',", "'identity_strategy' => 'isolated',", $file);
+        $this->replaceInFile("'tenant_isolation' => false,", "'tenant_isolation' => true,", $file);
+        $this->replaceInFile("'single_tenant_users' => false,", "'single_tenant_users' => true,", $file);
+
+        $stubPath = __DIR__.'/../../stubs/add_tenant_id_to_users_table.php.stub';
+        $timestamp = date('Y_m_d_His');
+        $migrationPath = database_path("migrations/{$timestamp}_add_tenant_id_to_users_table.php");
+
+        copy($stubPath, $migrationPath);
+
+        $this->info('Published migration: '.$migrationPath);
+        $this->info('Add the BelongsToTenant trait to your User model:');
+        $this->info('  use Ssntpl\Neev\Traits\BelongsToTenant;');
     }
 
     /**
@@ -105,6 +129,12 @@ class InstallNeev extends Command implements PromptsForMissingInput
 
             'domain_federation' => fn () => select(
                 label: 'Would you like to enable domain federation?',
+                options: ['yes' => 'Yes', 'no' => 'No'],
+                default: 'no'
+            ),
+
+            'tenant_isolation' => fn () => select(
+                label: 'Would you like to enable hard user-level tenant isolation (tenant_id on users table)?',
                 options: ['yes' => 'Yes', 'no' => 'No'],
                 default: 'no'
             ),

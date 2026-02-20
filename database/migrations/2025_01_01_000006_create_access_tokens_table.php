@@ -13,6 +13,7 @@ return new class () extends Migration {
         Schema::create('access_tokens', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->foreignId('tenant_id')->nullable()->constrained('tenants')->nullOnDelete();
             $table->unsignedBigInteger('attempt_id')->nullable();
             $table->string('name');
             $table->string('token')->unique();

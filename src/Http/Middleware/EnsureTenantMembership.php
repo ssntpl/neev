@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Services\TenantResolver;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -11,7 +12,7 @@ use Symfony\Component\HttpFoundation\Response;
  * Middleware to ensure the authenticated user is a member of the current tenant.
  *
  * This middleware validates that a logged-in user actually belongs to the tenant
- * they are trying to access. If not, it logs them out and redirects to login.
+ * (or team) they are trying to access. If not, it logs them out and redirects to login.
  *
  * This is important for multi-tenant applications where users can belong to
  * multiple tenants, preventing cross-tenant session hijacking.
@@ -36,15 +37,16 @@ class EnsureTenantMembership
         }
 
         $user = $request->user();
-        $tenant = $this->tenantResolver->current();
+        $context = $this->tenantResolver->resolvedContext();
 
         // If no user or no tenant context, let other middleware handle it
-        if (!$user || !$tenant) {
+        if (!$user || !$context) {
             return $next($request);
         }
 
-        // Check if user belongs to this tenant
-        if (!$user->belongsToTeam($tenant)) {
+        // Check if user belongs to this context (Tenant or Team)
+        $isMember = $context instanceof HasMembersInterface && $context->hasMember($user);
+        if (!$isMember) {
             // Log out the user
             auth()->logout();
 

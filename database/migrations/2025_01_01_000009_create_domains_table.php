@@ -13,6 +13,7 @@ return new class () extends Migration {
         Schema::create('domains', function (Blueprint $table) {
             $table->id();
             $table->foreignId('team_id')->constrained()->onDelete('cascade');
+            $table->foreignId('tenant_id')->nullable()->constrained('tenants')->nullOnDelete();
             $table->boolean('enforce')->default(false);
             $table->string('domain')->index();
             $table->string('verification_token')->nullable();

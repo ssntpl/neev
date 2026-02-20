@@ -24,6 +24,7 @@ use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\TenantResolver;
@@ -200,12 +201,13 @@ class UserAuthController extends Controller
         }
 
         // Check if tenant-driven authentication is enabled
-        if (config('neev.tenant_auth', false) && config('neev.tenant_isolation', false)) {
+        if (config('neev.tenant_auth', false)) {
             $tenantResolver = app(TenantResolver::class);
-            $tenant = $tenantResolver->current();
+            $context = $tenantResolver->resolvedContext();
 
-            // If tenant requires SSO and has it configured, redirect to SSO
-            if ($tenant && $tenant->requiresSSO() && $tenant->hasSSOConfigured()) {
+            if ($context instanceof IdentityProviderOwnerInterface
+                && $context->requiresSSO()
+                && $context->hasSSOConfigured()) {
                 return redirect()->route('sso.redirect');
             }
         }

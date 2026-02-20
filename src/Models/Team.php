@@ -4,10 +4,17 @@ namespace Ssntpl\Neev\Models;
 
 use Exception;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\Relation;
+use Ssntpl\Neev\Contracts\ContextContainerInterface;
+use Ssntpl\Neev\Contracts\HasMembersInterface;
+use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
+use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Ssntpl\Neev\Support\SlugHelper;
 use Ssntpl\Neev\Traits\HasTenantAuth;
 
-class Team extends Model
+class Team extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
     use HasTenantAuth;
 
@@ -202,5 +209,64 @@ class Team extends Model
     public function hasUser($user): bool
     {
         return $this->users?->contains($user);
+    }
+
+    public function tenant(): BelongsTo
+    {
+        return $this->belongsTo(Tenant::getClass());
+    }
+
+    public function managedTenant(): HasOne
+    {
+        return $this->hasOne(Tenant::getClass(), 'platform_team_id');
+    }
+
+    // -----------------------------------------------------------------
+    // ContextContainerInterface
+    // -----------------------------------------------------------------
+
+    public function getContextId(): int
+    {
+        return $this->id;
+    }
+
+    public function getContextSlug(): string
+    {
+        return $this->slug;
+    }
+
+    public function getContextType(): string
+    {
+        return 'team';
+    }
+
+    // -----------------------------------------------------------------
+    // HasMembersInterface
+    // -----------------------------------------------------------------
+
+    public function members(): Relation
+    {
+        return $this->allUsers();
+    }
+
+    public function hasMember($user): bool
+    {
+        return $this->hasUser($user);
+    }
+
+    // -----------------------------------------------------------------
+    // ResolvableContextInterface
+    // -----------------------------------------------------------------
+
+    public static function resolveBySlug(string $slug): ?static
+    {
+        return static::where('slug', $slug)->first();
+    }
+
+    public static function resolveByDomain(string $domain): ?static
+    {
+        $domainRecord = Domain::findByHost($domain);
+
+        return $domainRecord?->team;
     }
 }

@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Hash;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Contracts\User as SocialiteUser;
 use Laravel\Socialite\Facades\Socialite;
+use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
@@ -16,6 +17,10 @@ use Ssntpl\Neev\Models\User;
  *
  * Handles dynamic Socialite configuration based on tenant settings,
  * user provisioning, and membership management.
+ *
+ * SSO-related methods accept IdentityProviderOwnerInterface so they work
+ * for both Team (shared mode) and Tenant (isolated mode).
+ * Membership-related methods remain Team-specific.
  */
 class TenantSSOManager
 {
@@ -30,31 +35,29 @@ class TenantSSOManager
     ];
 
     /**
-     * Get the SSO provider name for a tenant.
+     * Get the SSO provider name for an identity provider owner.
      */
-    public function getProvider(Team $tenant): ?string
+    public function getProvider(IdentityProviderOwnerInterface $owner): ?string
     {
         if (!$this->isTenantAuthEnabled()) {
             return null;
         }
 
-        return $tenant->authSettings?->sso_provider;
+        return $owner->getSSOProvider();
     }
 
     /**
-     * Build a Socialite driver configured for the tenant's SSO provider.
+     * Build a Socialite driver configured for the owner's SSO provider.
      *
      * @throws Exception If SSO is not configured or provider is unsupported
      */
-    public function buildSocialiteDriver(Team $tenant): Provider
+    public function buildSocialiteDriver(IdentityProviderOwnerInterface $owner): Provider
     {
-        $authSettings = $tenant->authSettings;
-
-        if (!$authSettings || !$authSettings->hasSSOConfigured()) {
+        if (!$owner->hasSSOConfigured()) {
             throw new Exception('SSO is not configured for this tenant.');
         }
 
-        $provider = $authSettings->sso_provider;
+        $provider = $owner->getSSOProvider();
         $driverName = $this->driverMap[$provider] ?? $provider;
 
         // Check if the provider is supported
@@ -63,8 +66,8 @@ class TenantSSOManager
             throw new Exception("SSO provider '{$provider}' is not supported.");
         }
 
-        // Get the tenant's Socialite configuration
-        $config = $authSettings->getSocialiteConfig();
+        // Get the owner's Socialite configuration
+        $config = $owner->getSocialiteConfig();
 
         // Build the Socialite driver with tenant-specific config
         return Socialite::buildProvider(
@@ -74,13 +77,13 @@ class TenantSSOManager
     }
 
     /**
-     * Get the redirect URL for the tenant's SSO provider.
+     * Get the redirect URL for the owner's SSO provider.
      *
      * @throws Exception If SSO is not configured
      */
-    public function getRedirectUrl(Team $tenant): string
+    public function getRedirectUrl(IdentityProviderOwnerInterface $owner): string
     {
-        return $this->buildSocialiteDriver($tenant)->redirect()->getTargetUrl();
+        return $this->buildSocialiteDriver($owner)->redirect()->getTargetUrl();
     }
 
     /**
@@ -88,9 +91,9 @@ class TenantSSOManager
      *
      * @throws Exception If SSO is not configured
      */
-    public function handleCallback(Team $tenant): SocialiteUser
+    public function handleCallback(IdentityProviderOwnerInterface $owner): SocialiteUser
     {
-        return $this->buildSocialiteDriver($tenant)->user();
+        return $this->buildSocialiteDriver($owner)->user();
     }
 
     /**
@@ -101,7 +104,7 @@ class TenantSSOManager
      *
      * @throws Exception If user doesn't exist and auto-provisioning is disabled
      */
-    public function findOrCreateUser(Team $tenant, SocialiteUser $ssoUser): User
+    public function findOrCreateUser(IdentityProviderOwnerInterface $owner, SocialiteUser $ssoUser): User
     {
         $email = $ssoUser->getEmail();
 
@@ -117,7 +120,7 @@ class TenantSSOManager
         }
 
         // User doesn't exist - check if auto-provisioning is enabled
-        if (!$tenant->allowsAutoProvision()) {
+        if (!$owner->allowsAutoProvision()) {
             throw new Exception('You are not a member of this organization. Please contact your administrator.');
         }
 
@@ -180,8 +183,7 @@ class TenantSSOManager
      */
     public function isTenantAuthEnabled(): bool
     {
-        return config('neev.tenant_auth', false)
-            && config('neev.tenant_isolation', false);
+        return config('neev.tenant_auth', false);
     }
 
     /**

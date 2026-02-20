@@ -325,18 +325,6 @@ php artisan vendor:publish --tag=neev-views
 
 ## Customizing Routes
 
-To customize routes, publish them:
-
-```bash
-php artisan vendor:publish --tag=neev-routes
-```
-
-Then modify `routes/neev.php` as needed.
-
----
-
-## Customizing Routes
-
 To customize Neev's routes, publish them and modify the published file:
 
 ```bash
