@@ -5,10 +5,22 @@ namespace Ssntpl\Neev;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
+use Ssntpl\Neev\Commands\Auth\ConfigureAuthCommand;
+use Ssntpl\Neev\Commands\Auth\ShowAuthCommand;
 use Ssntpl\Neev\Commands\CleanOldLoginAttempts;
 use Ssntpl\Neev\Commands\CleanOldPasswords;
+use Ssntpl\Neev\Commands\Domain\AddDomainCommand;
+use Ssntpl\Neev\Commands\Domain\ListDomainsCommand;
+use Ssntpl\Neev\Commands\Domain\VerifyDomainCommand;
 use Ssntpl\Neev\Commands\DownloadGeoLiteDb;
 use Ssntpl\Neev\Commands\InstallNeev;
+use Ssntpl\Neev\Commands\Member\AddMemberCommand;
+use Ssntpl\Neev\Commands\Member\ListMembersCommand;
+use Ssntpl\Neev\Commands\Member\RemoveMemberCommand;
+use Ssntpl\Neev\Commands\Team\ActivateTeamCommand;
+use Ssntpl\Neev\Commands\Tenant\CreateTenantCommand;
+use Ssntpl\Neev\Commands\Tenant\ListTenantsCommand;
+use Ssntpl\Neev\Commands\Tenant\ShowTenantCommand;
 use Ssntpl\Neev\Http\Middleware\BindContextMiddleware;
 use Ssntpl\Neev\Http\Middleware\EnsureContextSSO;
 use Ssntpl\Neev\Http\Middleware\EnsureTeamIsActive;
@@ -125,6 +137,23 @@ class NeevServiceProvider extends ServiceProvider
             DownloadGeoLiteDb::class,
             CleanOldLoginAttempts::class,
             CleanOldPasswords::class,
+
+            CreateTenantCommand::class,
+            ListTenantsCommand::class,
+            ShowTenantCommand::class,
+
+            AddDomainCommand::class,
+            VerifyDomainCommand::class,
+            ListDomainsCommand::class,
+
+            AddMemberCommand::class,
+            RemoveMemberCommand::class,
+            ListMembersCommand::class,
+
+            ConfigureAuthCommand::class,
+            ShowAuthCommand::class,
+
+            ActivateTeamCommand::class,
         ]);
     }
 }

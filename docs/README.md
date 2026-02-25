@@ -17,6 +17,7 @@ Start here to set up and use Neev in your application.
 | [Teams](./teams.md) | Team creation, invitations, roles, domain federation |
 | [Multi-Tenancy](./multi-tenancy.md) | Identity strategy, tenant isolation, subdomain/custom domain, enterprise SSO |
 | [Security](./security.md) | Brute force protection, password policies, login tracking, session management |
+| [CLI Commands](./cli-commands.md) | All Artisan commands: tenant provisioning, domains, members, auth/SSO, team lifecycle |
 
 ## Reference
 
@@ -155,12 +156,26 @@ class LogSuccessfulLogin
 
 ## Console Commands
 
+See [CLI Commands](./cli-commands.md) for full reference with options and examples.
+
 | Command | Description |
 |---------|-------------|
 | `neev:install` | Interactive setup wizard |
 | `neev:download-geoip` | Download MaxMind GeoLite2 database |
 | `neev:clean-login-attempts` | Remove old login attempt records |
 | `neev:clean-passwords` | Remove old password history |
+| `neev:tenant:create` | Create a tenant (isolated) or team (shared) |
+| `neev:tenant:list` | List tenants or teams |
+| `neev:tenant:show` | Show tenant/team details by ID, slug, or domain |
+| `neev:domain:add` | Add a domain to a tenant or team |
+| `neev:domain:verify` | Verify a domain via DNS TXT record |
+| `neev:domain:list` | List domains |
+| `neev:member:add` | Add a user to a team (bypasses invitation) |
+| `neev:member:remove` | Remove a user from a team |
+| `neev:member:list` | List members of a team or tenant |
+| `neev:auth:configure` | Configure auth method (password/SSO) for a tenant or team |
+| `neev:auth:show` | Display auth configuration |
+| `neev:team:activate` | Activate or deactivate a team |
 
 ---
 

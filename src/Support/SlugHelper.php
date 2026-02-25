@@ -2,7 +2,9 @@
 
 namespace Ssntpl\Neev\Support;
 
+use Illuminate\Database\Eloquent\Model;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Models\Tenant;
 
 class SlugHelper
 {
@@ -34,6 +36,31 @@ class SlugHelper
      */
     public static function generate(string $text, ?int $excludeId = null): string
     {
+        return static::generateFor(Team::model(), $text, $excludeId);
+    }
+
+    /**
+     * Generate a unique slug for a tenant.
+     *
+     * @param string $text The text to generate slug from
+     * @param int|null $excludeId Tenant ID to exclude from uniqueness check (for updates)
+     * @return string The unique slug
+     */
+    public static function generateForTenant(string $text, ?int $excludeId = null): string
+    {
+        return static::generateFor(Tenant::model(), $text, $excludeId);
+    }
+
+    /**
+     * Generate a unique slug for a given model.
+     *
+     * @param Model $model A model instance to check uniqueness against
+     * @param string $text The text to generate slug from
+     * @param int|null $excludeId ID to exclude from uniqueness check (for updates)
+     * @return string The unique slug
+     */
+    public static function generateFor(Model $model, string $text, ?int $excludeId = null): string
+    {
         $config = config('neev.slug', []);
         $minLength = $config['min_length'] ?? 2;
         $maxLength = $config['max_length'] ?? 63;
@@ -56,7 +83,7 @@ class SlugHelper
         $counter = 1;
 
         // Check reserved slugs and uniqueness
-        while (static::isReserved($slug, $reserved) || static::slugExists($slug, $excludeId)) {
+        while (static::isReserved($slug, $reserved) || static::slugExistsFor($model, $slug, $excludeId)) {
             $slug = $originalSlug . '-' . $counter;
             $counter++;
 
@@ -111,7 +138,20 @@ class SlugHelper
      */
     protected static function slugExists(string $slug, ?int $excludeId = null): bool
     {
-        $query = Team::model()->where('slug', $slug);
+        return static::slugExistsFor(Team::model(), $slug, $excludeId);
+    }
+
+    /**
+     * Check if a slug already exists for a given model.
+     *
+     * @param Model $model A model instance to check against
+     * @param string $slug The slug to check
+     * @param int|null $excludeId ID to exclude from check
+     * @return bool True if exists
+     */
+    protected static function slugExistsFor(Model $model, string $slug, ?int $excludeId = null): bool
+    {
+        $query = $model->newQuery()->where('slug', $slug);
 
         if ($excludeId) {
             $query->where('id', '!=', $excludeId);
