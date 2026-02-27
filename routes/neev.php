@@ -201,7 +201,7 @@ Route::prefix('/neev')->group(function () {
         Route::post('/email/otp/send', [UserAuthApiController::class, 'sendEmailOTP']);
         Route::post('/email/otp/verify', [UserAuthApiController::class, 'verifyEmailOTP']);
         Route::post('/forgotPassword', [UserAuthApiController::class, 'forgotPassword']);
-        Route::post('/passkeys/login/options', [PasskeyController::class,'generateLoginOptions']);
+        Route::get('/passkeys/login/options', [PasskeyController::class,'generateLoginOptions']);
         Route::post('/passkeys/login', [PasskeyController::class,'loginViaAPI']);
     });
     Route::get('/loginUsingLink', [UserAuthApiController::class, 'loginUsingLink'])->name('loginUsingLink');
