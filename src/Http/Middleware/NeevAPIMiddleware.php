@@ -55,7 +55,7 @@ class NeevAPIMiddleware
 
         $accessToken->update(['last_used_at' => now()]);
 
-        $emailBypassPaths = ['neev/email/send', 'neev/logout', 'neev/email/update', 'neev/email/verify', 'neev/email/otp/send', 'neev/email/otp/verify', 'neev/users'];
+        $emailBypassPaths = ['neev/email/send', 'neev/users', 'neev/logout', 'neev/email/update', 'neev/email/verify', 'neev/email/otp/send', 'neev/email/otp/verify', 'neev/users'];
         if (config('neev.email_verified') && !$user->hasVerifiedEmail() && !$request->is($emailBypassPaths)) {
             return response()->json([
                 'message' => 'Email not verified.'
