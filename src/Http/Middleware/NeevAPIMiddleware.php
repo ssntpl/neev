@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Http\Middleware;
 
+use Auth;
 use Closure;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
@@ -61,6 +62,7 @@ class NeevAPIMiddleware
             ], 401);
         }
 
+        Auth::setUser($user);
         $request->setUserResolver(fn () => $user);
         $request->attributes->set('token_id', $id);
 

@@ -38,6 +38,22 @@ return [
     'email_verified' => false,
 
     /*
+    | Email Verification Method
+    | -------------------------
+    | Choose how users verify their email addresses throughout the application:
+    |
+    | 'link' - Send verification links (default, current behavior)
+    | 'otp'  - Send 6-digit OTP codes via email
+    |
+    | This method will be used for:
+    | - Registration email verification
+    | - Adding new email addresses
+    | - Forgot password verification
+    | - Any other email verification flows
+    */
+    'email_verification_method' => env('NEEV_EMAIL_VERIFICATION_METHOD', 'link'),
+
+    /*
     | Company Email Requirement
     | -------------------------
     | When enabled: Users registering with free email providers (Gmail, Yahoo, etc.)

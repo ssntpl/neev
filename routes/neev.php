@@ -201,7 +201,7 @@ Route::prefix('/neev')->group(function () {
         Route::post('/email/otp/send', [UserAuthApiController::class, 'sendEmailOTP']);
         Route::post('/email/otp/verify', [UserAuthApiController::class, 'verifyEmailOTP']);
         Route::post('/forgotPassword', [UserAuthApiController::class, 'forgotPassword']);
-        Route::get('/passkeys/login/options', [PasskeyController::class,'generateLoginOptions']);
+        Route::post('/passkeys/login/options', [PasskeyController::class,'generateLoginOptions']);
         Route::post('/passkeys/login', [PasskeyController::class,'loginViaAPI']);
     });
     Route::get('/loginUsingLink', [UserAuthApiController::class, 'loginUsingLink'])->name('loginUsingLink');
@@ -228,6 +228,7 @@ Route::prefix('/neev')->group(function () {
         Route::get('/loginAttempts', [UserApiController::class, 'loginAttempts']);
         Route::put('/changePassword', [UserApiController::class, 'changePassword']);
 
+        Route::get('/passkeys', [PasskeyController::class,'getPasskeys']);
         Route::get('/passkeys/register/options', [PasskeyController::class,'generateRegistrationOptions']);
         Route::post('/passkeys/register', [PasskeyController::class,'registerViaAPI']);
         Route::delete('/passkeys', [PasskeyController::class,'deletePasskeyViaAPI']);
@@ -240,6 +241,7 @@ Route::prefix('/neev')->group(function () {
         Route::delete('/apiTokens/deleteAll', [UserApiController::class, 'deleteAllApiTokens']);
 
         Route::get('/teams', [TeamApiController::class, 'teams']);
+        Route::get('/teams/invitations', [TeamApiController::class, 'getInvitations']);
         Route::get('/teams/{id}', [TeamApiController::class, 'getTeam']);
         Route::post('/teams', [TeamApiController::class, 'createTeam']);
         Route::put('/teams', [TeamApiController::class, 'updateTeam']);

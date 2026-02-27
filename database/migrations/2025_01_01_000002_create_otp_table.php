@@ -14,7 +14,7 @@ return new class () extends Migration {
             $table->id();
             $table->unsignedBigInteger('owner_id');
             $table->string('owner_type');
-            $table->integer('otp');
+            $table->text('otp');
             $table->timestamp('expires_at');
             $table->timestamps();
             $table->unique(['owner_id', 'owner_type']);

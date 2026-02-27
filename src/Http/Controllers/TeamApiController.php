@@ -17,6 +17,36 @@ use Ssntpl\Neev\Models\User;
 
 class TeamApiController extends Controller
 {
+    public function getInvitations(Request $request)
+    {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found',
+            ], 400);
+        }
+
+        // Get pending invitations sent to user's emails
+        $emails = $user->emails->pluck('email');
+        $invitations = \Ssntpl\Neev\Models\TeamInvitation::whereIn('email', $emails)
+            ->with('team')
+            ->get();
+
+        // Get pending join requests user sent to teams
+        $joinRequests = $user->sendRequests;
+        $teamRequests = $user->teamRequests;
+
+        return response()->json([
+            'status' => 'Success',
+            'data' => [
+                'invitations' => $invitations,
+                'teamRequests' => $teamRequests,
+                'join_requests' => $joinRequests
+            ]
+        ]);
+    }
+
     public function teams(Request $request)
     {
         $teams = User::model()->find($request->user()?->id)?->teams?->load('owner');

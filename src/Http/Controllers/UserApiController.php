@@ -28,11 +28,12 @@ class UserApiController extends Controller
         $email->email = $request->email;
         $email->save();
 
-        self::sendMailVerification($email);
+        $result = self::sendMailVerification($email);
 
         return response()->json([
             'status' => 'Success',
-            'message' => 'Email has been updated.'
+            'message' => 'Email has been updated.',
+            'verification_method' => $result['method'] ?? 'link'
         ]);
     }
 
@@ -156,6 +157,26 @@ class UserApiController extends Controller
         if (!$user) {
             return false;
         }
+
+        $method = config('neev.email_verification_method', 'link');
+        
+        if ($method === 'otp') {
+            self::sendMailOTP($email, false);
+            return ['method' => 'otp'];
+        }
+        
+        // Default link method
+        self::sendMailLink($email);
+        return ['method' => 'link'];
+    }
+
+    public static function sendMailLink(Email $email)
+    {
+        $user = $email->user;
+        if (!$user) {
+            return false;
+        }
+        
         $signedUrl = URL::temporarySignedRoute(
             'mail.verify',
             now()->addMinutes(config('neev.url_expiry_time', 60)),
@@ -214,12 +235,13 @@ class UserApiController extends Controller
             'email' => $request->email
         ]);
 
-        self::sendMailVerification($email);
+        $result = self::sendMailVerification($email);
 
         return response()->json([
             'status' => 'Success',
             'message' => 'Email has been added.',
-            'data' => $email
+            'data' => $email,
+            'verification_method' => $result['method'] ?? 'link'
         ]);
     }
 

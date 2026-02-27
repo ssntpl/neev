@@ -155,7 +155,10 @@ class UserAuthApiController extends Controller
             }
             DB::commit();
             if (!$email->verified_at) {
-                UserApiController::sendMailVerification($email);
+                $result = UserApiController::sendMailVerification($email);
+                $verificationMethod = $result['method'] ?? 'link';
+            } else {
+                $verificationMethod = null;
             }
 
             $token = $this->getToken($request, $geoIP, $user, LoginAttempt::Password);
@@ -169,8 +172,9 @@ class UserAuthApiController extends Controller
                 'status' => 'Success',
                 'token' => $token,
                 'email_verified' => $user->hasVerifiedEmail(),
+                'verification_method' => $verificationMethod
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             DB::rollBack();
             throw $e;
         } catch (Exception $e) {
@@ -296,11 +300,12 @@ class UserAuthApiController extends Controller
             ]);
         }
 
-        UserApiController::sendMailVerification($email);
+        UserApiController::sendMailLink($email);
 
         return response()->json([
             'status' => 'Success',
-            'message' => 'Login link has been sent.',
+            'message' => 'Verification link has been sent.',
+            'verification_method' => 'link'
         ]);
     }
 
@@ -341,14 +346,15 @@ class UserAuthApiController extends Controller
                 'message' => 'Invalid Token.',
             ]);
         }
-
-        $user->loginTokens()->delete();
+        
+        $currentTokenId = $request->attributes->get('token_id');
+        $user->loginTokens()->where('id', '!=', $currentTokenId)->delete();
 
         event(new LoggedOutEvent($user));
 
         return response()->json([
             'status' => 'Success',
-            'message' => 'Logged out successfully.',
+            'message' => 'Logged out from all other devices successfully.',
         ]);
     }
 
@@ -392,7 +398,8 @@ class UserAuthApiController extends Controller
 
         return response()->json([
             'status' => 'Success',
-            'message' => 'Verification code has been sent to your email.'
+            'message' => 'Verification code has been sent to your email.',
+            'verification_method' => 'otp'
         ]);
     }
 
@@ -409,9 +416,17 @@ class UserAuthApiController extends Controller
             ], 401);
         }
 
+        // Mark email as verified if this is for email verification
+        if (!$request->mfa) {
+            $email->verified_at = now();
+            $email->save();
+            $email->otp()->delete();
+        }
+
         return response()->json([
             'status' => 'Success',
-            'message' => 'Verification code has been verified.'
+            'message' => 'Verification code has been verified.',
+            'verification_method' => 'otp'
         ]);
     }
 
@@ -457,7 +472,7 @@ class UserAuthApiController extends Controller
                 'status' => 'Success',
                 'message' => 'Password has been updated.'
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             throw $e;
         } catch (Exception $e) {
             Log::error($e);
