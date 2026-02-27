@@ -202,7 +202,7 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 | POST | `/neev/sendLoginLink` | Send magic link | No |
 | GET | `/neev/loginUsingLink` | Login via magic link | No |
 | POST | `/neev/logout` | Logout current session | Yes |
-| POST | `/neev/logoutAll` | Logout all sessions | Yes |
+| POST | `/neev/logoutAll` | Logout all other sessions | Yes |
 | POST | `/neev/forgotPassword` | Reset password with OTP | No |
 
 ### Email Endpoints
@@ -231,6 +231,7 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
+| GET | `/neev/passkeys` | List user's passkeys | Yes |
 | GET | `/neev/passkeys/register/options` | Get registration options | Yes |
 | POST | `/neev/passkeys/register` | Register passkey | Yes |
 | POST | `/neev/passkeys/login/options` | Get login options | No |
@@ -264,6 +265,7 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | GET | `/neev/teams` | List user's teams | Yes |
+| GET | `/neev/teams/invitations` | Get user's invitations and join requests | Yes |
 | GET | `/neev/teams/{id}` | Get team details | Yes |
 | POST | `/neev/teams` | Create team | Yes |
 | PUT | `/neev/teams` | Update team | Yes |
@@ -599,6 +601,7 @@ php artisan neev:download-geoip
 // config/neev.php
 'team' => true,                    // Team management
 'email_verified' => true,          // Require verification
+'email_verification_method' => 'link', // 'link' or 'otp'
 'require_company_email' => false,  // Waitlist free emails
 'domain_federation' => true,       // Domain-based joining
 'identity_strategy' => 'shared',   // 'shared' or 'isolated'

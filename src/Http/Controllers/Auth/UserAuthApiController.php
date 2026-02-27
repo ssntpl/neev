@@ -346,7 +346,7 @@ class UserAuthApiController extends Controller
                 'message' => 'Invalid Token.',
             ]);
         }
-        
+
         $currentTokenId = $request->attributes->get('token_id');
         $user->loginTokens()->where('id', '!=', $currentTokenId)->delete();
 

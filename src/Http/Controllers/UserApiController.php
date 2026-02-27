@@ -159,12 +159,12 @@ class UserApiController extends Controller
         }
 
         $method = config('neev.email_verification_method', 'link');
-        
+
         if ($method === 'otp') {
             self::sendMailOTP($email, false);
             return ['method' => 'otp'];
         }
-        
+
         // Default link method
         self::sendMailLink($email);
         return ['method' => 'link'];
@@ -176,7 +176,7 @@ class UserApiController extends Controller
         if (!$user) {
             return false;
         }
-        
+
         $signedUrl = URL::temporarySignedRoute(
             'mail.verify',
             now()->addMinutes(config('neev.url_expiry_time', 60)),
