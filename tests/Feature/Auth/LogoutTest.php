@@ -131,10 +131,10 @@ class LogoutTest extends TestCase
         $response->assertOk();
         $response->assertJson([
             'status' => 'Success',
-            'message' => 'Logged out successfully.',
+            'message' => 'Logged out from all other devices successfully.',
         ]);
 
-        $this->assertEquals(0, $user->loginTokens()->count());
+        $this->assertEquals(1, $user->loginTokens()->count());
     }
 
     public function test_logout_all_dispatches_logged_out_event(): void

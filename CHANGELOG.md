@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Email verification method configuration (`email_verification_method`) - Choose between 'link' or 'otp' verification
+- `GET /neev/passkeys` endpoint to list user's passkeys
+- `GET /neev/teams/invitations` endpoint to get user's invitations and join requests
+- Verification method returned in API responses for email verification flows
+
+### Changed
+- `POST /neev/logoutAll` now keeps current session active and only logs out other devices
+- Email verification flows now respect the configured verification method
+- Improved code structure with separate `sendMailLink()` function
+
+### Fixed
+- Missing route imports and method corrections
+
 ## [0.2.0] - 2025-02-20
 
 ### Added

@@ -60,6 +60,7 @@ trait HasMultiAuth
                 $qrCodeSvg = $writer->writeString($totp->getProvisioningUri());
 
                 return [
+                    'status' => 'Success',
                     'qr_code' => $qrCodeSvg,
                     'secret' => $totp->getSecret(),
                     'method' => $method,
@@ -68,7 +69,11 @@ trait HasMultiAuth
             case 'email':
                 $auth = $this->multiFactorAuth($method);
                 if ($auth) {
-                    return ['message' => 'Email already Configured.'];
+                    return [
+                        'status' => 'Error',
+                        'method' => $method,
+                        'message' => 'Email already Configured.'
+                    ];
                 }
 
                 $this->multiFactorAuths()->create([
@@ -76,7 +81,11 @@ trait HasMultiAuth
                     'preferred' => !$this->preferredMultiFactorAuth?->preferred,
                 ]);
 
-                return ['message' => 'Email Configured.'];
+                return [
+                    'status' => 'Success',
+                    'method' => $method,
+                    'message' => 'Email Configured.'
+                ];
 
             default:
                 return null;
@@ -115,8 +124,7 @@ trait HasMultiAuth
                     return Hash::check($otp, $recoveryCode->code);
                 });
                 if ($code) {
-                    $code->code = Str::lower(Str::random(10));
-                    $code->save();
+                    $code->delete();
                     return true;
                 }
                 break;

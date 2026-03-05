@@ -52,6 +52,24 @@ class PasskeyController extends Controller
     ) {
     }
 
+    public function getPasskeys(Request $request)
+    {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found.',
+            ]);
+        }
+
+        $passkeys = $user->passkeys()->get();
+
+        return response()->json([
+            'status' => 'Success',
+            'data' => $passkeys
+        ]);
+    }
+
     public function generateRegistrationOptions(Request $request)
     {
         $user = User::model()->find($request->user()?->id);

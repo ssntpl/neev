@@ -213,7 +213,9 @@ Route::prefix('/neev')->group(function () {
         Route::post('/email/send', [UserAuthApiController::class, 'sendMailVerificationLink']);
         Route::get('/email/verify', [UserAuthApiController::class, 'emailVerify'])->name('mail.verify');
         Route::post('/email/update', [UserApiController::class, 'emailUpdate']);
+        Route::get('/mfa', [UserApiController::class, 'getMFAMethods']);
         Route::post('/mfa/add', [UserApiController::class, 'addMultiFactorAuthentication']);
+        Route::put('/mfa/preferred', [UserApiController::class, 'setPreferredMFA']);
         Route::delete('/mfa/delete', [UserApiController::class, 'deleteMultiFactorAuthentication']);
         Route::post('/mfa/otp/verify', [UserAuthApiController::class, 'verifyMFAOTP']);
         Route::post('/recoveryCodes', [UserApiController::class, 'generateRecoveryCodes']);
@@ -228,6 +230,7 @@ Route::prefix('/neev')->group(function () {
         Route::get('/loginAttempts', [UserApiController::class, 'loginAttempts']);
         Route::put('/changePassword', [UserApiController::class, 'changePassword']);
 
+        Route::get('/passkeys', [PasskeyController::class,'getPasskeys']);
         Route::get('/passkeys/register/options', [PasskeyController::class,'generateRegistrationOptions']);
         Route::post('/passkeys/register', [PasskeyController::class,'registerViaAPI']);
         Route::delete('/passkeys', [PasskeyController::class,'deletePasskeyViaAPI']);
@@ -240,6 +243,7 @@ Route::prefix('/neev')->group(function () {
         Route::delete('/apiTokens/deleteAll', [UserApiController::class, 'deleteAllApiTokens']);
 
         Route::get('/teams', [TeamApiController::class, 'teams']);
+        Route::get('/teams/invitations', [TeamApiController::class, 'getInvitations']);
         Route::get('/teams/{id}', [TeamApiController::class, 'getTeam']);
         Route::post('/teams', [TeamApiController::class, 'createTeam']);
         Route::put('/teams', [TeamApiController::class, 'updateTeam']);

@@ -34,7 +34,7 @@ class NeevMiddleware
         $attempt = $user->loginAttempts()->where('id', $attemptID)->first();
         if ($attempt && count($user->multiFactorAuths ?? []) > 0) {
             if (!$attempt->multi_factor_method) {
-                return redirect(route('otp.mfa.create', $user->preferredMultiAuth?->method ?? $user->multiFactorAuths()->first()?->method));
+                return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth?->method ?? $user->multiFactorAuths()->first()?->method));
             }
         } elseif (!$attempt && count($user->multiFactorAuths ?? []) > 0) {
             return redirect(route('login'));

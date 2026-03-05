@@ -15,7 +15,7 @@ return new class () extends Migration {
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('method');
             $table->text('secret')->nullable();
-            $table->integer('otp')->nullable();
+            $table->text('otp')->nullable();
             $table->boolean('preferred')->default(false);
             $table->timestamp('expires_at')->nullable();
             $table->timestamp('last_used')->nullable();

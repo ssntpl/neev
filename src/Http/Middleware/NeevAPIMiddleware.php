@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Http\Middleware;
 
+use Auth;
 use Closure;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
@@ -29,7 +30,7 @@ class NeevAPIMiddleware
         [$id, $token] = explode('|', $token, 2);
         $accessToken = AccessToken::find($id);
 
-        if (!$accessToken || !Hash::check($token, $accessToken->token) || ($accessToken->token_type == AccessToken::mfa_token && !$request->is('neev/mfa/otp/verify'))) {
+        if (!$accessToken || !Hash::check($token, $accessToken->token) || ($accessToken->token_type == AccessToken::mfa_token && !$request->is(['neev/mfa/otp/verify', 'neev/mfa']))) {
             return response()->json([
                 'message' => 'Invalid or expired token'
             ], 401);
@@ -54,13 +55,14 @@ class NeevAPIMiddleware
 
         $accessToken->update(['last_used_at' => now()]);
 
-        $emailBypassPaths = ['neev/email/send', 'neev/logout', 'neev/email/update', 'neev/email/verify', 'neev/email/otp/send', 'neev/email/otp/verify', 'neev/users'];
+        $emailBypassPaths = ['neev/email/send', 'neev/users', 'neev/logout', 'neev/email/update', 'neev/email/verify', 'neev/email/otp/send', 'neev/email/otp/verify', 'neev/users'];
         if (config('neev.email_verified') && !$user->hasVerifiedEmail() && !$request->is($emailBypassPaths)) {
             return response()->json([
                 'message' => 'Email not verified.'
             ], 401);
         }
 
+        Auth::setUser($user);
         $request->setUserResolver(fn () => $user);
         $request->attributes->set('token_id', $id);
 
