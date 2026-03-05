@@ -511,7 +511,7 @@ class UserApiController extends Controller
 
         $user = User::model()->find($request->user()?->id);
         $auth = $user?->multiFactorAuth($request->auth_method);
-        
+
         if (!$auth) {
             return response()->json([
                 'status' => 'Failed',
@@ -521,7 +521,7 @@ class UserApiController extends Controller
 
         // Remove preferred from all other methods
         $user->multiFactorAuths()->update(['preferred' => false]);
-        
+
         // Set this method as preferred
         $auth->preferred = true;
         $auth->save();
