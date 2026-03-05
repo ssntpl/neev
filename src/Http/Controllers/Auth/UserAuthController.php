@@ -331,7 +331,7 @@ class UserAuthController extends Controller
 
         if (count($user->multiFactorAuths) > 0) {
             session(['email' => $email->email]);
-            return redirect(route('otp.mfa.create', $user->preferredMultiAuth?->method ?? $user->multiFactorAuths()->first()?->method));
+            return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth?->method ?? $user->multiFactorAuths()->first()?->method));
         }
 
         if ($request->redirect && $request->redirect != '/' && str_starts_with($request->redirect, '/')) {

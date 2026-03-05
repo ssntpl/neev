@@ -30,7 +30,7 @@ class NeevAPIMiddleware
         [$id, $token] = explode('|', $token, 2);
         $accessToken = AccessToken::find($id);
 
-        if (!$accessToken || !Hash::check($token, $accessToken->token) || ($accessToken->token_type == AccessToken::mfa_token && !$request->is('neev/mfa/otp/verify'))) {
+        if (!$accessToken || !Hash::check($token, $accessToken->token) || ($accessToken->token_type == AccessToken::mfa_token && !$request->is(['neev/mfa/otp/verify', 'neev/mfa']))) {
             return response()->json([
                 'message' => 'Invalid or expired token'
             ], 401);

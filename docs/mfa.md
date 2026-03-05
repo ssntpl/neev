@@ -259,7 +259,7 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 if (count($user->multiFactorAuths) > 0) {
     session(['email' => $email]);
     return redirect(route('otp.mfa.create',
-        $user->preferredMultiAuth?->method ??
+        $user->preferredMultiFactorAuth?->method ??
         $user->multiFactorAuths()->first()?->method
     ));
 }

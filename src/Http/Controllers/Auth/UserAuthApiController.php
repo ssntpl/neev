@@ -206,7 +206,7 @@ class UserAuthApiController extends Controller
             ], 401);
         }
 
-        $mfaMethod = $user?->preferredMultiAuth?->method ?? $user?->multiFactorAuths()->first()?->method;
+        $mfaMethod = $user?->preferredMultiFactorAuth?->method ?? $user?->multiFactorAuths()->first()?->method;
         if (!Hash::check($request->password, (string)$user?->password?->password)) {
             if (config('neev.record_failed_login_attempts')) {
                 $clientDetails = LoginAttempt::getClientDetails($request);

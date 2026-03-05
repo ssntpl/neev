@@ -45,6 +45,17 @@ class UserApiController extends Controller
         ]);
     }
 
+    public function getMFAMethods(Request $request)
+    {
+        $user = User::model()->find($request->user()?->id);
+
+        $res = $user?->multiFactorAuths;
+        return response()->json([
+            'status' => 'Success',
+            'data' => $res
+        ]);
+    }
+
     public function addMultiFactorAuthentication(Request $request)
     {
         $request->validate([
@@ -489,6 +500,35 @@ class UserApiController extends Controller
             'status' => 'Success',
             'message' => 'New recovery codes are generated.',
             'data' => $codes,
+        ]);
+    }
+
+    public function setPreferredMFA(Request $request)
+    {
+        $request->validate([
+            'auth_method' => ['required'],
+        ]);
+
+        $user = User::model()->find($request->user()?->id);
+        $auth = $user?->multiFactorAuth($request->auth_method);
+        
+        if (!$auth) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'MFA method not found.',
+            ], 400);
+        }
+
+        // Remove preferred from all other methods
+        $user->multiFactorAuths()->update(['preferred' => false]);
+        
+        // Set this method as preferred
+        $auth->preferred = true;
+        $auth->save();
+
+        return response()->json([
+            'status' => 'Success',
+            'message' => 'Preferred MFA method updated.',
         ]);
     }
 }
