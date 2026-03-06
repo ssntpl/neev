@@ -17,7 +17,7 @@ class ResolveTeamMiddleware
 
     public function handle(Request $request, Closure $next): Response
     {
-        $teamParam = $request->route('team');
+        $teamParam = $request->route('team') ?? $request->header('X-Team');
 
         if ($teamParam === null) {
             return $next($request);
