@@ -23,16 +23,8 @@ Route::middleware('web')->group(function () {
     Route::get('/register', [UserAuthController::class, 'registerCreate'])
         ->name('register');
 
-    Route::post('/register', [UserAuthController::class, 'registerStore']);
-
     Route::get('/login', [UserAuthController::class, 'loginCreate'])
         ->name('login');
-
-    Route::put('/login', [UserAuthController::class, 'loginPassword'])
-        ->name('login.password');
-
-    Route::post('/login/link', [UserAuthController::class, 'sendLoginLink'])
-        ->name('login.link.send');
 
     Route::get('/login/{id}', [UserAuthController::class, 'loginUsingLink'])
         ->name('login.link');
@@ -40,31 +32,11 @@ Route::middleware('web')->group(function () {
     Route::get('/otp/mfa/{method}', [UserAuthController::class, 'verifyMFAOTPCreate'])
         ->name('otp.mfa.create');
 
-    Route::post('/otp/mfa', [UserAuthController::class, 'verifyMFAOTPStore'])
-        ->name('otp.mfa.store');
-
-    Route::post('/otp/mfa/send', [UserAuthController::class, 'emailOTPSend'])
-        ->name('otp.mfa.send');
-
-    Route::post('/login', [UserAuthController::class, 'loginStore']);
-
     Route::get('/forgot-password', [UserAuthController::class, 'forgotPasswordCreate'])
         ->name('password.request');
 
-    Route::post('/forgot-password', [UserAuthController::class, 'forgotPasswordLink'])
-        ->name('password.email');
-
     Route::get('/update-password/{id}/{hash}', [UserAuthController::class, 'updatePasswordCreate'])
         ->name('reset.request');
-
-    Route::post('/update-password', [UserAuthController::class, 'updatePasswordStore'])
-        ->name('user-password.update');
-
-    Route::post('/passkeys/login/options', [PasskeyController::class,'generateLoginOptions'])
-        ->name('passkeys.login.options');
-
-    Route::post('/passkeys/login', [PasskeyController::class,'loginViaWeb'])
-        ->name('passkeys.login');
 
     //OAuth
     Route::get('/oauth/{service}', [OAuthController::class, 'redirect'])
@@ -74,6 +46,37 @@ Route::middleware('web')->group(function () {
 
     Route::get('/email/verify/{id}/{hash}', [UserAuthController::class, 'emailVerifyStore'])
         ->name('verification.verify');
+
+    // Rate-limited auth submission routes
+    Route::middleware('throttle:10,1')->group(function () {
+        Route::post('/register', [UserAuthController::class, 'registerStore']);
+
+        Route::put('/login', [UserAuthController::class, 'loginPassword'])
+            ->name('login.password');
+
+        Route::post('/login/link', [UserAuthController::class, 'sendLoginLink'])
+            ->name('login.link.send');
+
+        Route::post('/otp/mfa', [UserAuthController::class, 'verifyMFAOTPStore'])
+            ->name('otp.mfa.store');
+
+        Route::post('/otp/mfa/send', [UserAuthController::class, 'emailOTPSend'])
+            ->name('otp.mfa.send');
+
+        Route::post('/login', [UserAuthController::class, 'loginStore']);
+
+        Route::post('/forgot-password', [UserAuthController::class, 'forgotPasswordLink'])
+            ->name('password.email');
+
+        Route::post('/update-password', [UserAuthController::class, 'updatePasswordStore'])
+            ->name('user-password.update');
+
+        Route::post('/passkeys/login/options', [PasskeyController::class,'generateLoginOptions'])
+            ->name('passkeys.login.options');
+
+        Route::post('/passkeys/login', [PasskeyController::class,'loginViaWeb'])
+            ->name('passkeys.login');
+    });
 
     Route::middleware(['neev:web'])->group(function () {
         Route::get('/email/verify', [UserAuthController::class, 'emailVerifyCreate'])

@@ -17,7 +17,16 @@ class NeevMiddleware
      */
     public function handle(Request $request, Closure $next): Response
     {
-        $user = User::model()->find($request->user()?->id);
+        $authUser = $request->user();
+        if (!$authUser) {
+            return redirect(route('login'));
+        }
+
+        // Re-query only if the app uses a custom user model
+        $user = $authUser instanceof (User::getClass())
+            ? $authUser
+            : User::model()->find($authUser->id);
+
         if (!$user) {
             return redirect(route('login'));
         }

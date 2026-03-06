@@ -4,6 +4,14 @@ namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $team_id
+ * @property string|null $role
+ * @property string $email
+ * @property \Carbon\Carbon|null $expires_at
+ * @property-read Team|null $team
+ */
 class TeamInvitation extends Model
 {
     protected $fillable = [

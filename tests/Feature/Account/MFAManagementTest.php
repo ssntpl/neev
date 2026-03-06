@@ -97,7 +97,7 @@ class MFAManagementTest extends TestCase
                 'auth_method' => 'sms',
             ]);
 
-        $response->assertOk()
+        $response->assertStatus(400)
             ->assertJsonPath('status', 'Failed');
     }
 

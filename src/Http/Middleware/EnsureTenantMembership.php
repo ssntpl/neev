@@ -39,8 +39,13 @@ class EnsureTenantMembership
         $user = $request->user();
         $context = $this->tenantResolver->resolvedContext();
 
-        // If no user or no tenant context, let other middleware handle it
-        if (!$user || !$context) {
+        // If no tenant context, let other middleware handle it
+        if (!$context) {
+            return $next($request);
+        }
+
+        // If no user, skip membership check (auth middleware will handle it)
+        if (!$user) {
             return $next($request);
         }
 

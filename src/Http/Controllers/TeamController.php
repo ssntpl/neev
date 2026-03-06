@@ -30,7 +30,7 @@ class TeamController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user?->allTeams?->find($team->id)) {
-            return back()->withErrors(['message' => 'You have not required permissions to view members.']);
+            return back()->withErrors(['message' => 'You do not have the required permissions to view members.']);
         }
         return view('neev::team.members', [
             'user' => $user,
@@ -43,26 +43,28 @@ class TeamController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user?->allTeams?->find($team->id) || $team->user_id !== $user?->id || !config('neev.domain_federation')) {
-            return back()->withErrors(['message' => 'You have not required permissions to view domain federation.']);
+            return back()->withErrors(['message' => 'You do not have the required permissions to view domain federation.']);
         }
 
         $domains = $team->domains;
-        foreach ($domains ?? [] as $domain) {
+        $outsideMembers = [];
+        foreach ($domains as $domain) {
             $count = 0;
-            if ($domain?->enforce && $domain?->verified_at) {
-                foreach ($team->users ?? [] as $member) {
-                    if (!str_ends_with(strtolower($member->email?->email), '@' . strtolower($domain?->domain))) {
+            if ($domain->enforce && $domain->verified_at) {
+                foreach ($team->users as $member) {
+                    if (!str_ends_with(strtolower($member->email?->email ?? ''), '@' . strtolower($domain->domain))) {
                         $count++;
                     }
                 }
             }
-            $domain->outside_members = $count;
+            $outsideMembers[$domain->id] = $count;
         }
 
         return view('neev::team.domain-federation', [
             'user' => $user,
             'team' => $team,
             'domains' => $domains,
+            'outsideMembers' => $outsideMembers,
         ]);
     }
 
@@ -70,7 +72,7 @@ class TeamController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user?->allTeams?->find($team->id)) {
-            return back()->withErrors(['message' => 'You have not required permissions to view settings.']);
+            return back()->withErrors(['message' => 'You do not have the required permissions to view settings.']);
         }
         return view('neev::team.settings', [
             'user' => $user,
@@ -365,7 +367,7 @@ class TeamController extends Controller
         $user = User::model()->find($request->user()?->id);
         if (!$user || $team->user_id !== $user?->id) {
             //  || !str_ends_with(strtolower($user->email->email), '@' . strtolower($request->domain))
-            return back()->withErrors(['message' => 'You have not required permissions to federate domain.']);
+            return back()->withErrors(['message' => 'You do not have the required permissions to federate domain.']);
         }
         try {
             $token = Str::random(32);
@@ -388,7 +390,7 @@ class TeamController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user || $domain?->team->user_id !== $user?->id) {
-            return back()->withErrors(['message' => 'You have not required permissions to update domain.']);
+            return back()->withErrors(['message' => 'You do not have the required permissions to update domain.']);
         }
         try {
             if ($request->verify) {
@@ -424,14 +426,12 @@ class TeamController extends Controller
 
     public function verify($domain)
     {
-        $records = dns_get_record($domain?->domain, DNS_TXT);
-        $verified = collect($records)->pluck('txt')->contains($domain?->verification_token);
+        $records = dns_get_record('_neev-verification.' . $domain?->domain, DNS_TXT);
 
-        if ($verified) {
-            $domain->verification_token = null;
-            $domain->verified_at = now();
-            $domain->save();
-            return true;
+        foreach ($records as $record) {
+            if (isset($record['txt']) && $domain->verify($record['txt'])) {
+                return true;
+            }
         }
 
         return false;
@@ -441,7 +441,7 @@ class TeamController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user || $domain?->team->user_id !== $user?->id) {
-            return back()->withErrors(['message' => 'You have not required permissions to delete domain.']);
+            return back()->withErrors(['message' => 'You do not have the required permissions to delete domain.']);
         }
         try {
             $domain->rules()->delete();
@@ -457,7 +457,7 @@ class TeamController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user || $domain?->team->user_id !== $user?->id) {
-            return back()->withErrors(['message' => 'You have not required permissions to update domain.']);
+            return back()->withErrors(['message' => 'You do not have the required permissions to update domain.']);
         }
         try {
             foreach ($domain?->rules ?? [] as $rule) {

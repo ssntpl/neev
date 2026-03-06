@@ -19,6 +19,9 @@ class TenantScope implements Scope
 
         if ($tenantId !== null) {
             $builder->where($model->getQualifiedTenantIdColumn(), $tenantId);
+        } elseif (config('neev.tenant_isolation_options.strict', true)) {
+            // Prevent returning all rows when no tenant is set
+            $builder->whereRaw('1 = 0');
         }
     }
 

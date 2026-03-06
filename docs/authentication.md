@@ -150,6 +150,8 @@ Configure password aging:
 'password_hard_expiry_days' => 90,  // Forced password change
 ```
 
+> **Note:** These configuration values are available for your application to read, but Neev does not currently ship enforcement middleware. See the [Security Guide](./security.md#password-expiry) for a recommended implementation pattern.
+
 ---
 
 ## Magic Link Authentication
@@ -338,6 +340,10 @@ GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI="${APP_URL}/oauth/google/callback"
 ```
 
+### Security Note
+
+OAuth and Social login bypasses Neev's MFA requirements and password policies. Users authenticated via OAuth skip the MFA verification step and are not subject to password expiry or complexity rules. If your application requires MFA for all users, consider implementing a post-OAuth MFA check in your application logic, or restrict OAuth to low-sensitivity accounts.
+
 ### Flow
 
 1. User clicks "Login with Google"
@@ -346,7 +352,7 @@ GOOGLE_REDIRECT_URI="${APP_URL}/oauth/google/callback"
 4. Redirected back with auth code
 5. System exchanges code for user info
 6. User is created or matched
-7. Logged in and redirected
+7. Logged in and redirected (MFA is skipped)
 
 ### URLs
 
@@ -566,14 +572,14 @@ Authorization: Bearer {token}
 // config/neev.php
 'login_soft_attempts' => 5,   // Delays start after this
 'login_hard_attempts' => 20,  // Lockout after this
-'login_block_minutes' => 1,   // Lockout duration
+'login_block_minutes' => 15,  // Lockout duration (recommended: 15+ for production)
 ```
 
 ### Behavior
 
 1. **Attempts 1-5:** Normal login speed
-2. **Attempts 6-19:** Progressive delays between attempts
-3. **Attempts 20+:** Account locked for 1 minute
+2. **Attempts 6-19:** Progressive delays between attempts (exponential backoff)
+3. **Attempts 20+:** Account locked for configured duration (default 15 minutes)
 
 ### Storage
 
@@ -627,11 +633,12 @@ class LogSuccessfulLogout
 
 1. **Enable MFA** for all users, especially administrators
 2. **Use HTTPS** in production
-3. **Configure password expiry** for compliance
+3. **Implement password expiry middleware** if needed for compliance (Neev provides config values but not enforcement — see [Security Guide](./security.md#password-expiry))
 4. **Enable email verification** to prevent fake accounts
 5. **Monitor login attempts** for suspicious activity
 6. **Use session database** driver for logout-all-devices functionality
 7. **Keep GeoIP database** updated for accurate location tracking
+8. **Be aware that OAuth bypasses MFA** — consider additional checks for OAuth users if MFA is a compliance requirement
 
 ---
 

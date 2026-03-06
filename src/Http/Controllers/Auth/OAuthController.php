@@ -14,6 +14,7 @@ use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
+use Ssntpl\Neev\Services\EmailDomainValidator;
 use Ssntpl\Neev\Services\GeoIP;
 
 class OAuthController extends Controller
@@ -81,7 +82,7 @@ class OAuthController extends Controller
         DB::beginTransaction();
         $userData = ['name' => $oauthUser->name];
 
-        if (!config('neev.support_username')) {
+        if (config('neev.support_username')) {
             $base = explode('@', $oauthUser->email)[0];
             $username = $base;
             while (User::getModel()->where('username', $username)->first()) {
@@ -108,10 +109,23 @@ class OAuthController extends Controller
                 $shouldCreateTeam = !config('neev.domain_federation') || !$this->isDomainVerified($oauthUser->email);
 
                 if ($shouldCreateTeam) {
+                    $shouldActivate = true;
+                    $inactiveReason = null;
+
+                    if (config('neev.require_company_email')) {
+                        $emailValidator = new EmailDomainValidator();
+                        if ($emailValidator->isFreeEmail($oauthUser->email)) {
+                            $shouldActivate = false;
+                            $inactiveReason = 'free_email_provider';
+                        }
+                    }
+
                     $team = Team::model()->forceCreate([
                         'name' => explode(' ', $user->name, 2)[0] . "'s Team",
                         'user_id' => $user->id,
                         'is_public' => false,
+                        'activated_at' => $shouldActivate ? now() : null,
+                        'inactive_reason' => $inactiveReason,
                     ]);
                     $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
                     if ($team->default_role) {

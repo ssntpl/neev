@@ -348,10 +348,10 @@ Failed attempts before completely blocking login.
 ### Lockout Duration
 
 ```php
-'login_block_minutes' => 1,
+'login_block_minutes' => 15,
 ```
 
-Minutes to block login after reaching hard limit.
+Minutes to block login after reaching hard limit. Recommended: 15 or higher for production.
 
 ---
 
@@ -372,6 +372,8 @@ Days before hard expiry when warnings start.
 ```
 
 Days until password must be changed. Set to `0` to disable.
+
+> **Note:** These configuration values are available for your application to read, but Neev does not currently ship enforcement middleware. You must implement your own middleware to check password age and redirect users to a password change form. See the [Security Guide](./security.md#password-expiry) for a recommended pattern.
 
 ---
 
@@ -491,7 +493,7 @@ return [
     // Rate Limiting
     'login_soft_attempts' => 5,
     'login_hard_attempts' => 20,
-    'login_block_minutes' => 1,
+    'login_block_minutes' => 15,
 
     // Password Expiry
     'password_soft_expiry_days' => 30,

@@ -100,7 +100,7 @@ class MFATest extends TestCase
         $response->assertStatus(401);
         $response->assertJson([
             'status' => 'Failed',
-            'message' => 'Code verification was failed.',
+            'message' => 'Code verification failed.',
         ]);
 
         // Token should remain as mfa_token
@@ -272,7 +272,7 @@ class MFATest extends TestCase
         $response->assertStatus(401);
         $response->assertJson([
             'status' => 'Failed',
-            'message' => 'Code verification was failed.',
+            'message' => 'Code verification failed.',
         ]);
     }
 

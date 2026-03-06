@@ -25,7 +25,7 @@ Neev provides comprehensive security features:
 // config/neev.php
 'login_soft_attempts' => 5,    // Progressive delays after this
 'login_hard_attempts' => 20,   // Lockout after this
-'login_block_minutes' => 1,    // Lockout duration
+'login_block_minutes' => 15,   // Lockout duration (recommended: 15+ for production)
 ```
 
 ### How It Works
@@ -33,8 +33,8 @@ Neev provides comprehensive security features:
 | Attempts | Behavior |
 |----------|----------|
 | 1-5 | Normal login speed |
-| 6-19 | Progressive delays (1s, 2s, 4s, 8s...) |
-| 20+ | Account locked for 1 minute |
+| 6-19 | Progressive delays (exponential backoff) |
+| 20+ | Account locked for configured duration (default 15 minutes) |
 
 ### Storage Method
 
@@ -104,9 +104,31 @@ Checks that password doesn't contain user's name or email.
 'password_hard_expiry_days' => 90,  // Forced change
 ```
 
-**Soft expiry:** Users see warnings but can still access the app.
+> **Important:** Neev provides the configuration values and stores password timestamps, but does not currently ship enforcement middleware. You must implement your own middleware to check password age and enforce changes. Here is a recommended pattern:
 
-**Hard expiry:** Users must change password before continuing.
+```php
+// app/Http/Middleware/EnforcePasswordExpiry.php
+public function handle($request, Closure $next)
+{
+    $user = $request->user();
+    if (! $user) {
+        return $next($request);
+    }
+
+    $password = $user->password;
+    $hardExpiry = config('neev.password_hard_expiry_days');
+
+    if ($hardExpiry > 0 && $password->created_at->diffInDays(now()) >= $hardExpiry) {
+        return redirect()->route('password.expired');
+    }
+
+    return $next($request);
+}
+```
+
+**Soft expiry:** Use `password_soft_expiry_days` to show warnings (e.g., flash messages) as the hard expiry approaches.
+
+**Hard expiry:** Use `password_hard_expiry_days` to force a password change. Set to `0` to disable.
 
 ---
 

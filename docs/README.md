@@ -103,11 +103,13 @@ Route::middleware(['neev:web'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index']);
 });
 
-// Apply individual middleware aliases
+// Apply individual middleware aliases after the group
 Route::middleware(['neev:web', 'neev:active-team'])->group(function () {
     Route::get('/projects', [ProjectController::class, 'index']);
 });
 ```
+
+> **Ordering:** Always place `neev:web` or `neev:api` before any alias middleware. Aliases like `neev:active-team` and `neev:ensure-sso` depend on context being resolved by the group middleware first. `BindContextMiddleware` (the last middleware in each group) locks the context as immutable — custom middleware that needs tenant/team/user context should run after the Neev group.
 
 ---
 
@@ -138,6 +140,8 @@ class User extends \Ssntpl\Neev\Models\User
 |-------|------------|
 | `Ssntpl\Neev\Events\LoggedInEvent` | User logs in (any method) |
 | `Ssntpl\Neev\Events\LoggedOutEvent` | User logs out |
+
+Additional events (registration, password change, team lifecycle, MFA changes, SSO attempts, domain verification) are planned for a future release. In the meantime, you can listen to Eloquent model events on Neev models for similar functionality.
 
 ```php
 // app/Listeners/LogSuccessfulLogin.php

@@ -132,7 +132,7 @@ class TenantDomainController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'Unable to add domain.',
             ], 400);
         }
     }
@@ -217,7 +217,7 @@ class TenantDomainController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'Unable to delete domain.',
             ], 400);
         }
     }
@@ -289,7 +289,7 @@ class TenantDomainController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'Unable to verify domain.',
             ], 400);
         }
     }
@@ -343,7 +343,7 @@ class TenantDomainController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'Unable to regenerate verification token.',
             ], 400);
         }
     }
@@ -390,7 +390,7 @@ class TenantDomainController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'Unable to set primary domain.',
             ], 400);
         }
     }

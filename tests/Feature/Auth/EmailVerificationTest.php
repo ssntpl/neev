@@ -57,7 +57,7 @@ class EmailVerificationTest extends TestCase
                 'email' => 'nonexistent@example.com',
             ]);
 
-        $response->assertOk()
+        $response->assertStatus(404)
             ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Email not found.');
     }
@@ -72,7 +72,7 @@ class EmailVerificationTest extends TestCase
                 'email' => $user->email->email,
             ]);
 
-        $response->assertOk()
+        $response->assertStatus(400)
             ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Email already verified.');
     }

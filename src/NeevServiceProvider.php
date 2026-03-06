@@ -83,6 +83,7 @@ class NeevServiceProvider extends ServiceProvider
 
             __DIR__.'/../database/migrations/2025_01_01_000011_create_team_auth_settings_table.php' => database_path('migrations/2025_01_01_000011_create_team_auth_settings_table.php'),
             __DIR__.'/../database/migrations/2025_01_01_000012_create_tenant_auth_settings_table.php' => database_path('migrations/2025_01_01_000012_create_tenant_auth_settings_table.php'),
+            __DIR__.'/../database/migrations/2025_01_01_000013_add_unique_index_to_domains_table.php' => database_path('migrations/2025_01_01_000013_add_unique_index_to_domains_table.php'),
         ], 'neev-migrations');
 
         $this->publishes([
@@ -128,8 +129,8 @@ class NeevServiceProvider extends ServiceProvider
     {
         $this->mergeConfigFrom(__DIR__.'/../config/neev.php', 'neev');
 
-        $this->app->singleton(ContextManager::class);
-        $this->app->singleton(TenantResolver::class);
+        $this->app->scoped(ContextManager::class);
+        $this->app->scoped(TenantResolver::class);
         $this->app->singleton(TenantSSOManager::class);
 
         $this->commands([

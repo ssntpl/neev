@@ -5,6 +5,18 @@ namespace Ssntpl\Neev\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Hash;
 
+/**
+ * @property int $id
+ * @property int|null $team_id
+ * @property int|null $tenant_id
+ * @property bool $enforce
+ * @property string $domain
+ * @property string|null $verification_token
+ * @property bool $is_primary
+ * @property \Carbon\Carbon|null $verified_at
+ * @property-read Team|null $team
+ * @property-read Tenant|null $tenant
+ */
 class Domain extends Model
 {
     protected $fillable = [

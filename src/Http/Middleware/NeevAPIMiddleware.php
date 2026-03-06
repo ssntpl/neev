@@ -53,7 +53,7 @@ class NeevAPIMiddleware
             ], 403);
         }
 
-        $accessToken->update(['last_used_at' => now()]);
+        $accessToken->newQuery()->where('id', $accessToken->id)->update(['last_used_at' => now()]);
 
         $emailBypassPaths = ['neev/email/send', 'neev/users', 'neev/logout', 'neev/email/update', 'neev/email/verify', 'neev/email/otp/send', 'neev/email/otp/verify', 'neev/users'];
         if (config('neev.email_verified') && !$user->hasVerifiedEmail() && !$request->is($emailBypassPaths)) {

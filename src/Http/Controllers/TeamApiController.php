@@ -106,7 +106,7 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ], 400);
         }
 
@@ -145,7 +145,7 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ], 400);
         }
     }
@@ -172,7 +172,7 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ], 400);
         }
     }
@@ -207,7 +207,7 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ], 400);
         }
 
@@ -288,7 +288,7 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ], 400);
         }
     }
@@ -357,7 +357,7 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ], 400);
         }
 
@@ -420,7 +420,7 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ], 400);
         }
     }
@@ -452,7 +452,7 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ], 400);
         }
 
@@ -499,7 +499,7 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ], 400);
         }
 
@@ -555,7 +555,7 @@ class TeamApiController extends Controller
             //  || !str_ends_with(strtolower($user->email->email), '@' . strtolower($request->domain))
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'You have not required permissions to federate domain.',
+                'message' => 'You do not have the required permissions to federate domain.',
             ], 400);
         }
         try {
@@ -577,7 +577,7 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ]);
         }
     }
@@ -589,7 +589,7 @@ class TeamApiController extends Controller
         if (!$domain || !$user || $domain?->team->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'You have not required permissions to update domain.',
+                'message' => 'You do not have the required permissions to update domain.',
             ], 400);
         }
         try {
@@ -642,21 +642,19 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ], 400);
         }
     }
 
     public function verify($domain)
     {
-        $records = dns_get_record($domain?->domain, DNS_TXT);
-        $verified = collect($records)->pluck('txt')->contains($domain?->verification_token);
+        $records = dns_get_record('_neev-verification.' . $domain?->domain, DNS_TXT);
 
-        if ($verified) {
-            $domain->verification_token = null;
-            $domain->verified_at = now();
-            $domain->save();
-            return true;
+        foreach ($records as $record) {
+            if (isset($record['txt']) && $domain->verify($record['txt'])) {
+                return true;
+            }
         }
 
         return false;
@@ -669,7 +667,7 @@ class TeamApiController extends Controller
         if (!$domain || !$user || $domain?->team?->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'You have not required permissions to delete domain.',
+                'message' => 'You do not have the required permissions to delete domain.',
             ], 400);
         }
         try {
@@ -684,7 +682,7 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ], 400);
         }
     }
@@ -696,7 +694,7 @@ class TeamApiController extends Controller
         if (!$user || !$domain || $domain?->team?->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'You have not required permissions to update domain.',
+                'message' => 'You do not have the required permissions to update domain.',
             ], 400);
         }
         try {
@@ -716,7 +714,7 @@ class TeamApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'An unexpected error occurred.',
             ], 400);
         }
     }
@@ -728,7 +726,7 @@ class TeamApiController extends Controller
         if (!$domain || !$user || !$domain->team?->users->contains($user)) {
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'You have not required permissions to get domain rules.',
+                'message' => 'You do not have the required permissions to get domain rules.',
             ], 400);
         }
 
@@ -745,7 +743,7 @@ class TeamApiController extends Controller
         if (!$user || !$domain || !$domain?->verified_at || !$domain->team?->users->contains($user)) {
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'You have not required permissions to change primary domain.',
+                'message' => 'You do not have the required permissions to change primary domain.',
             ], 400);
         }
 
@@ -754,7 +752,7 @@ class TeamApiController extends Controller
             if ($pdomain->id == $domain->id) {
                 return response()->json([
                     'status' => 'Success',
-                    'message' => 'Primary domain was aready changed.',
+                    'message' => 'Primary domain is already set.',
                 ]);
             }
             $pdomain->is_primary = false;

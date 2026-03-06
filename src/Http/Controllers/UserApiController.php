@@ -17,12 +17,16 @@ class UserApiController extends Controller
 {
     public function emailUpdate(Request $request)
     {
+        $request->validate([
+            'email' => 'required|email|unique:emails,email',
+        ]);
+
         $email = Email::find($request->email_id);
         if (!$email || $email->user?->id !== $request->user()?->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Email was not updated.'
-            ]);
+            ], 400);
         }
 
         $email->email = $request->email;
@@ -69,7 +73,7 @@ class UserApiController extends Controller
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Auth was not added.',
-            ]);
+            ], 400);
         }
         return response()->json($res);
     }
@@ -136,7 +140,7 @@ class UserApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'Unable to update account.',
             ], 500);
         }
     }
@@ -211,7 +215,7 @@ class UserApiController extends Controller
                 return response()->json([
                     'status' => 'Failed',
                     'message' => 'Auth type not found.',
-                ]);
+                ], 400);
             }
             $auth->otp = $otp;
             $auth->expires_at = $expires_at;
@@ -228,12 +232,16 @@ class UserApiController extends Controller
 
     public function addEmail(Request $request)
     {
+        $request->validate([
+            'email' => 'required|string|email|max:255',
+        ]);
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'User not found.',
-            ]);
+            ], 404);
         }
         if (Email::where('email', $request->email)->first()) {
             return response()->json([
@@ -291,7 +299,7 @@ class UserApiController extends Controller
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Your primary email was not changed.',
-            ]);
+            ], 400);
         }
 
         $pemail = $user->email;
@@ -299,7 +307,7 @@ class UserApiController extends Controller
             if ($pemail->id == $email->id) {
                 return response()->json([
                     'status' => 'Success',
-                    'message' => 'Your primary email was aready changed.',
+                    'message' => 'Your primary email is already set.',
                 ]);
             }
             $pemail->is_primary = false;
@@ -321,7 +329,7 @@ class UserApiController extends Controller
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'User not found.',
-            ]);
+            ], 404);
         }
         $sessions = $user->loginTokens()->with('attempt')->orderBy('last_used_at', 'desc')->get();
 
@@ -338,7 +346,7 @@ class UserApiController extends Controller
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'User not found.',
-            ]);
+            ], 404);
         }
         $attempts = $user?->loginAttempts()?->orderBy('created_at', 'desc')?->get();
         return response()->json([
@@ -375,7 +383,7 @@ class UserApiController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage(),
+                'message' => 'Unable to change password.',
             ], 500);
         }
     }
@@ -387,7 +395,7 @@ class UserApiController extends Controller
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'User not found.',
-            ]);
+            ], 404);
         }
         $tokens = $user->apiTokens()->orderBy('created_at', 'desc')->get();
 
@@ -404,7 +412,7 @@ class UserApiController extends Controller
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'User not found.',
-            ]);
+            ], 404);
         }
         $token = $user->createApiToken($request->name, $request->permissions, $request->expiry);
 
@@ -452,9 +460,16 @@ class UserApiController extends Controller
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'User not found.',
-            ]);
+            ], 404);
         }
-        $user->accessTokens?->find($request->token_id)->delete();
+        $token = $user->accessTokens?->find($request->token_id);
+        if (!$token) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'Token not found.',
+            ], 404);
+        }
+        $token->delete();
 
         return response()->json([
             'status' => 'Success',
@@ -469,7 +484,7 @@ class UserApiController extends Controller
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'User not found.',
-            ]);
+            ], 404);
         }
         $user->apiTokens()->delete();
 
@@ -486,7 +501,7 @@ class UserApiController extends Controller
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'User not found.',
-            ]);
+            ], 404);
         }
         if (count($user->multiFactorAuths) === 0) {
             return response()->json([

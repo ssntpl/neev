@@ -11,7 +11,7 @@ class EnsureTeamIsActive
     /**
      * Handle an incoming request.
      *
-     * Check if the user's team is active. If not, block access to lab features.
+     * Check if the user's team is active. If not, block access to team features.
      *
      * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
      */
@@ -31,13 +31,13 @@ class EnsureTeamIsActive
         if ($team && !$team->isActive()) {
             if ($request->expectsJson()) {
                 return response()->json([
-                    'message' => 'Your lab is pending approval.',
+                    'message' => 'Your team is pending approval.',
                     'waitlisted' => true,
                     'inactive_reason' => $team->inactive_reason,
                 ], 403);
             }
 
-            return redirect()->route('dashboard')->with('warning', 'Your lab is pending approval. Some features are restricted.');
+            return redirect(config('neev.dashboard_url'))->with('warning', 'Your team is pending approval. Some features are restricted.');
         }
 
         return $next($request);

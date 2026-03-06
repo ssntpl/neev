@@ -49,6 +49,23 @@ In isolated mode, Neev resolves a `Tenant` model (instead of a `Team`) from the 
 
 > **Key distinction**: Tenant = identity boundary (who can log in). Team = collaboration boundary (who works together). See [Architecture](./architecture.md) for the full conceptual model.
 
+### Choosing Your Strategy
+
+| If you need... | Use | Config |
+|----------------|-----|--------|
+| Users joining multiple orgs (GitHub/Slack model) | **Shared** | `identity_strategy: 'shared'`, `team: true` |
+| Simple app with no org concept | **Shared** | `identity_strategy: 'shared'`, `team: false` |
+| Same email in different orgs (white-label) | **Isolated** | `identity_strategy: 'isolated'`, `tenant_isolation: true` |
+| Per-org SSO with separate identity providers | **Isolated** | `identity_strategy: 'isolated'`, `tenant_auth: true` |
+| Subdomain-based org access (acme.app.com) | Either | `tenant_isolation: true` |
+| Regulatory data isolation between orgs | **Isolated** | `identity_strategy: 'isolated'`, `tenant_isolation: true` |
+
+**Key config interactions:**
+- `tenant_isolation` requires `team: true`
+- `tenant_auth` requires `tenant_isolation: true`
+- `domain_federation` requires `team: true` (shared mode only — auto-join teams by email domain)
+- `require_company_email` requires `team: true`
+
 ---
 
 ## Configuration
@@ -335,7 +352,9 @@ public function index(ContextManager $context)
 
 ### Console & Queue Context
 
-In artisan commands or queue jobs, set the context manually via `TenantResolver`:
+`ContextManager` is request-scoped — it is cleared after each HTTP request. In artisan commands or queue jobs, there is no HTTP request, so you must set the tenant context manually.
+
+**In Artisan commands:**
 
 ```php
 $resolver = app(TenantResolver::class);
@@ -344,6 +363,31 @@ $resolver->setCurrentTenant($team);
 // Now scoped queries and ContextManager work
 $projects = Project::all(); // Scoped to $team
 ```
+
+**In queue jobs:**
+
+Serialize the tenant/team ID in the job payload and restore context in the `handle()` method:
+
+```php
+class ProcessTenantReport implements ShouldQueue
+{
+    public function __construct(
+        private int $teamId,
+    ) {}
+
+    public function handle(): void
+    {
+        $team = Team::find($this->teamId);
+        $resolver = app(TenantResolver::class);
+        $resolver->setCurrentTenant($team);
+
+        // All scoped queries now work
+        $projects = Project::all(); // Scoped to $team
+    }
+}
+```
+
+> **Important:** Do not rely on the `ContextManager` being populated in queue workers. Always pass tenant/team IDs explicitly in job payloads and restore context at the start of `handle()`. The `ContextManager` singleton is shared across jobs in a long-running worker, so failing to set context could leak data between tenants.
 
 ---
 
@@ -547,11 +591,27 @@ For single-page applications, pass a `redirect_uri`:
 GET /sso/redirect?redirect_uri=https://acme.yourapp.com/app
 ```
 
-After SSO, user is redirected with a token:
+After SSO, user is redirected with the token in the URL fragment (not query parameter) to prevent server-side logging:
 
 ```
-https://acme.yourapp.com/app?token=1|abc123...
+https://acme.yourapp.com/app#token=1|abc123...
 ```
+
+Your SPA should extract the token from `window.location.hash`:
+
+```javascript
+const hash = window.location.hash.substring(1);
+const params = new URLSearchParams(hash);
+const token = params.get('token');
+
+// Store and use for API calls
+localStorage.setItem('auth_token', token);
+
+// Clean the URL
+window.history.replaceState(null, '', window.location.pathname);
+```
+
+> **Security:** The `redirect_uri` must match a verified domain belonging to the tenant. Neev validates this to prevent open redirect attacks. The URL fragment is never sent to the server in HTTP requests, making it safer than query parameters for token transport.
 
 ---
 
@@ -837,7 +897,7 @@ class Project extends Model
 
 #### Console & Queue Context
 
-In artisan commands or queue jobs, there is no HTTP request. See the [ContextManager section](#contextmanager) above for how to set the tenant manually.
+In artisan commands or queue jobs, there is no HTTP request — you must set context manually. See [Console & Queue Context](#console--queue-context) above for patterns and important caveats about long-running workers.
 
 ### 3. Tenant-Aware Controllers
 

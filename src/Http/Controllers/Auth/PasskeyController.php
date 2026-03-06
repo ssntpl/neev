@@ -452,7 +452,7 @@ class PasskeyController extends Controller
             return back()->with('status', 'Passkey has been registered.');
         } catch (Exception $e) {
             Log::error($e);
-            return back()->withErrors(['message' => $e->getMessage()]);
+            return back()->withErrors(['message' => 'Unable to register passkey.']);
         }
     }
 
@@ -469,7 +469,7 @@ class PasskeyController extends Controller
             Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage()
+                'message' => 'Unable to register passkey.',
             ], 400);
         }
     }
@@ -501,7 +501,7 @@ class PasskeyController extends Controller
             return redirect(config('neev.dashboard_url'));
         } catch (Exception $e) {
             Log::error($e);
-            return back()->withErrors(['message' => $e->getMessage()]);
+            return back()->withErrors(['message' => 'Unable to authenticate with passkey.']);
         }
     }
 
@@ -519,9 +519,10 @@ class PasskeyController extends Controller
                 'email_verified' => $user?->hasVerifiedEmail($request->email)
             ]);
         } catch (Exception $e) {
+            Log::error($e);
             return response()->json([
                 'status' => 'Failed',
-                'message' => $e->getMessage()
+                'message' => 'Unable to authenticate with passkey.',
             ], 400);
         }
     }

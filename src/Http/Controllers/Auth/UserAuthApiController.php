@@ -43,10 +43,11 @@ class UserAuthApiController extends Controller
         try {
             $request->validate($validationRules);
             DB::beginTransaction();
-            $user = User::model()->create([
-                'name' => $request->name,
-                'username' => $request->username,
-            ]);
+            $userData = ['name' => $request->name];
+            if (config('neev.support_username')) {
+                $userData['username'] = $request->username;
+            }
+            $user = User::model()->create($userData);
 
             $user = User::model()->find($user->id);
 
@@ -70,7 +71,7 @@ class UserAuthApiController extends Controller
             if (config('neev.team')) {
                 if ($request->invitation_id) {
                     $invitation = TeamInvitation::find($request->invitation_id);
-                    if (!$invitation || sha1($invitation?->email) !== $request->hash) {
+                    if (!$invitation || !hash_equals(sha1($invitation?->email), $request->hash)) {
                         DB::rollBack();
                         return response()->json([
                             'status' => 'Failed',
@@ -291,13 +292,13 @@ class UserAuthApiController extends Controller
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Email not found.',
-            ]);
+            ], 404);
         }
         if ($email->verified_at) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Email already verified.',
-            ]);
+            ], 400);
         }
 
         UserApiController::sendMailLink($email);
@@ -412,7 +413,7 @@ class UserAuthApiController extends Controller
         if (!$email || !$otp || $otp->expires_at < now() || !Hash::check((string) $request->otp, $otp->otp)) {
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'Code verification was failed.'
+                'message' => 'Code verification failed.'
             ], 401);
         }
 
@@ -448,10 +449,17 @@ class UserAuthApiController extends Controller
             }
 
             $otp = $email->otp;
-            if (!$otp || $otp->expires_at < now() || !Hash::check((string) $request->otp, $otp->otp)) {
+            if (!$otp || $otp->expires_at < now()) {
+                $email->otp()->delete();
                 return response()->json([
                     'status' => 'Failed',
-                    'message' => 'Code verification was failed.',
+                    'message' => 'Code verification failed.',
+                ]);
+            }
+            if (!Hash::check((string) $request->otp, $otp->otp)) {
+                return response()->json([
+                    'status' => 'Failed',
+                    'message' => 'Code verification failed.',
                 ]);
             }
 
@@ -552,7 +560,7 @@ class UserAuthApiController extends Controller
         if (!$user) {
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'credentials are wrong.',
+                'message' => 'Credentials are wrong.',
             ], 403);
         }
 
@@ -563,7 +571,7 @@ class UserAuthApiController extends Controller
         if (!$accessToken || !$user->verifyMFAOTP($request->auth_method, $request->otp)) {
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'Code verification was failed.'
+                'message' => 'Code verification failed.'
             ], 401);
         }
 

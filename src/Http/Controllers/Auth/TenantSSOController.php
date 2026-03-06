@@ -198,9 +198,9 @@ class TenantSSOController extends Controller
                 // SPA flow: create a token and redirect with it
                 $token = $this->createTokenForUser($request, $geoIP, $user);
 
-                // Build redirect URL with token
-                $separator = str_contains($redirectUri, '?') ? '&' : '?';
-                return redirect($redirectUri . $separator . 'token=' . urlencode($token));
+                // Build redirect URL with token in fragment (not query string)
+                // Fragment (#) is not sent to server in HTTP requests, preventing token leakage via referrer headers/logs
+                return redirect($redirectUri . '#token=' . urlencode($token));
             }
 
             // Web flow: use session-based authentication
@@ -216,7 +216,7 @@ class TenantSSOController extends Controller
                 'error' => $e->getMessage(),
             ]);
 
-            return $this->handleError($request, $e->getMessage());
+            return $this->handleError($request, 'Authentication failed. Please try again or contact your administrator.');
         }
     }
 

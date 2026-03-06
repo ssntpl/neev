@@ -225,7 +225,7 @@ class EmailManagementTest extends TestCase
             ]);
 
         // Controller returns a "not changed" response (not an error status)
-        $response->assertOk()
+        $response->assertStatus(400)
             ->assertJsonPath('status', 'Failed');
     }
 
@@ -280,7 +280,7 @@ class EmailManagementTest extends TestCase
                 'email' => 'updated@example.com',
             ]);
 
-        $response->assertOk()
+        $response->assertStatus(400)
             ->assertJsonPath('status', 'Failed');
     }
 
@@ -296,7 +296,7 @@ class EmailManagementTest extends TestCase
                 'email' => 'hacked@example.com',
             ]);
 
-        $response->assertOk()
+        $response->assertStatus(400)
             ->assertJsonPath('status', 'Failed');
     }
 }

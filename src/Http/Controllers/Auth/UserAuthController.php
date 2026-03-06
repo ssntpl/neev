@@ -26,6 +26,7 @@ use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Services\AuthService;
+use Ssntpl\Neev\Services\EmailDomainValidator;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\TenantResolver;
 
@@ -48,7 +49,7 @@ class UserAuthController extends Controller
                 return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
             }
             $invitation = TeamInvitation::find($request->id);
-            if (!$invitation || sha1($invitation?->email) !== $request->hash) {
+            if (!$invitation || !hash_equals(sha1($invitation?->email), $request->hash)) {
                 return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
             }
             return view('neev::auth.register', ['id' => $request->id, 'hash' => $request->hash, 'email' => $invitation?->email ?? null]);
@@ -137,7 +138,7 @@ class UserAuthController extends Controller
             if (config('neev.team')) {
                 if ($request->invitation_id) {
                     $invitation = TeamInvitation::find($request->invitation_id);
-                    if (!$invitation || sha1($invitation?->email) !== $request->hash) {
+                    if (!$invitation || !hash_equals(sha1($invitation?->email), $request->hash)) {
                         DB::rollBack();
                         return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
                     }
@@ -154,7 +155,7 @@ class UserAuthController extends Controller
                     $shouldCreateTeam = !config('neev.domain_federation') || !$this->isDomainVerified($request->email);
 
                     if ($shouldCreateTeam) {
-                        $team = $this->createUserTeam($user);
+                        $team = $this->createUserTeam($user, $request->email);
                         $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
                         if ($team->default_role) {
                             $user->assignRole($team->default_role ?? '', $team);
@@ -395,7 +396,7 @@ class UserAuthController extends Controller
         }
 
         foreach ($user?->emails as $email) {
-            if (sha1($email->email) !== $hash || (config('neev.email_verified') && !$email?->verified_at)) {
+            if (!hash_equals(sha1($email->email), $hash) || (config('neev.email_verified') && !$email?->verified_at)) {
                 continue;
             }
 
@@ -488,7 +489,7 @@ class UserAuthController extends Controller
 
         $email = null;
         foreach ($user->emails as $item) {
-            if (sha1($item->email) == $hash) {
+            if (hash_equals(sha1($item->email), $hash)) {
                 $email = $item;
                 break;
             }
@@ -603,7 +604,7 @@ class UserAuthController extends Controller
         $auth->expires_at = now()->addMinutes($expiryMinutes);
         $auth->save();
         Mail::to($email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
-        return back()->with('status', 'Verification link has been sent.');
+        return back()->with('status', 'Verification code has been sent.');
     }
 
     public function verifyMFAOTPStore(LoginRequest $request, GeoIP $geoIP)
@@ -612,7 +613,7 @@ class UserAuthController extends Controller
         $user = $email?->user ?? User::model()->find($request->user()?->id);
 
         if (!$user) {
-            return back()->withErrors(['message' => 'credentials are wrong.']);
+            return back()->withErrors(['message' => 'Credentials are wrong.']);
         }
         $attempt = LoginAttempt::find($request->attempt_id);
         if ($attempt) {
@@ -639,12 +640,25 @@ class UserAuthController extends Controller
         return $domain?->verified_at !== null;
     }
 
-    private function createUserTeam(User $user): Team
+    private function createUserTeam(User $user, ?string $email = null): Team
     {
+        $shouldActivate = true;
+        $inactiveReason = null;
+
+        if ($email && config('neev.require_company_email')) {
+            $emailValidator = new EmailDomainValidator();
+            if ($emailValidator->isFreeEmail($email)) {
+                $shouldActivate = false;
+                $inactiveReason = 'free_email_provider';
+            }
+        }
+
         return Team::model()->forceCreate([
             'name' => explode(' ', $user->name, 2)[0] . "'s Team",
             'user_id' => $user->id,
             'is_public' => false,
+            'activated_at' => $shouldActivate ? now() : null,
+            'inactive_reason' => $inactiveReason,
         ]);
     }
 }

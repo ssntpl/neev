@@ -56,7 +56,7 @@
                                 <div class="flex gap-2 items-center justify-between">
                                     <div class="font-semibold flex items-center gap-2 w-1/5" @mouseenter="show = true" @mouseleave="show = false">
                                         {{ $domain->domain }}
-                                        @if ($domain->outside_members)
+                                        @if (($outsideMembers[$domain->id] ?? 0))
                                             <div class="relative flex items-center">
                                                 <span class="absolute inline-flex h-5 w-5 rounded-full bg-red-400 bg-opacity-40 animate-ping"></span>
                                                 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"class="w-5 h-5 text-red-600 cursor-pointer">
@@ -104,10 +104,10 @@
                                     </form>
                                 </div>
                                 <!-- Tooltip -->
-                                @if ($domain->outside_members)
+                                @if (($outsideMembers[$domain->id] ?? 0))
                                     <div x-show="show" x-transition
                                         class="absolute w-2/5 z-50 left-0 mt-1 bg-red-100 text-red-800 text-xs font-medium px-2 py-1 rounded shadow-md">
-                                        {{$domain->outside_members}} team members are using email addresses outside your verified domain ({{ '@'.$domain->domain }}). To keep your team secure, remove these users or ask them to rejoin using a matching email address.
+                                        {{($outsideMembers[$domain->id] ?? 0)}} team members are using email addresses outside your verified domain ({{ '@'.$domain->domain }}). To keep your team secure, remove these users or ask them to rejoin using a matching email address.
                                     </div>
                                 @endif
                             </div>

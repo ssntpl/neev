@@ -145,6 +145,16 @@ return [
         | When false: Users can belong to multiple teams (standard neev behavior).
         */
         'single_tenant_users' => false,
+
+        /*
+        | Strict Isolation Mode
+        | ---------------------
+        | When true: Queries on tenant/team-scoped models return zero rows
+        | if no tenant/team context is set (prevents accidental data leaks).
+        | When false: Scope is silently skipped when no context is set.
+        | Default: true (recommended for production)
+        */
+        'strict' => true,
     ],
 
     /*
@@ -712,7 +722,7 @@ return [
     |
     | Note: Users can still reset password or contact support during lockout
     */
-    'login_block_minutes' => 1,
+    'login_block_minutes' => 15,
 
     /*
     |--------------------------------------------------------------------------

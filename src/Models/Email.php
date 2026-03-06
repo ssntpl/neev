@@ -5,6 +5,15 @@ namespace Ssntpl\Neev\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property string $email
+ * @property bool $is_primary
+ * @property \Carbon\Carbon|null $verified_at
+ * @property-read User|null $user
+ * @property-read OTP|null $otp
+ */
 class Email extends Model
 {
     protected $fillable = [

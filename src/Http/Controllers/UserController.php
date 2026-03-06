@@ -148,6 +148,10 @@ class UserController extends Controller
 
     public function addEmail(Request $request)
     {
+        $request->validate([
+            'email' => 'required|string|email|max:255',
+        ]);
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return back()->withErrors(['message' => 'User not found.']);

@@ -105,7 +105,7 @@ class PasswordResetTest extends TestCase
         $response->assertOk();
         $response->assertJson([
             'status' => 'Failed',
-            'message' => 'Code verification was failed.',
+            'message' => 'Code verification failed.',
         ]);
     }
 
@@ -123,7 +123,7 @@ class PasswordResetTest extends TestCase
         $response->assertOk();
         $response->assertJson([
             'status' => 'Failed',
-            'message' => 'Code verification was failed.',
+            'message' => 'Code verification failed.',
         ]);
     }
 

@@ -5,6 +5,8 @@ namespace Ssntpl\Neev\Models;
 use Exception;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
@@ -118,12 +120,12 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
         return $this->subdomain;
     }
 
-    public function owner()
+    public function owner(): BelongsTo
     {
         return $this->belongsTo(User::getClass(), 'user_id');
     }
 
-    public function allUsers()
+    public function allUsers(): BelongsToMany
     {
         return $this->belongsToMany(User::getClass(), Membership::class)
             ->withPivot(['role', 'joined'])
@@ -131,7 +133,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
             ->as('membership');
     }
 
-    public function users()
+    public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::getClass(), Membership::class)
             ->withPivot(['role', 'joined'])
@@ -140,7 +142,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
             ->where('joined', true);
     }
 
-    public function joinRequests()
+    public function joinRequests(): BelongsToMany
     {
         return $this->belongsToMany(User::getClass(), Membership::class)
             ->withPivot(['role', 'joined', 'action'])
@@ -149,7 +151,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
             ->where(['joined' => false, 'action' => 'request_from_user']);
     }
 
-    public function invitedUsers()
+    public function invitedUsers(): BelongsToMany
     {
         return $this->belongsToMany(User::getClass(), Membership::class)
             ->withPivot(['role', 'joined', 'action'])
@@ -158,7 +160,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
             ->where(['joined' => false, 'action' => 'request_to_user']);
     }
 
-    public function removeUser($user)
+    public function removeUser($user): void
     {
         if ($this->user_id === $user?->id) {
             throw new Exception('cannot remove owner.');
@@ -170,7 +172,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     /**
      * Get all domains claimed by this team.
      */
-    public function domains()
+    public function domains(): HasMany
     {
         return $this->hasMany(Domain::class);
     }
@@ -179,7 +181,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
      * Get the primary domain for this team (used for email federation).
      * @deprecated Use primaryDomain() instead
      */
-    public function domain()
+    public function domain(): HasOne
     {
         return $this->primaryDomain();
     }
@@ -187,7 +189,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     /**
      * Get the primary domain for this team.
      */
-    public function primaryDomain()
+    public function primaryDomain(): HasOne
     {
         return $this->hasOne(Domain::class)->where('is_primary', true);
     }
@@ -196,19 +198,19 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
      * Get custom domains for this team (web-serving domains).
      * These are verified domains that can be used for tenant routing.
      */
-    public function customDomains()
+    public function customDomains(): HasMany
     {
         return $this->hasMany(Domain::class)->whereNotNull('verified_at');
     }
 
-    public function invitations()
+    public function invitations(): HasMany
     {
         return $this->hasMany(TeamInvitation::class);
     }
 
     public function hasUser($user): bool
     {
-        return $this->users?->contains($user);
+        return $this->users()->where('users.id', $user->id)->exists();
     }
 
     public function tenant(): BelongsTo

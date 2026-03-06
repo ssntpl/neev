@@ -19,6 +19,9 @@ class TeamScope implements Scope
 
         if ($teamId !== null) {
             $builder->where($model->getQualifiedTeamIdColumn(), $teamId);
+        } elseif (config('neev.tenant_isolation_options.strict', true)) {
+            // Prevent returning all rows when no team is set
+            $builder->whereRaw('1 = 0');
         }
     }
 
