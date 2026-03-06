@@ -326,7 +326,7 @@ class TeamApiController extends Controller
         try {
             if ($request->invitation_id) {
                 $invitation = \Ssntpl\Neev\Models\TeamInvitation::find($request->invitation_id);
-                if (!$invitation || !$user->emails->contains($invitation->email)) {
+                if (!$invitation || !$user->emails->where('email', $invitation->email)->first()->exists()) {
                     return response()->json([
                         'status' => 'Failed',
                         'message' => 'Invitation not found',
