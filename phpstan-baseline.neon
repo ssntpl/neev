@@ -601,12 +601,6 @@ parameters:
 			path: src/Http/Controllers/Auth/UserAuthController.php
 
 		-
-			message: '#^Using nullsafe property access on non\-nullable type mixed\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 4
-			path: src/Http/Controllers/Auth/UserAuthController.php
-
-		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\:\:\$rules\.$#'
 			identifier: property.notFound
 			count: 3

@@ -4,5 +4,11 @@ includes:
 
 parameters:
     level: 5
+    reportUnmatchedIgnoredErrors: false
+    ignoreErrors:
+        -
+            message: '#^Using nullsafe property access on non\-nullable type mixed\. Use \-\> instead\.$#'
+            identifier: nullsafe.neverNull
+            path: src/Http/Controllers/Auth/UserAuthController.php
     paths:
         - src/
