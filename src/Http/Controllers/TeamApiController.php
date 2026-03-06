@@ -125,7 +125,7 @@ class TeamApiController extends Controller
                 'is_public' => (bool) $request->public,
             ]);
 
-            $team->users()->attach($user, ['joined' => true]);
+            $team->users()->syncWithoutDetaching([$user->id => ['joined' => true, 'role' => $team->default_role ?? '']]);
             if ($team->default_role) {
                 $user->assignRole($team->default_role ?? '', $team);
             }
@@ -326,7 +326,7 @@ class TeamApiController extends Controller
         try {
             if ($request->invitation_id) {
                 $invitation = \Ssntpl\Neev\Models\TeamInvitation::find($request->invitation_id);
-                if (!$invitation || !$user->emails->where('email', $invitation->email)->first()->exists()) {
+                if (!$invitation || !$user->emails->where('email', $invitation->email)->first()?->exists()) {
                     return response()->json([
                         'status' => 'Failed',
                         'message' => 'Invitation not found',

@@ -97,7 +97,7 @@ class MFATest extends TestCase
                 'otp' => '000000', // Wrong OTP
             ]);
 
-        $response->assertStatus(401);
+        $response->assertStatus(400);
         $response->assertJson([
             'status' => 'Failed',
             'message' => 'Code verification failed.',
@@ -185,7 +185,7 @@ class MFATest extends TestCase
                 'otp' => $otpPlaintext,
             ]);
 
-        $response->assertStatus(401);
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -269,7 +269,7 @@ class MFATest extends TestCase
                 'otp' => 'invalidcode123',
             ]);
 
-        $response->assertStatus(401);
+        $response->assertStatus(400);
         $response->assertJson([
             'status' => 'Failed',
             'message' => 'Code verification failed.',

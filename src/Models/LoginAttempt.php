@@ -37,7 +37,7 @@ class LoginAttempt extends Model
         return $this->belongsTo(User::getClass(), 'user_id');
     }
 
-    public static function getClientDetails(Request $request = null, $userAgent = null): array
+    public static function getClientDetails(?Request $request = null, $userAgent = null): array
     {
         $userAgent = $userAgent ?? $request->header('User-Agent');
         // Detect browser

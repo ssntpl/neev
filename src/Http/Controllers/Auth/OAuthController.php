@@ -127,7 +127,7 @@ class OAuthController extends Controller
                         'activated_at' => $shouldActivate ? now() : null,
                         'inactive_reason' => $inactiveReason,
                     ]);
-                    $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
+                    $team->users()->syncWithoutDetaching([$user->id => ['joined' => true, 'role' => $team->default_role ?? '']]);
                     if ($team->default_role) {
                         $user->assignRole($team->default_role, $team);
                     }

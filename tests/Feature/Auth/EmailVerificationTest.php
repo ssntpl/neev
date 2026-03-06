@@ -221,7 +221,7 @@ class EmailVerificationTest extends TestCase
             'otp' => '999999',
         ]);
 
-        $response->assertStatus(401)
+        $response->assertStatus(400)
             ->assertJsonPath('status', 'Failed');
     }
 
@@ -244,7 +244,7 @@ class EmailVerificationTest extends TestCase
             'otp' => $otp,
         ]);
 
-        $response->assertStatus(401)
+        $response->assertStatus(400)
             ->assertJsonPath('status', 'Failed');
     }
 }

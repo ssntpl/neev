@@ -76,7 +76,7 @@ class RoleTest extends TestCase
                 'role' => 'admin',
             ]);
 
-        $response->assertStatus(500)
+        $response->assertStatus(400)
             ->assertJsonPath('status', 'Failed');
     }
 

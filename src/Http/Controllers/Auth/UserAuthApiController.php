@@ -147,7 +147,7 @@ class UserAuthApiController extends Controller
                             'activated_at' => $shouldActivate ? now() : null,
                             'inactive_reason' => $inactiveReason,
                         ]);
-                        $team->users()->syncWithoutDetaching($user, ['joined' => true, 'role' => $team->default_role ?? '']);
+                        $team->users()->syncWithoutDetaching([$user->id => ['joined' => true, 'role' => $team->default_role ?? '']]);
                         if ($team->default_role) {
                             $user->assignRole($team->default_role, $team);
                         }
@@ -414,7 +414,7 @@ class UserAuthApiController extends Controller
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Code verification failed.'
-            ], 401);
+            ], 400);
         }
 
         // Mark email as verified if this is for email verification
@@ -572,7 +572,7 @@ class UserAuthApiController extends Controller
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Code verification failed.'
-            ], 401);
+            ], 400);
         }
 
         $accessToken->token_type = AccessToken::login;
