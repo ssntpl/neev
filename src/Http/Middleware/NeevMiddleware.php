@@ -19,7 +19,7 @@ class NeevMiddleware
     {
         $authUser = $request->user();
         if (!$authUser) {
-            return redirect(route('login'));
+            return $this->unauthenticated($request, 'Unauthenticated.');
         }
 
         // Re-query only if the app uses a custom user model
@@ -28,7 +28,7 @@ class NeevMiddleware
             : User::model()->find($authUser->id);
 
         if (!$user) {
-            return redirect(route('login'));
+            return $this->unauthenticated($request, 'Unauthenticated.');
         }
 
         if (app()->bound(ContextManager::class)) {
@@ -36,24 +36,46 @@ class NeevMiddleware
         }
 
         if (!$user->active) {
-            return redirect(route('login'))->withErrors(['message' => 'Your account is deactivated, please contact your admin to activate your account.']);
+            return $this->unauthenticated($request, 'Your account is deactivated, please contact your admin to activate your account.', 403);
         }
 
         $attemptID = session('attempt_id');
         $attempt = $user->loginAttempts()->where('id', $attemptID)->first();
         if ($attempt && count($user->multiFactorAuths ?? []) > 0) {
             if (!$attempt->multi_factor_method) {
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'message' => 'MFA verification required.',
+                        'mfa_method' => $user->preferredMultiFactorAuth?->method ?? $user->multiFactorAuths()->first()?->method,
+                    ], 403);
+                }
                 return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth?->method ?? $user->multiFactorAuths()->first()?->method));
             }
         } elseif (!$attempt && count($user->multiFactorAuths ?? []) > 0) {
-            return redirect(route('login'));
+            return $this->unauthenticated($request, 'Unauthenticated.');
         }
 
         $emailBypassPaths = ['email/verify*', 'email/send', 'logout', 'email/change', 'email/update'];
         if (config('neev.email_verified') && !$user->email?->verified_at && !$request->is($emailBypassPaths)) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => 'Email not verified.'], 403);
+            }
             return redirect(route('verification.notice'));
         }
 
         return $next($request);
+    }
+
+    protected function unauthenticated(Request $request, string $message, int $status = 401): Response
+    {
+        if ($request->expectsJson()) {
+            return response()->json(['message' => $message], $status);
+        }
+
+        if ($status === 403) {
+            return redirect(route('login'))->withErrors(['message' => $message]);
+        }
+
+        return redirect(route('login'));
     }
 }

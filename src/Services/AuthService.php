@@ -30,27 +30,34 @@ class AuthService
 
         event(new LoggedInEvent($user));
 
+        $attempt = $this->recordLoginAttempt($request, $geoIP, $user, $method, $mfa, $attempt);
+        session(['attempt_id' => $attempt?->id ?? null]);
+    }
+
+    public function recordLoginAttempt(Request $request, GeoIP $geoIP, $user, $method, $mfa = null, $attempt = null): ?LoginAttempt
+    {
         try {
             if ($attempt) {
                 $attempt->is_success = true;
                 $attempt->save();
-            } else {
-                $clientDetails = LoginAttempt::getClientDetails($request);
-
-                $attempt = $user->loginAttempts()->create([
-                    'method'  => $method,
-                    'location' => $geoIP?->getLocation($request->ip()),
-                    'multi_factor_method' => $mfa,
-                    'platform' => $clientDetails['platform'] ?? '',
-                    'browser'  => $clientDetails['browser'] ?? '',
-                    'device'   => $clientDetails['device'] ?? '',
-                    'ip_address' => $request->ip(),
-                    'is_success' => true,
-                ]);
+                return $attempt;
             }
-            session(['attempt_id' => $attempt?->id ?? null]);
+
+            $clientDetails = LoginAttempt::getClientDetails($request);
+
+            return $user->loginAttempts()->create([
+                'method'  => $method,
+                'location' => $geoIP?->getLocation($request->ip()),
+                'multi_factor_method' => $mfa,
+                'platform' => $clientDetails['platform'] ?? '',
+                'browser'  => $clientDetails['browser'] ?? '',
+                'device'   => $clientDetails['device'] ?? '',
+                'ip_address' => $request->ip(),
+                'is_success' => true,
+            ]);
         } catch (Exception $e) {
             Log::error($e);
+            return null;
         }
     }
 }

@@ -47,6 +47,33 @@ class TeamApiController extends Controller
         ]);
     }
 
+    public function switchTeam(Request $request)
+    {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found',
+            ], 400);
+        }
+
+        $team = Team::model()->find($request->team_id);
+        if (!$team || !$team->hasUser($user)) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'Team not found',
+            ], 400);
+        }
+
+        $team->load('owner', 'users');
+
+        return response()->json([
+            'status' => 'Success',
+            'message' => 'Team switched successfully.',
+            'data' => $team,
+        ]);
+    }
+
     public function teams(Request $request)
     {
         $teams = User::model()->find($request->user()?->id)?->teams?->load('owner');
