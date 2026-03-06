@@ -27,10 +27,12 @@ return new class () extends Migration {
 
         Schema::create('users', function (Blueprint $table) {
             $table->id();
+            $table->unsignedBigInteger('tenant_id')->nullable();
             $table->string('name');
             $table->string('username')->nullable();
             $table->boolean('active')->default(true);
             $table->timestamps();
+            $table->index('tenant_id');
         });
 
         Schema::create('passwords', function (Blueprint $table) {
@@ -42,13 +44,16 @@ return new class () extends Migration {
 
         Schema::create('emails', function (Blueprint $table) {
             $table->id();
+            $table->unsignedBigInteger('tenant_id')->nullable();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('email');
             $table->boolean('is_primary')->default(false);
             $table->timestamp('verified_at')->nullable();
             $table->timestamps();
             $table->unique(['user_id', 'email']);
+            $table->unique(['tenant_id', 'email']);
             $table->index('email');
+            $table->index('tenant_id');
         });
 
         Schema::create('login_attempts', function (Blueprint $table) {

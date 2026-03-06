@@ -156,7 +156,7 @@ class UserController extends Controller
         if (!$user) {
             return back()->withErrors(['message' => 'User not found.']);
         }
-        if (Email::where('email', $request->email)->first()) {
+        if (Email::findByEmail($request->email)) {
             return back()->withErrors(['message' => 'Email already exist.']);
         }
 

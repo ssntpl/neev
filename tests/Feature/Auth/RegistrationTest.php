@@ -3,12 +3,9 @@
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Mockery;
-use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
-use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
 
@@ -429,94 +426,4 @@ class RegistrationTest extends TestCase
         ]);
     }
 
-    // -----------------------------------------------------------------
-    // Registration with tenant isolation (single_tenant_users)
-    // -----------------------------------------------------------------
-
-    public function test_register_with_tenant_isolation_no_tenant_returns_error(): void
-    {
-        $this->enableTeams();
-        config([
-            'neev.tenant_isolation' => true,
-            'neev.tenant_isolation_options.single_tenant_users' => true,
-        ]);
-
-        // Mock TenantResolver to return no tenant
-        $resolver = Mockery::mock(TenantResolver::class);
-        $resolver->shouldReceive('current')->andReturn(null);
-        $resolver->shouldReceive('resolve')->andReturn(null);
-        $this->app->instance(TenantResolver::class, $resolver);
-
-        $response = $this->postJson('/neev/register', [
-            'name' => 'Tenant User',
-            'email' => 'tenant@example.com',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
-        ]);
-
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
-            ->assertJsonPath('message', 'Registration must be done through a valid tenant domain.');
-    }
-
-    public function test_register_with_tenant_isolation_checks_existing_email(): void
-    {
-        $this->enableTeams();
-        config([
-            'neev.tenant_isolation' => true,
-            'neev.tenant_isolation_options.single_tenant_users' => true,
-        ]);
-
-        $owner = User::factory()->create();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-
-        // Mock TenantResolver to return the team as current tenant
-        $resolver = Mockery::mock(TenantResolver::class);
-        $resolver->shouldReceive('current')->andReturn($team);
-        $this->app->instance(TenantResolver::class, $resolver);
-
-        $response = $this->postJson('/neev/register', [
-            'name' => 'Tenant Member',
-            'email' => 'tenantmember@example.com',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
-        ]);
-
-        // The code creates the email first then checks if it exists,
-        // so it always finds the just-created record and rolls back
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
-            ->assertJsonPath('message', 'An account with this email already exists.');
-    }
-
-    public function test_register_with_tenant_isolation_unverified_domain_returns_error(): void
-    {
-        $this->enableTeams();
-        config([
-            'neev.tenant_isolation' => true,
-            'neev.tenant_isolation_options.single_tenant_users' => true,
-        ]);
-
-        $owner = User::factory()->create();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-
-        // Mock TenantResolver — current returns null, resolve returns team
-        // but domain is not verified
-        $resolver = Mockery::mock(TenantResolver::class);
-        $resolver->shouldReceive('current')->andReturn(null);
-        $resolver->shouldReceive('resolve')->andReturn($team);
-        $resolver->shouldReceive('isResolvedDomainVerified')->andReturn(false);
-        $this->app->instance(TenantResolver::class, $resolver);
-
-        $response = $this->postJson('/neev/register', [
-            'name' => 'Unverified Domain User',
-            'email' => 'unverified@example.com',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
-        ]);
-
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
-            ->assertJsonPath('message', 'Registration must be done through a valid tenant domain.');
-    }
 }

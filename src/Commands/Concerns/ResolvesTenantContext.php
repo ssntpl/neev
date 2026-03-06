@@ -46,7 +46,7 @@ trait ResolvesTenantContext
 
     protected function resolveUserByEmail(string $email): User
     {
-        $emailRecord = Email::where('email', $email)->first();
+        $emailRecord = Email::findByEmail($email);
 
         if (! $emailRecord) {
             $this->fail("No user found with email: {$email}");

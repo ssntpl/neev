@@ -78,17 +78,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
 
         $this->replaceInFile("'identity_strategy' => 'shared',", "'identity_strategy' => 'isolated',", $file);
         $this->replaceInFile("'tenant_isolation' => false,", "'tenant_isolation' => true,", $file);
-        $this->replaceInFile("'single_tenant_users' => false,", "'single_tenant_users' => true,", $file);
-
-        $stubPath = __DIR__.'/../../stubs/add_tenant_id_to_users_table.php.stub';
-        $timestamp = date('Y_m_d_His');
-        $migrationPath = database_path("migrations/{$timestamp}_add_tenant_id_to_users_table.php");
-
-        copy($stubPath, $migrationPath);
-
-        $this->info('Published migration: '.$migrationPath);
-        $this->info('Add the BelongsToTenant trait to your User model:');
-        $this->info('  use Ssntpl\Neev\Traits\BelongsToTenant;');
     }
 
     /**

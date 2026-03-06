@@ -321,11 +321,4 @@ class TenantResolver
         return config('neev.identity_strategy', 'shared') === 'isolated';
     }
 
-    /**
-     * Check if single tenant users is enabled.
-     */
-    public function singleTenantUsers(): bool
-    {
-        return config('neev.tenant_isolation_options.single_tenant_users', false);
-    }
 }

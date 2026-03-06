@@ -24,7 +24,6 @@ use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\EmailDomainValidator;
 use Ssntpl\Neev\Services\GeoIP;
-use Ssntpl\Neev\Services\TenantResolver;
 
 class UserAuthApiController extends Controller
 {
@@ -32,7 +31,7 @@ class UserAuthApiController extends Controller
     {
         $validationRules = [
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:'.Email::class,
+            'email' => ['required', 'string', 'email', 'max:255', Email::uniqueRule()],
             'password' => config('neev.password'),
         ];
 
@@ -88,42 +87,6 @@ class UserAuthApiController extends Controller
                         $user->assignRole($invitation->role, $team);
                     }
                     $invitation->delete();
-                } elseif (config('neev.tenant_isolation') && config('neev.tenant_isolation_options.single_tenant_users')) {
-                    // Tenant isolation with single tenant users: auto-assign to current tenant
-                    $tenantResolver = app(TenantResolver::class);
-                    $currentTenant = $tenantResolver->current();
-
-                    if (!$currentTenant) {
-                        // Try to resolve tenant from request
-                        $currentTenant = $tenantResolver->resolve($request);
-                        if ($currentTenant && !$tenantResolver->isResolvedDomainVerified()) {
-                            $currentTenant = null;
-                        }
-                    }
-
-                    if (!$currentTenant) {
-                        DB::rollBack();
-                        return response()->json([
-                            'status' => 'Failed',
-                            'message' => 'Registration must be done through a valid tenant domain.',
-                        ], 400);
-                    }
-
-                    // Check if user already exists in another tenant (by email)
-                    $existingEmail = Email::where('email', $request->email)->first();
-                    if ($existingEmail) {
-                        DB::rollBack();
-                        return response()->json([
-                            'status' => 'Failed',
-                            'message' => 'An account with this email already exists.',
-                        ], 400);
-                    }
-
-                    $team = $currentTenant;
-                    $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
-                    if ($team->default_role) {
-                        $user->assignRole($team->default_role ?? '', $team);
-                    }
                 } else {
                     // Determine team activation status based on email domain
                     $shouldActivate = true;
@@ -191,14 +154,14 @@ class UserAuthApiController extends Controller
     public function login(Request $request, GeoIP $geoIP)
     {
         if (config('neev.support_username') && !preg_match('/^[\w.%+\-]+@[\w.\-]+\.[A-Za-z]{2,}$/', $request->email)) {
-            $user = User::model()->where('username', $request->email)->first();
+            $user = User::findByUsername($request->email);
             if ($user) {
                 $request->merge(['username' => $user->username]);
                 $request->merge(['email' => $user->email?->email]);
             }
         }
 
-        $email = Email::where('email', $request->email)->first();
+        $email = Email::findByEmail($request->email);
         $user = $email?->user;
         if (!$user || !$email) {
             return response()->json([
@@ -287,7 +250,7 @@ class UserAuthApiController extends Controller
 
     public function sendMailVerificationLink(Request $request)
     {
-        $email = Email::where('email', $request->email)->first();
+        $email = Email::findByEmail($request->email);
         if (!$email) {
             return response()->json([
                 'status' => 'Failed',
@@ -387,7 +350,7 @@ class UserAuthApiController extends Controller
 
     public function sendEmailOTP(Request $request)
     {
-        $email = Email::where('email', $request->email)->first();
+        $email = Email::findByEmail($request->email);
         if (!$email) {
             return response()->json([
                 'status' => 'Failed',
@@ -406,7 +369,7 @@ class UserAuthApiController extends Controller
 
     public function verifyEmailOTP(Request $request)
     {
-        $email = Email::where('email', $request->email)->first();
+        $email = Email::findByEmail($request->email);
 
         $otp = $email?->otp;
 
@@ -440,7 +403,7 @@ class UserAuthApiController extends Controller
                 'otp' => 'required',
             ]);
 
-            $email = Email::where('email', $request->email)->first();
+            $email = Email::findByEmail($request->email);
             if (!$email) {
                 return response()->json([
                     'status' => 'Failed',
@@ -493,7 +456,7 @@ class UserAuthApiController extends Controller
 
     public function sendLoginLink(Request $request)
     {
-        $email = Email::where('email', $request->email)->first();
+        $email = Email::findByEmail($request->email);
         if (!$email) {
             return response()->json([
                 'status' => 'Failed',

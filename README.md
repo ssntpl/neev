@@ -98,15 +98,21 @@ php artisan migrate
 
 ### 5. Update Your User Model
 
-```php
-use Ssntpl\Neev\Traits\HasTeams;
-use Ssntpl\Neev\Traits\HasMultiAuth;
-use Ssntpl\Neev\Traits\HasAccessToken;
+Extend Neev's User model to inherit all traits (including `BelongsToTenant` for automatic tenant scoping):
 
-class User extends Authenticatable
+```php
+use Ssntpl\Neev\Models\User as NeevUser;
+
+class User extends NeevUser
 {
-    use HasTeams, HasMultiAuth, HasAccessToken;
+    // Add your custom fields, relationships, and methods
 }
+```
+
+Then update `config/neev.php`:
+
+```php
+'user_model' => App\Models\User::class,
 ```
 
 ---
@@ -494,7 +500,6 @@ curl -X PUT https://yourapp.com/neev/teams/inviteUser \
 'tenant_isolation_options' => [
     'subdomain_suffix' => env('NEEV_SUBDOMAIN_SUFFIX', '.yourapp.com'),
     'allow_custom_domains' => true,
-    'single_tenant_users' => false,
 ],
 ```
 

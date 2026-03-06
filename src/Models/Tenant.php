@@ -77,8 +77,7 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
 
     /**
      * Get users directly scoped to this tenant via tenant_id on users table.
-     * Only available when identity_strategy is 'isolated' and the
-     * add_tenant_id_to_users_table migration has been published.
+     * Only available when identity_strategy is 'isolated'.
      */
     public function members(): Relation
     {

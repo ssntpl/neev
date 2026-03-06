@@ -153,7 +153,7 @@ class TeamController extends Controller
             if ($user->id != $team->user_id || ($team->domain?->enforce && $team->verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->domain?->domain)))) {
                 return back()->withErrors(['message' => 'You cannot invite member in this team.']);
             }
-            $email = Email::where('email', $request->email)->first();
+            $email = Email::findByEmail($request->email);
             $member = $email?->user;
             if (!$member) {
                 $expiry = now()->addDays(7);
@@ -290,7 +290,7 @@ class TeamController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         try {
-            $email = Email::where('email', $request->email)->first();
+            $email = Email::findByEmail($request->email);
             $owner = $email?->user;
             if ($owner) {
                 $team = Team::model()->where(['name' => $request->team, 'user_id' => $owner->id])->first();

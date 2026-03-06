@@ -26,7 +26,7 @@ class PasswordUserData implements ValidationRule
         $user = User::model()->find(request()->user()?->id);
         $email = request()->input('email');
         if ($email) {
-            $email = Email::where('email', $email)->first();
+            $email = Email::findByEmail($email);
             $user = $email?->user;
         }
 

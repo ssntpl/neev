@@ -102,7 +102,7 @@ class UserAuthController extends Controller
     {
         $validationRules = [
             'name' => 'required|string|max:255',
-            'email' => 'required|string|email|max:255|unique:'.Email::class,
+            'email' => ['required', 'string', 'email', 'max:255', Email::uniqueRule()],
             'password' => config('neev.password'),
         ];
 
@@ -222,7 +222,7 @@ class UserAuthController extends Controller
     public function loginPassword(LoginRequest $request)
     {
         if (config('neev.support_username') && !preg_match('/^[\w.%+\-]+@[\w.\-]+\.[A-Za-z]{2,}$/', $request->email)) {
-            $user = User::model()->where('username', $request->email)->first();
+            $user = User::findByUsername($request->email);
             if ($user) {
                 $request->merge(['username' => $user->username]);
                 $request->merge(['email' => $user->email->email]);
@@ -268,7 +268,7 @@ class UserAuthController extends Controller
 
     public function sendLoginLink(Request $request)
     {
-        $email = Email::where('email', $request->email)->first();
+        $email = Email::findByEmail($request->email);
         if (!$email) {
             return back()->withErrors(['message' => 'Credentials are wrong.']);
         }
@@ -309,7 +309,7 @@ class UserAuthController extends Controller
     */
     public function loginStore(LoginRequest $request, GeoIP $geoIP)
     {
-        $email = Email::where('email', $request->email)->first();
+        $email = Email::findByEmail($request->email);
         $user = $email?->user;
         if (!$email || !$user) {
             return back()->withErrors(['message' => 'Credentials are wrong.']);
@@ -365,7 +365,7 @@ class UserAuthController extends Controller
             'email' => 'required|string|email|max:255|',
         ]);
 
-        $email = Email::where('email', $request->email)->first();
+        $email = Email::findByEmail($request->email);
         $user = $email?->user;
         if (!$user || !$email || (config('neev.email_verified') && !$email?->verified_at)) {
             return back()->withErrors([
@@ -423,7 +423,7 @@ class UserAuthController extends Controller
             return redirect(route('password.request'))->withErrors(['message' => 'Invalid or expired reset link. Please request a new one.']);
         }
 
-        $email = Email::where('email', $request->email)->first();
+        $email = Email::findByEmail($request->email);
         $user = $email?->user;
         if (!$user || !$email || (config('neev.email_verified') && !$email?->verified_at)) {
             return back()->withErrors(['message' => 'Failed to update password.']);
@@ -461,7 +461,7 @@ class UserAuthController extends Controller
     public function emailVerifySend(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
-        $email = $request->email ? Email::where('email', $request->email)->firstOrFail() : $user?->email;
+        $email = $request->email ? (Email::findByEmail($request->email) ?? abort(404)) : $user?->email;
         if (!$user || !$email) {
             return back()->withErrors(['message' => 'User not found.']);
         }
@@ -565,7 +565,7 @@ class UserAuthController extends Controller
         $attemptID = session('attempt_id');
 
         if ($method === 'email') {
-            $user = Email::where('email', $email)->first()?->user;
+            $user = Email::findByEmail($email)?->user;
             $auth = $user?->multiFactorAuth($method);
             if (!$auth) {
                 return back()->withErrors(['message' => 'Invalid Email.']);
@@ -593,7 +593,7 @@ class UserAuthController extends Controller
     public function emailOTPSend()
     {
         $email = session('email');
-        $user = Email::where('email', $email)->first()?->user;
+        $user = Email::findByEmail($email)?->user;
         $auth = $user?->multiFactorAuth('email');
         if (!$auth) {
             return back()->withErrors(['message' => 'Invalid Email.']);
@@ -609,7 +609,7 @@ class UserAuthController extends Controller
 
     public function verifyMFAOTPStore(LoginRequest $request, GeoIP $geoIP)
     {
-        $email = Email::where('email', $request->email)->first();
+        $email = Email::findByEmail($request->email);
         $user = $email?->user ?? User::model()->find($request->user()?->id);
 
         if (!$user) {

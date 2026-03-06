@@ -6,12 +6,18 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Notifications\Notifiable;
 use Ssntpl\LaravelAcl\Traits\HasRoles;
 use Ssntpl\Neev\Database\Factories\UserFactory;
+use Ssntpl\Neev\Traits\BelongsToTenant;
 use Ssntpl\Neev\Traits\HasAccessToken;
 use Ssntpl\Neev\Traits\HasMultiAuth;
 use Ssntpl\Neev\Traits\HasTeams;
 use Ssntpl\Neev\Traits\VerifyEmail;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
+/**
+ * @property int|null $tenant_id
+ * @property string|null $username
+ * @property-read Email|null $email
+ */
 class User extends Authenticatable
 {
     use HasFactory;
@@ -21,6 +27,7 @@ class User extends Authenticatable
     use HasMultiAuth;
     use HasAccessToken;
     use VerifyEmail;
+    use BelongsToTenant;
 
     protected static function newFactory()
     {
@@ -89,6 +96,17 @@ class User extends Authenticatable
     public function passkeys()
     {
         return $this->hasMany(Passkey::class);
+    }
+
+    /**
+     * Find a user by username, respecting tenant isolation.
+     * The TenantScope global scope handles tenant filtering automatically.
+     */
+    public static function findByUsername(string $username): ?static
+    {
+        return static::model()
+            ->where('username', $username)
+            ->first();
     }
 
     public function activate()

@@ -9,7 +9,7 @@ trait VerifyEmail
     public function hasVerifiedEmail($email = null)
     {
         if ($email) {
-            $email = Email::where('email', $email)->first();
+            $email = Email::findByEmail($email);
             return $email?->verified_at !== null;
         }
 

@@ -50,6 +50,9 @@ class TenantSSOTest extends TestCase
         $resolver->shouldReceive('resolvedContext')->andReturn($tenant);
         $resolver->shouldReceive('currentDomain')->andReturn(null);
         $resolver->shouldReceive('resolve')->andReturn($tenant);
+        $resolver->shouldReceive('isResolvedDomainVerified')->andReturn($tenant !== null);
+        $resolver->shouldReceive('hasTenant')->andReturn($tenant !== null);
+        $resolver->shouldReceive('currentId')->andReturn($tenant?->id);
         $this->app->instance(TenantResolver::class, $resolver);
     }
 
@@ -189,10 +192,10 @@ class TenantSSOTest extends TestCase
             ->autoProvision('member')
             ->create(['team_id' => $team->id]);
 
+        $this->setCurrentTenant($team);
+
         $user = User::factory()->create();
         $team->users()->attach($user, ['joined' => true, 'role' => 'member']);
-
-        $this->setCurrentTenant($team);
 
         // Mock the SSO Manager to return a mock user
         $ssoUser = Mockery::mock(SocialiteUser::class);
@@ -221,10 +224,10 @@ class TenantSSOTest extends TestCase
             ->autoProvision('member')
             ->create(['team_id' => $team->id]);
 
+        $this->setCurrentTenant($team);
+
         $user = User::factory()->create();
         $team->users()->attach($user, ['joined' => true, 'role' => 'member']);
-
-        $this->setCurrentTenant($team);
 
         // Mock the SSO Manager
         $ssoUser = Mockery::mock(SocialiteUser::class);

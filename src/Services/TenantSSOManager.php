@@ -112,16 +112,8 @@ class TenantSSOManager
             throw new Exception('SSO provider did not return an email address.');
         }
 
-        // Find existing user by email
-        $query = Email::where('email', $email);
-
-        // In isolated mode, scope the lookup to the tenant's members
-        if (config('neev.identity_strategy') === 'isolated' && $owner instanceof \Ssntpl\Neev\Contracts\HasMembersInterface) {
-            $memberIds = $owner->members()->pluck('users.id');
-            $query->whereIn('user_id', $memberIds);
-        }
-
-        $emailRecord = $query->first();
+        // Find existing user by email (automatically tenant-scoped via TenantScope)
+        $emailRecord = Email::findByEmail($email);
 
         if ($emailRecord) {
             return $emailRecord->user;

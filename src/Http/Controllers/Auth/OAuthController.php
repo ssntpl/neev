@@ -56,7 +56,7 @@ class OAuthController extends Controller
             return redirect(route('login'));
         }
 
-        $email = Email::where('email', $oauthUser->email)->first();
+        $email = Email::findByEmail($oauthUser->email);
         if ($email) {
             $user = $email?->user;
             if (!$user || !$email?->verified_at) {

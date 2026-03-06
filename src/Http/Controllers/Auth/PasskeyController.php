@@ -296,7 +296,7 @@ class PasskeyController extends Controller
     {
         try {
             $request->validate(['email' => 'required|email']);
-            $email = Email::where('email', $request->email)->first();
+            $email = Email::findByEmail($request->email);
             $user = $email?->user;
             if (!$email || !$user) {
                 throw new Exception('User not found.');
@@ -385,7 +385,7 @@ class PasskeyController extends Controller
             timeout: 120000
         );
 
-        $email = Email::where('email', $request->email)->first();
+        $email = Email::findByEmail($request->email);
         $user = $email?->user;
         if (config('neev.record_failed_login_attempts')) {
             $clientDetails = LoginAttempt::getClientDetails($request);

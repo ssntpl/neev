@@ -43,7 +43,7 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        $email = Email::where('email', $this->input('email'))->first();
+        $email = Email::findByEmail($this->input('email'));
 
         if (!$email || !Hash::check($this->input('password'), $email->user->password->password)) {
             $this->handleFailedAttempt();
@@ -67,7 +67,7 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        $email = Email::where('email', $this->input('email'))->first();
+        $email = Email::findByEmail($this->input('email'));
         return $email?->user;
     }
 

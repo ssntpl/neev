@@ -89,8 +89,8 @@ This creates the following tables:
 
 | Table | Description |
 |-------|-------------|
-| `users` | User accounts |
-| `emails` | User email addresses (multiple per user) |
+| `users` | User accounts (includes nullable `tenant_id` for tenant isolation) |
+| `emails` | User email addresses (includes nullable `tenant_id`, unique per tenant) |
 | `passwords` | Password history |
 | `otps` | One-time passwords |
 | `passkeys` | WebAuthn credentials |
@@ -101,7 +101,8 @@ This creates the following tables:
 | `teams` | Teams/organizations |
 | `team_user` | Team-user membership pivot table |
 | `team_invitations` | Pending invitations |
-| `domains` | Email domains for federation |
+| `tenants` | Tenants (isolated identity mode) |
+| `domains` | Custom domains and email domains for federation |
 | `domain_rules` | Domain-specific security rules |
 
 ---
@@ -196,6 +197,8 @@ This copies route files to `routes/` for customization.
 ---
 
 ## Customizing the User Model
+
+Neev's User model includes the `BelongsToTenant` trait by default, providing automatic tenant scoping via a global scope. The Email model also includes this trait. When you extend the User model, these traits are inherited — no additional setup is needed for tenant isolation.
 
 ### Step 1: Create Custom User Model
 

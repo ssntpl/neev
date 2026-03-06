@@ -18,7 +18,7 @@ class UserApiController extends Controller
     public function emailUpdate(Request $request)
     {
         $request->validate([
-            'email' => 'required|email|unique:emails,email',
+            'email' => ['required', 'email', Email::uniqueRule()],
         ]);
 
         $email = Email::find($request->email_id);
@@ -243,7 +243,7 @@ class UserApiController extends Controller
                 'message' => 'User not found.',
             ], 404);
         }
-        if (Email::where('email', $request->email)->first()) {
+        if (Email::findByEmail($request->email)) {
             return response()->json([
                 'status' => 'Success',
                 'message' => 'Email already exist.',

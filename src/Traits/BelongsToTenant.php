@@ -54,6 +54,6 @@ trait BelongsToTenant
 
     public static function withoutTenantScope()
     {
-        return (new static())->newQueryWithoutScope(TenantScope::class);
+        return static::query()->withoutGlobalScope(TenantScope::class);
     }
 }

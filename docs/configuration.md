@@ -92,7 +92,6 @@ When enabled (requires `team` feature):
 'tenant_isolation_options' => [
     'subdomain_suffix' => env('NEEV_SUBDOMAIN_SUFFIX', null),
     'allow_custom_domains' => true,
-    'single_tenant_users' => false,
 ],
 ```
 
@@ -100,7 +99,6 @@ When enabled (requires `team` feature):
 |--------|-------------|
 | `subdomain_suffix` | Base domain for subdomains (e.g., `.yourapp.com`) |
 | `allow_custom_domains` | Allow tenants to use custom domains |
-| `single_tenant_users` | Users can only belong to one tenant |
 
 ### Tenant-Driven Authentication
 
@@ -429,7 +427,6 @@ return [
     'tenant_isolation_options' => [
         'subdomain_suffix' => env('NEEV_SUBDOMAIN_SUFFIX', null),
         'allow_custom_domains' => true,
-        'single_tenant_users' => false,
     ],
     'tenant_auth' => false,
     'tenant_auth_options' => [

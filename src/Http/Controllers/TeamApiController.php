@@ -255,7 +255,7 @@ class TeamApiController extends Controller
                     'message' => 'You cannot invite member in this team.',
                 ], 400);
             }
-            $email = Email::where('email', $request->email)->first();
+            $email = Email::findByEmail($request->email);
             $member = $email?->user;
             if (!$member) {
                 $expiry = now()->addDays(7);

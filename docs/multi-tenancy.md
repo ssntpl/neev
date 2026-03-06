@@ -80,7 +80,6 @@ In isolated mode, Neev resolves a `Tenant` model (instead of a `Team`) from the 
 'tenant_isolation_options' => [
     'subdomain_suffix' => env('NEEV_SUBDOMAIN_SUFFIX', '.yourapp.com'),
     'allow_custom_domains' => true,
-    'single_tenant_users' => false,
 ],
 ```
 
@@ -106,29 +105,21 @@ Users can belong to multiple tenants via team memberships. The `EnsureTenantMemb
 
 ### Hard User Isolation (`tenant_id` on Users Table)
 
-Each user belongs to exactly one tenant via a `tenant_id` foreign key on the `users` table. The User model itself uses the `BelongsToTenant` trait, so all user queries are automatically scoped to the current tenant.
+Each user belongs to exactly one tenant via a `tenant_id` column on the `users` table. Neev's User and Email models include the `BelongsToTenant` trait by default, so all user and email queries are automatically scoped to the current tenant when a tenant context is resolved.
 
 - Users are permanently bound to a single tenant
+- The same email address can exist in different tenants
 - Best for: regulated industries, data-sensitive applications, single-employer SaaS
 
-To enable hard user isolation during installation:
-
-```bash
-php artisan neev:install
-# Answer "Yes" to "Would you like to enable hard user-level tenant isolation?"
-```
-
-This publishes a migration adding `tenant_id` to the `users` table. Then add the trait to your User model:
+The `tenant_id` column is included in the base migrations — no additional setup is required beyond enabling the config:
 
 ```php
-use Ssntpl\Neev\Traits\BelongsToTenant;
-
-class User extends Authenticatable
-{
-    use BelongsToTenant;
-    // ...
-}
+// config/neev.php
+'identity_strategy' => 'isolated',
+'tenant_isolation' => true,
 ```
+
+In shared mode, the `tenant_id` columns remain `NULL` and the global scope is a no-op — all queries run unscoped as before.
 
 ### Config vs Trait
 
@@ -157,15 +148,6 @@ The `BelongsToTenant` trait controls **per-model scoping**. Adding the trait to 
 
 - Tenants can use their own domains (e.g., `app.acme.com`)
 - Requires DNS verification before activation
-
-### Single Tenant Users
-
-```php
-'single_tenant_users' => false,
-```
-
-- When `true`: Users can only belong to one tenant
-- When `false`: Users can belong to multiple tenants
 
 ---
 
@@ -706,6 +688,12 @@ $ssoManager->ensureMembership($user, $tenant);
 
 ## Database Schema
 
+### users Table (tenant_id column)
+
+The `users` and `emails` tables include a nullable `tenant_id` column. In isolated mode, the `BelongsToTenant` global scope uses this column to automatically filter all queries to the current tenant. In shared mode, this column remains `NULL` and is ignored.
+
+The `emails` table also has a unique constraint on `(tenant_id, email)`, allowing the same email address to exist in different tenants while preventing duplicates within one tenant.
+
 ### tenants Table (isolated mode)
 
 | Column | Type | Description |
@@ -765,6 +753,7 @@ Same schema as `team_auth_settings`, but with `tenant_id` instead of `team_id`. 
 - Always verify domain ownership via DNS
 - Don't allow unverified domains for auth
 - Re-verify periodically for long-lived tenants
+- Multiple tenants can claim (add) the same domain, but only one can verify it — verification is rejected if another owner has already verified that domain
 
 ### Secret Storage
 
@@ -813,6 +802,15 @@ Neev provides two scoping traits:
 - **`BelongsToTeam`** -- scopes models by `team_id` (uses `TeamScope`). Useful when you need team-level scoping within a tenant.
 
 Both traits auto-assign the ID on creation and add a global scope that filters queries automatically.
+
+Neev's **User** and **Email** models already include `BelongsToTenant`. This means all user and email queries are automatically tenant-scoped when a tenant context is resolved. In addition, the following convenience methods are available:
+
+- **`Email::findByEmail(string $email)`** — Find an email record by address, automatically scoped to the current tenant.
+- **`Email::uniqueRule(?int $ignoreId = null)`** — Validation rule for unique emails that respects tenant isolation. Use this instead of `'unique:emails,email'` in validation rules:
+  ```php
+  'email' => ['required', 'email', Email::uniqueRule()],
+  ```
+- **`User::findByUsername(string $username)`** — Find a user by username, automatically scoped to the current tenant.
 
 #### BelongsToTenant
 

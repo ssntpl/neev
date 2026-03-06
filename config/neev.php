@@ -138,15 +138,6 @@ return [
         'allow_custom_domains' => true,
 
         /*
-        | Single Tenant Users
-        | -------------------
-        | When true: Users can only belong to one team/tenant.
-        | New users are automatically assigned to the current tenant on registration.
-        | When false: Users can belong to multiple teams (standard neev behavior).
-        */
-        'single_tenant_users' => false,
-
-        /*
         | Strict Isolation Mode
         | ---------------------
         | When true: Queries on tenant/team-scoped models return zero rows

@@ -145,17 +145,29 @@ class Domain extends Model
 
     /**
      * Verify the domain with the provided token.
+     * Returns false if the token is invalid or another owner already verified this domain.
      */
     public function verify(string $token): bool
     {
-        if (Hash::check($token, $this->verification_token)) {
-            $this->verified_at = now();
-            $this->verification_token = null;
-            $this->save();
-            return true;
+        if (!Hash::check($token, $this->verification_token)) {
+            return false;
         }
 
-        return false;
+        // Reject if another owner already verified this domain
+        $alreadyVerified = static::where('domain', $this->domain)
+            ->where('id', '!=', $this->id)
+            ->whereNotNull('verified_at')
+            ->exists();
+
+        if ($alreadyVerified) {
+            return false;
+        }
+
+        $this->verified_at = now();
+        $this->verification_token = null;
+        $this->save();
+
+        return true;
     }
 
     /**

@@ -12,6 +12,7 @@ use Ssntpl\Neev\Http\Controllers\TeamController;
 use Ssntpl\Neev\Http\Controllers\TenantDomainController;
 use Ssntpl\Neev\Http\Controllers\UserApiController;
 use Ssntpl\Neev\Http\Controllers\UserController;
+use Ssntpl\Neev\Http\Middleware\TenantMiddleware;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 
@@ -20,7 +21,7 @@ Route::bind('user', fn ($value) => User::model()->findOrFail($value));
 Route::bind('team', fn ($value) => Team::model()->findOrFail($value));
 
 //web routes
-Route::middleware('web')->group(function () {
+Route::middleware(['web', TenantMiddleware::class])->group(function () {
     Route::get('/register', [UserAuthController::class, 'registerCreate'])
         ->name('register');
 
@@ -197,7 +198,7 @@ Route::middleware('web')->group(function () {
 });
 
 //APIs
-Route::prefix('/neev')->group(function () {
+Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
     Route::middleware('throttle:10,1')->group(function () {
         Route::post('/register', [UserAuthApiController::class, 'register']);
         Route::post('/login', [UserAuthApiController::class, 'login']);

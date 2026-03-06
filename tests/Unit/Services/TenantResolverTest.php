@@ -329,15 +329,4 @@ class TenantResolverTest extends TestCase
         $this->assertTrue($this->resolver->isEnabled());
     }
 
-    public function test_single_tenant_users_returns_false_by_default(): void
-    {
-        $this->assertFalse($this->resolver->singleTenantUsers());
-    }
-
-    public function test_single_tenant_users_returns_true_when_configured(): void
-    {
-        config(['neev.tenant_isolation_options.single_tenant_users' => true]);
-
-        $this->assertTrue($this->resolver->singleTenantUsers());
-    }
 }
