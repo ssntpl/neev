@@ -39,31 +39,43 @@ class RoleController extends Controller
 
     public function changeRole(Request $request)
     {
+        if ($request->invitation_id) {
+            $this->changeInvitationRole($request);
+
+            return;
+        }
+
+        $member = User::model()->find($request->user_id);
+        if (!$member) {
+            throw new Exception("User not found.");
+        }
+
+        // Resolve the role scope: Team, Tenant, or null (global)
+        $resource = null;
+        if ($request->resource_type && $request->resource_id) {
+            $resource = $request->resource_type::find($request->resource_id);
+            if (!$resource) {
+                throw new Exception("Resource not found.");
+            }
+        }
+
+        $member->assignRole($request->role, $resource);
+    }
+
+    protected function changeInvitationRole(Request $request): void
+    {
         $resourceClass = $request->resource_type;
         $resource = $resourceClass::find($request->resource_id);
         if (!$resource) {
             throw new Exception("Resource not found.");
         }
-        if ($request->user_id) {
-            $member = User::model()->find($request->user_id);
-            if (!$member) {
-                throw new Exception("User not found.");
-            }
-            if (class_basename($request->resource_type) == "Team") {
-                $membership = $resource->allUsers->where('id', $member->id)->first()?->membership;
-                if (!$membership) {
-                    throw new Exception("User is not a member of this team.");
-                }
-                $membership->role = $request->role;
-                $membership->save();
-            }
-        } elseif ($request->invitation_id) {
-            $invitation = $resource->invitations()->find($request->invitation_id);
-            if (!$invitation) {
-                throw new Exception("Invitation not found.");
-            }
-            $invitation->role = $request->role;
-            $invitation->save();
+
+        $invitation = $resource->invitations()->find($request->invitation_id);
+        if (!$invitation) {
+            throw new Exception("Invitation not found.");
         }
+
+        $invitation->role = $request->role;
+        $invitation->save();
     }
 }

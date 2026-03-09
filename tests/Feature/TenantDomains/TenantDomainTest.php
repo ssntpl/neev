@@ -39,7 +39,7 @@ class TenantDomainTest extends TestCase
         $user->emails()->update(['tenant_id' => $team->id]);
 
         // Add the user as a member of the tenant team (required by EnsureTenantMembership)
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($user, ['joined' => true]);
 
         $token = $user->createLoginToken(60);
 
@@ -54,7 +54,7 @@ class TenantDomainTest extends TestCase
     {
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($user, ['joined' => true]);
 
         DomainFactory::new()->verified()->primary()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
@@ -143,7 +143,7 @@ class TenantDomainTest extends TestCase
 
         $otherUser = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $otherUser->id]);
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($user, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/tenant-domains/', [
@@ -183,7 +183,7 @@ class TenantDomainTest extends TestCase
     {
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($user, ['joined' => true]);
 
         $domain = DomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
@@ -543,7 +543,7 @@ class TenantDomainTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
         $owner = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($user, ['joined' => true]);
 
         $domain = DomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,

@@ -16,6 +16,15 @@ use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 
+/**
+ * @property int $id
+ * @property string $name
+ * @property string $slug
+ * @property int|null $managed_by_tenant_id
+ * @property int|null $platform_team_id
+ * @property \Carbon\Carbon|null $activated_at
+ * @property string|null $inactive_reason
+ */
 class Tenant extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
     use HasFactory;
@@ -25,6 +34,12 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
         'slug',
         'managed_by_tenant_id',
         'platform_team_id',
+        'activated_at',
+        'inactive_reason',
+    ];
+
+    protected $casts = [
+        'activated_at' => 'datetime',
     ];
 
     protected static function newFactory()
@@ -99,11 +114,32 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
 
     /**
      * Check if the tenant is active.
-     * Tenants are active by default (no activation column).
      */
     public function isActive(): bool
     {
-        return true;
+        return $this->activated_at !== null;
+    }
+
+    /**
+     * Activate the tenant.
+     */
+    public function activate(): void
+    {
+        $this->update([
+            'activated_at' => now(),
+            'inactive_reason' => null,
+        ]);
+    }
+
+    /**
+     * Deactivate the tenant with a reason.
+     */
+    public function deactivate(?string $reason = null): void
+    {
+        $this->update([
+            'activated_at' => null,
+            'inactive_reason' => $reason,
+        ]);
     }
 
     // -----------------------------------------------------------------
@@ -131,6 +167,12 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
 
     public function hasMember($user): bool
     {
+        // Direct tenant membership (via tenant_id on users table)
+        if ($this->members()->where('users.id', $user->id)->exists()) {
+            return true;
+        }
+
+        // Indirect membership via tenant's teams
         return $this->teams()
             ->whereHas('allUsers', function ($query) use ($user) {
                 $query->where('users.id', $user->id)

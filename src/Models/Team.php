@@ -109,7 +109,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     public function allUsers(): BelongsToMany
     {
         return $this->belongsToMany(User::getClass(), Membership::class)
-            ->withPivot(['role', 'joined'])
+            ->withPivot(['joined'])
             ->withTimestamps()
             ->as('membership');
     }
@@ -117,7 +117,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     public function users(): BelongsToMany
     {
         return $this->belongsToMany(User::getClass(), Membership::class)
-            ->withPivot(['role', 'joined'])
+            ->withPivot(['joined'])
             ->withTimestamps()
             ->as('membership')
             ->where('joined', true);
@@ -126,7 +126,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     public function joinRequests(): BelongsToMany
     {
         return $this->belongsToMany(User::getClass(), Membership::class)
-            ->withPivot(['role', 'joined', 'action'])
+            ->withPivot(['joined', 'action'])
             ->withTimestamps()
             ->as('membership')
             ->where(['joined' => false, 'action' => 'request_from_user']);
@@ -135,7 +135,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     public function invitedUsers(): BelongsToMany
     {
         return $this->belongsToMany(User::getClass(), Membership::class)
-            ->withPivot(['role', 'joined', 'action'])
+            ->withPivot(['joined', 'action'])
             ->withTimestamps()
             ->as('membership')
             ->where(['joined' => false, 'action' => 'request_to_user']);
@@ -235,6 +235,17 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     public function hasMember($user): bool
     {
         return $this->hasUser($user);
+    }
+
+    public function addMember($user, ?string $role = null): void
+    {
+        if (! $this->allUsers()->where('users.id', $user->id)->exists()) {
+            $this->allUsers()->attach($user, ['joined' => true]);
+        }
+
+        if ($role) {
+            $user->assignRole($role, $this);
+        }
     }
 
     // -----------------------------------------------------------------

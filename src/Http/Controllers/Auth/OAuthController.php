@@ -114,10 +114,7 @@ class OAuthController extends Controller
                         'is_public' => false,
                         'activated_at' => now(),
                     ]);
-                    $team->users()->syncWithoutDetaching([$user->id => ['joined' => true, 'role' => $team->default_role ?? '']]);
-                    if ($team->default_role) {
-                        $user->assignRole($team->default_role, $team);
-                    }
+                    $team->addMember($user);
                 }
             }
         } catch (Exception $e) {

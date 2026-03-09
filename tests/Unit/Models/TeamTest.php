@@ -214,14 +214,12 @@ class TeamTest extends TestCase
 
         // Attach a joined user
         $team->allUsers()->attach($joinedUser->id, [
-            'role' => 'member',
             'joined' => true,
             'action' => 'request_to_user',
         ]);
 
         // Attach a non-joined user
         $team->allUsers()->attach($notJoinedUser->id, [
-            'role' => 'member',
             'joined' => false,
             'action' => 'request_to_user',
         ]);
@@ -244,13 +242,11 @@ class TeamTest extends TestCase
         $user2 = User::factory()->create();
 
         $team->allUsers()->attach($user1->id, [
-            'role' => 'member',
             'joined' => true,
             'action' => 'request_to_user',
         ]);
 
         $team->allUsers()->attach($user2->id, [
-            'role' => 'member',
             'joined' => false,
             'action' => 'request_from_user',
         ]);
@@ -271,13 +267,11 @@ class TeamTest extends TestCase
         $invitedUser = User::factory()->create();
 
         $team->allUsers()->attach($requestingUser->id, [
-            'role' => 'member',
             'joined' => false,
             'action' => 'request_from_user',
         ]);
 
         $team->allUsers()->attach($invitedUser->id, [
-            'role' => 'member',
             'joined' => false,
             'action' => 'request_to_user',
         ]);
@@ -301,13 +295,11 @@ class TeamTest extends TestCase
         $requestingUser = User::factory()->create();
 
         $team->allUsers()->attach($invitedUser->id, [
-            'role' => 'member',
             'joined' => false,
             'action' => 'request_to_user',
         ]);
 
         $team->allUsers()->attach($requestingUser->id, [
-            'role' => 'member',
             'joined' => false,
             'action' => 'request_from_user',
         ]);
@@ -329,7 +321,6 @@ class TeamTest extends TestCase
 
         $member = User::factory()->create();
         $team->allUsers()->attach($member->id, [
-            'role' => 'member',
             'joined' => true,
             'action' => 'request_to_user',
         ]);
@@ -363,7 +354,6 @@ class TeamTest extends TestCase
 
         $member = User::factory()->create();
         $team->allUsers()->attach($member->id, [
-            'role' => 'member',
             'joined' => true,
             'action' => 'request_to_user',
         ]);

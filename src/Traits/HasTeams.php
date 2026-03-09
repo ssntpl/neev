@@ -52,7 +52,7 @@ trait HasTeams
     public function allTeams()
     {
         return $this->belongsToMany(Team::getClass(), Membership::class)
-            ->withPivot(['role', 'joined'])
+            ->withPivot(['joined'])
             ->withTimestamps()
             ->as('membership');
     }
@@ -60,7 +60,7 @@ trait HasTeams
     public function teams(): BelongsToMany
     {
         return $this->belongsToMany(Team::getClass(), Membership::class)
-            ->withPivot(['role', 'joined'])
+            ->withPivot(['joined'])
             ->withTimestamps()
             ->as('membership')
             ->where('joined', true);
@@ -69,7 +69,7 @@ trait HasTeams
     public function teamRequests()
     {
         return $this->belongsToMany(Team::getClass(), Membership::class)
-            ->withPivot(['role', 'joined', 'action'])
+            ->withPivot(['joined', 'action'])
             ->withTimestamps()
             ->as('membership')
             ->where(['joined' => false, 'action' => 'request_to_user']);
@@ -78,7 +78,7 @@ trait HasTeams
     public function sendRequests()
     {
         return $this->belongsToMany(Team::getClass(), Membership::class)
-            ->withPivot(['role', 'joined', 'action'])
+            ->withPivot(['joined', 'action'])
             ->withTimestamps()
             ->as('membership')
             ->where(['joined' => false, 'action' => 'request_from_user']);

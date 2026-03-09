@@ -7,6 +7,8 @@ Table tenants {
   slug varchar [unique]
   managed_by_tenant_id bigint [null, ref: > tenants.id]
   platform_team_id bigint [null]
+  activated_at timestamp [null]
+  inactive_reason varchar [null]
   created_at timestamp
   updated_at timestamp
 }
@@ -171,7 +173,6 @@ Table team_user {
   id bigint [pk, increment]
   team_id bigint [ref: > teams.id]
   user_id bigint [ref: > users.id]
-  role varchar [null]
   joined boolean [default: false]
   action enum_action [note: 'request_to_user | request_from_user']
   created_at timestamp
@@ -183,7 +184,7 @@ Table team_user {
     user_id
   }
 
-  Note: 'Pivot table for team membership'
+  Note: 'Pivot table for team membership. Roles are managed via acl_role_assignments.'
 }
 
 Table team_invitations {

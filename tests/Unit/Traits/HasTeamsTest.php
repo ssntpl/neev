@@ -22,7 +22,7 @@ class HasTeamsTest extends TestCase
         $user = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => null, 'action' => 'request_to_user']);
+        $team->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
 
         $user->forceFill(['current_team_id' => $team->id])->save();
         $user->refresh();
@@ -47,7 +47,7 @@ class HasTeamsTest extends TestCase
         $user = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => null, 'action' => 'request_to_user']);
+        $team->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
 
         $this->assertTrue($user->belongsToTeam($team));
     }
@@ -72,7 +72,7 @@ class HasTeamsTest extends TestCase
         $user = User::factory()->create();
         $team = TeamFactory::new()->create();
 
-        $team->allUsers()->attach($user, ['joined' => false, 'role' => null, 'action' => 'request_to_user']);
+        $team->allUsers()->attach($user, ['joined' => false, 'action' => 'request_to_user']);
 
         $this->assertFalse($user->belongsToTeam($team));
     }
@@ -86,7 +86,7 @@ class HasTeamsTest extends TestCase
         $user = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => null, 'action' => 'request_to_user']);
+        $team->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
 
         $result = $user->switchTeam($team);
 
@@ -112,8 +112,8 @@ class HasTeamsTest extends TestCase
         $teamA = TeamFactory::new()->create(['user_id' => $user->id]);
         $teamB = TeamFactory::new()->create(['user_id' => $user->id]);
 
-        $teamA->allUsers()->attach($user, ['joined' => true, 'role' => null, 'action' => 'request_to_user']);
-        $teamB->allUsers()->attach($user, ['joined' => true, 'role' => null, 'action' => 'request_to_user']);
+        $teamA->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
+        $teamB->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
 
         $user->switchTeam($teamA);
         $this->assertEquals($teamA->id, $user->fresh()->current_team_id);
@@ -158,8 +158,8 @@ class HasTeamsTest extends TestCase
         $joinedTeam = TeamFactory::new()->create();
         $pendingTeam = TeamFactory::new()->create();
 
-        $joinedTeam->allUsers()->attach($user, ['joined' => true, 'role' => null, 'action' => 'request_to_user']);
-        $pendingTeam->allUsers()->attach($user, ['joined' => false, 'role' => null, 'action' => 'request_to_user']);
+        $joinedTeam->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
+        $pendingTeam->allUsers()->attach($user, ['joined' => false, 'action' => 'request_to_user']);
 
         $teams = $user->teams;
 
@@ -173,12 +173,11 @@ class HasTeamsTest extends TestCase
         $user = User::factory()->create();
         $team = TeamFactory::new()->create();
 
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => 'admin', 'action' => 'request_to_user']);
+        $team->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
 
         $teams = $user->teams;
         $membership = $teams->first()->membership;
 
-        $this->assertEquals('admin', $membership->role);
         $this->assertTrue($membership->joined);
     }
 
@@ -192,8 +191,8 @@ class HasTeamsTest extends TestCase
         $joinedTeam = TeamFactory::new()->create();
         $pendingTeam = TeamFactory::new()->create();
 
-        $joinedTeam->allUsers()->attach($user, ['joined' => true, 'role' => null, 'action' => 'request_to_user']);
-        $pendingTeam->allUsers()->attach($user, ['joined' => false, 'role' => null, 'action' => 'request_to_user']);
+        $joinedTeam->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
+        $pendingTeam->allUsers()->attach($user, ['joined' => false, 'action' => 'request_to_user']);
 
         $allTeams = $user->allTeams;
 
@@ -214,11 +213,11 @@ class HasTeamsTest extends TestCase
         $joinedTeam = TeamFactory::new()->create();
 
         // Team invites user (request_to_user)
-        $invitedTeam->allUsers()->attach($user, ['joined' => false, 'role' => null, 'action' => 'request_to_user']);
+        $invitedTeam->allUsers()->attach($user, ['joined' => false, 'action' => 'request_to_user']);
         // User requests to join team (request_from_user)
-        $requestedTeam->allUsers()->attach($user, ['joined' => false, 'role' => null, 'action' => 'request_from_user']);
+        $requestedTeam->allUsers()->attach($user, ['joined' => false, 'action' => 'request_from_user']);
         // User has already joined a team
-        $joinedTeam->allUsers()->attach($user, ['joined' => true, 'role' => null, 'action' => 'request_to_user']);
+        $joinedTeam->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
 
         $teamRequests = $user->teamRequests;
 
@@ -247,11 +246,11 @@ class HasTeamsTest extends TestCase
         $joinedTeam = TeamFactory::new()->create();
 
         // User requests to join team (request_from_user)
-        $requestedTeam->allUsers()->attach($user, ['joined' => false, 'role' => null, 'action' => 'request_from_user']);
+        $requestedTeam->allUsers()->attach($user, ['joined' => false, 'action' => 'request_from_user']);
         // Team invites user (request_to_user)
-        $invitedTeam->allUsers()->attach($user, ['joined' => false, 'role' => null, 'action' => 'request_to_user']);
+        $invitedTeam->allUsers()->attach($user, ['joined' => false, 'action' => 'request_to_user']);
         // User has already joined a team
-        $joinedTeam->allUsers()->attach($user, ['joined' => true, 'role' => null, 'action' => 'request_from_user']);
+        $joinedTeam->allUsers()->attach($user, ['joined' => true, 'action' => 'request_from_user']);
 
         $sendRequests = $user->sendRequests;
 

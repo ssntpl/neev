@@ -81,7 +81,7 @@ class UserAuthApiController extends Controller
                     $email->save();
 
                     $team = $invitation->team;
-                    $team?->users()->attach($user, ['role' => $invitation->role ?? '', 'joined' => true]);
+                    $team?->users()->attach($user, ['joined' => true]);
                     if ($invitation?->role) {
                         $user->assignRole($invitation->role, $team);
                     }
@@ -96,10 +96,7 @@ class UserAuthApiController extends Controller
                             'is_public' => false,
                             'activated_at' => now(),
                         ]);
-                        $team->users()->syncWithoutDetaching([$user->id => ['joined' => true, 'role' => $team->default_role ?? '']]);
-                        if ($team->default_role) {
-                            $user->assignRole($team->default_role, $team);
-                        }
+                        $team->addMember($user);
                     }
                 }
             }

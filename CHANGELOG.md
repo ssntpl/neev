@@ -7,8 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-03-09
+
+### Changed
+- **Role management overhaul** — removed `role` column from `team_user` pivot table; roles are now exclusively managed via laravel-acl's polymorphic `acl_role_assignments` table
+- `RoleController` is now generic — uses `assignRole()` for any resource (Team, Tenant, or null for global) instead of hardcoding Team pivot updates
+- `TenantSSOManager::ensureMembership()` accepts both Team and Tenant via `HasMembersInterface & IdentityProviderOwnerInterface` intersection type
+- `TenantSSOController` uses the resolved context directly instead of Team-only `current()` lookup
+- `Tenant::hasMember()` checks direct `tenant_id` membership first, then falls back to indirect team membership
+- `Team::addMember()` encapsulates pivot attach + role assignment
+
+### Removed
+- `role` column from `team_user` pivot table — use laravel-acl `assignRole()`/`getRole()` instead
+- Dead `$team->default_role` code from 6 controllers (was never a real DB column)
+- `addMember()` from `HasMembersInterface` and `Tenant` model (tenant membership is implicit via `tenant_id` at user creation)
+
+### Fixed
+- Role scoping now respects identity mode: Team when `team=true`, Tenant when `tenant=true, team=false`, global when both false
+- SSO auto-provisioning works for both Team and Tenant contexts
+- `Tenant::activated_at` / `inactive_reason` columns are now functional with `isActive()`, `activate()`, `deactivate()` methods
+
+## [0.4.0] - 2026-03-08
+
+### Changed
+- **Config overhaul** — reduced from ~30 keys to ~20 with 2 orthogonal identity flags (`tenant` + `team`)
+- **Domain model** — polymorphic `owner` (morphTo) replaces `team_id` + `tenant_id`; plaintext verification token; DNS verification consolidated into single `$domain->verify()` method
+- Progressive `login_throttle` replaces hard lockout
+- Single `password_expiry_days` replaces soft/hard split
+- Single `otp_length` replaces `otp_min`/`otp_max`
+- GeoIP configs grouped under `maxmind` namespace
+- All enforcement middleware is opt-in (none auto-applied)
+
 ### Added
-- Email verification method configuration (`email_verification_method`) - Choose between 'link' or 'otp' verification
+- `NeevAuthenticatable` umbrella trait (combines `HasMultiAuth` + `HasAccessToken` + `VerifyEmail` + auth relationships + password expiry helpers)
+- `EnsureTenantIsActive`, `EnsurePasswordNotExpired` middleware (opt-in)
+- Domain re-verification support: `verification_failed_at` column, `VerifyDomainJob`, `VerifyAllDomainsJob`
+- Domain events: `DomainVerified`, `DomainReverified`, `DomainVerificationFailed`
+- Database indexes for frequently queried columns
+- Domain-to-tenant cache (5 min TTL), auth settings cache (30 min TTL)
+- Database schema documentation (`docs/db-schema.dbml`)
+
+### Removed
+- `EmailDomainValidator` service and all waitlist/free email logic
+- 30+ obsolete config keys: `identity_strategy`, `tenant_isolation`, `tenant_auth`, `email_verified`, `require_company_email`, `domain_federation`, `magicauth`, `dashboard_url`, `frontend_url`, and more
+
+## [0.3.0] - 2025-03-01
+
+### Added
+- Email verification method configuration (`email_verification_method`) — choose between 'link' or 'otp' verification
 - `GET /neev/passkeys` endpoint to list user's passkeys
 - `GET /neev/teams/invitations` endpoint to get user's invitations and join requests
 - Verification method returned in API responses for email verification flows
@@ -127,7 +173,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive Blade views and email templates
 - Artisan commands for installation, GeoIP download, and cleanup
 
-[Unreleased]: https://github.com/ssntpl/neev/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/ssntpl/neev/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/ssntpl/neev/compare/v0.4.0...v0.4.1
+[0.4.0]: https://github.com/ssntpl/neev/compare/v0.3.0...v0.4.0
+[0.3.0]: https://github.com/ssntpl/neev/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/ssntpl/neev/compare/v0.1.2...v0.2.0
 [0.1.2]: https://github.com/ssntpl/neev/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/ssntpl/neev/compare/v0.1.0...v0.1.1

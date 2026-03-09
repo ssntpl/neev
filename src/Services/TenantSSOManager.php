@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Hash;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Contracts\User as SocialiteUser;
 use Laravel\Socialite\Facades\Socialite;
+use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
@@ -20,7 +21,7 @@ use Ssntpl\Neev\Models\User;
  *
  * SSO-related methods accept IdentityProviderOwnerInterface so they work
  * for both Team (shared mode) and Tenant (isolated mode).
- * Membership-related methods remain Team-specific.
+ * Membership uses HasMembersInterface so it works for both.
  */
 class TenantSSOManager
 {
@@ -142,29 +143,27 @@ class TenantSSOManager
      *
      * @throws Exception If user is not a member and auto-provisioning is disabled
      */
-    public function ensureMembership(User $user, Team $tenant): void
+    public function ensureMembership(User $user, HasMembersInterface&IdentityProviderOwnerInterface $owner): void
     {
-        // Check if user already has membership
-        if ($user->belongsToTeam($tenant)) {
+        if ($owner->hasMember($user)) {
             return;
         }
 
-        // User is not a member - check auto-provisioning
-        if (!$tenant->allowsAutoProvision()) {
+        if (!$owner->allowsAutoProvision()) {
             throw new Exception('You are not a member of this organization. Please contact your administrator.');
         }
 
-        // Add user to the tenant with the configured role
-        $role = $tenant->getAutoProvisionRole() ?? '';
+        $role = $owner->getAutoProvisionRole();
 
-        $tenant->users()->attach($user, [
-            'joined' => true,
-            'role' => $role,
-        ]);
-
-        // Assign the role if specified
-        if ($role) {
-            $user->assignRole($role, $tenant);
+        // Team membership uses pivot table, Tenant membership uses tenant_id on user
+        if ($owner instanceof Team) {
+            $owner->addMember($user, $role);
+        } else {
+            // Tenant: tenant_id should already be set by BelongsToTenant trait.
+            // Just assign the role scoped to the tenant.
+            if ($role) {
+                $user->assignRole($role, $owner);
+            }
         }
     }
 

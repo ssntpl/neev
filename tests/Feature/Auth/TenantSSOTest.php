@@ -193,7 +193,7 @@ class TenantSSOTest extends TestCase
         $this->setCurrentTenant($team);
 
         $user = User::factory()->create();
-        $team->users()->attach($user, ['joined' => true, 'role' => 'member']);
+        $team->users()->attach($user, ['joined' => true]);
 
         // Mock the SSO Manager to return a mock user
         $ssoUser = Mockery::mock(SocialiteUser::class);
@@ -225,7 +225,7 @@ class TenantSSOTest extends TestCase
         $this->setCurrentTenant($team);
 
         $user = User::factory()->create();
-        $team->users()->attach($user, ['joined' => true, 'role' => 'member']);
+        $team->users()->attach($user, ['joined' => true]);
 
         // Mock the SSO Manager
         $ssoUser = Mockery::mock(SocialiteUser::class);

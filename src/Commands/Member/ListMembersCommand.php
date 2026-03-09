@@ -43,7 +43,7 @@ class ListMembersCommand extends Command
                 $m->id,
                 $m->name,
                 $m->email?->email ?? '-',
-                $m->membership->role ?? '-',
+                $m->getRole($team)?->name ?? '-',
                 $m->membership->joined ? 'Yes' : 'No',
                 $m->membership->created_at?->format('Y-m-d') ?? '-',
             ]),

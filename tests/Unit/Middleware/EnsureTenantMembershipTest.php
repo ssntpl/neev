@@ -66,7 +66,6 @@ class EnsureTenantMembershipTest extends TestCase
     private function attachUserToTeam(User $user, Team $team): void
     {
         $team->allUsers()->attach($user->id, [
-            'role' => 'member',
             'joined' => true,
         ]);
     }

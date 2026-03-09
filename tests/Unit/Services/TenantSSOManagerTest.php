@@ -212,7 +212,7 @@ class TenantSSOManagerTest extends TestCase
         $user = User::factory()->create();
 
         // Add the user to the team
-        $team->users()->attach($user, ['joined' => true, 'role' => 'member']);
+        $team->users()->attach($user, ['joined' => true]);
 
         // Should not throw and should not create a second membership
         $this->manager->ensureMembership($user, $team);
@@ -284,10 +284,12 @@ class TenantSSOManagerTest extends TestCase
 
         $this->manager->ensureMembership($user, $team);
 
-        // Verify the membership has the correct role in the pivot
+        // Verify the user was added as a member
         $pivot = $team->users()->where('users.id', $user->id)->first();
         $this->assertNotNull($pivot);
-        $this->assertSame('editor', $pivot->membership->role);
+
+        // Verify the ACL role was assigned
+        $this->assertSame('editor', $user->getRole($team)?->name);
     }
 
     // ---------------------------------------------------------------

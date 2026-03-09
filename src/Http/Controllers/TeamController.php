@@ -100,10 +100,7 @@ class TeamController extends Controller
                 'is_public' => (bool) $request->public,
             ]);
 
-            $team->users()->attach($user, ['joined' => true]);
-            if ($team->default_role) {
-                $user->assignRole($team->default_role ?? '', $team);
-            }
+            $team->addMember($user);
         } catch (Exception $e) {
             Log::error($e);
             return back()->withErrors(['message' => 'Failed to create team.']);
@@ -182,7 +179,7 @@ class TeamController extends Controller
             if ($team->users->contains($member)) {
                 return back()->with(['status' => 'User already added.']);
             } elseif (!$team->allUsers->contains($member)) {
-                $team->users()->attach($member, ['role' => $request->role]);
+                $team->users()->attach($member);
                 if ($request->role) {
                     $member->assignRole($request->role, $team);
                 }
@@ -257,7 +254,7 @@ class TeamController extends Controller
                         return back()->with('status', 'Already Added.');
                     }
                     if (!$team->allUsers->contains($user)) {
-                        $team->allUsers()->attach($user, ['joined' => true, 'role' => $invitation->role]);
+                        $team->allUsers()->attach($user, ['joined' => true]);
                         if ($invitation?->role) {
                             $user->assignRole($invitation->role, $team);
                         }
@@ -328,7 +325,6 @@ class TeamController extends Controller
             } elseif ($request->action == 'accept') {
                 $membership = $team->joinRequests->where('id', $member->id)->first()->membership;
                 $membership->joined = true;
-                $membership->role = $request->role;
                 $membership->save();
                 if ($request->role) {
                     $member->assignRole($request->role, $team);
