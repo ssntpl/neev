@@ -11,7 +11,7 @@ trait ResolvesTenantContext
 {
     protected function isIsolated(): bool
     {
-        return config('neev.identity_strategy', 'shared') === 'isolated';
+        return config('neev.tenant', false);
     }
 
     protected function resolveTeam(string $identifier): Team

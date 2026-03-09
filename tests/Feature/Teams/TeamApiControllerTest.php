@@ -357,7 +357,8 @@ class TeamApiControllerTest extends TestCase
             ->assertJsonPath('message', 'Domain federated successfully.');
 
         $this->assertDatabaseHas('domains', [
-            'team_id' => $team->id,
+            'owner_type' => 'team',
+            'owner_id' => $team->id,
             'domain' => 'example.com'
         ]);
     }
@@ -391,7 +392,7 @@ class TeamApiControllerTest extends TestCase
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/domains', [
@@ -410,7 +411,7 @@ class TeamApiControllerTest extends TestCase
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id, 'enforce' => false]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'enforce' => false]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/domains', [
@@ -438,7 +439,7 @@ class TeamApiControllerTest extends TestCase
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/domains', ['domain_id' => $domain->id]);
@@ -457,7 +458,7 @@ class TeamApiControllerTest extends TestCase
         [$nonOwner, $token] = $this->authenticatedUser();
         $owner = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/domains', ['domain_id' => $domain->id]);
@@ -477,7 +478,7 @@ class TeamApiControllerTest extends TestCase
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
-        $domain = DomainFactory::new()->verified()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/domains/rules', [
@@ -500,7 +501,7 @@ class TeamApiControllerTest extends TestCase
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
-        $domain = DomainFactory::new()->verified()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
         $team->users()->attach($user, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -520,7 +521,7 @@ class TeamApiControllerTest extends TestCase
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
-        $domain = DomainFactory::new()->verified()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
         $team->users()->attach($user, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -536,7 +537,7 @@ class TeamApiControllerTest extends TestCase
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id, 'verified_at' => null]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'verified_at' => null]);
         $team->users()->attach($user, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)

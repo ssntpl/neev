@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
+use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
 use Ssntpl\Neev\Contracts\HasMembersInterface;
@@ -86,38 +88,17 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     }
 
     /**
-     * Get the computed subdomain for this team.
-     * Only returns a value if tenant_isolation is enabled and subdomain_suffix is configured.
-     */
-    public function getSubdomainAttribute(): ?string
-    {
-        if (!config('neev.tenant_isolation', false)) {
-            return null;
-        }
-
-        $suffix = config('neev.tenant_isolation_options.subdomain_suffix');
-
-        if (!$suffix || !$this->slug) {
-            return null;
-        }
-
-        return $this->slug . '.' . ltrim($suffix, '.');
-    }
-
-    /**
      * Get the web domain for this team.
-     * Returns primary custom domain if verified, otherwise computed subdomain.
+     * Returns primary verified domain if available.
      */
     public function getWebDomainAttribute(): ?string
     {
-        // Check for primary custom domain first
         $primary = $this->primaryDomain;
         if ($primary && $primary->verified_at) {
             return $primary->domain;
         }
 
-        // Fall back to computed subdomain
-        return $this->subdomain;
+        return null;
     }
 
     public function owner(): BelongsTo
@@ -172,16 +153,16 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     /**
      * Get all domains claimed by this team.
      */
-    public function domains(): HasMany
+    public function domains(): MorphMany
     {
-        return $this->hasMany(Domain::class);
+        return $this->morphMany(Domain::class, 'owner');
     }
 
     /**
      * Get the primary domain for this team (used for email federation).
      * @deprecated Use primaryDomain() instead
      */
-    public function domain(): HasOne
+    public function domain(): MorphOne
     {
         return $this->primaryDomain();
     }
@@ -189,18 +170,18 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     /**
      * Get the primary domain for this team.
      */
-    public function primaryDomain(): HasOne
+    public function primaryDomain(): MorphOne
     {
-        return $this->hasOne(Domain::class)->where('is_primary', true);
+        return $this->morphOne(Domain::class, 'owner')->where('is_primary', true);
     }
 
     /**
      * Get custom domains for this team (web-serving domains).
      * These are verified domains that can be used for tenant routing.
      */
-    public function customDomains(): HasMany
+    public function customDomains(): MorphMany
     {
-        return $this->hasMany(Domain::class)->whereNotNull('verified_at');
+        return $this->morphMany(Domain::class, 'owner')->whereNotNull('verified_at');
     }
 
     public function invitations(): HasMany
@@ -210,7 +191,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
 
     public function hasUser($user): bool
     {
-        return $this->users()->where('users.id', $user->id)->exists();
+        return $this->users()->withoutGlobalScope(\Ssntpl\Neev\Scopes\TenantScope::class)->where('users.id', $user->id)->exists();
     }
 
     public function tenant(): BelongsTo
@@ -269,6 +250,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     {
         $domainRecord = Domain::findByHost($domain);
 
-        return $domainRecord?->team;
+        /** @var static|null */
+        return $domainRecord?->owner;
     }
 }

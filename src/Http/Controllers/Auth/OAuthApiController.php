@@ -13,7 +13,6 @@ use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
-use Ssntpl\Neev\Services\EmailDomainValidator;
 use Ssntpl\Neev\Services\GeoIP;
 
 class OAuthApiController extends Controller
@@ -32,7 +31,7 @@ class OAuthApiController extends Controller
             $params['login_hint'] = $request->email;
         }
 
-        $redirectUrl = config('neev.frontend_url') . '/oauth/' . $service . '/callback';
+        $redirectUrl = config('app.url') . '/oauth/' . $service . '/callback';
 
         /** @var \Laravel\Socialite\Two\AbstractProvider $driver */
         $driver = Socialite::driver($service);
@@ -66,7 +65,7 @@ class OAuthApiController extends Controller
         }
 
         try {
-            $redirectUrl = config('neev.frontend_url') . '/oauth/' . $service . '/callback';
+            $redirectUrl = config('app.url') . '/oauth/' . $service . '/callback';
 
             /** @var \Laravel\Socialite\Two\AbstractProvider $driver */
             $driver = Socialite::driver($service);
@@ -156,26 +155,14 @@ class OAuthApiController extends Controller
             ]);
 
             if (config('neev.team')) {
-                $shouldCreateTeam = !config('neev.domain_federation') || !$this->isDomainVerified($oauthUser->email);
+                $shouldCreateTeam = !$this->isDomainVerified($oauthUser->email);
 
                 if ($shouldCreateTeam) {
-                    $shouldActivate = true;
-                    $inactiveReason = null;
-
-                    if (config('neev.require_company_email')) {
-                        $emailValidator = new EmailDomainValidator();
-                        if ($emailValidator->isFreeEmail($oauthUser->email)) {
-                            $shouldActivate = false;
-                            $inactiveReason = 'free_email_provider';
-                        }
-                    }
-
                     $team = Team::model()->forceCreate([
                         'name' => explode(' ', $user->name, 2)[0] . "'s Team",
                         'user_id' => $user->id,
                         'is_public' => false,
-                        'activated_at' => $shouldActivate ? now() : null,
-                        'inactive_reason' => $inactiveReason,
+                        'activated_at' => now(),
                     ]);
                     $team->users()->syncWithoutDetaching([$user->id => ['joined' => true, 'role' => $team->default_role ?? '']]);
                     if ($team->default_role) {

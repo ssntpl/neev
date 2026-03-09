@@ -16,10 +16,8 @@ class InstallNeev extends Command implements PromptsForMissingInput
      *
      * @var string
      */
-    protected $signature = 'neev:install    {teams : Indicates if team support should be installed}
-                                            {verification : Indicates if email verification support should be installed}
-                                            {domain_federation : Indicates if domain federation support should be installed}
-                                            {tenant_isolation : Indicates if hard user-level tenant isolation should be installed}';
+    protected $signature = 'neev:install    {tenant : Enable multi-tenant isolation (yes/no)}
+                                            {teams : Enable team support (yes/no)}';
 
     /**
      * The console command description.
@@ -33,11 +31,11 @@ class InstallNeev extends Command implements PromptsForMissingInput
      */
     public function handle()
     {
-        $this->info('🔧 Installing with options:');
+        $this->info('Installing Neev...');
 
         // Check if users table exists and is not empty
         if (Schema::hasTable('users') && DB::table('users')->exists()) {
-            $this->error('❌ Installation failed: Users table is not empty. Please run this command on a fresh installation.');
+            $this->error('Installation failed: Users table is not empty. Please run this command on a fresh installation.');
             return 1;
         }
 
@@ -45,46 +43,22 @@ class InstallNeev extends Command implements PromptsForMissingInput
 
         $file = config_path('neev.php');
 
+        if ($this->argument('tenant') === 'yes') {
+            $this->replaceInFile("'tenant' => false,", "'tenant' => true,", $file);
+        }
+
         if ($this->argument('teams') === 'yes') {
-            $this->installTeam();
+            $this->replaceInFile("'team' => false,", "'team' => true,", $file);
         }
 
-
-        if ($this->argument('domain_federation') === 'yes') {
-            $this->replaceInFile("'domain_federation' => false,", "'domain_federation' => true,", $file);
-        }
-
-        if ($this->argument('verification') === 'yes') {
-            $this->replaceInFile("'email_verified' => false,", "'email_verified' => true,", $file);
-        }
-
-        if ($this->argument('tenant_isolation') === 'yes') {
-            $this->installTenantIsolation();
-        }
-
-        // $this->call('migrate');
-
-        $this->info('✅ Neev installed successfully!');
-    }
-
-    protected function installTeam()
-    {
-        $this->replaceInFile("'team' => false", "'team' => true", config_path('neev.php'));
-    }
-
-    protected function installTenantIsolation()
-    {
-        $file = config_path('neev.php');
-
-        $this->replaceInFile("'identity_strategy' => 'shared',", "'identity_strategy' => 'isolated',", $file);
-        $this->replaceInFile("'tenant_isolation' => false,", "'tenant_isolation' => true,", $file);
+        $this->info('Neev installed successfully!');
     }
 
     /**
      * Replace a given string within a given file.
      *
+     * @param  string  $search
      * @param  string  $replace
-     * @param  string|array  $search
      * @param  string  $path
      * @return void
      */
@@ -101,6 +75,12 @@ class InstallNeev extends Command implements PromptsForMissingInput
     protected function promptForMissingArgumentsUsing()
     {
         return [
+            'tenant' => fn () => select(
+                label: 'Would you like to enable multi-tenant isolation?',
+                options: ['yes' => 'Yes', 'no' => 'No'],
+                default: 'no'
+            ),
+
             'teams' => fn () => select(
                 label: 'Would you like to install team support?',
                 options: [
@@ -108,24 +88,6 @@ class InstallNeev extends Command implements PromptsForMissingInput
                     'no' => 'No'
                 ],
                 default: 'yes'
-            ),
-
-            'verification' => fn () => select(
-                label: 'Would you like to enable email verification?',
-                options: ['yes' => 'Yes', 'no' => 'No'],
-                default: 'no'
-            ),
-
-            'domain_federation' => fn () => select(
-                label: 'Would you like to enable domain federation?',
-                options: ['yes' => 'Yes', 'no' => 'No'],
-                default: 'no'
-            ),
-
-            'tenant_isolation' => fn () => select(
-                label: 'Would you like to enable hard user-level tenant isolation (tenant_id on users table)?',
-                options: ['yes' => 'Yes', 'no' => 'No'],
-                default: 'no'
             ),
         ];
     }

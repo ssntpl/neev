@@ -22,7 +22,6 @@ use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
-use Ssntpl\Neev\Services\EmailDomainValidator;
 use Ssntpl\Neev\Services\GeoIP;
 
 class UserAuthApiController extends Controller
@@ -88,27 +87,14 @@ class UserAuthApiController extends Controller
                     }
                     $invitation->delete();
                 } else {
-                    // Determine team activation status based on email domain
-                    $shouldActivate = true;
-                    $inactiveReason = null;
-
-                    if (config('neev.require_company_email')) {
-                        $emailValidator = new EmailDomainValidator();
-                        if ($emailValidator->isFreeEmail($request->email)) {
-                            $shouldActivate = false;
-                            $inactiveReason = 'free_email_provider';
-                        }
-                    }
-
-                    $shouldCreateTeam = !config('neev.domain_federation') || !$this->isDomainVerified($request->email);
+                    $shouldCreateTeam = !$this->isDomainVerified($request->email);
 
                     if ($shouldCreateTeam) {
                         $team = Team::model()->forceCreate([
                             'name' => explode(' ', $user->name, 2)[0] . "'s Team",
                             'user_id' => $user->id,
                             'is_public' => false,
-                            'activated_at' => $shouldActivate ? now() : null,
-                            'inactive_reason' => $inactiveReason,
+                            'activated_at' => now(),
                         ]);
                         $team->users()->syncWithoutDetaching([$user->id => ['joined' => true, 'role' => $team->default_role ?? '']]);
                         if ($team->default_role) {
@@ -172,7 +158,7 @@ class UserAuthApiController extends Controller
 
         $mfaMethod = $user?->preferredMultiFactorAuth?->method ?? $user?->multiFactorAuths()->first()?->method;
         if (!Hash::check($request->password, (string)$user?->password?->password)) {
-            if (config('neev.record_failed_login_attempts')) {
+            if (config('neev.log_failed_logins')) {
                 $clientDetails = LoginAttempt::getClientDetails($request);
                 $user?->loginAttempts()->create([
                     'method' => LoginAttempt::Password,
@@ -472,7 +458,7 @@ class UserAuthApiController extends Controller
         );
 
         $query = parse_url($signedUrl, PHP_URL_QUERY);
-        $frontendUrl = config('neev.frontend_url');
+        $frontendUrl = config('app.url');
         $url = "{$frontendUrl}/login-link?{$query}";
 
         Mail::to($email->email)->send(new LoginUsingLink($url, $expiryMinutes));

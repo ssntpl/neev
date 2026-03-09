@@ -9,25 +9,18 @@ trait WithNeevConfig
         config(['neev.team' => true]);
     }
 
-    protected function enableEmailVerification(): void
-    {
-        config(['neev.email_verified' => true]);
-    }
-
     protected function enableTenantIsolation(?string $subdomainSuffix = 'test.com'): void
     {
         config([
-            'neev.tenant_isolation' => true,
-            'neev.tenant_isolation_options.subdomain_suffix' => $subdomainSuffix,
+            'neev.tenant' => true,
         ]);
     }
 
     protected function enableTenantAuth(): void
     {
-        config([
-            'neev.tenant_auth' => true,
-            'neev.tenant_isolation' => true,
-        ]);
+        // Tenant SSO is always available now; no config toggle needed.
+        // SSO is self-configured per entity in DB (TeamAuthSettings).
+        // This method is kept for test compatibility.
     }
 
     protected function enableMFA(array $methods = ['authenticator', 'email']): void
@@ -35,24 +28,16 @@ trait WithNeevConfig
         config(['neev.multi_factor_auth' => $methods]);
     }
 
+    protected function enableEmailVerification(): void
+    {
+        // Email verification is always enabled now; no config toggle needed.
+        // This method is kept for test compatibility.
+    }
+
     protected function enableDomainFederation(): void
     {
-        config(['neev.domain_federation' => true]);
-    }
-
-    protected function enableCompanyEmailRequirement(): void
-    {
-        config(['neev.require_company_email' => true]);
-    }
-
-    protected function enableMagicAuth(): void
-    {
-        config(['neev.magicauth' => true]);
-    }
-
-    protected function disableMagicAuth(): void
-    {
-        config(['neev.magicauth' => false]);
+        // Domain federation is always available now; no config toggle needed.
+        // This method is kept for test compatibility.
     }
 
     protected function enableUsernameSupport(): void

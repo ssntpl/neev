@@ -7,6 +7,8 @@ use Closure;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Ssntpl\Neev\Models\AccessToken;
+use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Scopes\TenantScope;
 use Ssntpl\Neev\Services\ContextManager;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -28,7 +30,7 @@ class NeevAPIMiddleware
         }
 
         [$id, $token] = explode('|', $token, 2);
-        $accessToken = AccessToken::find($id);
+        $accessToken = AccessToken::with('attempt')->find($id);
 
         if (!$accessToken || !Hash::check($token, $accessToken->token) || ($accessToken->token_type == AccessToken::mfa_token && !$request->is(['neev/mfa/otp/verify', 'neev/mfa']))) {
             return response()->json([
@@ -44,7 +46,10 @@ class NeevAPIMiddleware
             ], 401);
         }
 
-        $user = $accessToken->user;
+        // Bypass TenantScope when resolving the authenticated user — this is
+        // the authentication layer and must find the user regardless of tenant context.
+        $userClass = User::getClass();
+        $user = $userClass::withoutGlobalScope(TenantScope::class)->find($accessToken->user_id);
 
         // Check if user account is active
         if (!$user || !$user->active) {
@@ -53,10 +58,10 @@ class NeevAPIMiddleware
             ], 403);
         }
 
-        $accessToken->newQuery()->where('id', $accessToken->id)->update(['last_used_at' => now()]);
+        $accessToken->forceFill(['last_used_at' => now()])->saveQuietly();
 
         $emailBypassPaths = ['neev/email/send', 'neev/users', 'neev/logout', 'neev/email/update', 'neev/email/verify', 'neev/email/otp/send', 'neev/email/otp/verify', 'neev/users'];
-        if (config('neev.email_verified') && !$user->hasVerifiedEmail() && !$request->is($emailBypassPaths)) {
+        if (!$user->hasVerifiedEmail() && !$request->is($emailBypassPaths)) {
             return response()->json([
                 'message' => 'Email not verified.'
             ], 401);

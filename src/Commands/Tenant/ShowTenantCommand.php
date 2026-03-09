@@ -160,9 +160,9 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
         }
 
         // Try domain resolution
-        $domain = Domain::where('domain', $identifier)->whereNotNull('tenant_id')->first();
+        $domain = Domain::where('domain', $identifier)->where('owner_type', 'tenant')->first();
 
-        return $domain?->tenant;
+        return $domain?->owner;
     }
 
     protected function findTeam(string $identifier): ?Team
@@ -179,9 +179,9 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
         }
 
         // Try domain resolution
-        $domain = Domain::where('domain', $identifier)->whereNotNull('team_id')->first();
+        $domain = Domain::where('domain', $identifier)->where('owner_type', 'team')->first();
 
-        return $domain?->team;
+        return $domain?->owner;
     }
 
     protected function promptForMissingArgumentsUsing(): array

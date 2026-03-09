@@ -20,13 +20,27 @@ class TenantDomainTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        $this->enableTenantIsolation('test.com');
-        config(['neev.tenant_isolation_options.allow_custom_domains' => true]);
+        $this->enableTenantIsolation();
     }
 
     protected function authenticatedUser(): array
     {
-        $user = User::factory()->create();
+        // Create a team to serve as the tenant context
+        $team = TeamFactory::new()->create();
+
+        // Set tenant context so TenantScope can resolve queries
+        $resolver = app(TenantResolver::class);
+        $resolver->setCurrentTenant($team);
+
+        // Create user with proper tenant_id
+        $user = User::factory()->create(['tenant_id' => $team->id]);
+
+        // Update the user's email to have the same tenant_id
+        $user->emails()->update(['tenant_id' => $team->id]);
+
+        // Add the user as a member of the tenant team (required by EnsureTenantMembership)
+        $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
+
         $token = $user->createLoginToken(60);
 
         return [$user, $token->plainTextToken];
@@ -43,7 +57,7 @@ class TenantDomainTest extends TestCase
         $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
 
         DomainFactory::new()->verified()->primary()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'myteam.test.com',
         ]);
 
@@ -147,7 +161,7 @@ class TenantDomainTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
         DomainFactory::new()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'taken.test.com',
         ]);
 
@@ -172,7 +186,7 @@ class TenantDomainTest extends TestCase
         $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
 
         $domain = DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -198,7 +212,7 @@ class TenantDomainTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $otherTeam = TeamFactory::new()->create();
-        $domain = DomainFactory::new()->create(['team_id' => $otherTeam->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $otherTeam->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/tenant-domains/' . $domain->id);
@@ -217,10 +231,10 @@ class TenantDomainTest extends TestCase
 
         // Need at least 2 domains to delete one
         DomainFactory::new()->verified()->primary()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
         $domain2 = DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -238,7 +252,7 @@ class TenantDomainTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
         $domain = DomainFactory::new()->verified()->primary()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -254,10 +268,10 @@ class TenantDomainTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
         $primary = DomainFactory::new()->verified()->primary()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
         $secondary = DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -275,7 +289,7 @@ class TenantDomainTest extends TestCase
 
         $otherUser = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $otherUser->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/tenant-domains/' . $domain->id);
@@ -294,7 +308,7 @@ class TenantDomainTest extends TestCase
 
         // DB domains don't have a type column, so type is always null (not 'custom')
         $domain = DomainFactory::new()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -310,7 +324,7 @@ class TenantDomainTest extends TestCase
 
         $otherUser = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $otherUser->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/tenant-domains/' . $domain->id . '/regenerate-token');
@@ -338,10 +352,10 @@ class TenantDomainTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
         DomainFactory::new()->verified()->primary()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
         $secondary = DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -360,7 +374,7 @@ class TenantDomainTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
         $unverified = DomainFactory::new()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -376,7 +390,7 @@ class TenantDomainTest extends TestCase
 
         $otherUser = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $otherUser->id]);
-        $domain = DomainFactory::new()->verified()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/tenant-domains/' . $domain->id . '/primary');
@@ -442,7 +456,7 @@ class TenantDomainTest extends TestCase
 
         $otherUser = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $otherUser->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/tenant-domains/' . $domain->id . '/verify');
@@ -456,7 +470,7 @@ class TenantDomainTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
         $domain = DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -485,23 +499,20 @@ class TenantDomainTest extends TestCase
     // POST /neev/tenant-domains/ — custom domains disabled
     // -----------------------------------------------------------------
 
-    public function test_store_custom_domain_when_custom_domains_disabled(): void
+    public function test_store_custom_domain_always_allowed(): void
     {
-        config(['neev.tenant_isolation_options.allow_custom_domains' => false]);
-
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/tenant-domains/', [
                 'team_id' => $team->id,
-                'domain' => 'custom-disabled.example.com',
+                'domain' => 'custom-allowed.example.com',
                 'type' => 'custom',
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
-            ->assertJsonPath('message', 'Custom domains are not allowed.');
+        $response->assertOk()
+            ->assertJsonPath('status', 'Success');
     }
 
     // -----------------------------------------------------------------
@@ -535,7 +546,7 @@ class TenantDomainTest extends TestCase
         $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
 
         $domain = DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)

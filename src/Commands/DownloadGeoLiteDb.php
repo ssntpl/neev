@@ -12,13 +12,13 @@ class DownloadGeoLiteDb extends Command
 
     public function handle()
     {
-        $licenseKey = config('neev.maxmind_license_key');
+        $licenseKey = config('neev.maxmind.license_key');
         if (empty($licenseKey)) {
             $this->error('MAXMIND_LICENSE_KEY is not configured. Set it in your .env file.');
             return 1;
         }
 
-        $edition = config('neev.edition', 'GeoLite2-City');
+        $edition = config('neev.maxmind.edition', 'GeoLite2-City');
         $tempPath = storage_path('app/geoip.tar.gz');
         $extractDir = storage_path('app/geoip');
 

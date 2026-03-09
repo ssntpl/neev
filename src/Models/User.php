@@ -7,10 +7,8 @@ use Illuminate\Notifications\Notifiable;
 use Ssntpl\LaravelAcl\Traits\HasRoles;
 use Ssntpl\Neev\Database\Factories\UserFactory;
 use Ssntpl\Neev\Traits\BelongsToTenant;
-use Ssntpl\Neev\Traits\HasAccessToken;
-use Ssntpl\Neev\Traits\HasMultiAuth;
 use Ssntpl\Neev\Traits\HasTeams;
-use Ssntpl\Neev\Traits\VerifyEmail;
+use Ssntpl\Neev\Traits\NeevAuthenticatable;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
 /**
@@ -24,9 +22,7 @@ class User extends Authenticatable
     use Notifiable;
     use HasTeams;
     use HasRoles;
-    use HasMultiAuth;
-    use HasAccessToken;
-    use VerifyEmail;
+    use NeevAuthenticatable;
     use BelongsToTenant;
 
     protected static function newFactory()
@@ -66,36 +62,6 @@ class User extends Authenticatable
             return $photoUrl;
         }
         return collect(explode(' ', $this->name))->map(fn ($word) => strtoupper(substr($word, 0, 1)))->join('');
-    }
-
-    public function emails()
-    {
-        return $this->hasMany(Email::class);
-    }
-
-    public function email()
-    {
-        return $this->hasOne(Email::class)->where('is_primary', true);
-    }
-
-    public function passwords()
-    {
-        return $this->hasMany(Password::class);
-    }
-
-    public function password()
-    {
-        return $this->hasOne(Password::class)->latestOfMany();
-    }
-
-    public function loginAttempts()
-    {
-        return $this->hasMany(LoginAttempt::class);
-    }
-
-    public function passkeys()
-    {
-        return $this->hasMany(Passkey::class);
     }
 
     /**

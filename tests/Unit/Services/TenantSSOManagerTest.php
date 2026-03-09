@@ -44,67 +44,11 @@ class TenantSSOManagerTest extends TestCase
     }
 
     // ---------------------------------------------------------------
-    // isTenantAuthEnabled()
-    // ---------------------------------------------------------------
-
-    public function test_is_tenant_auth_enabled_returns_false_when_both_disabled(): void
-    {
-        config([
-            'neev.tenant_auth' => false,
-            'neev.tenant_isolation' => false,
-        ]);
-
-        $this->assertFalse($this->manager->isTenantAuthEnabled());
-    }
-
-    public function test_is_tenant_auth_enabled_returns_true_when_only_tenant_auth_enabled(): void
-    {
-        config([
-            'neev.tenant_auth' => true,
-            'neev.tenant_isolation' => false,
-        ]);
-
-        $this->assertTrue($this->manager->isTenantAuthEnabled());
-    }
-
-    public function test_is_tenant_auth_enabled_returns_false_when_only_tenant_isolation_enabled(): void
-    {
-        config([
-            'neev.tenant_auth' => false,
-            'neev.tenant_isolation' => true,
-        ]);
-
-        $this->assertFalse($this->manager->isTenantAuthEnabled());
-    }
-
-    public function test_is_tenant_auth_enabled_returns_true_when_both_enabled(): void
-    {
-        $this->enableTenantAuth();
-
-        $this->assertTrue($this->manager->isTenantAuthEnabled());
-    }
-
-    // ---------------------------------------------------------------
     // getProvider()
     // ---------------------------------------------------------------
 
-    public function test_get_provider_returns_null_when_tenant_auth_disabled(): void
-    {
-        config([
-            'neev.tenant_auth' => false,
-            'neev.tenant_isolation' => false,
-        ]);
-
-        $team = TeamFactory::new()->create();
-        TeamAuthSettingsFactory::new()->sso('entra')->create(['team_id' => $team->id]);
-
-        $this->assertNull($this->manager->getProvider($team));
-    }
-
     public function test_get_provider_returns_null_when_no_auth_settings(): void
     {
-        $this->enableTenantAuth();
-
         $team = TeamFactory::new()->create();
 
         $this->assertNull($this->manager->getProvider($team));
@@ -112,8 +56,6 @@ class TenantSSOManagerTest extends TestCase
 
     public function test_get_provider_returns_provider_from_auth_settings(): void
     {
-        $this->enableTenantAuth();
-
         $team = TeamFactory::new()->create();
         TeamAuthSettingsFactory::new()->sso('google')->create(['team_id' => $team->id]);
 
@@ -122,8 +64,6 @@ class TenantSSOManagerTest extends TestCase
 
     public function test_get_provider_returns_entra_provider(): void
     {
-        $this->enableTenantAuth();
-
         $team = TeamFactory::new()->create();
         TeamAuthSettingsFactory::new()->sso('entra')->create(['team_id' => $team->id]);
 
@@ -156,19 +96,7 @@ class TenantSSOManagerTest extends TestCase
         $this->manager->buildSocialiteDriver($team);
     }
 
-    public function test_build_socialite_driver_throws_when_provider_not_supported(): void
-    {
-        $team = TeamFactory::new()->create();
-        TeamAuthSettingsFactory::new()->sso('entra')->create(['team_id' => $team->id]);
-
-        // Empty supported providers list
-        config(['neev.tenant_auth_options.sso_providers' => []]);
-
-        $this->expectException(Exception::class);
-        $this->expectExceptionMessage("SSO provider 'entra' is not supported.");
-
-        $this->manager->buildSocialiteDriver($team);
-    }
+    // sso_providers whitelist removed; any configured provider is accepted
 
     // ---------------------------------------------------------------
     // findOrCreateUser()

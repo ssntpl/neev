@@ -3,30 +3,42 @@
 namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Cache;
 
 /**
  * @property int $id
- * @property int|null $team_id
- * @property int|null $tenant_id
+ * @property string|null $owner_type
+ * @property int|null $owner_id
  * @property bool $enforce
  * @property string $domain
  * @property string|null $verification_token
  * @property bool $is_primary
  * @property \Carbon\Carbon|null $verified_at
- * @property-read Team|null $team
- * @property-read Tenant|null $tenant
+ * @property \Carbon\Carbon|null $verification_failed_at
+ * @property-read Model|null $owner
  */
 class Domain extends Model
 {
+    protected static function booted(): void
+    {
+        static::saved(function (Domain $domain) {
+            Cache::forget("neev:domain:{$domain->domain}");
+        });
+
+        static::deleted(function (Domain $domain) {
+            Cache::forget("neev:domain:{$domain->domain}");
+        });
+    }
+
     protected $fillable = [
-        'team_id',
-        'tenant_id',
+        'owner_id',
+        'owner_type',
         'enforce',
         'domain',
         'verification_token',
         'is_primary',
         'verified_at',
+        'verification_failed_at',
     ];
 
     protected $hidden = [
@@ -37,44 +49,12 @@ class Domain extends Model
         'enforce' => 'boolean',
         'is_primary' => 'boolean',
         'verified_at' => 'datetime',
-        'verification_token' => 'hashed',
+        'verification_failed_at' => 'datetime',
     ];
 
-    public function team()
+    public function owner()
     {
-        return $this->belongsTo(Team::getClass(), 'team_id');
-    }
-
-    /**
-     * Get the tenant that owns this domain (isolated mode).
-     */
-    public function tenant()
-    {
-        return $this->belongsTo(Tenant::getClass(), 'tenant_id');
-    }
-
-    /**
-     * Find a verified domain by host and tenant.
-     * Used for tenant-level domain resolution in isolated mode.
-     */
-    public static function findByHostForTenant(string $host, int $tenantId): ?self
-    {
-        return static::where('domain', $host)
-            ->where('tenant_id', $tenantId)
-            ->whereNotNull('verified_at')
-            ->first();
-    }
-
-    /**
-     * Find a verified domain by host with tenant_id set.
-     * Used for tenant resolution via custom domains in isolated mode.
-     */
-    public static function findByHostWithTenant(string $host): ?self
-    {
-        return static::where('domain', $host)
-            ->whereNotNull('tenant_id')
-            ->whereNotNull('verified_at')
-            ->first();
+        return $this->morphTo();
     }
 
     public function rules()
@@ -118,12 +98,25 @@ class Domain extends Model
     }
 
     /**
-     * Mark this domain as the primary domain for its team.
+     * Find a verified domain by host for a specific owner.
+     */
+    public static function findByHostForOwner(string $host, string $ownerType, int $ownerId): ?self
+    {
+        return static::where('domain', $host)
+            ->where('owner_type', $ownerType)
+            ->where('owner_id', $ownerId)
+            ->whereNotNull('verified_at')
+            ->first();
+    }
+
+    /**
+     * Mark this domain as the primary domain for its owner.
      */
     public function markAsPrimary(): void
     {
-        // Unset other primary domains for this team
-        static::where('team_id', $this->team_id)
+        // Unset other primary domains for this owner
+        static::where('owner_type', $this->owner_type)
+            ->where('owner_id', $this->owner_id)
             ->where('id', '!=', $this->id)
             ->update(['is_primary' => false]);
 
@@ -144,30 +137,55 @@ class Domain extends Model
     }
 
     /**
-     * Verify the domain with the provided token.
-     * Returns false if the token is invalid or another owner already verified this domain.
+     * Verify the domain via DNS TXT record lookup.
+     * Returns true if the DNS record matches the verification token.
      */
-    public function verify(string $token): bool
+    public function verify(): bool
     {
-        if (!Hash::check($token, $this->verification_token)) {
-            return false;
+        $records = @dns_get_record($this->getDnsRecordName(), DNS_TXT) ?: [];
+        $matched = collect($records)->contains(fn ($r) => ($r['txt'] ?? '') === $this->verification_token);
+
+        if ($matched) {
+            $wasFailingVerification = $this->verification_failed_at !== null;
+            $isFirstVerification = $this->verified_at === null;
+
+            $this->verified_at = now();
+            $this->verification_failed_at = null;
+            $this->save();
+
+            if ($isFirstVerification) {
+                event(new \Ssntpl\Neev\Events\DomainVerified($this));
+            } elseif ($wasFailingVerification) {
+                event(new \Ssntpl\Neev\Events\DomainReverified($this));
+            }
+
+            return true;
         }
 
-        // Reject if another owner already verified this domain
-        $alreadyVerified = static::where('domain', $this->domain)
-            ->where('id', '!=', $this->id)
-            ->whereNotNull('verified_at')
-            ->exists();
-
-        if ($alreadyVerified) {
-            return false;
+        if ($this->verified_at !== null && $this->verification_failed_at === null) {
+            event(new \Ssntpl\Neev\Events\DomainVerificationFailed($this));
         }
 
-        $this->verified_at = now();
-        $this->verification_token = null;
+        $this->verification_failed_at = now();
         $this->save();
 
-        return true;
+        return false;
+    }
+
+    /**
+     * Check if this domain has a verification failure.
+     */
+    public function hasVerificationFailure(): bool
+    {
+        return $this->verification_failed_at !== null;
+    }
+
+    /**
+     * Check if the domain verification is stale (older than the given number of days).
+     */
+    public function isVerificationStale(int $days): bool
+    {
+        return $this->verified_at !== null && $this->verified_at->diffInDays(now()) > $days;
     }
 
     /**

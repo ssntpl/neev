@@ -11,16 +11,21 @@ class TeamScope implements Scope
 {
     public function apply(Builder $builder, Model $model): void
     {
-        if (!$this->shouldApplyScope()) {
+        if (!app()->bound(ContextManager::class)) {
             return;
         }
 
-        $teamId = $this->getContextManager()->currentTeam()?->getContextId();
+        if (!config('neev.team', false)) {
+            // Teams feature is not enabled — don't apply scope
+            return;
+        }
+
+        $manager = app(ContextManager::class);
+        $teamId = $manager->currentTeam()?->getContextId();
 
         if ($teamId !== null) {
             $builder->where($model->getQualifiedTeamIdColumn(), $teamId);
-        } elseif (config('neev.tenant_isolation_options.strict', true)) {
-            // Prevent returning all rows when no team is set
+        } else {
             $builder->whereRaw('1 = 0');
         }
     }
@@ -30,19 +35,5 @@ class TeamScope implements Scope
         $builder->macro('withoutTeamScope', function (Builder $builder) {
             return $builder->withoutGlobalScope(TeamScope::class);
         });
-    }
-
-    protected function shouldApplyScope(): bool
-    {
-        if (!app()->bound(ContextManager::class)) {
-            return false;
-        }
-
-        return $this->getContextManager()->hasTeam();
-    }
-
-    protected function getContextManager(): ContextManager
-    {
-        return app(ContextManager::class);
     }
 }

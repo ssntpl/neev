@@ -118,7 +118,7 @@ class LoginTest extends TestCase
 
     public function test_login_records_failed_attempt_when_enabled(): void
     {
-        config(['neev.record_failed_login_attempts' => true]);
+        config(['neev.log_failed_logins' => true]);
 
         $user = $this->createUser();
 
@@ -136,7 +136,7 @@ class LoginTest extends TestCase
 
     public function test_login_does_not_record_failed_attempt_when_disabled(): void
     {
-        config(['neev.record_failed_login_attempts' => false]);
+        config(['neev.log_failed_logins' => false]);
 
         $user = $this->createUser();
 

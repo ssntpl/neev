@@ -131,18 +131,12 @@ class ConfigureAuthCommand extends Command
 
     protected function resolveSSOConfig(): ?array
     {
-        $allowedProviders = config('neev.tenant_auth_options.sso_providers', ['entra', 'google', 'okta']);
+        $knownProviders = ['entra', 'google', 'okta'];
 
         $provider = $this->option('sso-provider') ?: select(
             label: 'Which SSO provider?',
-            options: array_combine($allowedProviders, array_map('ucfirst', $allowedProviders)),
+            options: array_combine($knownProviders, array_map('ucfirst', $knownProviders)),
         );
-
-        if (! in_array($provider, $allowedProviders, true)) {
-            $this->error("Invalid SSO provider: {$provider}. Allowed: " . implode(', ', $allowedProviders));
-
-            return null;
-        }
 
         $clientId = $this->option('sso-client-id') ?: text(
             label: 'SSO Client ID:',

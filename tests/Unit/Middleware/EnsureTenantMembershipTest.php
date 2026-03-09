@@ -77,7 +77,7 @@ class EnsureTenantMembershipTest extends TestCase
 
     public function test_passes_through_when_tenant_isolation_disabled(): void
     {
-        config(['neev.tenant_isolation' => false]);
+        config(['neev.tenant' => false]);
 
         $user = User::factory()->create();
         $request = $this->buildRequest('/dashboard', $user);

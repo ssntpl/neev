@@ -186,13 +186,12 @@ class TenantTest extends TestCase
         $this->assertFalse($tenant->requiresSSO());
     }
 
-    public function test_requires_sso_returns_true_when_config_is_sso(): void
+    public function test_requires_sso_returns_false_when_no_auth_settings(): void
     {
-        config(['neev.tenant_auth_options.default_method' => 'sso']);
-
         $tenant = TenantFactory::new()->create();
 
-        $this->assertTrue($tenant->requiresSSO());
+        // Without auth settings, defaults to password, so SSO is not required
+        $this->assertFalse($tenant->requiresSSO());
     }
 
     public function test_requires_sso_returns_true_when_auth_settings_is_sso(): void
@@ -257,15 +256,11 @@ class TenantTest extends TestCase
         $this->assertSame('my-client-id', $config['client_id']);
     }
 
-    public function test_allows_auto_provision_returns_config_value(): void
+    public function test_allows_auto_provision_returns_false_by_default(): void
     {
         $tenant = TenantFactory::new()->create();
 
         $this->assertFalse($tenant->allowsAutoProvision());
-
-        config(['neev.tenant_auth_options.auto_provision' => true]);
-
-        $this->assertTrue($tenant->allowsAutoProvision());
     }
 
     public function test_allows_auto_provision_delegates_to_auth_settings(): void
@@ -276,15 +271,11 @@ class TenantTest extends TestCase
         $this->assertTrue($tenant->fresh()->allowsAutoProvision());
     }
 
-    public function test_get_auto_provision_role_returns_config_value(): void
+    public function test_get_auto_provision_role_returns_null_by_default(): void
     {
         $tenant = TenantFactory::new()->create();
 
         $this->assertNull($tenant->getAutoProvisionRole());
-
-        config(['neev.tenant_auth_options.auto_provision_role' => 'member']);
-
-        $this->assertSame('member', $tenant->getAutoProvisionRole());
     }
 
     public function test_get_auto_provision_role_delegates_to_auth_settings(): void

@@ -199,14 +199,14 @@ class UserApiController extends Controller
         );
 
         $query = parse_url($signedUrl, PHP_URL_QUERY);
-        $frontendUrl = config('neev.frontend_url');
+        $frontendUrl = config('app.url');
         $url = "{$frontendUrl}/verify-email?{$query}";
         Mail::to($email->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', 60));
     }
 
     public static function sendMailOTP(Email $email, $mfa = false)
     {
-        $otp = random_int(config('neev.otp_min', 100000), config('neev.otp_max', 999999));
+        $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
         $expiryMinutes = config('neev.otp_expiry_time', 15);
         $expires_at = now()->addMinutes($expiryMinutes);
         if ($mfa) {

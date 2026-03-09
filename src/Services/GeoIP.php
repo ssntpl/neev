@@ -12,7 +12,7 @@ class GeoIP
 
     public function __construct()
     {
-        $dbPath = storage_path(config('neev.geo_ip_db', 'app/geoip/GeoLite2-City.mmdb'));
+        $dbPath = storage_path(config('neev.maxmind.db_path', 'app/geoip/GeoLite2-City.mmdb'));
         try {
             $this->reader = new Reader($dbPath);
         } catch (Exception $e) {

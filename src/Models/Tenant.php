@@ -7,7 +7,9 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\Cache;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
 use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
@@ -70,18 +72,38 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
         return $this->hasOne(TenantAuthSettings::class);
     }
 
-    public function domains(): HasMany
+    /**
+     * Get cached auth settings (30-minute TTL).
+     */
+    public function getCachedAuthSettings(): ?TenantAuthSettings
     {
-        return $this->hasMany(Domain::class, 'tenant_id');
+        /** @var TenantAuthSettings|null */
+        return Cache::remember("neev:auth_settings:{$this->getContextType()}:{$this->getContextId()}", 1800, function (): ?TenantAuthSettings {
+            return $this->authSettings;
+        });
+    }
+
+    public function domains(): MorphMany
+    {
+        return $this->morphMany(Domain::class, 'owner');
     }
 
     /**
      * Get users directly scoped to this tenant via tenant_id on users table.
-     * Only available when identity_strategy is 'isolated'.
+     * Only available when tenant mode is enabled.
      */
     public function members(): Relation
     {
         return $this->hasMany(User::getClass(), 'tenant_id');
+    }
+
+    /**
+     * Check if the tenant is active.
+     * Tenants are active by default (no activation column).
+     */
+    public function isActive(): bool
+    {
+        return true;
     }
 
     // -----------------------------------------------------------------
@@ -123,8 +145,8 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
 
     public function getAuthMethod(): string
     {
-        return $this->authSettings?->auth_method
-            ?? config('neev.tenant_auth_options.default_method', 'password');
+        return $this->getCachedAuthSettings()?->auth_method
+            ?? 'password';
     }
 
     public function requiresSSO(): bool
@@ -134,29 +156,29 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
 
     public function hasSSOConfigured(): bool
     {
-        return $this->authSettings?->hasSSOConfigured() ?? false;
+        return $this->getCachedAuthSettings()?->hasSSOConfigured() ?? false;
     }
 
     public function getSSOProvider(): ?string
     {
-        return $this->authSettings?->sso_provider;
+        return $this->getCachedAuthSettings()?->sso_provider;
     }
 
     public function getSocialiteConfig(): ?array
     {
-        return $this->authSettings?->getSocialiteConfig();
+        return $this->getCachedAuthSettings()?->getSocialiteConfig();
     }
 
     public function allowsAutoProvision(): bool
     {
-        return $this->authSettings?->auto_provision
-            ?? config('neev.tenant_auth_options.auto_provision', false);
+        return $this->getCachedAuthSettings()?->auto_provision
+            ?? false;
     }
 
     public function getAutoProvisionRole(): ?string
     {
-        return $this->authSettings?->auto_provision_role
-            ?? config('neev.tenant_auth_options.auto_provision_role');
+        return $this->getCachedAuthSettings()?->auto_provision_role
+            ?? null;
     }
 
     // -----------------------------------------------------------------
@@ -170,6 +192,13 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
 
     public static function resolveByDomain(string $domain): ?static
     {
-        return Domain::findByHostWithTenant($domain)?->tenant;
+        $domainRecord = Domain::findByHost($domain);
+
+        if ($domainRecord && $domainRecord->owner_type === 'tenant') {
+            /** @var static|null */
+            return $domainRecord->owner;
+        }
+
+        return null;
     }
 }

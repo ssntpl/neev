@@ -65,7 +65,7 @@ class TeamApiController extends Controller
             ], 400);
         }
 
-        $team->load('owner', 'users');
+        $team->load('owner.email', 'users.email');
 
         return response()->json([
             'status' => 'Success',
@@ -101,7 +101,7 @@ class TeamApiController extends Controller
             ], 400);
         }
 
-        $team->load('owner', 'users', 'joinRequests', 'invitedUsers', 'invitations');
+        $team->load('owner.email', 'users.email', 'joinRequests', 'invitedUsers', 'invitations');
 
         return response()->json([
             'status' => 'Success',
@@ -137,7 +137,7 @@ class TeamApiController extends Controller
             ], 400);
         }
 
-        $team->load('owner', 'users');
+        $team->load('owner.email', 'users.email');
 
         return response()->json([
             'status' => 'Success',
@@ -397,6 +397,7 @@ class TeamApiController extends Controller
     public function leave(Request $request)
     {
         $user = User::model()->find($request->user_id ?? $request->user()?->id);
+        $user?->loadMissing('email');
         try {
             $team = Team::model()->find($request->team_id);
             if ($request->has('invitation_id')) {
@@ -457,6 +458,7 @@ class TeamApiController extends Controller
         $user = User::model()->find($request->user()?->id);
         try {
             $team = Team::model()->find($request->team_id);
+            $team?->loadMissing('owner.email');
             if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
                 if ($team->users->contains($user)) {
                     return response()->json([
@@ -548,11 +550,14 @@ class TeamApiController extends Controller
 
         $domains = $team->domains->load('rules');
 
+        // Eager load users with their emails to avoid N+1 queries
+        $team->loadMissing('users.email');
+
         foreach ($domains as $domain) {
             if ($domain->enforce && $domain->verified_at) {
                 $count = 0;
                 foreach ($team->users ?? [] as $member) {
-                    if (!str_ends_with(strtolower($member->email->email), '@' . strtolower($domain->domain))) {
+                    if (!str_ends_with(strtolower($member->email->email ?? ''), '@' . strtolower($domain->domain))) {
                         $count++;
                     }
                 }
@@ -613,7 +618,7 @@ class TeamApiController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$domain || !$user || $domain?->team->user_id !== $user->id) {
+        if (!$domain || !$user || $domain?->owner?->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You do not have the required permissions to update domain.',
@@ -621,8 +626,7 @@ class TeamApiController extends Controller
         }
         try {
             if ($request->verify) {
-                $res = $this->verify($domain);
-                if ($res) {
+                if ($domain->verify()) {
                     $domain_rules = ["mfa"];
                     foreach ($domain_rules ?? [] as $rule) {
                         $domain?->rules()->create([
@@ -674,24 +678,11 @@ class TeamApiController extends Controller
         }
     }
 
-    public function verify($domain)
-    {
-        $records = dns_get_record('_neev-verification.' . $domain?->domain, DNS_TXT);
-
-        foreach ($records as $record) {
-            if (isset($record['txt']) && $domain->verify($record['txt'])) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     public function deleteDomain(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$domain || !$user || $domain?->team?->user_id !== $user->id) {
+        if (!$domain || !$user || $domain?->owner?->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You do not have the required permissions to delete domain.',
@@ -718,7 +709,7 @@ class TeamApiController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$user || !$domain || $domain?->team?->user_id !== $user->id) {
+        if (!$user || !$domain || $domain?->owner?->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You do not have the required permissions to update domain.',
@@ -750,7 +741,7 @@ class TeamApiController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$domain || !$user || !$domain->team?->users->contains($user)) {
+        if (!$domain || !$user || !$domain->owner?->users->contains($user)) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You do not have the required permissions to get domain rules.',
@@ -767,14 +758,14 @@ class TeamApiController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$user || !$domain || !$domain?->verified_at || !$domain->team?->users->contains($user)) {
+        if (!$user || !$domain || !$domain?->verified_at || !$domain->owner?->users->contains($user)) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You do not have the required permissions to change primary domain.',
             ], 400);
         }
 
-        $pdomain = $domain->team->domain;
+        $pdomain = $domain->owner?->domain;
         if ($pdomain) {
             if ($pdomain->id == $domain->id) {
                 return response()->json([

@@ -80,7 +80,7 @@ class PasskeyController extends Controller
             ], 400);
         }
         $rpName = config('app.name', 'Neev');
-        $rpId = parse_url(config('neev.frontend_url', config('app.url')), PHP_URL_HOST);
+        $rpId = parse_url(config('app.url'), PHP_URL_HOST);
 
         $userId = strval($user->id);
 
@@ -134,7 +134,7 @@ class PasskeyController extends Controller
         }
         $input = json_decode($request->attestation, true);
 
-        $rpId = parse_url(config('neev.frontend_url', config('app.url')), PHP_URL_HOST);
+        $rpId = parse_url(config('app.url'), PHP_URL_HOST);
 
         // Retrieve challenge from server-side storage (not from client)
         $storedChallenge = Cache::pull("passkey_reg_challenge:{$user->id}");
@@ -310,7 +310,7 @@ class PasskeyController extends Controller
                 ];
             }
 
-            $rpId = parse_url(config('neev.frontend_url', config('app.url')), PHP_URL_HOST);
+            $rpId = parse_url(config('app.url'), PHP_URL_HOST);
             $challenge = random_bytes(32);
             $base64Challenge = Base64UrlSafe::encode($challenge);
 
@@ -367,7 +367,7 @@ class PasskeyController extends Controller
 
         $credential = new PublicKeyCredential($type, $rawId, $response);
 
-        $rpId = parse_url(config('neev.frontend_url', config('app.url')), PHP_URL_HOST);
+        $rpId = parse_url(config('app.url'), PHP_URL_HOST);
 
         // Retrieve challenge from server-side storage (not from client)
         $cacheKey = 'passkey_login_challenge:' . hash('sha256', $request->email);
@@ -387,7 +387,7 @@ class PasskeyController extends Controller
 
         $email = Email::findByEmail($request->email);
         $user = $email?->user;
-        if (config('neev.record_failed_login_attempts')) {
+        if (config('neev.log_failed_logins')) {
             $clientDetails = LoginAttempt::getClientDetails($request);
             $attempt = $user?->loginAttempts()->create([
                 'method' => LoginAttempt::Passkey,
@@ -498,7 +498,7 @@ class PasskeyController extends Controller
             [$user, $attempt] = $this->passkeyLogin($request, $geoIP);
 
             $this->auth->login($request, $geoIP, $user, LoginAttempt::Passkey, $attempt ?? null);
-            return redirect(config('neev.dashboard_url'));
+            return redirect(config('neev.home'));
         } catch (Exception $e) {
             Log::error($e);
             return back()->withErrors(['message' => 'Unable to authenticate with passkey.']);

@@ -27,11 +27,8 @@ class TenantSSOTest extends TestCase
     {
         parent::defineEnvironment($app);
 
-        $app['config']->set('neev.tenant_auth', true);
-        $app['config']->set('neev.tenant_isolation', true);
-        $app['config']->set('neev.dashboard_url', '/dashboard');
-        $app['config']->set('neev.frontend_url', 'http://localhost');
-        $app['config']->set('neev.tenant_auth_options.sso_providers', ['entra', 'google']);
+        $app['config']->set('neev.tenant', true);
+        $app['config']->set('neev.home', '/dashboard');
     }
 
     protected function setUp(): void
@@ -53,6 +50,7 @@ class TenantSSOTest extends TestCase
         $resolver->shouldReceive('isResolvedDomainVerified')->andReturn($tenant !== null);
         $resolver->shouldReceive('hasTenant')->andReturn($tenant !== null);
         $resolver->shouldReceive('currentId')->andReturn($tenant?->id);
+        $resolver->shouldReceive('isEnabled')->andReturn(false);
         $this->app->instance(TenantResolver::class, $resolver);
     }
 

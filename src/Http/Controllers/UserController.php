@@ -7,7 +7,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
-use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
@@ -17,7 +16,9 @@ class UserController extends Controller
 {
     public function profile(Request $request)
     {
-        return view('neev::account.profile', ['user' => User::model()->find($request->user()->id)]);
+        $user = User::model()->find($request->user()->id);
+        $user?->loadMissing('email', 'emails');
+        return view('neev::account.profile', ['user' => $user]);
     }
 
     public function emails(Request $request)
@@ -26,16 +27,8 @@ class UserController extends Controller
         if (!$user) {
             return redirect()->route('neev.login');
         }
-        $emailDomain = substr(strrchr($user->email?->email, "@"), 1);
 
-        $addEmail = true;
-        if (config('neev.team') && config('neev.domain_federation')) {
-            $domain = Domain::where('domain', $emailDomain)->first();
-            if ($domain?->verified_at && $domain?->team?->users->contains($user)) {
-                $addEmail = false;
-            }
-        }
-        return view('neev::account.emails', ['user' => $user, 'add_email' => $addEmail]);
+        return view('neev::account.emails', ['user' => $user, 'add_email' => true]);
     }
 
     public function security(Request $request)
@@ -44,16 +37,9 @@ class UserController extends Controller
         if (!$user) {
             return redirect()->route('neev.login');
         }
-        $emailDomain = substr(strrchr($user->email?->email, "@"), 1);
+        $user->loadMissing('email', 'multiFactorAuths', 'passkeys');
 
-        $deleteAccount = true;
-        if (config('neev.team') && config('neev.domain_federation')) {
-            $domain = Domain::where('domain', $emailDomain)->first();
-            if ($domain?->verified_at && $domain?->team?->users->contains($user)) {
-                $deleteAccount = false;
-            }
-        }
-        return view('neev::account.security', ['user' => $user, 'delete_account' => $deleteAccount]);
+        return view('neev::account.security', ['user' => $user, 'delete_account' => true]);
     }
 
     public function tokens(Request $request)
@@ -67,16 +53,8 @@ class UserController extends Controller
         if (!$user) {
             return redirect()->route('neev.login');
         }
-        $emailDomain = substr(strrchr($user->email?->email, "@"), 1);
 
-        $join_team = true;
-        if (config('neev.domain_federation')) {
-            $domain = Domain::where('domain', $emailDomain)->first();
-            if ($domain?->verified_at) {
-                $join_team = false;
-            }
-        }
-        return view('neev::account.teams', ['user' => $user, 'join_team' => $join_team]);
+        return view('neev::account.teams', ['user' => $user, 'join_team' => true]);
     }
 
     public function sessions(Request $request)

@@ -7,6 +7,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Http\Middleware\TenantMiddleware;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\TenantResolver;
@@ -44,7 +45,7 @@ class TenantMiddlewareTest extends TestCase
 
     public function test_passes_through_when_tenant_isolation_disabled(): void
     {
-        config(['neev.tenant_isolation' => false]);
+        config(['neev.tenant' => false]);
 
         $request = Request::create('/api/test');
 
@@ -59,7 +60,7 @@ class TenantMiddlewareTest extends TestCase
 
     public function test_returns_404_when_tenant_not_found_in_required_mode(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
         $request = Request::create('http://unknown.test.com/api/test');
 
@@ -71,7 +72,7 @@ class TenantMiddlewareTest extends TestCase
 
     public function test_returns_404_when_no_tenant_header_or_subdomain_matches_in_required_mode(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
         $request = Request::create('http://example.com/api/test');
         $request->headers->set('X-Tenant', 'nonexistent-slug');
@@ -83,7 +84,7 @@ class TenantMiddlewareTest extends TestCase
 
     public function test_passes_through_when_tenant_not_found_in_optional_mode(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
         $request = Request::create('http://unknown.test.com/api/test');
 
@@ -98,7 +99,7 @@ class TenantMiddlewareTest extends TestCase
 
     public function test_returns_403_when_custom_domain_not_verified(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
         $owner = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
@@ -124,44 +125,49 @@ class TenantMiddlewareTest extends TestCase
 
     public function test_sets_tenant_attribute_and_passes_through_for_valid_tenant(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        $owner = User::factory()->create();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'slug' => 'acme']);
+        $tenant = TenantFactory::new()->create(['slug' => 'acme']);
 
-        $request = Request::create('http://acme.test.com/api/test');
-        $tenant = null;
+        $request = Request::create('http://example.com/api/test');
+        $request->headers->set('X-Tenant', (string) $tenant->id);
+        $resolvedTenant = null;
 
-        $next = function (Request $req) use (&$tenant): Response {
-            $tenant = $req->attributes->get('tenant');
+        $next = function (Request $req) use (&$resolvedTenant): Response {
+            $resolvedTenant = $req->attributes->get('tenant');
             return response()->json(['message' => 'OK'], 200);
         };
 
         $response = $this->middleware->handle($request, $next);
 
         $this->assertEquals(200, $response->getStatusCode());
-        $this->assertNotNull($tenant);
-        $this->assertEquals($team->id, $tenant->id);
+        $this->assertNotNull($resolvedTenant);
+        $this->assertEquals($tenant->id, $resolvedTenant->id);
     }
 
     // -----------------------------------------------------------------
-    // Subdomain resolution
+    // Domain resolution via domains table
     // -----------------------------------------------------------------
 
-    public function test_resolves_tenant_via_subdomain(): void
+    public function test_resolves_tenant_via_verified_domain_host(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        $owner = User::factory()->create();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'slug' => 'myteam']);
+        $tenant = TenantFactory::new()->create();
+
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
+            'domain' => 'myteam.test.com',
+        ]);
 
         $request = Request::create('http://myteam.test.com/dashboard');
 
         $response = $this->middleware->handle($request, $this->passThrough());
 
         $this->assertEquals(200, $response->getStatusCode());
-        $this->assertEquals($team->id, $this->tenantResolver->current()->id);
-        $this->assertSame('subdomain', $this->tenantResolver->resolvedVia());
+        $this->assertNotNull($this->tenantResolver->resolvedContext());
+        $this->assertEquals($tenant->id, $this->tenantResolver->resolvedContext()->getContextId());
+        $this->assertSame('custom', $this->tenantResolver->resolvedVia());
     }
 
     // -----------------------------------------------------------------
@@ -170,35 +176,35 @@ class TenantMiddlewareTest extends TestCase
 
     public function test_resolves_tenant_via_x_tenant_header_with_id(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        $owner = User::factory()->create();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $tenant = TenantFactory::new()->create();
 
         $request = Request::create('http://example.com/api/test');
-        $request->headers->set('X-Tenant', (string) $team->id);
+        $request->headers->set('X-Tenant', (string) $tenant->id);
 
         $response = $this->middleware->handle($request, $this->passThrough());
 
         $this->assertEquals(200, $response->getStatusCode());
-        $this->assertEquals($team->id, $this->tenantResolver->current()->id);
+        $this->assertNotNull($this->tenantResolver->resolvedContext());
+        $this->assertEquals($tenant->id, $this->tenantResolver->resolvedContext()->getContextId());
         $this->assertSame('header', $this->tenantResolver->resolvedVia());
     }
 
     public function test_resolves_tenant_via_x_tenant_header_with_slug(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        $owner = User::factory()->create();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'slug' => 'my-team']);
+        $tenant = TenantFactory::new()->create(['slug' => 'my-tenant']);
 
         $request = Request::create('http://example.com/api/test');
-        $request->headers->set('X-Tenant', 'my-team');
+        $request->headers->set('X-Tenant', 'my-tenant');
 
         $response = $this->middleware->handle($request, $this->passThrough());
 
         $this->assertEquals(200, $response->getStatusCode());
-        $this->assertEquals($team->id, $this->tenantResolver->current()->id);
+        $this->assertNotNull($this->tenantResolver->resolvedContext());
+        $this->assertEquals($tenant->id, $this->tenantResolver->resolvedContext()->getContextId());
         $this->assertSame('header', $this->tenantResolver->resolvedVia());
     }
 
@@ -208,13 +214,12 @@ class TenantMiddlewareTest extends TestCase
 
     public function test_resolves_tenant_via_verified_custom_domain(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        $owner = User::factory()->create();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $tenant = TenantFactory::new()->create();
 
         DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
             'domain' => 'custom.example.org',
         ]);
 
@@ -223,7 +228,8 @@ class TenantMiddlewareTest extends TestCase
         $response = $this->middleware->handle($request, $this->passThrough());
 
         $this->assertEquals(200, $response->getStatusCode());
-        $this->assertEquals($team->id, $this->tenantResolver->current()->id);
+        $this->assertNotNull($this->tenantResolver->resolvedContext());
+        $this->assertEquals($tenant->id, $this->tenantResolver->resolvedContext()->getContextId());
         $this->assertSame('custom', $this->tenantResolver->resolvedVia());
     }
 
@@ -233,14 +239,14 @@ class TenantMiddlewareTest extends TestCase
 
     public function test_returns_404_for_unverified_custom_domain_in_required_mode(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
         $owner = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
         // Domain without verified_at -- findByHost won't find it
         DomainFactory::new()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'unverified.example.org',
         ]);
 

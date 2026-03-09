@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -29,12 +30,12 @@ class TenantResolverTest extends TestCase
 
     public function test_resolve_returns_null_when_tenant_isolation_disabled(): void
     {
-        config(['neev.tenant_isolation' => false]);
+        config(['neev.tenant' => false]);
 
-        $team = TeamFactory::new()->create(['slug' => 'acme']);
+        $tenant = TenantFactory::new()->create(['slug' => 'acme']);
 
         $request = Request::create('http://acme.test.com/dashboard');
-        $request->headers->set('X-Tenant', (string) $team->id);
+        $request->headers->set('X-Tenant', (string) $tenant->id);
 
         $this->assertNull($this->resolver->resolve($request));
     }
@@ -43,19 +44,19 @@ class TenantResolverTest extends TestCase
     // resolve() -- X-Tenant header
     // ---------------------------------------------------------------
 
-    public function test_resolve_from_header_with_team_id(): void
+    public function test_resolve_from_header_with_tenant_id(): void
     {
         $this->enableTenantIsolation();
 
-        $team = TeamFactory::new()->create();
+        $tenant = TenantFactory::new()->create();
 
         $request = Request::create('http://example.com/api');
-        $request->headers->set('X-Tenant', (string) $team->id);
+        $request->headers->set('X-Tenant', (string) $tenant->id);
 
         $resolved = $this->resolver->resolve($request);
 
         $this->assertNotNull($resolved);
-        $this->assertEquals($team->id, $resolved->id);
+        $this->assertEquals($tenant->id, $resolved->getContextId());
         $this->assertSame('header', $this->resolver->resolvedVia());
     }
 
@@ -63,15 +64,15 @@ class TenantResolverTest extends TestCase
     {
         $this->enableTenantIsolation();
 
-        $team = TeamFactory::new()->create(['slug' => 'my-team']);
+        $tenant = TenantFactory::new()->create(['slug' => 'my-tenant']);
 
         $request = Request::create('http://example.com/api');
-        $request->headers->set('X-Tenant', 'my-team');
+        $request->headers->set('X-Tenant', 'my-tenant');
 
         $resolved = $this->resolver->resolve($request);
 
         $this->assertNotNull($resolved);
-        $this->assertEquals($team->id, $resolved->id);
+        $this->assertEquals($tenant->id, $resolved->getContextId());
         $this->assertSame('header', $this->resolver->resolvedVia());
     }
 
@@ -96,41 +97,46 @@ class TenantResolverTest extends TestCase
     }
 
     // ---------------------------------------------------------------
-    // resolve() -- subdomain
+    // resolve() -- domain lookup (all host resolution goes through
+    //              domain table)
     // ---------------------------------------------------------------
 
-    public function test_resolve_from_subdomain(): void
+    public function test_resolve_from_host_with_verified_domain(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        $team = TeamFactory::new()->create(['slug' => 'myteam']);
+        $tenant = TenantFactory::new()->create(['slug' => 'myteam']);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
+            'domain' => 'myteam.test.com',
+        ]);
 
         $request = Request::create('http://myteam.test.com/dashboard');
 
         $resolved = $this->resolver->resolve($request);
 
         $this->assertNotNull($resolved);
-        $this->assertEquals($team->id, $resolved->id);
-        $this->assertSame('subdomain', $this->resolver->resolvedVia());
+        $this->assertEquals($tenant->id, $resolved->getContextId());
+        $this->assertSame('custom', $this->resolver->resolvedVia());
         $this->assertSame('myteam.test.com', $this->resolver->resolvedDomain());
     }
 
-    public function test_resolve_from_subdomain_returns_null_for_unknown_slug(): void
+    public function test_resolve_from_host_returns_null_for_unknown_domain(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
         $request = Request::create('http://unknown.test.com/dashboard');
 
         $this->assertNull($this->resolver->resolve($request));
     }
 
-    public function test_resolve_from_subdomain_ignores_non_matching_suffix(): void
+    public function test_resolve_from_host_returns_null_for_unregistered_domain(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        TeamFactory::new()->create(['slug' => 'myteam']);
+        TenantFactory::new()->create(['slug' => 'myteam']);
 
-        // Host does not end with .test.com
+        // Host is not registered in domains table
         $request = Request::create('http://myteam.other.com/dashboard');
 
         $this->assertNull($this->resolver->resolve($request));
@@ -142,11 +148,11 @@ class TenantResolverTest extends TestCase
 
     public function test_resolve_from_custom_domain(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        $team = TeamFactory::new()->create();
+        $tenant = TenantFactory::new()->create();
         DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
             'domain' => 'custom.example.org',
         ]);
 
@@ -155,19 +161,19 @@ class TenantResolverTest extends TestCase
         $resolved = $this->resolver->resolve($request);
 
         $this->assertNotNull($resolved);
-        $this->assertEquals($team->id, $resolved->id);
+        $this->assertEquals($tenant->id, $resolved->getContextId());
         $this->assertSame('custom', $this->resolver->resolvedVia());
         $this->assertSame('custom.example.org', $this->resolver->resolvedDomain());
     }
 
     public function test_resolve_does_not_match_unverified_custom_domain(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        $team = TeamFactory::new()->create();
+        $tenant = TenantFactory::new()->create();
         // Domain without verified_at (unverified)
         DomainFactory::new()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
             'domain' => 'unverified.example.org',
         ]);
 
@@ -180,21 +186,26 @@ class TenantResolverTest extends TestCase
     // resolve() -- priority
     // ---------------------------------------------------------------
 
-    public function test_header_takes_precedence_over_subdomain(): void
+    public function test_header_takes_precedence_over_domain(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        $teamA = TeamFactory::new()->create(['slug' => 'team-a']);
-        $teamB = TeamFactory::new()->create(['slug' => 'team-b']);
+        $tenantA = TenantFactory::new()->create(['slug' => 'tenant-a']);
+        $tenantB = TenantFactory::new()->create(['slug' => 'tenant-b']);
 
-        // Request has subdomain for team-b but header for team-a
-        $request = Request::create('http://team-b.test.com/dashboard');
-        $request->headers->set('X-Tenant', (string) $teamA->id);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'tenant', 'owner_id' => $tenantB->id,
+            'domain' => 'tenant-b.test.com',
+        ]);
+
+        // Request has domain for tenant-b but header for tenant-a
+        $request = Request::create('http://tenant-b.test.com/dashboard');
+        $request->headers->set('X-Tenant', (string) $tenantA->id);
 
         $resolved = $this->resolver->resolve($request);
 
         $this->assertNotNull($resolved);
-        $this->assertEquals($teamA->id, $resolved->id);
+        $this->assertEquals($tenantA->id, $resolved->getContextId());
         $this->assertSame('header', $this->resolver->resolvedVia());
     }
 
@@ -206,21 +217,25 @@ class TenantResolverTest extends TestCase
     {
         $this->enableTenantIsolation();
 
-        $team = TeamFactory::new()->create();
+        $tenant = TenantFactory::new()->create();
 
         $request = Request::create('http://example.com/api');
-        $request->headers->set('X-Tenant', (string) $team->id);
+        $request->headers->set('X-Tenant', (string) $tenant->id);
 
         $this->resolver->resolve($request);
 
         $this->assertTrue($this->resolver->isResolvedDomainVerified());
     }
 
-    public function test_is_resolved_domain_verified_returns_true_for_subdomain(): void
+    public function test_is_resolved_domain_verified_returns_true_for_verified_domain(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        $team = TeamFactory::new()->create(['slug' => 'acme']);
+        $tenant = TenantFactory::new()->create(['slug' => 'acme']);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
+            'domain' => 'acme.test.com',
+        ]);
 
         $request = Request::create('http://acme.test.com/dashboard');
         $this->resolver->resolve($request);
@@ -230,11 +245,11 @@ class TenantResolverTest extends TestCase
 
     public function test_is_resolved_domain_verified_returns_true_for_verified_custom_domain(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        $team = TeamFactory::new()->create();
+        $tenant = TenantFactory::new()->create();
         DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
             'domain' => 'verified.example.org',
         ]);
 
@@ -293,11 +308,12 @@ class TenantResolverTest extends TestCase
 
     public function test_clear_resets_all_state(): void
     {
-        $this->enableTenantIsolation('test.com');
+        $this->enableTenantIsolation();
 
-        $team = TeamFactory::new()->create(['slug' => 'acme']);
+        $tenant = TenantFactory::new()->create(['slug' => 'acme']);
 
-        $request = Request::create('http://acme.test.com/dashboard');
+        $request = Request::create('http://example.com/api');
+        $request->headers->set('X-Tenant', (string) $tenant->id);
         $this->resolver->resolve($request);
 
         $this->assertTrue($this->resolver->hasTenant());
@@ -317,7 +333,7 @@ class TenantResolverTest extends TestCase
 
     public function test_is_enabled_returns_false_by_default(): void
     {
-        config(['neev.tenant_isolation' => false]);
+        config(['neev.tenant' => false]);
 
         $this->assertFalse($this->resolver->isEnabled());
     }

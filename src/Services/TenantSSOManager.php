@@ -39,10 +39,6 @@ class TenantSSOManager
      */
     public function getProvider(IdentityProviderOwnerInterface $owner): ?string
     {
-        if (!$this->isTenantAuthEnabled()) {
-            return null;
-        }
-
         return $owner->getSSOProvider();
     }
 
@@ -59,12 +55,6 @@ class TenantSSOManager
 
         $provider = $owner->getSSOProvider();
         $driverName = $this->driverMap[$provider] ?? $provider;
-
-        // Check if the provider is supported
-        $supportedProviders = config('neev.tenant_auth_options.sso_providers', []);
-        if (!in_array($provider, $supportedProviders)) {
-            throw new Exception("SSO provider '{$provider}' is not supported.");
-        }
 
         // Get the owner's Socialite configuration
         $config = $owner->getSocialiteConfig();
@@ -176,14 +166,6 @@ class TenantSSOManager
         if ($role) {
             $user->assignRole($role, $tenant);
         }
-    }
-
-    /**
-     * Check if tenant authentication feature is enabled.
-     */
-    public function isTenantAuthEnabled(): bool
-    {
-        return config('neev.tenant_auth', false);
     }
 
     /**

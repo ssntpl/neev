@@ -76,41 +76,26 @@ class TenantDomainController extends Controller
         ]);
 
         try {
-            $type = $request->type ?? 'subdomain';
+            $type = $request->type ?? 'custom';
             $domain = $request->domain;
 
-            // For subdomains, validate against configured suffix
-            if ($type === 'subdomain') {
-                $suffix = config('neev.tenant_isolation_options.subdomain_suffix');
-                if ($suffix && !str_ends_with($domain, $suffix)) {
-                    // Auto-append suffix if not present
-                    $domain = $domain . $suffix;
-                }
-            }
-
-            // Check if custom domains are allowed
-            if ($type === 'custom' && !config('neev.tenant_isolation_options.allow_custom_domains', true)) {
-                return response()->json([
-                    'status' => 'Failed',
-                    'message' => 'Custom domains are not allowed.',
-                ], 400);
-            }
-
             $tenantDomain = new Domain([
-                'team_id' => $team->id,
+                'owner_type' => 'team',
+                'owner_id' => $team->id,
                 'domain' => $domain,
                 'type' => $type,
                 'is_primary' => $team->domains()->count() === 0, // First domain is primary
             ]);
 
-            // Subdomains are auto-verified, custom domains need verification
+            // Subdomains are auto-verified; custom domains need DNS verification
             if ($type === 'subdomain') {
                 $tenantDomain->verified_at = now();
+                $tenantDomain->save();
+                $token = null;
             } else {
                 $token = $tenantDomain->generateVerificationToken();
+                $tenantDomain->save();
             }
-
-            $tenantDomain->save();
 
             $response = [
                 'status' => 'Success',
@@ -118,7 +103,7 @@ class TenantDomainController extends Controller
                 'data' => $tenantDomain,
             ];
 
-            if ($type === 'custom' && isset($token)) {
+            if (isset($token)) {
                 $response['verification_token'] = $token;
                 $response['dns_record'] = [
                     'type' => 'TXT',
@@ -152,8 +137,8 @@ class TenantDomainController extends Controller
             ], 404);
         }
 
-        $team = $tenantDomain->team;
-        if (!$team->hasUser($user)) {
+        $owner = $tenantDomain->owner;
+        if (!$owner || !$owner->hasUser($user)) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You do not have access to this domain.',
@@ -181,8 +166,8 @@ class TenantDomainController extends Controller
             ], 404);
         }
 
-        $team = $tenantDomain->team;
-        if ($team->user_id !== $user->id) {
+        $owner = $tenantDomain->owner;
+        if (!$owner || $owner->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Only team owner can delete domains.',
@@ -190,7 +175,7 @@ class TenantDomainController extends Controller
         }
 
         // Don't allow deleting the last domain
-        if ($team->domains()->count() <= 1) {
+        if ($owner->domains()->count() <= 1) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Cannot delete the last domain. Team must have at least one domain.',
@@ -203,7 +188,7 @@ class TenantDomainController extends Controller
 
             // If we deleted the primary domain, set another as primary
             if ($wasPrimary) {
-                $newPrimary = $team->domains()->first();
+                $newPrimary = $owner->domains()->first();
                 if ($newPrimary) {
                     $newPrimary->markAsPrimary();
                 }
@@ -237,8 +222,8 @@ class TenantDomainController extends Controller
             ], 404);
         }
 
-        $team = $tenantDomain->team;
-        if ($team->user_id !== $user->id) {
+        $owner = $tenantDomain->owner;
+        if (!$owner || $owner->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Only team owner can verify domains.',
@@ -253,27 +238,7 @@ class TenantDomainController extends Controller
         }
 
         try {
-            // Check DNS TXT record
-            $dnsName = $tenantDomain->getDnsRecordName();
-            $records = dns_get_record($dnsName, DNS_TXT);
-
-            if (!$records) {
-                return response()->json([
-                    'status' => 'Failed',
-                    'message' => 'DNS TXT record not found. Please add the verification record and try again.',
-                ], 400);
-            }
-
-            // Check if any TXT record matches our verification token
-            $verified = false;
-            foreach ($records as $record) {
-                if (isset($record['txt']) && $tenantDomain->verify($record['txt'])) {
-                    $verified = true;
-                    break;
-                }
-            }
-
-            if ($verified) {
+            if ($tenantDomain->verify()) {
                 return response()->json([
                     'status' => 'Success',
                     'message' => 'Domain verified successfully.',
@@ -283,7 +248,7 @@ class TenantDomainController extends Controller
 
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'Verification token does not match. Please check your DNS record.',
+                'message' => 'DNS verification failed. Please check your DNS record.',
             ], 400);
         } catch (Exception $e) {
             Log::error($e);
@@ -309,8 +274,8 @@ class TenantDomainController extends Controller
             ], 404);
         }
 
-        $team = $tenantDomain->team;
-        if ($team->user_id !== $user->id) {
+        $owner = $tenantDomain->owner;
+        if (!$owner || $owner->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Only team owner can regenerate tokens.',
@@ -363,8 +328,8 @@ class TenantDomainController extends Controller
             ], 404);
         }
 
-        $team = $tenantDomain->team;
-        if ($team->user_id !== $user->id) {
+        $owner = $tenantDomain->owner;
+        if (!$owner || $owner->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Only team owner can change primary domain.',

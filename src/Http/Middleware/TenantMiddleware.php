@@ -22,7 +22,7 @@ class TenantMiddleware
      */
     public function handle(Request $request, Closure $next, string $mode = 'optional'): Response
     {
-        if (!config('neev.tenant_isolation', false)) {
+        if (!config('neev.tenant', false)) {
             return $next($request);
         }
 

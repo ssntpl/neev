@@ -16,7 +16,7 @@ class PasskeyTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['neev.frontend_url' => 'http://localhost']);
+        config(['app.url' => 'http://localhost']);
     }
 
     protected function authenticatedUser(): array

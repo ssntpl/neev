@@ -76,18 +76,17 @@ class LoginRequest extends FormRequest
      */
     protected function handleFailedAttempt(): void
     {
-        $softFail = config('neev.login_soft_attempts', 5);
-        $hardFail = config('neev.login_hard_attempts', 20);
-        $blockMinutes = config('neev.login_block_minutes', 1);
+        $delayAfter = config('neev.login_throttle.delay_after', 3);
+        $maxDelay = config('neev.login_throttle.max_delay_seconds', 300);
 
         $key = $this->throttleKey();
         $attempts = Cache::get($key . ':attempts', 0) + 1;
         Cache::put($key . ':attempts', $attempts, 3600);
 
-        if ($hardFail > 0 && $attempts >= $hardFail) {
-            RateLimiter::hit($key, 60 * 60 * 24 * 365);
-        } elseif ($softFail > 0 && $attempts >= $softFail) {
-            RateLimiter::hit($key, $blockMinutes * 60);
+        if ($delayAfter > 0 && $attempts >= $delayAfter) {
+            // Exponential backoff: 2^(attempts - delayAfter) seconds, capped at max
+            $delay = min((int) pow(2, $attempts - $delayAfter), $maxDelay);
+            RateLimiter::hit($key, $delay);
         }
     }
 

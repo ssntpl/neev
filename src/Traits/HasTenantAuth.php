@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Traits;
 
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use Illuminate\Support\Facades\Cache;
 use Ssntpl\Neev\Models\TeamAuthSettings;
 
 /**
@@ -24,17 +25,24 @@ trait HasTenantAuth
     }
 
     /**
+     * Get cached auth settings (30-minute TTL).
+     */
+    public function getCachedAuthSettings(): ?TeamAuthSettings
+    {
+        /** @var TeamAuthSettings|null */
+        return Cache::remember("neev:auth_settings:{$this->getContextType()}:{$this->getContextId()}", 1800, function (): ?TeamAuthSettings {
+            return $this->authSettings;
+        });
+    }
+
+    /**
      * Get the authentication method for this team.
      * Returns the configured method or the default from config.
      */
     public function getAuthMethod(): string
     {
-        if (!config('neev.tenant_auth', false)) {
-            return 'password';
-        }
-
-        return $this->authSettings?->auth_method
-            ?? config('neev.tenant_auth_options.default_method', 'password');
+        return $this->getCachedAuthSettings()?->auth_method
+            ?? 'password';
     }
 
     /**
@@ -58,7 +66,7 @@ trait HasTenantAuth
      */
     public function hasSSOConfigured(): bool
     {
-        return $this->authSettings?->hasSSOConfigured() ?? false;
+        return $this->getCachedAuthSettings()?->hasSSOConfigured() ?? false;
     }
 
     /**
@@ -66,7 +74,7 @@ trait HasTenantAuth
      */
     public function getSSOProvider(): ?string
     {
-        return $this->authSettings?->sso_provider;
+        return $this->getCachedAuthSettings()?->sso_provider;
     }
 
     /**
@@ -74,12 +82,8 @@ trait HasTenantAuth
      */
     public function allowsAutoProvision(): bool
     {
-        if (!config('neev.tenant_auth', false)) {
-            return false;
-        }
-
-        return $this->authSettings?->auto_provision
-            ?? config('neev.tenant_auth_options.auto_provision', false);
+        return $this->getCachedAuthSettings()?->auto_provision
+            ?? false;
     }
 
     /**
@@ -87,8 +91,8 @@ trait HasTenantAuth
      */
     public function getAutoProvisionRole(): ?string
     {
-        return $this->authSettings?->auto_provision_role
-            ?? config('neev.tenant_auth_options.auto_provision_role');
+        return $this->getCachedAuthSettings()?->auto_provision_role
+            ?? null;
     }
 
     /**
@@ -98,6 +102,6 @@ trait HasTenantAuth
      */
     public function getSocialiteConfig(): ?array
     {
-        return $this->authSettings?->getSocialiteConfig();
+        return $this->getCachedAuthSettings()?->getSocialiteConfig();
     }
 }

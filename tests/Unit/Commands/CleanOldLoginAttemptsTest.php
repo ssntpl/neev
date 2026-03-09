@@ -18,7 +18,7 @@ class CleanOldLoginAttemptsTest extends TestCase
 
     public function test_deletes_login_attempts_older_than_configured_days(): void
     {
-        config(['neev.last_login_attempts_in_days' => 30]);
+        config(['neev.login_history_retention_days' => 30]);
 
         $user = User::factory()->create();
 
@@ -47,7 +47,7 @@ class CleanOldLoginAttemptsTest extends TestCase
 
     public function test_keeps_recent_login_attempts(): void
     {
-        config(['neev.last_login_attempts_in_days' => 30]);
+        config(['neev.login_history_retention_days' => 30]);
 
         $user = User::factory()->create();
 
@@ -73,7 +73,7 @@ class CleanOldLoginAttemptsTest extends TestCase
 
     public function test_outputs_info_message_with_count(): void
     {
-        config(['neev.last_login_attempts_in_days' => 30]);
+        config(['neev.login_history_retention_days' => 30]);
 
         $user = User::factory()->create();
 
@@ -98,7 +98,7 @@ class CleanOldLoginAttemptsTest extends TestCase
 
     public function test_does_nothing_when_config_not_set(): void
     {
-        config(['neev.last_login_attempts_in_days' => null]);
+        config(['neev.login_history_retention_days' => null]);
 
         $user = User::factory()->create();
 
@@ -120,7 +120,7 @@ class CleanOldLoginAttemptsTest extends TestCase
 
     public function test_does_nothing_when_config_is_zero(): void
     {
-        config(['neev.last_login_attempts_in_days' => 0]);
+        config(['neev.login_history_retention_days' => 0]);
 
         $user = User::factory()->create();
 
@@ -142,7 +142,7 @@ class CleanOldLoginAttemptsTest extends TestCase
 
     public function test_deletes_old_attempts_across_multiple_users(): void
     {
-        config(['neev.last_login_attempts_in_days' => 30]);
+        config(['neev.login_history_retention_days' => 30]);
 
         $userA = User::factory()->create();
         $userB = User::factory()->create();
@@ -179,7 +179,7 @@ class CleanOldLoginAttemptsTest extends TestCase
 
     public function test_outputs_zero_count_when_no_old_records(): void
     {
-        config(['neev.last_login_attempts_in_days' => 30]);
+        config(['neev.login_history_retention_days' => 30]);
 
         $user = User::factory()->create();
 

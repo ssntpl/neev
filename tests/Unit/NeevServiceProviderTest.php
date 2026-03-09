@@ -5,7 +5,9 @@ namespace Ssntpl\Neev\Tests\Unit;
 use Illuminate\Support\Facades\Route;
 use Ssntpl\Neev\Http\Middleware\BindContextMiddleware;
 use Ssntpl\Neev\Http\Middleware\EnsureContextSSO;
+use Ssntpl\Neev\Http\Middleware\EnsurePasswordNotExpired;
 use Ssntpl\Neev\Http\Middleware\EnsureTeamIsActive;
+use Ssntpl\Neev\Http\Middleware\EnsureTenantIsActive;
 use Ssntpl\Neev\Http\Middleware\EnsureTenantMembership;
 use Ssntpl\Neev\Http\Middleware\NeevAPIMiddleware;
 use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
@@ -155,6 +157,22 @@ class NeevServiceProviderTest extends TestCase
         $this->assertSame(EnsureContextSSO::class, $aliases['neev:ensure-sso']);
     }
 
+    public function test_middleware_alias_neev_active_tenant_resolves_to_ensure_tenant_is_active(): void
+    {
+        $aliases = Route::getMiddleware();
+
+        $this->assertArrayHasKey('neev:active-tenant', $aliases);
+        $this->assertSame(EnsureTenantIsActive::class, $aliases['neev:active-tenant']);
+    }
+
+    public function test_middleware_alias_neev_password_not_expired_resolves_to_ensure_password_not_expired(): void
+    {
+        $aliases = Route::getMiddleware();
+
+        $this->assertArrayHasKey('neev:password-not-expired', $aliases);
+        $this->assertSame(EnsurePasswordNotExpired::class, $aliases['neev:password-not-expired']);
+    }
+
     // =================================================================
     // Config is loaded
     // =================================================================
@@ -171,9 +189,9 @@ class NeevServiceProviderTest extends TestCase
         $this->assertArrayHasKey('team', config('neev'));
     }
 
-    public function test_config_tenant_isolation_key_exists(): void
+    public function test_config_tenant_key_exists(): void
     {
-        $this->assertArrayHasKey('tenant_isolation', config('neev'));
+        $this->assertArrayHasKey('tenant', config('neev'));
     }
 
     public function test_config_password_rules_key_exists(): void
@@ -250,37 +268,13 @@ class NeevServiceProviderTest extends TestCase
     // SSO routes loaded when tenant_auth enabled
     // =================================================================
 
-    public function test_sso_routes_loaded_when_tenant_auth_enabled(): void
+    public function test_sso_routes_are_always_loaded(): void
     {
-        // SSO routes are loaded conditionally during boot() when tenant_auth is true.
-        // Since Testbench boots the provider before tests run, we set config and re-boot.
-        config(['neev.tenant_auth' => true]);
-
-        $ssoRoutesPath = realpath(__DIR__ . '/../../routes/sso.php');
-        $this->assertFileExists($ssoRoutesPath);
-
-        // Load the routes file the same way the service provider does
-        $this->app['router']->group([], $ssoRoutesPath);
-
-        // Refresh the route name lookup cache
-        Route::getRoutes()->refreshNameLookups();
-
+        // SSO routes are now always loaded (no tenant_auth gate).
         $routeNames = collect(Route::getRoutes()->getRoutesByName())->keys()->toArray();
 
         $this->assertContains('sso.redirect', $routeNames);
         $this->assertContains('sso.callback', $routeNames);
         $this->assertContains('api.tenant.auth', $routeNames);
-    }
-
-    public function test_sso_routes_not_loaded_when_tenant_auth_disabled(): void
-    {
-        // tenant_auth is false by default
-        $this->assertFalse(config('neev.tenant_auth'));
-
-        $routes = Route::getRoutes();
-        $routeNames = collect($routes->getRoutesByName())->keys()->toArray();
-
-        $this->assertNotContains('sso.redirect', $routeNames);
-        $this->assertNotContains('sso.callback', $routeNames);
     }
 }

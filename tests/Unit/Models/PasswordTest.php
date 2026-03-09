@@ -64,7 +64,7 @@ class PasswordTest extends TestCase
 
     public function test_check_password_warning_returns_message_with_diff_for_humans_when_soft_expiry_passed(): void
     {
-        config(['neev.password_soft_expiry_days' => 30]);
+        config(['neev.password_expiry_days' => 30]);
 
         $user = User::factory()->create();
 
@@ -84,7 +84,7 @@ class PasswordTest extends TestCase
 
     public function test_check_password_warning_returns_message_even_when_not_expired(): void
     {
-        config(['neev.password_soft_expiry_days' => 30]);
+        config(['neev.password_expiry_days' => 30]);
 
         $user = User::factory()->create();
 
@@ -121,7 +121,7 @@ class PasswordTest extends TestCase
 
     public function test_is_login_block_returns_true_when_hard_expiry_passed(): void
     {
-        config(['neev.password_hard_expiry_days' => 90]);
+        config(['neev.password_expiry_days' => 90]);
 
         $user = User::factory()->create();
 
@@ -138,7 +138,7 @@ class PasswordTest extends TestCase
 
     public function test_is_login_block_returns_false_when_within_limit(): void
     {
-        config(['neev.password_hard_expiry_days' => 90]);
+        config(['neev.password_expiry_days' => 90]);
 
         $user = User::factory()->create();
 
@@ -150,7 +150,7 @@ class PasswordTest extends TestCase
 
     public function test_is_login_block_returns_false_when_hard_expiry_disabled(): void
     {
-        config(['neev.password_hard_expiry_days' => 0]);
+        config(['neev.password_expiry_days' => 0]);
 
         $user = User::factory()->create();
 
@@ -189,7 +189,7 @@ class PasswordTest extends TestCase
 
     public function test_latest_for_user_returns_most_recent_password(): void
     {
-        config(['neev.password_hard_expiry_days' => 90]);
+        config(['neev.password_expiry_days' => 90]);
 
         $user = User::factory()->create();
 
@@ -207,7 +207,7 @@ class PasswordTest extends TestCase
 
     public function test_latest_for_user_ignores_old_passwords(): void
     {
-        config(['neev.password_hard_expiry_days' => 90]);
+        config(['neev.password_expiry_days' => 90]);
 
         $user = User::factory()->create();
 

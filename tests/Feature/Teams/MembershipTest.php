@@ -562,7 +562,7 @@ class MembershipTest extends TestCase
 
         // Create a verified domain for the team
         DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
             'is_primary' => true,
         ]);
@@ -597,7 +597,7 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
         DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
             'is_primary' => true,
         ]);
@@ -635,7 +635,7 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
         DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'company.com',
             'enforce' => true,
             'is_primary' => true,
@@ -667,7 +667,7 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
         DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'enforced.com',
             'enforce' => true,
             'is_primary' => true,

@@ -128,20 +128,14 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
 
     protected function attachDomain(string $domain, ?object $team, ?object $tenant): void
     {
-        $subdomainSuffix = config('neev.tenant_isolation_options.subdomain_suffix');
-        $isSubdomain = $subdomainSuffix && str_ends_with($domain, '.' . ltrim($subdomainSuffix, '.'));
-
         $domainRecord = Domain::create([
             'domain' => $domain,
-            'team_id' => $team?->id,
-            'tenant_id' => $tenant?->id,
+            'owner_type' => $tenant ? 'tenant' : 'team',
+            'owner_id' => $tenant !== null ? $tenant->id : $team?->id,
             'is_primary' => true,
-            'verified_at' => $isSubdomain ? now() : null,
         ]);
 
-        if ($isSubdomain) {
-            $this->info("Domain attached and auto-verified: {$domain}");
-        } else {
+        {
             $token = $domainRecord->generateVerificationToken();
             $this->info("Domain attached: {$domain}");
             $this->warn("Verify via DNS TXT record:");

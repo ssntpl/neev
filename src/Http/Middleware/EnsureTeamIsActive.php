@@ -37,7 +37,7 @@ class EnsureTeamIsActive
                 ], 403);
             }
 
-            return redirect(config('neev.dashboard_url'))->with('warning', 'Your team is pending approval. Some features are restricted.');
+            return redirect(config('neev.home'))->with('warning', 'Your team is pending approval. Some features are restricted.');
         }
 
         return $next($request);

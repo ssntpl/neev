@@ -56,7 +56,8 @@ class DomainFederationTest extends TestCase
             ->assertJsonStructure(['token']);
 
         $this->assertDatabaseHas('domains', [
-            'team_id' => $team->id,
+            'owner_type' => 'team',
+            'owner_id' => $team->id,
             'domain' => 'example.com',
         ]);
     }
@@ -74,7 +75,7 @@ class DomainFederationTest extends TestCase
 
         $response->assertOk();
 
-        $domain = Domain::where('team_id', $team->id)->where('domain', 'primary-domain.com')->first();
+        $domain = Domain::where('owner_type', 'team')->where('owner_id', $team->id)->where('domain', 'primary-domain.com')->first();
         $this->assertNotNull($domain);
         $this->assertTrue($domain->is_primary);
     }
@@ -109,8 +110,8 @@ class DomainFederationTest extends TestCase
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
-        DomainFactory::new()->create(['team_id' => $team->id, 'domain' => 'alpha.com']);
-        DomainFactory::new()->create(['team_id' => $team->id, 'domain' => 'beta.com']);
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'alpha.com']);
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'beta.com']);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/domains?team_id=' . $team->id);
@@ -140,7 +141,7 @@ class DomainFederationTest extends TestCase
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $domain = DomainFactory::new()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'enforce' => false,
         ]);
 
@@ -161,7 +162,7 @@ class DomainFederationTest extends TestCase
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $domain = DomainFactory::new()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -181,7 +182,7 @@ class DomainFederationTest extends TestCase
 
         $owner = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/domains', [
@@ -205,8 +206,8 @@ class DomainFederationTest extends TestCase
         // Attach owner to team so they pass the membership check
         $team->allUsers()->attach($owner, ['joined' => true, 'role' => '']);
 
-        $domainA = DomainFactory::new()->verified()->primary()->create(['team_id' => $team->id]);
-        $domainB = DomainFactory::new()->verified()->create(['team_id' => $team->id]);
+        $domainA = DomainFactory::new()->verified()->primary()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
+        $domainB = DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/domains/primary', [
@@ -227,7 +228,7 @@ class DomainFederationTest extends TestCase
         $team->allUsers()->attach($owner, ['joined' => true, 'role' => '']);
 
         $domain = DomainFactory::new()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'verified_at' => null,
         ]);
 
@@ -248,7 +249,7 @@ class DomainFederationTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/domains', [
@@ -267,7 +268,7 @@ class DomainFederationTest extends TestCase
 
         $owner = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/domains', [
@@ -289,7 +290,7 @@ class DomainFederationTest extends TestCase
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $domain = DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
 
         // Create a domain rule
@@ -317,7 +318,7 @@ class DomainFederationTest extends TestCase
 
         $owner = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/domains/rules', [
@@ -354,7 +355,7 @@ class DomainFederationTest extends TestCase
         $team->allUsers()->attach($owner, ['joined' => true, 'role' => '']);
 
         $domain = DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
         ]);
 
         $domain->rules()->create([
@@ -376,7 +377,7 @@ class DomainFederationTest extends TestCase
 
         $owner = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/domains/rules?domain_id=' . $domain->id);
@@ -407,7 +408,7 @@ class DomainFederationTest extends TestCase
         $team->allUsers()->attach($owner, ['joined' => true, 'role' => '']);
 
         $domain = DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'company.com',
             'enforce' => true,
         ]);
@@ -457,7 +458,7 @@ class DomainFederationTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $team->allUsers()->attach($owner, ['joined' => true, 'role' => '']);
 
-        $domain = DomainFactory::new()->verified()->primary()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->verified()->primary()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/domains/primary', [
@@ -479,7 +480,7 @@ class DomainFederationTest extends TestCase
 
         // Create an unverified domain with a fake domain name
         $domain = DomainFactory::new()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'nonexistent-test-domain-' . uniqid() . '.invalid',
             'verification_token' => 'test-verification-token',
             'verified_at' => null,
@@ -573,7 +574,7 @@ class DomainFederationTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         // Create a rule for this domain
         $domain->rules()->create(['name' => 'mfa', 'value' => true]);

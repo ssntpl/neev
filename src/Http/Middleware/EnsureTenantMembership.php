@@ -32,7 +32,7 @@ class EnsureTenantMembership
     public function handle(Request $request, Closure $next): Response
     {
         // Skip if tenant isolation is not enabled
-        if (!config('neev.tenant_isolation', false)) {
+        if (!config('neev.tenant', false)) {
             return $next($request);
         }
 

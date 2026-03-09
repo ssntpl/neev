@@ -139,22 +139,14 @@ class TeamTest extends TestCase
         $this->assertNull($team->subdomain);
     }
 
-    public function test_subdomain_returns_slug_dot_suffix_when_tenant_isolation_enabled(): void
+    public function test_subdomain_returns_null_when_tenant_isolation_enabled(): void
     {
-        $this->enableTenantIsolation('example.com');
+        $this->enableTenantIsolation();
 
         $team = TeamFactory::new()->create(['slug' => 'acme']);
 
-        $this->assertSame('acme.example.com', $team->subdomain);
-    }
-
-    public function test_subdomain_strips_leading_dot_from_suffix(): void
-    {
-        $this->enableTenantIsolation('.example.com');
-
-        $team = TeamFactory::new()->create(['slug' => 'acme']);
-
-        $this->assertSame('acme.example.com', $team->subdomain);
+        // Subdomain suffix concept removed; always null now
+        $this->assertNull($team->subdomain);
     }
 
     // -----------------------------------------------------------------
@@ -166,35 +158,31 @@ class TeamTest extends TestCase
         $team = TeamFactory::new()->create();
 
         DomainFactory::new()->verified()->primary()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'custom.example.com',
         ]);
 
         $this->assertSame('custom.example.com', $team->web_domain);
     }
 
-    public function test_web_domain_returns_subdomain_when_no_verified_primary_domain(): void
+    public function test_web_domain_returns_null_when_no_verified_primary_domain(): void
     {
-        $this->enableTenantIsolation('test.com');
-
         $team = TeamFactory::new()->create(['slug' => 'acme']);
 
         // Create an unverified primary domain
         DomainFactory::new()->primary()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'custom.example.com',
         ]);
 
-        $this->assertSame('acme.test.com', $team->web_domain);
+        $this->assertNull($team->web_domain);
     }
 
-    public function test_web_domain_returns_subdomain_when_no_domains_exist(): void
+    public function test_web_domain_returns_null_when_no_domains_exist(): void
     {
-        $this->enableTenantIsolation('test.com');
-
         $team = TeamFactory::new()->create(['slug' => 'acme']);
 
-        $this->assertSame('acme.test.com', $team->web_domain);
+        $this->assertNull($team->web_domain);
     }
 
     // -----------------------------------------------------------------
@@ -403,14 +391,14 @@ class TeamTest extends TestCase
     // domains(), primaryDomain(), customDomains(), invitations()
     // -----------------------------------------------------------------
 
-    public function test_domains_returns_has_many_relationship(): void
+    public function test_domains_returns_morph_many_relationship(): void
     {
         $team = TeamFactory::new()->create();
 
-        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\HasMany::class, $team->domains());
+        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\MorphMany::class, $team->domains());
 
-        DomainFactory::new()->create(['team_id' => $team->id]);
-        DomainFactory::new()->create(['team_id' => $team->id]);
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
         $team->refresh();
 
@@ -421,9 +409,9 @@ class TeamTest extends TestCase
     {
         $team = TeamFactory::new()->create();
 
-        DomainFactory::new()->create(['team_id' => $team->id, 'is_primary' => false]);
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'is_primary' => false]);
         DomainFactory::new()->primary()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'primary.example.com',
         ]);
 
@@ -438,9 +426,9 @@ class TeamTest extends TestCase
     {
         $team = TeamFactory::new()->create();
 
-        DomainFactory::new()->verified()->create(['team_id' => $team->id]);
-        DomainFactory::new()->verified()->create(['team_id' => $team->id]);
-        DomainFactory::new()->create(['team_id' => $team->id]); // unverified
+        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
+        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]); // unverified
 
         $this->assertCount(2, $team->customDomains);
     }
@@ -491,7 +479,7 @@ class TeamTest extends TestCase
         $team = TeamFactory::new()->create();
 
         DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'custom.example.com',
         ]);
 
@@ -506,7 +494,7 @@ class TeamTest extends TestCase
         $team = TeamFactory::new()->create();
 
         DomainFactory::new()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'unverified.example.com',
         ]);
 

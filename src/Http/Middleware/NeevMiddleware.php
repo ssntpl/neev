@@ -39,6 +39,9 @@ class NeevMiddleware
             return $this->unauthenticated($request, 'Your account is deactivated, please contact your admin to activate your account.', 403);
         }
 
+        // Eager load MFA relationships to avoid N+1 queries
+        $user->loadMissing('multiFactorAuths', 'preferredMultiFactorAuth');
+
         $attemptID = session('attempt_id');
         $attempt = $user->loginAttempts()->where('id', $attemptID)->first();
         if ($attempt && count($user->multiFactorAuths ?? []) > 0) {
@@ -56,7 +59,7 @@ class NeevMiddleware
         }
 
         $emailBypassPaths = ['email/verify*', 'email/send', 'logout', 'email/change', 'email/update'];
-        if (config('neev.email_verified') && !$user->email?->verified_at && !$request->is($emailBypassPaths)) {
+        if (!$user->email?->verified_at && !$request->is($emailBypassPaths)) {
             if ($request->expectsJson()) {
                 return response()->json(['message' => 'Email not verified.'], 403);
             }

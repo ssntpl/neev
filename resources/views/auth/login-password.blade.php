@@ -4,7 +4,7 @@
             <x-neev-component::authentication-card-logo />
         </x-slot>
         <div class="flex flex-col gap-4">
-            @if ((config('neev.email_verified') && $email_verified) || !config('neev.email_verified'))
+            @if ($email_verified)
                 <div class="flex flex-col gap-2 border rounded-lg p-4 text-center">
                     <div class="flex gap-2 justify-around flex-wrap">
                         @foreach (config('neev.oauth') as $oauth)
@@ -26,15 +26,13 @@
                                 </x-neev-component::secondary-button>
                             </form>
                         @endif
-                        @if (config('neev.magicauth'))
-                            <form method="POST" action="{{ route('login.link.send') }}">
+                        <form method="POST" action="{{ route('login.link.send') }}">
                                 @csrf
                                 <input type="hidden" name="email" value="{{$email}}" required>
                                 <x-neev-component::secondary-button type="submit" class="ms-2">
                                     {{ __('Login Via Link') }}
                                 </x-neev-component::secondary-button>
                             </form>
-                        @endif
                     </div>
                 </div>
             @endif

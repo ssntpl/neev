@@ -300,19 +300,7 @@ class NeevAPIMiddlewareTest extends TestCase
         }
     }
 
-    public function test_does_not_check_email_when_email_verification_disabled(): void
-    {
-        config(['neev.email_verified' => false]);
-
-        $data = $this->createUserWithApiToken();
-        $data['user']->email->update(['verified_at' => null]);
-
-        $request = $this->buildRequest('/api/some-path', $data['plainTextToken']);
-
-        $response = $this->middleware->handle($request, $this->passThrough());
-
-        $this->assertEquals(200, $response->getStatusCode());
-    }
+    // email_verified config removed; email verification is always enforced by middleware
 
     // -----------------------------------------------------------------
     // Sets user resolver and token_id attribute

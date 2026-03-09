@@ -3,21 +3,33 @@
 namespace Ssntpl\Neev\Commands\Domain;
 
 use Illuminate\Console\Command;
-use Illuminate\Contracts\Console\PromptsForMissingInput;
+use Ssntpl\Neev\Jobs\VerifyAllDomainsJob;
 use Ssntpl\Neev\Models\Domain;
 
-use function Laravel\Prompts\text;
-
-class VerifyDomainCommand extends Command implements PromptsForMissingInput
+class VerifyDomainCommand extends Command
 {
-    protected $signature = 'neev:domain:verify {domain : The domain to verify}
-                            {--force : Mark as verified without DNS check}';
+    protected $signature = 'neev:domain:verify {domain? : The domain to verify}
+                            {--force : Mark as verified without DNS check}
+                            {--all : Re-verify all previously verified domains}';
 
     protected $description = 'Verify a domain via DNS TXT record lookup';
 
     public function handle(): int
     {
+        if ($this->option('all')) {
+            VerifyAllDomainsJob::dispatch();
+            $this->info('Dispatched verification jobs for all verified domains.');
+
+            return self::SUCCESS;
+        }
+
         $domainName = $this->argument('domain');
+
+        if (! $domainName) {
+            $this->error('You must specify a domain name or use --all.');
+
+            return self::FAILURE;
+        }
 
         $domain = Domain::where('domain', $domainName)->first();
 
@@ -27,54 +39,24 @@ class VerifyDomainCommand extends Command implements PromptsForMissingInput
             return self::FAILURE;
         }
 
-        if ($domain->isVerified()) {
-            $this->info("Domain is already verified: {$domainName}");
-
-            return self::SUCCESS;
-        }
-
         if ($this->option('force')) {
-            $domain->update(['verified_at' => now(), 'verification_token' => null]);
+            $domain->update(['verified_at' => now()]);
             $this->info("Domain force-verified: {$domainName}");
 
             return self::SUCCESS;
         }
 
-        $recordName = $domain->getDnsRecordName();
-        $this->line("Checking DNS TXT record: {$recordName}");
+        $this->line("Checking DNS TXT record: {$domain->getDnsRecordName()}");
 
-        $records = dns_get_record($recordName, DNS_TXT);
+        if ($domain->verify()) {
+            $this->info("Domain verified successfully: {$domainName}");
 
-        if ($records === false || empty($records)) {
-            $this->error('No DNS TXT records found.');
-            $this->line('Ensure you have added the TXT record and waited for DNS propagation.');
-            $this->line("Use --force to skip DNS verification (e.g., for local development).");
-
-            return self::FAILURE;
+            return self::SUCCESS;
         }
 
-        foreach ($records as $record) {
-            $txt = $record['txt'] ?? '';
-            if ($domain->verify($txt)) {
-                $this->info("Domain verified successfully: {$domainName}");
-
-                return self::SUCCESS;
-            }
-        }
-
-        $this->error('DNS TXT record found but token does not match.');
-        $this->line('Ensure the TXT value matches the verification token exactly.');
+        $this->error('DNS verification failed. Ensure the TXT record matches the verification token.');
+        $this->line("Use --force to skip DNS verification (e.g., for local development).");
 
         return self::FAILURE;
-    }
-
-    protected function promptForMissingArgumentsUsing(): array
-    {
-        return [
-            'domain' => fn () => text(
-                label: 'Which domain would you like to verify?',
-                required: true,
-            ),
-        ];
     }
 }

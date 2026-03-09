@@ -4,7 +4,6 @@ namespace Ssntpl\Neev\Tests\Unit\Models;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Models\Domain;
@@ -108,20 +107,55 @@ class DomainTest extends TestCase
     }
 
     // -----------------------------------------------------------------
+    // findByHostForOwner()
+    // -----------------------------------------------------------------
+
+    public function test_find_by_host_for_owner_finds_matching_domain(): void
+    {
+        $team = TeamFactory::new()->create();
+        $domain = DomainFactory::new()->verified()->create([
+            'owner_type' => 'team',
+            'owner_id' => $team->id,
+            'domain' => 'owner-test.example.com',
+        ]);
+
+        $found = Domain::findByHostForOwner('owner-test.example.com', 'team', $team->id);
+
+        $this->assertNotNull($found);
+        $this->assertSame($domain->id, $found->id);
+    }
+
+    public function test_find_by_host_for_owner_returns_null_for_wrong_owner(): void
+    {
+        $team = TeamFactory::new()->create();
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team',
+            'owner_id' => $team->id,
+            'domain' => 'wrong-owner.example.com',
+        ]);
+
+        $found = Domain::findByHostForOwner('wrong-owner.example.com', 'team', 99999);
+
+        $this->assertNull($found);
+    }
+
+    // -----------------------------------------------------------------
     // markAsPrimary()
     // -----------------------------------------------------------------
 
-    public function test_mark_as_primary_unsets_other_primary_domains_for_same_team(): void
+    public function test_mark_as_primary_unsets_other_primary_domains_for_same_owner(): void
     {
         $team = TeamFactory::new()->create();
 
         $domain1 = DomainFactory::new()->primary()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team',
+            'owner_id' => $team->id,
             'domain' => 'first.example.com',
         ]);
 
         $domain2 = DomainFactory::new()->verified()->create([
-            'team_id' => $team->id,
+            'owner_type' => 'team',
+            'owner_id' => $team->id,
             'domain' => 'second.example.com',
         ]);
 
@@ -137,17 +171,19 @@ class DomainTest extends TestCase
         $this->assertTrue($domain2->is_primary);
     }
 
-    public function test_mark_as_primary_does_not_affect_other_teams(): void
+    public function test_mark_as_primary_does_not_affect_other_owners(): void
     {
         $team1 = TeamFactory::new()->create();
         $team2 = TeamFactory::new()->create();
 
         $domain1 = DomainFactory::new()->primary()->verified()->create([
-            'team_id' => $team1->id,
+            'owner_type' => 'team',
+            'owner_id' => $team1->id,
         ]);
 
         $domain2 = DomainFactory::new()->verified()->create([
-            'team_id' => $team2->id,
+            'owner_type' => 'team',
+            'owner_id' => $team2->id,
         ]);
 
         $domain2->markAsPrimary();
@@ -175,7 +211,7 @@ class DomainTest extends TestCase
         $this->assertSame(64, strlen($plaintext));
     }
 
-    public function test_generate_verification_token_hashes_token_in_database(): void
+    public function test_generate_verification_token_stores_plaintext_in_database(): void
     {
         $domain = DomainFactory::new()->create();
 
@@ -185,47 +221,7 @@ class DomainTest extends TestCase
             ->where('id', $domain->id)
             ->value('verification_token');
 
-        $this->assertNotSame($plaintext, $rawValue);
-        $this->assertTrue(Hash::check($plaintext, $rawValue));
-    }
-
-    // -----------------------------------------------------------------
-    // verify()
-    // -----------------------------------------------------------------
-
-    public function test_verify_with_correct_token_sets_verified_at_and_returns_true(): void
-    {
-        $domain = DomainFactory::new()->create();
-
-        $plaintext = $domain->generateVerificationToken();
-
-        $this->assertNull($domain->verified_at);
-
-        $result = $domain->verify($plaintext);
-
-        $this->assertTrue($result);
-
-        $domain->refresh();
-        $this->assertNotNull($domain->verified_at);
-        // verification_token should be cleared
-        $rawToken = DB::table('domains')
-            ->where('id', $domain->id)
-            ->value('verification_token');
-        $this->assertNull($rawToken);
-    }
-
-    public function test_verify_with_wrong_token_returns_false(): void
-    {
-        $domain = DomainFactory::new()->create();
-
-        $domain->generateVerificationToken();
-
-        $result = $domain->verify('wrong-token');
-
-        $this->assertFalse($result);
-
-        $domain->refresh();
-        $this->assertNull($domain->verified_at);
+        $this->assertSame($plaintext, $rawValue);
     }
 
     // -----------------------------------------------------------------
@@ -254,14 +250,17 @@ class DomainTest extends TestCase
     // Relationships
     // -----------------------------------------------------------------
 
-    public function test_team_relationship(): void
+    public function test_owner_relationship(): void
     {
         $team = TeamFactory::new()->create();
-        $domain = DomainFactory::new()->create(['team_id' => $team->id]);
+        $domain = DomainFactory::new()->create([
+            'owner_type' => 'team',
+            'owner_id' => $team->id,
+        ]);
 
-        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\BelongsTo::class, $domain->team());
-        $this->assertInstanceOf(Team::class, $domain->team);
-        $this->assertSame($team->id, $domain->team->id);
+        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\MorphTo::class, $domain->owner());
+        $this->assertInstanceOf(Team::class, $domain->owner);
+        $this->assertSame($team->id, $domain->owner->id);
     }
 
     public function test_rules_relationship(): void
@@ -318,5 +317,43 @@ class DomainTest extends TestCase
         $rule = $domain->rule('nonexistent');
 
         $this->assertNull($rule);
+    }
+
+    // -----------------------------------------------------------------
+    // hasVerificationFailure() / isVerificationStale()
+    // -----------------------------------------------------------------
+
+    public function test_has_verification_failure_returns_true_when_set(): void
+    {
+        $domain = DomainFactory::new()->create([
+            'verification_failed_at' => now(),
+        ]);
+
+        $this->assertTrue($domain->hasVerificationFailure());
+    }
+
+    public function test_has_verification_failure_returns_false_when_null(): void
+    {
+        $domain = DomainFactory::new()->create();
+
+        $this->assertFalse($domain->hasVerificationFailure());
+    }
+
+    public function test_is_verification_stale_returns_true_when_old(): void
+    {
+        $domain = DomainFactory::new()->verified()->create([
+            'verified_at' => now()->subDays(31),
+        ]);
+
+        $this->assertTrue($domain->isVerificationStale(30));
+    }
+
+    public function test_is_verification_stale_returns_false_when_recent(): void
+    {
+        $domain = DomainFactory::new()->verified()->create([
+            'verified_at' => now()->subDays(5),
+        ]);
+
+        $this->assertFalse($domain->isVerificationStale(30));
     }
 }

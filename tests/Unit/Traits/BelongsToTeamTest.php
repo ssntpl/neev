@@ -139,6 +139,7 @@ class BelongsToTeamTest extends TestCase
 
     public function test_team_scope_filters_records_by_current_team(): void
     {
+        $this->enableTeams();
         $teamA = TeamFactory::new()->create();
         $teamB = TeamFactory::new()->create();
 
@@ -188,6 +189,7 @@ class BelongsToTeamTest extends TestCase
 
     public function test_without_team_scope_removes_global_scope(): void
     {
+        $this->enableTeams();
         $teamA = TeamFactory::new()->create();
         $teamB = TeamFactory::new()->create();
 

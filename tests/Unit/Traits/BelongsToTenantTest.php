@@ -126,7 +126,7 @@ class BelongsToTenantTest extends TestCase
 
     public function test_assigns_tenant_id_when_resolver_has_tenant_regardless_of_config(): void
     {
-        config(['neev.tenant_isolation' => false]);
+        config(['neev.tenant' => false]);
 
         $team = TeamFactory::new()->create();
 
@@ -156,6 +156,7 @@ class BelongsToTenantTest extends TestCase
 
     public function test_tenant_scope_filters_records_by_current_tenant(): void
     {
+        $this->enableTenantIsolation();
         $teamA = TeamFactory::new()->create();
         $teamB = TeamFactory::new()->create();
 
@@ -179,8 +180,9 @@ class BelongsToTenantTest extends TestCase
         $this->assertEquals('Team A Item', $items->first()->name);
     }
 
-    public function test_tenant_scope_not_applied_when_no_tenant_set(): void
+    public function test_tenant_scope_skips_when_no_tenant_resolved(): void
     {
+        $this->enableTenantIsolation();
         $teamA = TeamFactory::new()->create();
         $teamB = TeamFactory::new()->create();
 
@@ -193,7 +195,8 @@ class BelongsToTenantTest extends TestCase
             'tenant_id' => $teamB->id,
         ]);
 
-        // No tenant set on the resolver — scope should not filter
+        // No tenant resolved yet — scope skips to allow auth pipeline to work.
+        // Queries return all records (scope not applied).
         $resolver = app(TenantResolver::class);
         $resolver->clear();
 
@@ -208,6 +211,7 @@ class BelongsToTenantTest extends TestCase
 
     public function test_without_tenant_scope_removes_global_scope(): void
     {
+        $this->enableTenantIsolation();
         $teamA = TeamFactory::new()->create();
         $teamB = TeamFactory::new()->create();
 

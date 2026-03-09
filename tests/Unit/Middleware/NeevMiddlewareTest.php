@@ -269,20 +269,7 @@ class NeevMiddlewareTest extends TestCase
     // Email verification: does not redirect when disabled
     // -----------------------------------------------------------------
 
-    public function test_does_not_redirect_when_email_verification_is_disabled(): void
-    {
-        config(['neev.email_verified' => false]);
-
-        $user = User::factory()->create();
-        $user->email->update(['verified_at' => null]);
-        $user->refresh();
-
-        $request = $this->buildRequest('/dashboard', $user);
-
-        $response = $this->middleware->handle($request, $this->passThrough());
-
-        $this->assertEquals(200, $response->getStatusCode());
-    }
+    // email_verified config removed; email verification is always enforced by middleware
 
     // -----------------------------------------------------------------
     // Happy path: active user, no MFA, verified email

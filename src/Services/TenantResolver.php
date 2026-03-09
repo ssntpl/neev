@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Services;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
 use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Ssntpl\Neev\Models\Domain;
@@ -50,7 +51,7 @@ class TenantResolver
      */
     public function resolve(Request $request): ?ContextContainerInterface
     {
-        if (!config('neev.tenant_isolation', false)) {
+        if (!config('neev.tenant', false)) {
             return null;
         }
 
@@ -111,41 +112,49 @@ class TenantResolver
     protected function resolveFromHost(string $host): ?array
     {
         $model = $this->getResolvableModel();
-        $subdomainSuffix = config('neev.tenant_isolation_options.subdomain_suffix');
+        // Check domain via domains table (cached for 5 minutes)
+        $isIsolated = $this->isIsolated();
 
-        // Check if it's a subdomain
-        if ($subdomainSuffix) {
-            $suffix = '.' . ltrim($subdomainSuffix, '.');
-            if (str_ends_with($host, $suffix)) {
-                $slug = str_replace($suffix, '', $host);
-                $context = $model::resolveBySlug($slug);
-                if ($context) {
-                    return ['context' => $context, 'via' => 'subdomain', 'domain' => $host];
+        /** @var array{context_type: string, context_id: int}|null $cachedContext */
+        $cachedContext = Cache::remember("neev:domain:{$host}", 300, function () use ($host, $isIsolated): ?array {
+            $domain = Domain::findByHost($host);
+
+            if (! $domain || ! $domain->owner) {
+                return null;
+            }
+
+            if ($isIsolated) {
+                if ($domain->owner_type === 'tenant') {
+                    return ['context_type' => 'tenant', 'context_id' => $domain->owner->getKey()];
+                }
+
+                // Domain owned by a team — resolve the team's tenant
+                $tenant = $domain->owner->tenant ?? null;
+                if ($tenant) {
+                    return ['context_type' => 'tenant', 'context_id' => $tenant->getKey()];
+                }
+            } else {
+                if ($domain->owner_type === 'team') {
+                    return ['context_type' => 'team', 'context_id' => $domain->owner->getKey()];
                 }
             }
-        }
 
-        // Check custom domain via domains table
-        if ($this->isIsolated()) {
-            // In isolated mode, try tenant-owned domains first
-            $domain = Domain::findByHostWithTenant($host);
-            if ($domain && $domain->tenant) {
-                return ['context' => $domain->tenant, 'via' => 'custom', 'domain' => $host, 'customDomain' => $domain];
+            return null;
+        });
+
+        if ($cachedContext) {
+            // Re-fetch the context and domain models from the cached IDs
+            if ($cachedContext['context_type'] === 'tenant') {
+                $context = Tenant::getClass()::find($cachedContext['context_id']);
+            } else {
+                $context = Team::getClass()::find($cachedContext['context_id']);
             }
 
-            // Fall back to team-owned domains and navigate to tenant
-            $domain = Domain::findByHost($host);
-            if ($domain) {
-                $context = $domain->team?->tenant;
-                if ($context) {
-                    return ['context' => $context, 'via' => 'custom', 'domain' => $host, 'customDomain' => $domain];
-                }
-            }
-        } else {
-            // In shared mode, domains belong to teams
-            $domain = Domain::findByHost($host);
-            if ($domain && $domain->team) {
-                return ['context' => $domain->team, 'via' => 'custom', 'domain' => $host, 'customDomain' => $domain];
+            if ($context) {
+                // Fetch the domain record for the customDomain reference
+                $domain = Domain::findByHost($host);
+
+                return ['context' => $context, 'via' => 'custom', 'domain' => $host, 'customDomain' => $domain];
             }
         }
 
@@ -310,7 +319,7 @@ class TenantResolver
      */
     public function isEnabled(): bool
     {
-        return config('neev.tenant_isolation', false);
+        return config('neev.tenant', false);
     }
 
     /**
@@ -318,7 +327,7 @@ class TenantResolver
      */
     public function isIsolated(): bool
     {
-        return config('neev.identity_strategy', 'shared') === 'isolated';
+        return config('neev.tenant', false);
     }
 
 }

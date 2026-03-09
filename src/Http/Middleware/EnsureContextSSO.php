@@ -30,14 +30,15 @@ class EnsureContextSSO
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (!config('neev.tenant_auth', false)) {
-            return $next($request);
-        }
-
         $context = $this->tenantResolver->resolvedContext();
 
         if (!$context instanceof IdentityProviderOwnerInterface) {
             return $next($request);
+        }
+
+        // Ensure authSettings is loaded to avoid lazy loading queries
+        if (method_exists($context, 'loadMissing')) {
+            $context->loadMissing('authSettings');
         }
 
         if (!$context->requiresSSO() || !$context->hasSSOConfigured()) {

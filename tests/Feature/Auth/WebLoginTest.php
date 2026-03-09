@@ -16,7 +16,7 @@ class WebLoginTest extends TestCase
     {
         parent::defineEnvironment($app);
 
-        $app['config']->set('neev.dashboard_url', '/dashboard');
+        $app['config']->set('neev.home', '/dashboard');
     }
 
     // -----------------------------------------------------------------
@@ -81,8 +81,6 @@ class WebLoginTest extends TestCase
 
     public function test_web_login_redirects_to_email_verification_when_required(): void
     {
-        config(['neev.email_verified' => true]);
-
         $user = User::factory()->create();
         $email = $user->email;
         $email->verified_at = null;

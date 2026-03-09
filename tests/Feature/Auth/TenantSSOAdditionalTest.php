@@ -18,8 +18,7 @@ class TenantSSOAdditionalTest extends TestCase
     protected function defineEnvironment($app): void
     {
         parent::defineEnvironment($app);
-        $app['config']->set('neev.tenant_auth', true);
-        $app['config']->set('neev.tenant_isolation', true);
+        $app['config']->set('neev.tenant', true);
     }
 
     protected function setUp(): void

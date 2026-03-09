@@ -4,9 +4,21 @@ namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Cache;
 
 class TenantAuthSettings extends Model
 {
+    protected static function booted(): void
+    {
+        static::saved(function (TenantAuthSettings $settings) {
+            Cache::forget("neev:auth_settings:tenant:{$settings->tenant_id}");
+        });
+
+        static::deleted(function (TenantAuthSettings $settings) {
+            Cache::forget("neev:auth_settings:tenant:{$settings->tenant_id}");
+        });
+    }
+
     protected $fillable = [
         'tenant_id',
         'auth_method',

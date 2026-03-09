@@ -40,7 +40,7 @@ class ShowAuthCommand extends Command
 
         if (! $settings) {
             $this->info("No auth settings configured for tenant '{$tenant->name}'.");
-            $this->line('Default method: ' . config('neev.tenant_auth_options.default_method', 'password'));
+            $this->line('Default method: ' . 'password');
 
             return self::SUCCESS;
         }
@@ -66,7 +66,7 @@ class ShowAuthCommand extends Command
 
         if (! $settings) {
             $this->info("No auth settings configured for team '{$team->name}'.");
-            $this->line('Default method: ' . config('neev.tenant_auth_options.default_method', 'password'));
+            $this->line('Default method: ' . 'password');
 
             return self::SUCCESS;
         }

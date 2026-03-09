@@ -45,23 +45,8 @@ class HasTenantAuthTest extends TestCase
     // getAuthMethod()
     // -----------------------------------------------------------------
 
-    public function test_get_auth_method_returns_password_when_tenant_auth_disabled(): void
+    public function test_get_auth_method_returns_method_from_settings(): void
     {
-        config(['neev.tenant_auth' => false]);
-
-        $team = TeamFactory::new()->create();
-
-        TeamAuthSettingsFactory::new()->sso()->create([
-            'team_id' => $team->id,
-        ]);
-
-        $this->assertEquals('password', $team->getAuthMethod());
-    }
-
-    public function test_get_auth_method_returns_auth_method_from_settings_when_enabled(): void
-    {
-        $this->enableTenantAuth();
-
         $team = TeamFactory::new()->create();
 
         TeamAuthSettingsFactory::new()->sso()->create([
@@ -73,23 +58,11 @@ class HasTenantAuthTest extends TestCase
         $this->assertEquals('sso', $team->getAuthMethod());
     }
 
-    public function test_get_auth_method_returns_config_default_when_no_settings(): void
+    public function test_get_auth_method_returns_password_when_no_settings(): void
     {
-        $this->enableTenantAuth();
-        config(['neev.tenant_auth_options.default_method' => 'password']);
-
         $team = TeamFactory::new()->create();
 
-        $this->assertEquals('password', $team->getAuthMethod());
-    }
-
-    public function test_get_auth_method_returns_password_default_when_no_settings_and_no_config(): void
-    {
-        $this->enableTenantAuth();
-
-        $team = TeamFactory::new()->create();
-
-        // Without explicit config, default should be 'password'
+        // Without auth settings, default should be 'password'
         $this->assertEquals('password', $team->getAuthMethod());
     }
 
@@ -99,8 +72,6 @@ class HasTenantAuthTest extends TestCase
 
     public function test_requires_sso_returns_true_when_method_is_sso(): void
     {
-        $this->enableTenantAuth();
-
         $team = TeamFactory::new()->create();
 
         TeamAuthSettingsFactory::new()->sso()->create([
@@ -114,8 +85,6 @@ class HasTenantAuthTest extends TestCase
 
     public function test_requires_sso_returns_false_when_method_is_password(): void
     {
-        $this->enableTenantAuth();
-
         $team = TeamFactory::new()->create();
 
         TeamAuthSettingsFactory::new()->create([
@@ -128,17 +97,11 @@ class HasTenantAuthTest extends TestCase
         $this->assertFalse($team->requiresSSO());
     }
 
-    public function test_requires_sso_returns_false_when_tenant_auth_disabled(): void
+    public function test_requires_sso_returns_false_when_no_settings(): void
     {
-        config(['neev.tenant_auth' => false]);
-
         $team = TeamFactory::new()->create();
 
-        TeamAuthSettingsFactory::new()->sso()->create([
-            'team_id' => $team->id,
-        ]);
-
-        // Even with SSO settings, disabled tenant_auth means password
+        // No auth settings means password by default
         $this->assertFalse($team->requiresSSO());
     }
 
@@ -148,8 +111,6 @@ class HasTenantAuthTest extends TestCase
 
     public function test_allows_password_returns_true_when_method_is_password(): void
     {
-        $this->enableTenantAuth();
-
         $team = TeamFactory::new()->create();
 
         TeamAuthSettingsFactory::new()->create([
@@ -164,8 +125,6 @@ class HasTenantAuthTest extends TestCase
 
     public function test_allows_password_returns_false_when_method_is_sso(): void
     {
-        $this->enableTenantAuth();
-
         $team = TeamFactory::new()->create();
 
         TeamAuthSettingsFactory::new()->sso()->create([
@@ -177,13 +136,11 @@ class HasTenantAuthTest extends TestCase
         $this->assertFalse($team->allowsPassword());
     }
 
-    public function test_allows_password_returns_true_when_tenant_auth_disabled(): void
+    public function test_allows_password_returns_true_when_no_settings(): void
     {
-        config(['neev.tenant_auth' => false]);
-
         $team = TeamFactory::new()->create();
 
-        // Even with SSO configured, disabled tenant_auth defaults to password
+        // No auth settings means password by default
         $this->assertTrue($team->allowsPassword());
     }
 
@@ -270,25 +227,8 @@ class HasTenantAuthTest extends TestCase
     // allowsAutoProvision()
     // -----------------------------------------------------------------
 
-    public function test_allows_auto_provision_returns_false_when_tenant_auth_disabled(): void
+    public function test_allows_auto_provision_returns_setting_value(): void
     {
-        config(['neev.tenant_auth' => false]);
-
-        $team = TeamFactory::new()->create();
-
-        TeamAuthSettingsFactory::new()->autoProvision()->create([
-            'team_id' => $team->id,
-        ]);
-
-        $team->load('authSettings');
-
-        $this->assertFalse($team->allowsAutoProvision());
-    }
-
-    public function test_allows_auto_provision_returns_setting_value_when_enabled(): void
-    {
-        $this->enableTenantAuth();
-
         $team = TeamFactory::new()->create();
 
         TeamAuthSettingsFactory::new()->autoProvision()->create([
@@ -302,8 +242,6 @@ class HasTenantAuthTest extends TestCase
 
     public function test_allows_auto_provision_returns_false_when_not_configured(): void
     {
-        $this->enableTenantAuth();
-
         $team = TeamFactory::new()->create();
 
         TeamAuthSettingsFactory::new()->create([
@@ -316,20 +254,8 @@ class HasTenantAuthTest extends TestCase
         $this->assertFalse($team->allowsAutoProvision());
     }
 
-    public function test_allows_auto_provision_falls_back_to_config_when_no_settings(): void
+    public function test_allows_auto_provision_defaults_to_false_when_no_settings(): void
     {
-        $this->enableTenantAuth();
-        config(['neev.tenant_auth_options.auto_provision' => true]);
-
-        $team = TeamFactory::new()->create();
-
-        $this->assertTrue($team->allowsAutoProvision());
-    }
-
-    public function test_allows_auto_provision_config_fallback_defaults_to_false(): void
-    {
-        $this->enableTenantAuth();
-
         $team = TeamFactory::new()->create();
 
         $this->assertFalse($team->allowsAutoProvision());
@@ -352,21 +278,14 @@ class HasTenantAuthTest extends TestCase
         $this->assertEquals('editor', $team->getAutoProvisionRole());
     }
 
-    public function test_get_auto_provision_role_falls_back_to_config(): void
-    {
-        config(['neev.tenant_auth_options.auto_provision_role' => 'viewer']);
-
-        $team = TeamFactory::new()->create();
-
-        $this->assertEquals('viewer', $team->getAutoProvisionRole());
-    }
-
-    public function test_get_auto_provision_role_returns_null_when_no_settings_and_no_config(): void
+    public function test_get_auto_provision_role_returns_null_when_no_settings(): void
     {
         $team = TeamFactory::new()->create();
 
         $this->assertNull($team->getAutoProvisionRole());
     }
+
+    // test_get_auto_provision_role_returns_null_when_no_settings already covers this case
 
     // -----------------------------------------------------------------
     // getSocialiteConfig()

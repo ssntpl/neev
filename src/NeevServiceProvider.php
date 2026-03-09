@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev;
 
+use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
@@ -23,7 +24,9 @@ use Ssntpl\Neev\Commands\Tenant\ListTenantsCommand;
 use Ssntpl\Neev\Commands\Tenant\ShowTenantCommand;
 use Ssntpl\Neev\Http\Middleware\BindContextMiddleware;
 use Ssntpl\Neev\Http\Middleware\EnsureContextSSO;
+use Ssntpl\Neev\Http\Middleware\EnsurePasswordNotExpired;
 use Ssntpl\Neev\Http\Middleware\EnsureTeamIsActive;
+use Ssntpl\Neev\Http\Middleware\EnsureTenantIsActive;
 use Ssntpl\Neev\Http\Middleware\EnsureTenantMembership;
 use Ssntpl\Neev\Http\Middleware\NeevAPIMiddleware;
 use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
@@ -37,6 +40,11 @@ class NeevServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
+        Relation::morphMap([
+            'team' => \Ssntpl\Neev\Models\Team::getClass(),
+            'tenant' => \Ssntpl\Neev\Models\Tenant::getClass(),
+        ]);
+
         Route::middlewareGroup('neev:web', [
             TenantMiddleware::class,
             ResolveTeamMiddleware::class,
@@ -60,9 +68,11 @@ class NeevServiceProvider extends ServiceProvider
         ]);
 
         Route::aliasMiddleware('neev:active-team', EnsureTeamIsActive::class);
+        Route::aliasMiddleware('neev:active-tenant', EnsureTenantIsActive::class);
         Route::aliasMiddleware('neev:tenant-member', EnsureTenantMembership::class);
         Route::aliasMiddleware('neev:resolve-team', ResolveTeamMiddleware::class);
         Route::aliasMiddleware('neev:ensure-sso', EnsureContextSSO::class);
+        Route::aliasMiddleware('neev:password-not-expired', EnsurePasswordNotExpired::class);
 
         $this->publishes([
             __DIR__.'/../config/neev.php' => config_path('neev.php'),
@@ -101,9 +111,7 @@ class NeevServiceProvider extends ServiceProvider
                 : __DIR__ . '/../routes/neev.php'
         );
 
-        if (config('neev.tenant_auth')) {
-            $this->loadRoutesFrom(__DIR__ . '/../routes/sso.php');
-        }
+        $this->loadRoutesFrom(__DIR__ . '/../routes/sso.php');
 
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'neev');
 

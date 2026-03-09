@@ -4,9 +4,21 @@ namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Cache;
 
 class TeamAuthSettings extends Model
 {
+    protected static function booted(): void
+    {
+        static::saved(function (TeamAuthSettings $settings) {
+            Cache::forget("neev:auth_settings:team:{$settings->team_id}");
+        });
+
+        static::deleted(function (TeamAuthSettings $settings) {
+            Cache::forget("neev:auth_settings:team:{$settings->team_id}");
+        });
+    }
+
     protected $fillable = [
         'team_id',
         'auth_method',

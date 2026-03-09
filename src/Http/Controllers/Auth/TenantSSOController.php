@@ -209,7 +209,7 @@ class TenantSSOController extends Controller
             // Mark session as SSO-authenticated for EnsureContextSSO middleware
             session(['auth_method' => 'sso']);
 
-            return redirect()->intended(config('neev.dashboard_url'));
+            return redirect()->intended(config('neev.home'));
         } catch (Exception $e) {
             Log::error('Tenant SSO callback error', [
                 'tenant_id' => $tenant->getContextId(),

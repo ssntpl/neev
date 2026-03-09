@@ -33,7 +33,7 @@ trait BelongsToTenant
 
     public function tenant(): BelongsTo
     {
-        $parentModel = config('neev.identity_strategy', 'shared') === 'isolated'
+        $parentModel = config('neev.tenant')
             ? Tenant::getClass()
             : Team::getClass();
 

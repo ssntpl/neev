@@ -4,7 +4,7 @@
     </x-slot>
     <x-neev-component::validation-errors class="mb-4" />
     <x-neev-component::validation-status class="mb-4" />
-    @if (config('neev.domain_federation') && $team)
+    @if ($team)
         <div x-data="{show: {{session('token') ? 'true' : 'false'}} }" class="flex flex-col gap-4">
             {{-- Domain Federation --}}
             <x-neev-component::card x-data="{addDomainOpen: false}">

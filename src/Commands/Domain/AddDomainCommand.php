@@ -14,8 +14,8 @@ class AddDomainCommand extends Command implements PromptsForMissingInput
     use ResolvesTenantContext;
 
     protected $signature = 'neev:domain:add {domain : The domain to add}
-                            {--tenant= : Tenant ID or slug (isolated mode)}
-                            {--team= : Team ID or slug (shared mode)}
+                            {--owner-type= : Owner type (team or tenant)}
+                            {--owner-id= : Owner ID}
                             {--primary : Set as primary domain}
                             {--enforce : Enforce domain-based federation}
                             {--skip-verification : Mark as verified immediately}';
@@ -25,19 +25,26 @@ class AddDomainCommand extends Command implements PromptsForMissingInput
     public function handle(): int
     {
         $domainName = $this->argument('domain');
-        $teamId = null;
-        $tenantId = null;
+        $ownerType = $this->option('owner-type');
+        $ownerId = $this->option('owner-id');
 
-        if ($this->option('tenant')) {
-            $tenant = $this->resolveTenant($this->option('tenant'));
-            $tenantId = $tenant->id;
-        } elseif ($this->option('team')) {
-            $team = $this->resolveTeam($this->option('team'));
-            $teamId = $team->id;
-        } else {
-            $this->error('You must specify --tenant or --team.');
+        if (! $ownerType || ! $ownerId) {
+            $this->error('You must specify --owner-type and --owner-id.');
 
             return self::FAILURE;
+        }
+
+        if (! in_array($ownerType, ['team', 'tenant'])) {
+            $this->error('--owner-type must be "team" or "tenant".');
+
+            return self::FAILURE;
+        }
+
+        // Validate owner exists
+        if ($ownerType === 'tenant') {
+            $this->resolveTenant((string) $ownerId);
+        } else {
+            $this->resolveTeam((string) $ownerId);
         }
 
         // Check if domain already exists
@@ -48,15 +55,12 @@ class AddDomainCommand extends Command implements PromptsForMissingInput
             return self::FAILURE;
         }
 
-        $subdomainSuffix = config('neev.tenant_isolation_options.subdomain_suffix');
-        $isSubdomain = $subdomainSuffix && str_ends_with($domainName, '.' . ltrim($subdomainSuffix, '.'));
-
-        $autoVerify = $isSubdomain || $this->option('skip-verification');
+        $autoVerify = $this->option('skip-verification');
 
         $domain = Domain::create([
             'domain' => $domainName,
-            'team_id' => $teamId,
-            'tenant_id' => $tenantId,
+            'owner_type' => $ownerType,
+            'owner_id' => $ownerId,
             'is_primary' => (bool) $this->option('primary'),
             'enforce' => (bool) $this->option('enforce'),
             'verified_at' => $autoVerify ? now() : null,

@@ -163,49 +163,6 @@ class RegistrationTest extends TestCase
         $this->assertNotNull($team->activated_at);
     }
 
-    public function test_free_email_creates_inactive_team_when_company_email_required(): void
-    {
-        $this->enableTeams();
-        $this->enableCompanyEmailRequirement();
-
-        $response = $this->postJson('/neev/register', [
-            'name' => 'Free User',
-            'email' => 'user@gmail.com',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
-        ]);
-
-        $response->assertOk();
-
-        $user = Email::where('email', 'user@gmail.com')->first()->user;
-        $team = Team::where('user_id', $user->id)->first();
-
-        $this->assertNotNull($team);
-        $this->assertNull($team->activated_at);
-        $this->assertEquals('free_email_provider', $team->inactive_reason);
-    }
-
-    public function test_company_email_creates_active_team_when_company_email_required(): void
-    {
-        $this->enableTeams();
-        $this->enableCompanyEmailRequirement();
-
-        $response = $this->postJson('/neev/register', [
-            'name' => 'Corp User',
-            'email' => 'user@acmecorp.com',
-            'password' => 'password123',
-            'password_confirmation' => 'password123',
-        ]);
-
-        $response->assertOk();
-
-        $user = Email::where('email', 'user@acmecorp.com')->first()->user;
-        $team = Team::where('user_id', $user->id)->first();
-
-        $this->assertNotNull($team);
-        $this->assertNotNull($team->activated_at);
-    }
-
     public function test_returns_email_verified_false_when_email_not_verified(): void
     {
         $response = $this->postJson('/neev/register', [

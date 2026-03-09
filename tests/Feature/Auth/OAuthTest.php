@@ -31,8 +31,7 @@ class OAuthTest extends TestCase
         parent::defineEnvironment($app);
 
         $app['config']->set('neev.oauth', ['google']);
-        $app['config']->set('neev.dashboard_url', '/dashboard');
-        $app['config']->set('neev.frontend_url', 'http://localhost');
+        $app['config']->set('neev.home', '/dashboard');
         $app['config']->set('services.google', [
             'client_id' => 'test-client-id',
             'client_secret' => 'test-client-secret',

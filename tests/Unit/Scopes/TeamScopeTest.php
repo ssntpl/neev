@@ -56,11 +56,32 @@ class TeamScopeTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Does not apply scope when no current team
+    // Applies WHERE 1 = 0 when no current team (strict mode)
     // -----------------------------------------------------------------
 
-    public function test_does_not_apply_scope_when_no_current_team(): void
+    public function test_applies_strict_filter_when_no_current_team(): void
     {
+        $this->enableTeams();
+        $manager = app(ContextManager::class);
+        $manager->clear();
+
+        $scope = new TeamScope();
+        $model = new TeamScopeTestModel();
+        $builder = $model->newQuery();
+
+        $scope->apply($builder, $model);
+
+        $this->assertStringContainsString('1 = 0', $builder->toSql());
+    }
+
+    // -----------------------------------------------------------------
+    // Does not apply scope when teams feature is disabled
+    // -----------------------------------------------------------------
+
+    public function test_does_not_apply_scope_when_teams_disabled(): void
+    {
+        config(['neev.team' => false]);
+
         $manager = app(ContextManager::class);
         $manager->clear();
 
@@ -71,6 +92,7 @@ class TeamScopeTest extends TestCase
         $scope->apply($builder, $model);
 
         $this->assertStringNotContainsString('team_id', $builder->toSql());
+        $this->assertStringNotContainsString('1 = 0', $builder->toSql());
     }
 
     // -----------------------------------------------------------------
@@ -79,6 +101,7 @@ class TeamScopeTest extends TestCase
 
     public function test_applies_where_clause_when_team_is_set(): void
     {
+        $this->enableTeams();
         $team = TeamFactory::new()->create();
 
         $manager = app(ContextManager::class);
@@ -100,6 +123,7 @@ class TeamScopeTest extends TestCase
 
     public function test_applies_correct_team_id_in_where_clause(): void
     {
+        $this->enableTeams();
         $team = TeamFactory::new()->create();
 
         $manager = app(ContextManager::class);
@@ -136,6 +160,7 @@ class TeamScopeTest extends TestCase
 
     public function test_belongs_to_team_trait_applies_scope_on_queries(): void
     {
+        $this->enableTeams();
         $team = TeamFactory::new()->create();
 
         $manager = app(ContextManager::class);

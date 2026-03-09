@@ -42,7 +42,7 @@ class TeamController extends Controller
     public function domain(Request $request, Team $team)
     {
         $user = User::model()->find($request->user()?->id);
-        if (!$user?->allTeams?->find($team->id) || $team->user_id !== $user?->id || !config('neev.domain_federation')) {
+        if (!$user?->allTeams?->find($team->id) || $team->user_id !== $user?->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to view domain federation.']);
         }
 
@@ -366,7 +366,6 @@ class TeamController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user || $team->user_id !== $user?->id) {
-            //  || !str_ends_with(strtolower($user->email->email), '@' . strtolower($request->domain))
             return back()->withErrors(['message' => 'You do not have the required permissions to federate domain.']);
         }
         try {
@@ -389,14 +388,13 @@ class TeamController extends Controller
     public function updateDomain(Request $request, Domain $domain)
     {
         $user = User::model()->find($request->user()?->id);
-        if (!$user || $domain?->team->user_id !== $user?->id) {
+        if (!$user || $domain?->owner?->user_id !== $user?->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to update domain.']);
         }
         try {
             if ($request->verify) {
-                $res = $this->verify($domain);
                 $domain_rules = ["mfa"];
-                if ($res) {
+                if ($domain->verify()) {
                     foreach ($domain_rules ?? [] as $rule) {
                         $domain?->rules()->create([
                             'name' => $rule,
@@ -424,23 +422,10 @@ class TeamController extends Controller
         }
     }
 
-    public function verify($domain)
-    {
-        $records = dns_get_record('_neev-verification.' . $domain?->domain, DNS_TXT);
-
-        foreach ($records as $record) {
-            if (isset($record['txt']) && $domain->verify($record['txt'])) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     public function deleteDomain(Request $request, Domain $domain)
     {
         $user = User::model()->find($request->user()?->id);
-        if (!$user || $domain?->team->user_id !== $user?->id) {
+        if (!$user || $domain?->owner?->user_id !== $user?->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to delete domain.']);
         }
         try {
@@ -456,7 +441,7 @@ class TeamController extends Controller
     public function updateDomainRule(Request $request, Domain $domain)
     {
         $user = User::model()->find($request->user()?->id);
-        if (!$user || $domain?->team->user_id !== $user?->id) {
+        if (!$user || $domain?->owner?->user_id !== $user?->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to update domain.']);
         }
         try {
@@ -476,11 +461,11 @@ class TeamController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$user || !$domain || !$domain?->verified_at || !$domain->team->users->contains($user)) {
+        if (!$user || !$domain || !$domain?->verified_at || !$domain->owner?->users->contains($user)) {
             return back()->withErrors(['message' => 'Primary domain was not changed.']);
         }
 
-        $pdomain = $domain->team?->domain;
+        $pdomain = $domain->owner?->domain;
         if ($pdomain) {
             if ($pdomain->id == $domain->id) {
                 return back()->with('status', 'Primary domain was already changed.');

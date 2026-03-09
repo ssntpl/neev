@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Database\Factories;
 
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Team;
 
 class DomainFactory extends Factory
 {
@@ -12,7 +13,8 @@ class DomainFactory extends Factory
     public function definition(): array
     {
         return [
-            'team_id' => TeamFactory::new(),
+            'owner_type' => 'team',
+            'owner_id' => TeamFactory::new(),
             'domain' => fake()->unique()->domainName(),
             'is_primary' => false,
             'enforce' => false,
@@ -27,5 +29,13 @@ class DomainFactory extends Factory
     public function primary(): static
     {
         return $this->state(['is_primary' => true]);
+    }
+
+    public function forTeam(Team $team): static
+    {
+        return $this->state([
+            'owner_type' => 'team',
+            'owner_id' => $team->id,
+        ]);
     }
 }

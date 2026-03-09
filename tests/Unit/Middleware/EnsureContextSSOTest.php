@@ -23,13 +23,6 @@ class EnsureContextSSOTest extends TestCase
     private TenantResolver $tenantResolver;
     private EnsureContextSSO $middleware;
 
-    protected function defineEnvironment($app): void
-    {
-        parent::defineEnvironment($app);
-
-        $app['config']->set('neev.tenant_auth', true);
-    }
-
     protected function setUp(): void
     {
         parent::setUp();
@@ -53,28 +46,11 @@ class EnsureContextSSOTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Passes through when tenant_auth disabled
-    // -----------------------------------------------------------------
-
-    public function test_passes_through_when_tenant_auth_disabled(): void
-    {
-        config(['neev.tenant_auth' => false]);
-
-        $request = $this->createAuthenticatedRequest();
-
-        $response = $this->middleware->handle($request, $this->passThrough());
-
-        $this->assertEquals(200, $response->getStatusCode());
-    }
-
-    // -----------------------------------------------------------------
     // Passes through when no context resolved
     // -----------------------------------------------------------------
 
     public function test_passes_through_when_no_context(): void
     {
-        config(['neev.tenant_auth' => true]);
-
         $request = $this->createAuthenticatedRequest();
 
         $response = $this->middleware->handle($request, $this->passThrough());
@@ -88,8 +64,6 @@ class EnsureContextSSOTest extends TestCase
 
     public function test_passes_through_when_context_not_identity_provider(): void
     {
-        config(['neev.tenant_auth' => true]);
-
         $context = Mockery::mock(ContextContainerInterface::class);
         $context->shouldReceive('getContextType')->andReturn('team');
         $context->shouldReceive('getContextId')->andReturn(1);
@@ -112,8 +86,6 @@ class EnsureContextSSOTest extends TestCase
 
     public function test_passes_through_when_sso_not_required(): void
     {
-        config(['neev.tenant_auth' => true]);
-
         $context = Mockery::mock(ContextContainerInterface::class, IdentityProviderOwnerInterface::class);
         $context->shouldReceive('requiresSSO')->andReturn(false);
 
@@ -134,8 +106,6 @@ class EnsureContextSSOTest extends TestCase
 
     public function test_passes_through_when_sso_required_but_not_configured(): void
     {
-        config(['neev.tenant_auth' => true]);
-
         $context = Mockery::mock(ContextContainerInterface::class, IdentityProviderOwnerInterface::class);
         $context->shouldReceive('requiresSSO')->andReturn(true);
         $context->shouldReceive('hasSSOConfigured')->andReturn(false);
@@ -157,8 +127,6 @@ class EnsureContextSSOTest extends TestCase
 
     public function test_passes_through_when_no_user(): void
     {
-        config(['neev.tenant_auth' => true]);
-
         $context = Mockery::mock(ContextContainerInterface::class, IdentityProviderOwnerInterface::class);
         $context->shouldReceive('requiresSSO')->andReturn(true);
         $context->shouldReceive('hasSSOConfigured')->andReturn(true);
@@ -180,8 +148,6 @@ class EnsureContextSSOTest extends TestCase
 
     public function test_passes_through_when_session_has_sso_auth_method(): void
     {
-        config(['neev.tenant_auth' => true]);
-
         $context = Mockery::mock(ContextContainerInterface::class, IdentityProviderOwnerInterface::class);
         $context->shouldReceive('requiresSSO')->andReturn(true);
         $context->shouldReceive('hasSSOConfigured')->andReturn(true);
@@ -207,8 +173,6 @@ class EnsureContextSSOTest extends TestCase
 
     public function test_redirects_to_sso_when_required_and_not_sso_authenticated(): void
     {
-        config(['neev.tenant_auth' => true]);
-
         $context = Mockery::mock(ContextContainerInterface::class, IdentityProviderOwnerInterface::class);
         $context->shouldReceive('requiresSSO')->andReturn(true);
         $context->shouldReceive('hasSSOConfigured')->andReturn(true);
@@ -234,8 +198,6 @@ class EnsureContextSSOTest extends TestCase
 
     public function test_returns_json_403_for_api_requests(): void
     {
-        config(['neev.tenant_auth' => true]);
-
         $context = Mockery::mock(ContextContainerInterface::class, IdentityProviderOwnerInterface::class);
         $context->shouldReceive('requiresSSO')->andReturn(true);
         $context->shouldReceive('hasSSOConfigured')->andReturn(true);
