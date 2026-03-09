@@ -540,63 +540,69 @@ curl -X PUT https://yourapp.com/neev/teams/inviteUser \
 
 ## Multi-Tenancy
 
-### Identity Strategy
+### Enable Tenant Mode
 
 ```php
 // config/neev.php
-'tenant' => false,                 // Enable tenant isolation
+'tenant' => true,                  // Enable tenant isolation
+'team' => true,                    // Required for tenant mode
 ```
 
-**Shared Identity (Default)**:
-- Users are global across the application
-- Same user can belong to multiple teams
-- Teams are collaboration units
-
-**Isolated Identity**:
-- Users are scoped to tenants
+When enabled:
+- Users are scoped to tenants via `tenant_id`
 - Same email can exist in different tenants
-- Tenant resolved before authentication
+- Models automatically filtered by tenant using `BelongsToTenant` trait
+- Tenant resolution via middleware
 
-### Tenant Isolation
+### Tenant Model
 
-```php
-// config/neev.php
-'tenant' => true,
-```
-
-Enables:
-- Subdomain-based tenant routing (`acme.yourapp.com`)
-- Custom domain support with DNS verification
-- Per-tenant authentication configuration
-- Automatic model scoping via `BelongsToTenant` trait
-
-### Tenant SSO
+The `Tenant` model provides:
+- Basic tenant management
+- Team relationships within tenants
+- Auth settings for SSO
+- Domain management
 
 ```php
-// Configure per-tenant SSO
-$team->authSettings()->create([
-    'auth_method' => 'sso',
-    'sso_provider' => 'entra',
-    'sso_client_id' => 'your-client-id',
-    'sso_client_secret' => encrypt('your-secret'),
-    'auto_provision' => true,
+$tenant = Tenant::create([
+    'name' => 'Acme Corp',
+    'slug' => 'acme-corp',
 ]);
+
+$tenant->teams;           // Teams within this tenant
+$tenant->members();       // Users directly in tenant
+$tenant->authSettings;    // SSO configuration
+$tenant->domains;         // Custom domains
 ```
 
-### Get Tenant Auth Config
+### Model Scoping
 
-```bash
-curl -X GET https://acme.yourapp.com/api/tenant/auth
-```
+Use the `BelongsToTenant` trait to automatically scope models:
 
-Response:
-```json
+```php
+use Ssntpl\Neev\Traits\BelongsToTenant;
+
+class Project extends Model
 {
-  "auth_method": "sso",
-  "sso_enabled": true,
-  "sso_provider": "entra",
-  "sso_redirect_url": "https://acme.yourapp.com/sso/redirect"
+    use BelongsToTenant;
 }
+
+// All queries automatically scoped to current tenant
+$projects = Project::all();
+
+// Cross-tenant queries (admin use)
+$allProjects = Project::withoutTenantScope()->get();
+```
+
+### Tenant Resolution
+
+The `TenantResolver` resolves tenants from:
+1. X-Tenant header (API)
+2. Subdomain extraction
+3. Custom domain lookup
+
+```php
+$resolver = app(TenantResolver::class);
+$tenant = $resolver->current();
 ```
 
 ### Middleware Groups
@@ -695,7 +701,7 @@ php artisan neev:download-geoip
 
 ```php
 // config/neev.php
-'tenant' => false,                 // Multi-tenant isolation (users scoped to tenant)
+'tenant' => false,                 // Multi-tenant mode (users scoped to tenant)
 'team' => false,                   // Team management
 'support_username' => false,       // Username login support
 'oauth' => [],                     // OAuth providers: ['google', 'github', 'microsoft', 'apple']
