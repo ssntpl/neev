@@ -91,8 +91,9 @@ php artisan neev:install
 ### 3. Configure Environment
 
 ```env
-NEEV_DASHBOARD_URL="${APP_URL}/dashboard"
+# Optional - MaxMind license for GeoIP tracking
 MAXMIND_LICENSE_KEY="your-maxmind-key"
+MAXMIND_EDITION="GeoLite2-City"
 ```
 
 ### 4. Run Migrations
@@ -732,9 +733,10 @@ php artisan neev:download-geoip
 ### URLs
 
 ```php
-'dashboard_url' => env('NEEV_DASHBOARD_URL', env('APP_URL').'/dashboard'),
-'frontend_url' => env('APP_URL'),
+'home' => '/dashboard',
 ```
+
+Post-authentication redirect URL for Blade flows.
 
 ### MFA
 

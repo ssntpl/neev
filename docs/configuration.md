@@ -286,8 +286,7 @@ Specify custom model classes that extend Neev's default models.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NEEV_DASHBOARD_URL` | Post-login redirect URL | `${APP_URL}/dashboard` |
-| `MAXMIND_LICENSE_KEY` | MaxMind API key | - |
+| `MAXMIND_LICENSE_KEY` | MaxMind API key for GeoIP | - |
 | `MAXMIND_EDITION` | GeoIP database edition | `GeoLite2-City` |
 
 ---
