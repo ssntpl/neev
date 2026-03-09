@@ -47,25 +47,30 @@ Neev is a comprehensive Laravel package that provides enterprise-grade user auth
 
 ### Team Management
 - Create and manage teams/organizations
-- Invite members via email
-- Role-based access control
-- Domain-based auto-joining (federation)
+- Invite members via email with role assignment
+- Role-based access control with Laravel ACL integration
+- Domain-based auto-joining (federation) with DNS verification
 - Team switching for multi-team users
+- Public/private team visibility
+- Team activation/deactivation with reasons
 
 ### Security Features
-- Brute force protection with progressive delays
-- Account lockout after failed attempts
-- Password history to prevent reuse
-- Password expiry policies
-- Login attempt tracking with GeoIP
-- Session management
-- Suspicious login detection
+- **Progressive rate limiting** with configurable thresholds
+- **Account lockout** after failed attempts with time-based recovery
+- **Password history** to prevent reuse (configurable depth)
+- **Password expiry policies** (soft warnings + hard expiry)
+- **Login attempt tracking** with GeoIP location data
+- **Session management** with device tracking
+- **Suspicious login detection** and flagging
+- **Email verification** with configurable methods (link or OTP)
 
-### Multi-Tenancy
-- Subdomain-based tenant isolation
-- Custom domain support with DNS verification
-- Per-tenant authentication configuration
-- Per-tenant SSO integration
+### Multi-Tenancy & Identity Strategy
+- **Shared identity** (users global, teams as collaboration) or **Isolated identity** (users scoped to tenant)
+- **Subdomain-based tenant isolation** with custom domain support
+- **DNS verification** for custom domains
+- **Per-tenant authentication configuration**
+- **Per-tenant SSO integration** with auto-provisioning
+- **Context-aware middleware** for tenant/team resolution
 
 ---
 
@@ -105,7 +110,14 @@ use Ssntpl\Neev\Models\User as NeevUser;
 
 class User extends NeevUser
 {
-    // Add your custom fields, relationships, and methods
+    protected $fillable = [
+        'name',
+        'username', // if username support enabled
+        'active',
+        // Add your custom fields
+    ];
+    
+    // Add your custom relationships and methods
 }
 ```
 
@@ -129,7 +141,8 @@ curl -X POST https://yourapp.com/neev/register \
     "name": "John Doe",
     "email": "john@example.com",
     "password": "SecurePass123!",
-    "password_confirmation": "SecurePass123!"
+    "password_confirmation": "SecurePass123!",
+    "username": "johndoe"  // Optional, if username support enabled
   }'
 
 # Login
@@ -141,7 +154,7 @@ curl -X POST https://yourapp.com/neev/login \
   }'
 ```
 
-**Response:**
+**Response (no MFA):**
 
 ```json
 {
@@ -150,6 +163,25 @@ curl -X POST https://yourapp.com/neev/login \
   "email_verified": true,
   "preferred_mfa": null
 }
+```
+
+**Response (with MFA):**
+
+```json
+{
+  "status": "Success",
+  "token": "1|abc123def456...",
+  "email_verified": true,
+  "preferred_mfa": "authenticator"
+}
+```
+
+When MFA is required, complete verification:
+
+```bash
+curl -X POST https://yourapp.com/neev/mfa/otp/verify \
+  -H "Authorization: Bearer {mfa_token}" \
+  -d '{"auth_method": "authenticator", "otp": "123456"}'
 ```
 
 ### Magic Link (Passwordless)
@@ -173,11 +205,15 @@ curl -X GET https://yourapp.com/neev/passkeys/register/options \
 # Register passkey
 curl -X POST https://yourapp.com/neev/passkeys/register \
   -H "Authorization: Bearer {token}" \
-  -d '{"attestation": "{...}", "name": "My MacBook"}'
+  -d '{"attestation": "{...webauthn_response...}", "name": "My MacBook"}'
+
+# Get login options
+curl -X POST https://yourapp.com/neev/passkeys/login/options \
+  -d '{"email": "john@example.com"}'
 
 # Login with passkey
 curl -X POST https://yourapp.com/neev/passkeys/login \
-  -d '{"email": "john@example.com", "assertion": "{...}"}'
+  -d '{"email": "john@example.com", "assertion": "{...webauthn_assertion...}"}'
 ```
 
 ### OAuth / Social Login
@@ -189,9 +225,21 @@ Enable in configuration:
 'oauth' => ['google', 'github', 'microsoft', 'apple'],
 ```
 
+Configure credentials in `config/services.php`:
+
+```php
+'google' => [
+    'client_id' => env('GOOGLE_CLIENT_ID'),
+    'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+    'redirect' => env('GOOGLE_REDIRECT_URI'),
+],
+```
+
 Redirect URLs:
 - `GET /oauth/{provider}` - Redirect to provider
 - `GET /oauth/{provider}/callback` - Handle callback
+
+**Note**: OAuth bypasses MFA requirements and password policies.
 
 ---
 
@@ -491,28 +539,47 @@ curl -X PUT https://yourapp.com/neev/teams/inviteUser \
 
 ## Multi-Tenancy
 
-### Enable Tenant Isolation
+### Identity Strategy
 
 ```php
 // config/neev.php
-'team' => true,
-'tenant_isolation' => true,
-'tenant_isolation_options' => [
-    'subdomain_suffix' => env('NEEV_SUBDOMAIN_SUFFIX', '.yourapp.com'),
-    'allow_custom_domains' => true,
-],
+'tenant' => false,                 // Enable tenant isolation
 ```
+
+**Shared Identity (Default)**:
+- Users are global across the application
+- Same user can belong to multiple teams
+- Teams are collaboration units
+
+**Isolated Identity**:
+- Users are scoped to tenants
+- Same email can exist in different tenants
+- Tenant resolved before authentication
+
+### Tenant Isolation
+
+```php
+// config/neev.php
+'tenant' => true,
+```
+
+Enables:
+- Subdomain-based tenant routing (`acme.yourapp.com`)
+- Custom domain support with DNS verification
+- Per-tenant authentication configuration
+- Automatic model scoping via `BelongsToTenant` trait
 
 ### Tenant SSO
 
 ```php
-// config/neev.php
-'tenant_auth' => true,
-'tenant_auth_options' => [
-    'default_method' => 'password',
-    'sso_providers' => ['entra', 'google', 'okta'],
+// Configure per-tenant SSO
+$team->authSettings()->create([
+    'auth_method' => 'sso',
+    'sso_provider' => 'entra',
+    'sso_client_id' => 'your-client-id',
+    'sso_client_secret' => encrypt('your-secret'),
     'auto_provision' => true,
-],
+]);
 ```
 
 ### Get Tenant Auth Config
@@ -533,33 +600,57 @@ Response:
 
 ### Middleware Groups
 
-| Middleware | Description |
-|------------|-------------|
-| `neev:web` | Web authentication (includes tenant resolution when enabled) |
-| `neev:api` | API authentication (includes tenant resolution when enabled) |
-| `neev:tenant` | Tenant resolution from domain (no auth) |
+These are pre-composed groups you apply to route groups.
+
+| Group | Pipeline |
+|-------|----------|
+| `neev:web` | TenantMiddleware → ResolveTeamMiddleware → NeevMiddleware (session auth) → EnsureTenantMembership → BindContextMiddleware |
+| `neev:api` | TenantMiddleware → ResolveTeamMiddleware → NeevAPIMiddleware (token auth) → EnsureTenantMembership → BindContextMiddleware |
+| `neev:tenant` | TenantMiddleware → ResolveTeamMiddleware → BindContextMiddleware |
 
 ### Middleware Aliases
+
+These can be applied individually to specific routes.
 
 | Alias | Description |
 |-------|-------------|
 | `neev:active-team` | Blocks access when team is inactive/waitlisted |
 | `neev:tenant-member` | Ensures user is a member of the current tenant |
-| `neev:resolve-team` | Resolves team from route parameter |
+| `neev:resolve-team` | Resolves team from route parameter (slug or ID) |
 | `neev:ensure-sso` | Enforces SSO-only access for the current context |
+
+### Usage
+
+```php
+// Apply middleware group
+Route::middleware(['neev:web'])->group(function () {
+    Route::get('/dashboard', [DashboardController::class, 'index']);
+});
+
+// Apply individual aliases after the group
+Route::middleware(['neev:web', 'neev:active-team'])->group(function () {
+    Route::get('/projects', [ProjectController::class, 'index']);
+});
+```
 
 ---
 
 ## Security Features
 
-### Brute Force Protection
+### Rate Limiting
 
 ```php
 // config/neev.php
-'login_soft_attempts' => 5,    // Delays start
-'login_hard_attempts' => 20,   // Lockout
-'login_block_minutes' => 1,    // Lockout duration
+'login_throttle' => [
+    'delay_after' => 3,            // Progressive delays start after 3 attempts
+    'max_delay_seconds' => 300,    // Maximum delay (5 minutes)
+],
 ```
+
+**Behavior**:
+1. Attempts 1-3: Normal speed
+2. Attempts 4+: Exponential backoff delays
+3. After max delay: Account temporarily locked
 
 ### Password Policies
 
@@ -569,21 +660,20 @@ Response:
     'required',
     'confirmed',
     Password::min(8)->max(72)->letters()->mixedCase()->numbers()->symbols(),
-    PasswordHistory::notReused(5),
-    PasswordUserData::notContain(['name', 'email']),
+    PasswordHistory::notReused(5),     // Cannot reuse last 5 passwords
+    PasswordUserData::notContain(['name', 'email']), // No personal data
 ],
-'password_soft_expiry_days' => 30,  // Warning
-'password_hard_expiry_days' => 90,  // Forced change
+'password_expiry_days' => 90,          // Force change after 90 days
 ```
 
 ### Login Tracking
 
 Each login attempt records:
-- Login method (password, passkey, sso, etc.)
-- MFA method used
-- IP address and geolocation
-- Browser, platform, device
-- Success/failure status
+- Login method (password, passkey, sso, oauth, magic_auth)
+- MFA method used (if any)
+- IP address and GeoIP location
+- Browser, platform, device information
+- Success/failure status and suspicious activity flags
 
 ### GeoIP Setup
 
@@ -604,16 +694,39 @@ php artisan neev:download-geoip
 
 ```php
 // config/neev.php
-'team' => true,                    // Team management
-'email_verified' => true,          // Require verification
+'tenant' => false,                 // Multi-tenant isolation (users scoped to tenant)
+'team' => false,                   // Team management
+'support_username' => false,       // Username login support
+'oauth' => [],                     // OAuth providers: ['google', 'github', 'microsoft', 'apple']
+'multi_factor_auth' => ['authenticator', 'email'], // Available MFA methods
 'email_verification_method' => 'link', // 'link' or 'otp'
-'require_company_email' => false,  // Waitlist free emails
-'domain_federation' => true,       // Domain-based joining
-'identity_strategy' => 'shared',   // 'shared' or 'isolated'
-'tenant_isolation' => false,       // Multi-tenancy
-'tenant_auth' => false,            // Per-tenant auth
-'support_username' => false,       // Username login
-'magicauth' => true,               // Magic link login
+'otp_length' => 6,                 // OTP code length (4, 6, or 8)
+```
+
+### Rate Limiting & Security
+
+```php
+// config/neev.php
+'login_throttle' => [
+    'delay_after' => 3,            // Failed attempts before progressive delay
+    'max_delay_seconds' => 300,    // Maximum delay (5 minutes)
+],
+'log_failed_logins' => false,      // Store in cache (true = database)
+'login_history_retention_days' => 30, // Days to retain login records
+```
+
+### Password Policies
+
+```php
+// config/neev.php
+'password_expiry_days' => 90,      // Days until password expires (0 = disabled)
+'password' => [
+    'required',
+    'confirmed',
+    Password::min(8)->max(72)->letters()->mixedCase()->numbers()->symbols(),
+    PasswordHistory::notReused(5), // Cannot reuse last 5 passwords
+    PasswordUserData::notContain(['name', 'email']), // No personal data
+],
 ```
 
 ### URLs
@@ -653,18 +766,38 @@ php artisan neev:download-geoip
 
 ## Console Commands
 
-### Setup
+### Setup & Maintenance
 
 ```bash
-php artisan neev:install              # Interactive setup
+php artisan neev:install              # Interactive setup wizard
 php artisan neev:download-geoip       # Download GeoIP database
-```
-
-### Maintenance
-
-```bash
 php artisan neev:clean-login-attempts # Clean old login records
 php artisan neev:clean-passwords      # Clean password history
+```
+
+### Tenant/Team Management
+
+```bash
+php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com
+php artisan neev:tenant:list --search=acme --json
+php artisan neev:tenant:show acme-corp
+php artisan neev:member:add user@example.com --team=acme-corp --role=editor
+php artisan neev:member:list --team=acme-corp
+```
+
+### Domain Management
+
+```bash
+php artisan neev:domain:add app.acme.com --team=acme-corp --primary
+php artisan neev:domain:verify app.acme.com
+php artisan neev:domain:list --unverified
+```
+
+### Auth Configuration
+
+```bash
+php artisan neev:auth:configure --team=acme-corp --method=sso --sso-provider=entra
+php artisan neev:auth:show --team=acme-corp --reveal
 ```
 
 ### Scheduled Tasks
@@ -687,34 +820,39 @@ protected function schedule(Schedule $schedule)
 
 | Table | Description |
 |-------|-------------|
-| `users` | User accounts |
-| `emails` | Multiple emails per user |
-| `passwords` | Password history |
-| `otps` | One-time passwords |
+| `users` | User accounts with optional `tenant_id` for isolation |
+| `emails` | Multiple emails per user with tenant scoping |
+| `passwords` | Password history for reuse prevention |
+| `otps` | One-time passwords (email verification, MFA) |
 | `passkeys` | WebAuthn credentials |
-| `multi_factor_auths` | MFA configurations |
-| `recovery_codes` | MFA backup codes |
-| `access_tokens` | API and login tokens |
-| `login_attempts` | Login history |
+| `multi_factor_auths` | MFA method configurations |
+| `recovery_codes` | MFA backup codes (hashed) |
+| `access_tokens` | API and login tokens with tracking |
+| `login_attempts` | Login history with GeoIP data |
 
 ### Team Tables
 
 | Table | Description |
 |-------|-------------|
-| `teams` | Teams/organizations |
-| `team_user` | Team-user membership pivot table |
-| `team_invitations` | Pending invitations |
-| `domains` | Email domain federation |
-| `domain_rules` | Domain security rules |
+| `teams` | Teams/organizations with activation status |
+| `memberships` | Team-user relationships (replaces `team_user`) |
+| `team_invitations` | Email-based team invitations |
+| `domains` | Email domain federation and custom domains |
+| `team_auth_settings` | Per-team SSO configuration |
 
-### Tenant Tables
+### Tenant Tables (Multi-Tenancy)
 
 | Table | Description |
 |-------|-------------|
-| `tenants` | Tenant organizations (isolated identity mode) |
-| `domains` | Custom tenant domains and domain federation |
-| `team_auth_settings` | Per-team auth/SSO config |
-| `tenant_auth_settings` | Per-tenant auth/SSO config (isolated mode) |
+| `tenants` | Tenant organizations with hierarchy support |
+| `tenant_auth_settings` | Per-tenant SSO configuration |
+
+### Key Features
+
+- **Tenant isolation**: `tenant_id` foreign keys with global scopes
+- **Performance indexes**: Optimized queries for large datasets
+- **Polymorphic domains**: Support both team and tenant ownership
+- **Encrypted secrets**: SSO credentials stored securely
 
 ---
 
@@ -740,9 +878,11 @@ For comprehensive documentation, see the [docs folder](./docs/):
 
 ## Requirements
 
-- PHP 8.3+
-- Laravel 11.x or 12.x
-- MySQL, PostgreSQL, or SQLite
+- **PHP 8.3+** (uses modern PHP features)
+- **Laravel 11.x or 12.x** (dropped Laravel 10 support)
+- **Database**: MySQL, PostgreSQL, or SQLite
+- **Optional**: Redis/Memcached for distributed rate limiting
+- **Optional**: MaxMind GeoLite2 license for IP geolocation
 
 ---
 

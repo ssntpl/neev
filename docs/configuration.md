@@ -4,7 +4,19 @@ Complete reference for all Neev configuration options in `config/neev.php`.
 
 ---
 
-## Feature Toggles
+## Identity & Tenancy
+
+### Tenant Isolation
+
+```php
+'tenant' => false,
+```
+
+Enable multi-tenant isolation. When enabled:
+- Users are scoped to tenants via `tenant_id`
+- Same email can exist in different tenants
+- Models automatically filtered by tenant
+- Requires tenant resolution middleware
 
 ### Team Management
 
@@ -13,121 +25,14 @@ Complete reference for all Neev configuration options in `config/neev.php`.
 ```
 
 Enable team/organization management. When enabled:
-- Users can create teams
-- Team invitations are available
-- Team switching is enabled
+- Users can create and join teams
+- Team invitations and role management
+- Team switching for multi-team users
 - Requires `teams`, `memberships`, `team_invitations` tables
 
-### Email Verification
+---
 
-```php
-'email_verified' => false,
-```
-
-When enabled:
-- New users must verify their email
-- Unverified users are blocked from the application
-- Verification emails are sent automatically
-
-### Company Email Requirement
-
-```php
-'require_company_email' => false,
-```
-
-When enabled (requires `team` feature):
-- Users with free email providers (Gmail, Yahoo, etc.) are waitlisted
-- Their team is created but inactive
-- Admin must manually activate the team
-
-### Free Email Domains
-
-```php
-'free_email_domains' => [
-    // 'example.com',
-    // 'tempmail.org',
-],
-```
-
-Additional domains to consider as "free" email providers. The default list includes Gmail, Yahoo, Hotmail, Outlook, iCloud, ProtonMail, AOL, and more.
-
-### Domain Federation
-
-```php
-'domain_federation' => false,
-```
-
-When enabled (requires `team` feature):
-- Users with matching email domains can auto-join teams
-- Domain verification via DNS TXT records
-- Domain-based security policies
-
-### Identity Strategy
-
-```php
-'identity_strategy' => 'shared',
-```
-
-| Value | Description |
-|-------|-------------|
-| `'shared'` | Users are global. Same user can belong to multiple teams. Tenant concept is hidden. (Default) |
-| `'isolated'` | Users are scoped inside a tenant. Same email can exist in different tenants. Tenant resolved before authentication. |
-
-See [Architecture](./architecture.md) for the full conceptual model.
-
-### Tenant Isolation
-
-```php
-'tenant_isolation' => false,
-```
-
-When enabled (requires `team` feature):
-- Organizations are isolated by subdomain or custom domain
-- Enables multi-tenant SaaS architecture
-- Requires `domains` table
-
-### Tenant Isolation Options
-
-```php
-'tenant_isolation_options' => [
-    'subdomain_suffix' => env('NEEV_SUBDOMAIN_SUFFIX', null),
-    'allow_custom_domains' => true,
-],
-```
-
-| Option | Description |
-|--------|-------------|
-| `subdomain_suffix` | Base domain for subdomains (e.g., `.yourapp.com`) |
-| `allow_custom_domains` | Allow tenants to use custom domains |
-
-### Tenant-Driven Authentication
-
-```php
-'tenant_auth' => false,
-```
-
-When enabled (requires `tenant_isolation`):
-- Each tenant can configure their auth method
-- Supports password or SSO authentication
-- Per-tenant identity provider configuration
-
-### Tenant Auth Options
-
-```php
-'tenant_auth_options' => [
-    'default_method' => 'password',
-    'sso_providers' => ['entra', 'google', 'okta'],
-    'auto_provision' => false,
-    'auto_provision_role' => null,
-],
-```
-
-| Option | Description |
-|--------|-------------|
-| `default_method` | Default auth method (`password` or `sso`) |
-| `sso_providers` | Available SSO providers for tenants |
-| `auto_provision` | Auto-create users on SSO login |
-| `auto_provision_role` | Role for auto-provisioned users |
+## Authentication
 
 ### Username Support
 
@@ -138,22 +43,216 @@ When enabled (requires `tenant_isolation`):
 When enabled:
 - Users can register and login with usernames
 - Username field added to registration
-- Both email and username can be used for login
+- Both email and username accepted for login
 
-### Magic Link Authentication
+### OAuth Providers
 
 ```php
-'magicauth' => true,
+'oauth' => [
+    // 'google',
+    // 'github',
+    // 'microsoft',
+    // 'apple',
+],
 ```
 
-When enabled:
-- Passwordless login via email links
-- "Send login link" option on login page
-- Links expire based on `url_expiry_time`
+Uncomment providers you want to enable. Each requires additional configuration in `config/services.php`.
 
 ---
 
-## Slug Configuration
+## Multi-Factor Authentication
+
+### Available Methods
+
+```php
+'multi_factor_auth' => ['authenticator', 'email'],
+```
+
+| Method | Description |
+|--------|-------------|
+| `authenticator` | TOTP via authenticator apps (Google Authenticator, Authy, 1Password) |
+| `email` | OTP codes sent via email |
+
+### Recovery Codes
+
+```php
+'recovery_codes' => 8,
+```
+
+Number of single-use recovery codes generated per user.
+
+---
+
+## Email Verification
+
+### Verification Method
+
+```php
+'email_verification_method' => 'link',
+```
+
+| Value | Description |
+|-------|-------------|
+| `'link'` | Send clickable verification links |
+| `'otp'` | Send 6-digit verification codes |
+
+### OTP Configuration
+
+```php
+'otp_length' => 6,
+```
+
+OTP code length: 4, 6, or 8 digits.
+
+---
+
+## Rate Limiting
+
+### Progressive Throttling
+
+```php
+'login_throttle' => [
+    'delay_after' => 3,
+    'max_delay_seconds' => 300,
+],
+```
+
+| Option | Description |
+|--------|-------------|
+| `delay_after` | Failed attempts before progressive delays start |
+| `max_delay_seconds` | Maximum delay in seconds (5 minutes recommended) |
+
+**Behavior**:
+1. Attempts 1-3: Normal login speed
+2. Attempts 4+: Exponential backoff delays
+3. After max delay: Account temporarily locked
+
+---
+
+## Login Tracking
+
+### Storage Method
+
+```php
+'log_failed_logins' => false,
+```
+
+- `false`: Store in cache (faster, auto-cleanup)
+- `true`: Store in database (persistent, auditable)
+
+### Retention Period
+
+```php
+'login_history_retention_days' => 30,
+```
+
+Days to keep login attempt records. Use `neev:clean-login-attempts` to remove old records.
+
+---
+
+## Password Policies
+
+### Expiry
+
+```php
+'password_expiry_days' => 90,
+```
+
+Days until password expires. Set to `0` to disable expiry.
+
+> **Note**: This configuration value is available for your application to read, but Neev does not currently ship enforcement middleware. You must implement your own middleware to check password age and redirect users to a password change form.
+
+### Validation Rules
+
+```php
+'password' => [
+    'required',
+    'confirmed',
+    Password::min(8)->max(72)->letters()->mixedCase()->numbers()->symbols(),
+    PasswordHistory::notReused(5),
+    PasswordUserData::notContain(['name', 'email']),
+],
+```
+
+| Rule | Description |
+|------|-------------|
+| `min(8)` | Minimum 8 characters |
+| `max(72)` | Maximum 72 characters (bcrypt limit) |
+| `letters()` | Must contain letters |
+| `mixedCase()` | Must contain uppercase and lowercase |
+| `numbers()` | Must contain numbers |
+| `symbols()` | Must contain special characters |
+| `PasswordHistory::notReused(5)` | Cannot reuse last 5 passwords |
+| `PasswordUserData::notContain()` | Cannot contain user's personal data |
+
+### Username Validation
+
+```php
+'username' => [
+    'required',
+    'string',
+    'min:3',
+    'max:20',
+    'regex:/^(?![._])(?!.*[._]{2})[a-zA-Z0-9._]+(?<![._])$/',
+    'unique:users,username',
+],
+```
+
+**Valid examples:** `john_doe`, `user123`, `jane.smith`
+
+**Invalid examples:** `_user`, `user..name`, `user_`, `user@domain`
+
+---
+
+## Token Expiry
+
+### URL Tokens
+
+```php
+'url_expiry_time' => 60,
+```
+
+Minutes before magic links, password reset links, and verification links expire.
+
+### OTP Codes
+
+```php
+'otp_expiry_time' => 15,
+```
+
+Minutes before one-time passwords expire.
+
+---
+
+## GeoIP Configuration
+
+```php
+'maxmind' => [
+    'db_path' => 'app/geoip/GeoLite2-City.mmdb',
+    'edition' => env('MAXMIND_EDITION', 'GeoLite2-City'),
+    'license_key' => env('MAXMIND_LICENSE_KEY'),
+],
+```
+
+| Option | Description |
+|--------|-------------|
+| `db_path` | Path to GeoIP database (relative to storage) |
+| `edition` | MaxMind database edition |
+| `license_key` | Your MaxMind license key |
+
+---
+
+## Application URLs
+
+```php
+'home' => '/dashboard',
+```
+
+Post-authentication redirect URL for Blade flows.
+
+---
+
+## Team Slugs
 
 ```php
 'slug' => [
@@ -183,226 +282,13 @@ Specify custom model classes that extend Neev's default models.
 
 ---
 
-## Application URLs
-
-```php
-'dashboard_url' => env('NEEV_DASHBOARD_URL', env('APP_URL').'/dashboard'),
-'frontend_url' => env('APP_URL'),
-```
-
-| Option | Description |
-|--------|-------------|
-| `dashboard_url` | Redirect URL after login |
-| `frontend_url` | Base URL for frontend (SPA) |
-
----
-
-## Multi-Factor Authentication
-
-### Available Methods
-
-```php
-'multi_factor_auth' => [
-    'authenticator',  // TOTP via authenticator apps
-    'email',          // OTP via email
-],
-```
-
-### Recovery Codes
-
-```php
-'recovery_codes' => 8,
-```
-
-Number of single-use recovery codes generated per user.
-
----
-
-## OAuth Providers
-
-```php
-'oauth' => [
-    // 'google',
-    // 'github',
-    // 'microsoft',
-    // 'apple',
-],
-```
-
-Uncomment providers you want to enable. Each requires additional configuration in `config/services.php`.
-
----
-
-## Login Tracking
-
-### Failed Attempt Storage
-
-```php
-'record_failed_login_attempts' => false,
-```
-
-- `false`: Store in cache (faster, auto-cleanup)
-- `true`: Store in database (persistent, auditable)
-
-### Login History Retention
-
-```php
-'last_login_attempts_in_days' => 30,
-```
-
-Days to keep login attempt records. Use `neev:clean-login-attempts` to remove old records.
-
----
-
-## GeoIP Configuration
-
-```php
-'geo_ip_db' => 'app/geoip/GeoLite2-City.mmdb',
-'edition' => env('MAXMIND_EDITION', 'GeoLite2-City'),
-'maxmind_license_key' => env('MAXMIND_LICENSE_KEY'),
-```
-
-| Option | Description |
-|--------|-------------|
-| `geo_ip_db` | Path to GeoIP database (relative to storage) |
-| `edition` | MaxMind database edition |
-| `maxmind_license_key` | Your MaxMind license key |
-
----
-
-## Username Validation
-
-```php
-'username' => [
-    'required',
-    'string',
-    'min:3',
-    'max:20',
-    'regex:/^(?![._])(?!.*[._]{2})[a-zA-Z0-9._]+(?<![._])$/',
-    'unique:users,username',
-],
-```
-
-| Rule | Description |
-|------|-------------|
-| `min:3` | Minimum 3 characters |
-| `max:20` | Maximum 20 characters |
-| `regex` | Alphanumeric with dots/underscores, no consecutive/leading/trailing special chars |
-
-**Valid examples:** `john_doe`, `user123`, `jane.smith`
-
-**Invalid examples:** `_user`, `user..name`, `user_`, `user@domain`
-
----
-
-## Password Validation
-
-```php
-'password' => [
-    'required',
-    'confirmed',
-    Password::min(8)
-        ->max(72)
-        ->letters()
-        ->mixedCase()
-        ->numbers()
-        ->symbols(),
-    PasswordHistory::notReused(5),
-    PasswordUserData::notContain(['name', 'email']),
-],
-```
-
-| Rule | Description |
-|------|-------------|
-| `min(8)` | Minimum 8 characters |
-| `max(72)` | Maximum 72 characters (bcrypt limit) |
-| `letters()` | Must contain letters |
-| `mixedCase()` | Must contain uppercase and lowercase |
-| `numbers()` | Must contain numbers |
-| `symbols()` | Must contain special characters |
-| `PasswordHistory::notReused(5)` | Cannot reuse last 5 passwords |
-| `PasswordUserData::notContain()` | Cannot contain user's personal data |
-
----
-
-## Rate Limiting
-
-### Soft Limit (Progressive Delay)
-
-```php
-'login_soft_attempts' => 5,
-```
-
-Failed attempts before introducing delays between attempts.
-
-### Hard Limit (Account Lockout)
-
-```php
-'login_hard_attempts' => 20,
-```
-
-Failed attempts before completely blocking login.
-
-### Lockout Duration
-
-```php
-'login_block_minutes' => 15,
-```
-
-Minutes to block login after reaching hard limit. Recommended: 15 or higher for production.
-
----
-
-## Password Expiry
-
-### Soft Expiry (Warning)
-
-```php
-'password_soft_expiry_days' => 30,
-```
-
-Days before hard expiry when warnings start.
-
-### Hard Expiry (Forced Change)
-
-```php
-'password_hard_expiry_days' => 90,
-```
-
-Days until password must be changed. Set to `0` to disable.
-
-> **Note:** These configuration values are available for your application to read, but Neev does not currently ship enforcement middleware. You must implement your own middleware to check password age and redirect users to a password change form. See the [Security Guide](./security.md#password-expiry) for a recommended pattern.
-
----
-
-## Token Expiry
-
-### URL Token Expiry
-
-```php
-'url_expiry_time' => 60,
-```
-
-Minutes before magic links, password reset links, and verification links expire.
-
-### OTP Expiry
-
-```php
-'otp_expiry_time' => 15,
-```
-
-Minutes before one-time passwords expire.
-
----
-
-## OTP Range
-
-```php
-'otp_min' => 100000,
-'otp_max' => 999999,
-```
-
-Range for 6-digit OTP codes.
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `NEEV_DASHBOARD_URL` | Post-login redirect URL | `${APP_URL}/dashboard` |
+| `MAXMIND_LICENSE_KEY` | MaxMind API key | - |
+| `MAXMIND_EDITION` | GeoIP database edition | `GeoLite2-City` |
 
 ---
 
@@ -416,61 +302,55 @@ use Ssntpl\Neev\Rules\PasswordHistory;
 use Ssntpl\Neev\Rules\PasswordUserData;
 
 return [
-    // Feature Toggles
+    // Identity
+    'tenant' => false,
     'team' => true,
-    'email_verified' => true,
-    'require_company_email' => false,
-    'free_email_domains' => [],
-    'domain_federation' => true,
-    'identity_strategy' => 'shared',   // 'shared' or 'isolated'
-    'tenant_isolation' => false,
-    'tenant_isolation_options' => [
-        'subdomain_suffix' => env('NEEV_SUBDOMAIN_SUFFIX', null),
-        'allow_custom_domains' => true,
-    ],
-    'tenant_auth' => false,
-    'tenant_auth_options' => [
-        'default_method' => 'password',
-        'sso_providers' => ['entra', 'google', 'okta'],
-        'auto_provision' => false,
-        'auto_provision_role' => null,
-    ],
-    'slug' => [
-        'min_length' => 2,
-        'max_length' => 63,
-        'reserved' => ['www', 'api', 'admin', 'app'],
-    ],
+
+    // Authentication
     'support_username' => false,
-    'magicauth' => true,
+    'oauth' => ['google', 'github'],
 
-    // Models
-    'team_model' => Ssntpl\Neev\Models\Team::class,
-    'user_model' => Ssntpl\Neev\Models\User::class,
-
-    // URLs
-    'dashboard_url' => env('NEEV_DASHBOARD_URL', env('APP_URL').'/dashboard'),
-    'frontend_url' => env('APP_URL'),
-
-    // MFA
+    // Multi-Factor Authentication
     'multi_factor_auth' => ['authenticator', 'email'],
     'recovery_codes' => 8,
 
-    // OAuth
-    'oauth' => [
-        'google',
-        'github',
+    // Verification
+    'email_verification_method' => 'link',
+    'otp_length' => 6,
+
+    // Expiry
+    'url_expiry_time' => 60,
+    'otp_expiry_time' => 15,
+    'password_expiry_days' => 90,
+
+    // Rate Limiting
+    'login_throttle' => [
+        'delay_after' => 3,
+        'max_delay_seconds' => 300,
     ],
 
     // Login Tracking
-    'record_failed_login_attempts' => true,
-    'last_login_attempts_in_days' => 30,
+    'log_failed_logins' => true,
+    'login_history_retention_days' => 30,
 
     // GeoIP
-    'geo_ip_db' => 'app/geoip/GeoLite2-City.mmdb',
-    'edition' => env('MAXMIND_EDITION', 'GeoLite2-City'),
-    'maxmind_license_key' => env('MAXMIND_LICENSE_KEY'),
+    'maxmind' => [
+        'db_path' => 'app/geoip/GeoLite2-City.mmdb',
+        'edition' => env('MAXMIND_EDITION', 'GeoLite2-City'),
+        'license_key' => env('MAXMIND_LICENSE_KEY'),
+    ],
+
+    // URLs
+    'home' => '/dashboard',
 
     // Validation
+    'password' => [
+        'required',
+        'confirmed',
+        Password::min(8)->max(72)->letters()->mixedCase()->numbers()->symbols(),
+        PasswordHistory::notReused(5),
+        PasswordUserData::notContain(['name', 'email']),
+    ],
     'username' => [
         'required',
         'string',
@@ -479,43 +359,20 @@ return [
         'regex:/^(?![._])(?!.*[._]{2})[a-zA-Z0-9._]+(?<![._])$/',
         'unique:users,username',
     ],
-    'password' => [
-        'required',
-        'confirmed',
-        Password::min(8)->max(72)->letters()->mixedCase()->numbers()->symbols(),
-        PasswordHistory::notReused(5),
-        PasswordUserData::notContain(['name', 'email']),
+
+    // Team Slugs
+    'slug' => [
+        'min_length' => 2,
+        'max_length' => 63,
+        'reserved' => ['www', 'api', 'admin', 'app'],
     ],
 
-    // Rate Limiting
-    'login_soft_attempts' => 5,
-    'login_hard_attempts' => 20,
-    'login_block_minutes' => 15,
-
-    // Password Expiry
-    'password_soft_expiry_days' => 30,
-    'password_hard_expiry_days' => 90,
-
-    // Token Expiry
-    'url_expiry_time' => 60,
-    'otp_expiry_time' => 15,
-
-    // OTP
-    'otp_min' => 100000,
-    'otp_max' => 999999,
+    // Models
+    'tenant_model' => Ssntpl\Neev\Models\Tenant::class,
+    'team_model' => Ssntpl\Neev\Models\Team::class,
+    'user_model' => Ssntpl\Neev\Models\User::class,
 ];
 ```
-
----
-
-## Environment Variables
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NEEV_DASHBOARD_URL` | Post-login redirect URL | `${APP_URL}/dashboard` |
-| `NEEV_SUBDOMAIN_SUFFIX` | Subdomain base for tenants | `null` |
-| `MAXMIND_LICENSE_KEY` | MaxMind API key | - |
-| `MAXMIND_EDITION` | GeoIP database edition | `GeoLite2-City` |
 
 ---
 

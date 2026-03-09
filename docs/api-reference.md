@@ -394,6 +394,62 @@ Authorization: Bearer {token}
 
 ---
 
+### Get MFA Methods
+
+```http
+GET /neev/mfa
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Response:**
+
+```json
+{
+  "status": "Success",
+  "data": {
+    "available_methods": ["authenticator", "email"],
+    "enabled_methods": ["authenticator"],
+    "preferred_method": "authenticator"
+  }
+}
+```
+
+---
+
+### Set Preferred MFA Method
+
+```http
+PUT /neev/mfa/preferred
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Request Body:**
+
+```json
+{
+    "auth_method": "email"
+}
+```
+
+**Response:**
+
+```json
+{
+    "status": "Success",
+    "message": "Preferred MFA method updated."
+}
+```
+
+---
+
 ### Verify MFA OTP
 
 Complete MFA verification after login.
