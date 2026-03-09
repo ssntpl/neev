@@ -127,7 +127,7 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
         $member = User::factory()->create();
-        $team->allUsers()->attach($member, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($member, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/teams/inviteUser', [
@@ -154,7 +154,6 @@ class MembershipTest extends TestCase
         // Owner invites member (attaches with joined = false)
         $team->allUsers()->attach($member, [
             'joined' => false,
-            'role' => 'member',
             'action' => 'request_to_user',
         ]);
 
@@ -182,7 +181,6 @@ class MembershipTest extends TestCase
 
         $team->allUsers()->attach($member, [
             'joined' => false,
-            'role' => 'member',
             'action' => 'request_to_user',
         ]);
 
@@ -212,7 +210,7 @@ class MembershipTest extends TestCase
         $member = User::factory()->create();
         $memberToken = $member->createLoginToken(60)->plainTextToken;
 
-        $team->allUsers()->attach($member, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($member, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $memberToken)
             ->putJson('/neev/teams/leave', [
@@ -230,7 +228,7 @@ class MembershipTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $team->allUsers()->attach($owner, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($owner, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/teams/leave', [
@@ -287,7 +285,7 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id, 'is_public' => true]);
 
         // Already a joined member
-        $team->allUsers()->attach($requester, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($requester, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/teams/request', [
@@ -312,7 +310,6 @@ class MembershipTest extends TestCase
         // Simulate a pending join request
         $team->allUsers()->attach($requester, [
             'joined' => false,
-            'role' => '',
             'action' => 'request_from_user',
         ]);
 
@@ -343,7 +340,6 @@ class MembershipTest extends TestCase
 
         $team->allUsers()->attach($requester, [
             'joined' => false,
-            'role' => '',
             'action' => 'request_from_user',
         ]);
 
@@ -465,7 +461,6 @@ class MembershipTest extends TestCase
         $requester = User::factory()->create();
         $team->allUsers()->attach($requester, [
             'joined' => false,
-            'role' => '',
             'action' => 'request_from_user',
         ]);
 
@@ -495,7 +490,6 @@ class MembershipTest extends TestCase
 
         $team->allUsers()->attach($member, [
             'joined' => false,
-            'role' => 'editor',
             'action' => 'request_to_user',
         ]);
 
@@ -527,7 +521,6 @@ class MembershipTest extends TestCase
         $requester = User::factory()->create();
         $team->allUsers()->attach($requester, [
             'joined' => false,
-            'role' => '',
             'action' => 'request_from_user',
         ]);
 
@@ -572,7 +565,7 @@ class MembershipTest extends TestCase
         $memberEmail = $member->email;
         $memberEmail->email = 'employee@acme.com';
         $memberEmail->save();
-        $team->allUsers()->attach($member, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($member, ['joined' => true]);
 
         // Owner triggers leave for the member
         $response = $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
@@ -607,7 +600,7 @@ class MembershipTest extends TestCase
         $memberEmail = $member->email;
         $memberEmail->email = 'inactive@acme.com';
         $memberEmail->save();
-        $team->allUsers()->attach($member, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($member, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
             ->putJson('/neev/teams/leave', [
@@ -696,7 +689,6 @@ class MembershipTest extends TestCase
         // Add member as invited (not joined)
         $team->allUsers()->attach($member, [
             'joined' => false,
-            'role' => '',
             'action' => 'request_to_user',
         ]);
 

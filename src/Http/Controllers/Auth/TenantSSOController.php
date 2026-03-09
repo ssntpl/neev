@@ -8,7 +8,6 @@ use Illuminate\Support\Facades\Log;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Services\AuthService;
-use Ssntpl\Neev\Services\ContextManager;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Services\TenantSSOManager;
@@ -184,11 +183,10 @@ class TenantSSOController extends Controller
             // Find or create the user (global identity)
             $user = $this->ssoManager->findOrCreateUser($tenant, $ssoUser);
 
-            // Ensure user has membership in the team
-            $team = $this->tenantResolver->current()
-                ?? app(ContextManager::class)->currentTeam();
-            if ($team) {
-                $this->ssoManager->ensureMembership($user, $team);
+            // Ensure user has membership in the resolved context (Team or Tenant)
+            if ($tenant instanceof \Ssntpl\Neev\Contracts\HasMembersInterface
+                && $tenant instanceof \Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface) {
+                $this->ssoManager->ensureMembership($user, $tenant);
             }
 
             // Check if we need to redirect to a SPA (redirect_uri was stored)

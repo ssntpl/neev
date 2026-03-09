@@ -79,6 +79,12 @@ parameters:
 			path: src/Commands/Member/ListMembersCommand.php
 
 		-
+			message: '#^Using nullsafe property access "\?\-\>name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Commands/Member/ListMembersCommand.php
+
+		-
 			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$name\.$#'
 			identifier: property.notFound
 			count: 3
@@ -518,12 +524,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\LoginAttempt\>\|Ssntpl\\Neev\\Models\\LoginAttempt\:\:\$multi_factor_method\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Http/Controllers/Auth/UserAuthController.php
-
-		-
-			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$default_role\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Http/Controllers/Auth/UserAuthController.php

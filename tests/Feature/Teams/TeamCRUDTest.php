@@ -48,8 +48,8 @@ class TeamCRUDTest extends TestCase
         $teamB = TeamFactory::new()->create(['user_id' => $user->id]);
 
         // Attach user as joined member
-        $teamA->allUsers()->attach($user, ['joined' => true, 'role' => '']);
-        $teamB->allUsers()->attach($user, ['joined' => true, 'role' => '']);
+        $teamA->allUsers()->attach($user, ['joined' => true]);
+        $teamB->allUsers()->attach($user, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/teams');
@@ -79,7 +79,7 @@ class TeamCRUDTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($user, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/teams/' . $team->id);
@@ -313,8 +313,8 @@ class TeamCRUDTest extends TestCase
         $member = User::factory()->create();
 
         // Add member to team
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
-        $team->allUsers()->attach($member, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($user, ['joined' => true]);
+        $team->allUsers()->attach($member, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/changeTeamOwner', [
@@ -334,7 +334,7 @@ class TeamCRUDTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($user, ['joined' => true]);
 
         $nonMember = User::factory()->create();
 
@@ -356,8 +356,8 @@ class TeamCRUDTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $otherUser->id]);
 
         // Add both users to team
-        $team->allUsers()->attach($otherUser, ['joined' => true, 'role' => '']);
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($otherUser, ['joined' => true]);
+        $team->allUsers()->attach($user, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/changeTeamOwner', [

@@ -15,6 +15,8 @@ return new class () extends Migration {
             $table->string('name');
             $table->string('slug')->unique();
             $table->foreignId('managed_by_tenant_id')->nullable()->constrained('tenants')->nullOnDelete();
+            $table->timestamp('activated_at')->nullable();
+            $table->string('inactive_reason')->nullable();
             $table->timestamps();
         });
     }

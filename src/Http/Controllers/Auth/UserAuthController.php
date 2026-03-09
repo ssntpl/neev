@@ -145,7 +145,7 @@ class UserAuthController extends Controller
                     $email->update(['verified_at' => now()]);
 
                     $team = $invitation->team;
-                    $team->users()->attach($user, ['role' => $invitation->role ?? '', 'joined' => true]);
+                    $team->users()->attach($user, ['joined' => true]);
                     if ($invitation?->role) {
                         $user->assignRole($invitation->role, $team);
                     }
@@ -155,10 +155,7 @@ class UserAuthController extends Controller
 
                     if ($shouldCreateTeam) {
                         $team = $this->createUserTeam($user, $request->email);
-                        $team->users()->attach($user, ['joined' => true, 'role' => $team->default_role ?? '']);
-                        if ($team->default_role) {
-                            $user->assignRole($team->default_role ?? '', $team);
-                        }
+                        $team->addMember($user);
                     }
                 }
             }

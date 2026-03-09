@@ -42,8 +42,8 @@ class RoleTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
         $member = User::factory()->create();
 
-        $team->allUsers()->attach($user, ['joined' => true, 'role' => 'admin']);
-        $team->allUsers()->attach($member, ['joined' => true, 'role' => 'member']);
+        $team->allUsers()->attach($user, ['joined' => true]);
+        $team->allUsers()->attach($member, ['joined' => true]);
 
         // Create the role
         \Ssntpl\LaravelAcl\Models\Role::create([

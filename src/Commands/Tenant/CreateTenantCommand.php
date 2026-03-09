@@ -73,7 +73,7 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
             }
 
             $team = Team::getClass()::create($teamData);
-            $team->allUsers()->attach($owner->id, ['role' => 'owner', 'joined' => true]);
+            $team->allUsers()->attach($owner->id, ['joined' => true]);
 
             $tenant->update(['platform_team_id' => $team->id]);
 
@@ -112,7 +112,7 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
         $team = Team::getClass()::create($attributes);
 
         if (isset($owner)) {
-            $team->allUsers()->attach($owner->id, ['role' => 'owner', 'joined' => true]);
+            $team->allUsers()->attach($owner->id, ['joined' => true]);
             $this->info("Team created: {$team->name} (slug: {$team->slug}, ID: {$team->id})");
             $this->info("Owner: {$owner->name} (ID: {$owner->id})");
         } else {

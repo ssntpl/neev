@@ -35,14 +35,11 @@ class AddMemberCommand extends Command implements PromptsForMissingInput
             return self::FAILURE;
         }
 
-        $pivotData = ['joined' => true];
-        if ($role = $this->option('role')) {
-            $pivotData['role'] = $role;
-        }
+        $role = $this->option('role');
 
-        $team->allUsers()->attach($user->id, $pivotData);
+        $team->addMember($user, $role);
 
-        $roleSuffix = isset($pivotData['role']) ? " with role '{$pivotData['role']}'" : '';
+        $roleSuffix = $role ? " with role '{$role}'" : '';
         $this->info("Added {$user->name} ({$this->argument('email')}) to {$team->name}{$roleSuffix}.");
 
         return self::SUCCESS;

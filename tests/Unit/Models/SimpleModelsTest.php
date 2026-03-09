@@ -489,7 +489,6 @@ class SimpleModelsTest extends TestCase
         $team = TeamFactory::new()->create();
 
         $team->allUsers()->attach($user->id, [
-            'role' => 'member',
             'joined' => true,
             'action' => 'request_to_user',
         ]);
@@ -508,7 +507,6 @@ class SimpleModelsTest extends TestCase
         $team = TeamFactory::new()->create();
 
         $team->allUsers()->attach($user->id, [
-            'role' => 'member',
             'joined' => false,
             'action' => 'request_to_user',
         ]);

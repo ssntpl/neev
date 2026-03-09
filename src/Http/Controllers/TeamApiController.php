@@ -125,10 +125,7 @@ class TeamApiController extends Controller
                 'is_public' => (bool) $request->public,
             ]);
 
-            $team->users()->syncWithoutDetaching([$user->id => ['joined' => true, 'role' => $team->default_role ?? '']]);
-            if ($team->default_role) {
-                $user->assignRole($team->default_role ?? '', $team);
-            }
+            $team->addMember($user);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
@@ -294,7 +291,7 @@ class TeamApiController extends Controller
                     'message' => 'User already added.',
                 ], 400);
             } elseif (!$team->allUsers->contains($member)) {
-                $team->users()->attach($member, ['role' => $request->role]);
+                $team->users()->attach($member);
                 if ($request->role) {
                     $member->assignRole($request->role, $team);
                 }
@@ -344,7 +341,7 @@ class TeamApiController extends Controller
                         return response()->json(['status' => 'Failed', 'message' => 'Already Added.'], 400);
                     }
                     if (!$team->allUsers->contains($user)) {
-                        $team->allUsers()->attach($user, ['joined' => true, 'role' => $invitation->role]);
+                        $team->allUsers()->attach($user, ['joined' => true]);
                         if ($invitation?->role) {
                             $user->assignRole($invitation->role, $team);
                         }
@@ -513,7 +510,6 @@ class TeamApiController extends Controller
                     ], 400);
                 }
                 $membership->joined = true;
-                $membership->role = $request->role;
                 $membership->save();
                 if ($request->role) {
                     $member->assignRole($request->role, $team);

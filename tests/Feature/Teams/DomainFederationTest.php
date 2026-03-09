@@ -204,7 +204,7 @@ class DomainFederationTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
         // Attach owner to team so they pass the membership check
-        $team->allUsers()->attach($owner, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($owner, ['joined' => true]);
 
         $domainA = DomainFactory::new()->verified()->primary()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
         $domainB = DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
@@ -225,7 +225,7 @@ class DomainFederationTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $team->allUsers()->attach($owner, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($owner, ['joined' => true]);
 
         $domain = DomainFactory::new()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
@@ -352,7 +352,7 @@ class DomainFederationTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $team->allUsers()->attach($owner, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($owner, ['joined' => true]);
 
         $domain = DomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
@@ -405,7 +405,7 @@ class DomainFederationTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $team->allUsers()->attach($owner, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($owner, ['joined' => true]);
 
         $domain = DomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
@@ -415,7 +415,7 @@ class DomainFederationTest extends TestCase
 
         // Add a member with an email outside the domain
         $outsideMember = User::factory()->create();
-        $team->allUsers()->attach($outsideMember, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($outsideMember, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/domains?team_id=' . $team->id);
@@ -456,7 +456,7 @@ class DomainFederationTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $team->allUsers()->attach($owner, ['joined' => true, 'role' => '']);
+        $team->allUsers()->attach($owner, ['joined' => true]);
 
         $domain = DomainFactory::new()->verified()->primary()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
 
