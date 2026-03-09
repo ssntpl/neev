@@ -49,18 +49,10 @@ class UserAuthApiController extends Controller
 
             $user = User::model()->find($user->id);
 
-            $email = $user?->emails()->create([
+            $email = $user->emails()->create([
                 'email' => $request->email,
                 'is_primary' => true
             ]);
-
-            if (!$user || !$email) {
-                DB::rollBack();
-                return response()->json([
-                    'status' => 'Failed',
-                    'message' => 'Unable to create user email.',
-                ], 500);
-            }
 
             $user->passwords()->create([
                 'password' => Hash::make($request->password),
@@ -69,7 +61,7 @@ class UserAuthApiController extends Controller
             if (config('neev.team')) {
                 if ($request->invitation_id) {
                     $invitation = TeamInvitation::find($request->invitation_id);
-                    if (!$invitation || !hash_equals(sha1($invitation?->email), $request->hash)) {
+                    if (!$invitation || !hash_equals(sha1($invitation->email), $request->hash)) {
                         DB::rollBack();
                         return response()->json([
                             'status' => 'Failed',
@@ -81,8 +73,8 @@ class UserAuthApiController extends Controller
                     $email->save();
 
                     $team = $invitation->team;
-                    $team?->users()->attach($user, ['joined' => true]);
-                    if ($invitation?->role) {
+                    $team->users()->attach($user, ['joined' => true]);
+                    if ($invitation->role) {
                         $user->assignRole($invitation->role, $team);
                     }
                     $invitation->delete();
@@ -146,20 +138,20 @@ class UserAuthApiController extends Controller
 
         $email = Email::findByEmail($request->email);
         $user = $email?->user;
-        if (!$user || !$email) {
+        if (!$user) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Credentials are wrong.',
             ], 401);
         }
 
-        $mfaMethod = $user?->preferredMultiFactorAuth?->method ?? $user?->multiFactorAuths()->first()?->method;
-        if (!Hash::check($request->password, (string)$user?->password?->password)) {
+        $mfaMethod = $user->preferredMultiFactorAuth->method ?? $user->multiFactorAuths()->first()?->method;
+        if (!Hash::check($request->password, (string)$user->password?->password)) {
             if (config('neev.log_failed_logins')) {
                 $clientDetails = LoginAttempt::getClientDetails($request);
-                $user?->loginAttempts()->create([
+                $user->loginAttempts()->create([
                     'method' => LoginAttempt::Password,
-                    'location' => $geoIP?->getLocation($request->ip()),
+                    'location' => $geoIP->getLocation($request->ip()),
                     'multi_factor_method' => $mfaMethod ?? null,
                     'platform' => $clientDetails['platform'] ?? '',
                     'browser' => $clientDetails['browser'] ?? '',
@@ -186,7 +178,7 @@ class UserAuthApiController extends Controller
 
     public function getToken(Request $request, GeoIP $geoIP, $user, $method, $mfa = null, $attempt = null)
     {
-        if (!$user?->active) {
+        if (!$user->active) {
             throw ValidationException::withMessages([
                 'email' => 'Your account is deactivated, please contact your admin to activate your account.',
             ]);
@@ -200,7 +192,7 @@ class UserAuthApiController extends Controller
                 $clientDetails = LoginAttempt::getClientDetails($request);
                 $attempt = $user->loginAttempts()->create([
                     'method' => $method,
-                    'location' => $geoIP?->getLocation($request->ip()),
+                    'location' => $geoIP->getLocation($request->ip()),
                     'multi_factor_method' => $mfa,
                     'platform' => $clientDetails['platform'] ?? '',
                     'browser' => $clientDetails['browser'] ?? '',
@@ -259,7 +251,7 @@ class UserAuthApiController extends Controller
     public function logout(Request $request)
     {
         $accessToken = AccessToken::find($request->attributes->get('token_id'));
-        if (!$accessToken || $accessToken?->user?->id !== $request->user()?->id) {
+        if (!$accessToken || $accessToken->user?->id !== $request->user()?->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Invalid Token.',
@@ -308,14 +300,14 @@ class UserAuthApiController extends Controller
     public function emailVerify(Request $request)
     {
         $email = Email::find($request->id);
-        if (!$request->hasValidSignature() || !$email || $email?->user?->id != $request->user()?->id) {
+        if (!$request->hasValidSignature() || !$email || $email->user?->id != $request->user()?->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Invalid or expired verification link.'
             ], 403);
         }
 
-        if ($email?->verified_at) {
+        if ($email->verified_at) {
             return response()->json([
                 'status' => 'Success',
                 'message' => 'Email verification already done.'
@@ -488,7 +480,7 @@ class UserAuthApiController extends Controller
         return response()->json([
             'status' => 'Success',
             'token' => $token,
-            'email_verified' => $email->user?->hasVerifiedEmail($email->email),
+            'email_verified' => $email->user->hasVerifiedEmail($email->email),
         ]);
     }
 
@@ -512,7 +504,7 @@ class UserAuthApiController extends Controller
 
         $accessToken = AccessToken::find($request->attributes->get('token_id'));
 
-        $attempt = $accessToken?->attempt;
+        $attempt = $accessToken->attempt;
 
         if (!$accessToken || !$user->verifyMFAOTP($request->auth_method, $request->otp)) {
             return response()->json([

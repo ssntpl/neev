@@ -125,9 +125,6 @@ class OAuthApiController extends Controller
 
     private function register($oauthUser)
     {
-        if (!$oauthUser) {
-            return null;
-        }
         DB::beginTransaction();
         $userData = ['name' => $oauthUser->name];
 
@@ -141,11 +138,6 @@ class OAuthApiController extends Controller
         }
 
         $user = User::model()->create($userData);
-
-        if (!$user) {
-            DB::rollBack();
-            return null;
-        }
 
         try {
             $user->emails()->create([

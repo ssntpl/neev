@@ -30,7 +30,7 @@ class TeamController extends Controller
     {
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
-        if (!$user?->allTeams?->find($team->id)) {
+        if (!$user->allTeams->find($team->id)) {
             return back()->withErrors(['message' => 'You do not have the required permissions to view members.']);
         }
         return view('neev::team.members', [
@@ -44,7 +44,7 @@ class TeamController extends Controller
     {
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
-        if (!$user?->allTeams?->find($team->id) || $team->user_id !== $user?->id) {
+        if (!$user->allTeams->find($team->id) || $team->user_id !== $user->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to view domain federation.']);
         }
 
@@ -54,7 +54,7 @@ class TeamController extends Controller
             $count = 0;
             if ($domain->enforce && $domain->verified_at) {
                 foreach ($team->users as $member) {
-                    if (!str_ends_with(strtolower($member->email?->email ?? ''), '@' . strtolower($domain->domain))) {
+                    if (!str_ends_with(strtolower($member->email->email), '@' . strtolower($domain->domain))) {
                         $count++;
                     }
                 }
@@ -74,7 +74,7 @@ class TeamController extends Controller
     {
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
-        if (!$user?->allTeams?->find($team->id)) {
+        if (!$user->allTeams->find($team->id)) {
             return back()->withErrors(['message' => 'You do not have the required permissions to view settings.']);
         }
         return view('neev::team.settings', [
@@ -146,7 +146,7 @@ class TeamController extends Controller
             return back()->withErrors(['message' => 'Failed to delete team.']);
         }
 
-        return redirect(route('teams.profile', $user?->ownedTeams[0]?->id));
+        return redirect(route('teams.profile', $user->ownedTeams[0]->id));
     }
 
     public function inviteMember(Request $request)
@@ -168,10 +168,6 @@ class TeamController extends Controller
                     ['email' => $request->email],
                     ['expires_at' => $expiry]
                 );
-
-                if (!$invitation) {
-                    return back()->withErrors(['message' => 'Failed to create invitation.']);
-                }
 
                 $invitation->role = $request->role;
                 $invitation->save();
@@ -267,7 +263,7 @@ class TeamController extends Controller
                     }
                     if (!$team->allUsers->contains($user)) {
                         $team->allUsers()->attach($user, ['joined' => true]);
-                        if ($invitation?->role) {
+                        if ($invitation->role) {
                             $user->assignRole($invitation->role, $team);
                         }
                     }
@@ -383,7 +379,7 @@ class TeamController extends Controller
     {
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
-        if (!$user || $team->user_id !== $user?->id) {
+        if (!$user || $team->user_id !== $user->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to federate domain.']);
         }
         try {
@@ -407,15 +403,15 @@ class TeamController extends Controller
     {
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
-        if (!$user || $domain?->owner?->user_id !== $user?->id) {
+        if (!$user || $domain->owner?->user_id !== $user->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to update domain.']);
         }
         try {
             if ($request->verify) {
                 $domain_rules = ["mfa"];
                 if ($domain->verify()) {
-                    foreach ($domain_rules ?? [] as $rule) {
-                        $domain?->rules()->create([
+                    foreach ($domain_rules as $rule) {
+                        $domain->rules()->create([
                             'name' => $rule,
                             'value' => false,
                         ]);
@@ -445,7 +441,7 @@ class TeamController extends Controller
     {
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
-        if (!$user || $domain?->owner?->user_id !== $user?->id) {
+        if (!$user || $domain->owner?->user_id !== $user->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to delete domain.']);
         }
         try {
@@ -462,11 +458,11 @@ class TeamController extends Controller
     {
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
-        if (!$user || $domain?->owner?->user_id !== $user?->id) {
+        if (!$user || $domain->owner?->user_id !== $user->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to update domain.']);
         }
         try {
-            foreach ($domain?->rules ?? [] as $rule) {
+            foreach ($domain->rules as $rule) {
                 $rule->value = (bool) $request->{$rule->name};
                 $rule->save();
             }
@@ -483,7 +479,7 @@ class TeamController extends Controller
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$user || !$domain || !$domain?->verified_at || !$domain->owner?->users->contains($user)) {
+        if (!$user || !$domain || !$domain->verified_at || !$domain->owner?->users->contains($user)) {
             return back()->withErrors(['message' => 'Primary domain was not changed.']);
         }
 

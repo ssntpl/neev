@@ -63,14 +63,14 @@ class UserController extends Controller
             ->where('user_id', auth()->id())
             ->orderBy('last_activity', 'desc')
             ->get()
-            ?->map(function ($session) {
+            ->map(function ($session) {
                 $agent = LoginAttempt::getClientDetails(userAgent: $session->user_agent);
 
                 return (object)[
                     'id' => $session->id,
                     'ip_address' => $session->ip_address,
                     'is_current_device' => $session->id === session()->getId(),
-                    'last_active' => Carbon::createFromTimestamp($session->last_activity)?->diffForHumans(),
+                    'last_active' => Carbon::createFromTimestamp($session->last_activity)->diffForHumans(),
                     'agent' => $agent,
                 ];
             });
@@ -152,7 +152,7 @@ class UserController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
 
-        $email = $user?->emails?->find($request->email_id);
+        $email = $user?->emails->find($request->email_id);
         if (!$email) {
             return back()->withErrors(['message' => 'Email does not exist.']);
         }
@@ -170,7 +170,7 @@ class UserController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         $email = $user?->emails?->where('email', $request->email)->first();
-        if (!$user || !$email || !$email?->verified_at) {
+        if (!$user || !$email || !$email->verified_at) {
             return back()->withErrors(['message' => 'Your primary email was not changed.']);
         }
 
@@ -346,7 +346,7 @@ class UserController extends Controller
         if (!$user) {
             return back()->withErrors(['message' => 'User not found.']);
         }
-        $token = $user->accessTokens?->find($request->token_id);
+        $token = $user->accessTokens->find($request->token_id);
         if (!$token) {
             return back()->withErrors(['message' => 'Token was not updated.']);
         }

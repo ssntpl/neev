@@ -48,10 +48,10 @@ class UserAuthController extends Controller
                 return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
             }
             $invitation = TeamInvitation::find($request->id);
-            if (!$invitation || !hash_equals(sha1($invitation?->email), $request->hash)) {
+            if (!$invitation || !hash_equals(sha1($invitation->email), $request->hash)) {
                 return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
             }
-            return view('neev::auth.register', ['id' => $request->id, 'hash' => $request->hash, 'email' => $invitation?->email ?? null]);
+            return view('neev::auth.register', ['id' => $request->id, 'hash' => $request->hash, 'email' => $invitation->email]);
         }
         $input = $request->email;
         $isEmail = filter_var($input, FILTER_VALIDATE_EMAIL);
@@ -87,10 +87,10 @@ class UserAuthController extends Controller
         $signedUrl = URL::temporarySignedRoute(
             'verification.verify',
             now()->addMinutes($expiryMinutes),
-            ['id' => $user->id, 'hash' => sha1($user->email?->email)]
+            ['id' => $user->id, 'hash' => sha1($user->email->email)]
         );
 
-        Mail::to($user->email?->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email', $expiryMinutes));
+        Mail::to($user->email->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email', $expiryMinutes));
         return redirect(route('verification.notice'));
     }
 
@@ -287,11 +287,11 @@ class UserAuthController extends Controller
         }
 
         $email = Email::find($id);
-        if (!$email || !$email?->verified_at) {
+        if (!$email || !$email->verified_at) {
             return redirect(route('login'));
         }
 
-        $this->auth->login($request, $geoIP, $email?->user, LoginAttempt::MagicAuth);
+        $this->auth->login($request, $geoIP, $email->user, LoginAttempt::MagicAuth);
 
         return redirect(config('neev.home'));
     }
@@ -311,7 +311,7 @@ class UserAuthController extends Controller
             $clientDetails = LoginAttempt::getClientDetails($request);
             $attempt = $user->loginAttempts()->create([
                 'method' => LoginAttempt::Password,
-                'location' => $geoIP?->getLocation($request->ip()),
+                'location' => $geoIP->getLocation($request->ip()),
                 'multi_factor_method' => null,
                 'platform' => $clientDetails['platform'] ?? '',
                 'browser' => $clientDetails['browser'] ?? '',
@@ -324,7 +324,7 @@ class UserAuthController extends Controller
 
         if (count($user->multiFactorAuths) > 0) {
             session(['email' => $email->email]);
-            return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth?->method ?? $user->multiFactorAuths()->first()?->method));
+            return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->multiFactorAuths()->first()?->method));
         }
 
         if ($request->redirect && $request->redirect != '/' && str_starts_with($request->redirect, '/')) {
@@ -359,7 +359,7 @@ class UserAuthController extends Controller
 
         $email = Email::findByEmail($request->email);
         $user = $email?->user;
-        if (!$user || !$email || (!$email?->verified_at)) {
+        if (!$user || !$email->verified_at) {
             return back()->withErrors([
                 'message' => __('User not registered or wrong email.'),
             ]);
@@ -383,12 +383,12 @@ class UserAuthController extends Controller
         }
         $user = User::model()->findOrFail($id);
 
-        if (!$user || !$request->hasValidSignature()) {
+        if (!$request->hasValidSignature()) {
             return redirect(route('password.request'))->withErrors(['message' => 'Invalid verification link.']);
         }
 
-        foreach ($user?->emails as $email) {
-            if (!hash_equals(sha1($email->email), $hash) || (!$email?->verified_at)) {
+        foreach ($user->emails as $email) {
+            if (!hash_equals(sha1($email->email), $hash) || (!$email->verified_at)) {
                 continue;
             }
 
@@ -417,7 +417,7 @@ class UserAuthController extends Controller
 
         $email = Email::findByEmail($request->email);
         $user = $email?->user;
-        if (!$user || !$email || (!$email?->verified_at)) {
+        if (!$user || !$email->verified_at) {
             return back()->withErrors(['message' => 'Failed to update password.']);
         }
         $user->passwords()->create([
@@ -438,12 +438,12 @@ class UserAuthController extends Controller
             return redirect(route('login'));
         }
 
-        if ($user->email?->verified_at) {
+        if ($user->email->verified_at) {
             return redirect(config('neev.home'));
         }
 
         return view('neev::auth.verify-email', [
-            'email' => $user->email?->email
+            'email' => $user->email->email
         ]);
     }
 
@@ -457,7 +457,7 @@ class UserAuthController extends Controller
         if (!$user || !$email) {
             return back()->withErrors(['message' => 'User not found.']);
         }
-        if ($email?->verified_at) {
+        if ($email->verified_at) {
             return back()->with('status', __('Email already verified.'));
         }
         $expiryMinutes = config('neev.url_expiry_time', 60);
@@ -475,7 +475,7 @@ class UserAuthController extends Controller
     {
         $user = User::model()->findOrFail($id);
         $loggedInUser = User::model()->find($request->user()?->id);
-        if (!$user || !$loggedInUser || $loggedInUser?->id != $user?->id) {
+        if (!$loggedInUser || $loggedInUser->id != $user->id) {
             return redirect(route('login') . '?redirect=' . urlencode($request->fullUrl()))->withErrors(['message' => __('Please login first to verify your email.')]);
         }
 

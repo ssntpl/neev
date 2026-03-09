@@ -7,12 +7,6 @@ parameters:
 			path: src/Commands/Domain/AddDomainCommand.php
 
 		-
-			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Http\\Client\\Response\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 2
-			path: src/Commands/DownloadGeoLiteDb.php
-
-		-
 			message: '#^Method Ssntpl\\Neev\\Commands\\Member\\AddMemberCommand\:\:promptForMissingArgumentsUsing\(\) should return array\<string, array\{string, string\}\|bool\|\(Closure\(\)\: array\<int\|string\>\)\|int\|string\> but returns array\{email\: Closure\(\)\: string\}\.$#'
 			identifier: return.type
 			count: 1
@@ -67,12 +61,6 @@ parameters:
 			path: src/Commands/Tenant/ShowTenantCommand.php
 
 		-
-			message: '#^Negated boolean expression is always false\.$#'
-			identifier: booleanNot.alwaysFalse
-			count: 1
-			path: src/Http/Controllers/Auth/OAuthApiController.php
-
-		-
 			message: '#^Access to an undefined property Laravel\\Socialite\\Contracts\\User\:\:\$email\.$#'
 			identifier: property.notFound
 			count: 1
@@ -83,24 +71,6 @@ parameters:
 			identifier: method.notFound
 			count: 1
 			path: src/Http/Controllers/Auth/OAuthController.php
-
-		-
-			message: '#^Negated boolean expression is always false\.$#'
-			identifier: booleanNot.alwaysFalse
-			count: 2
-			path: src/Http/Controllers/Auth/OAuthController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\Email\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 2
-			path: src/Http/Controllers/Auth/OAuthController.php
-
-		-
-			message: '#^Negated boolean expression is always false\.$#'
-			identifier: booleanNot.alwaysFalse
-			count: 1
-			path: src/Http/Controllers/Auth/PasskeyController.php
 
 		-
 			message: '#^Offset ''counter'' on string on left side of \?\? does not exist\.$#'
@@ -121,38 +91,8 @@ parameters:
 			path: src/Http/Controllers/Auth/PasskeyController.php
 
 		-
-			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Services\\GeoIP\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 3
-			path: src/Http/Controllers/Auth/PasskeyController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Passkey\>\|Ssntpl\\Neev\\Models\\Passkey\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 3
-			path: src/Http/Controllers/Auth/PasskeyController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\User\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 3
-			path: src/Http/Controllers/Auth/PasskeyController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Webauthn\\AuthenticatorSelectionCriteria\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 2
-			path: src/Http/Controllers/Auth/PasskeyController.php
-
-		-
 			message: '#^Call to an undefined method Laravel\\Socialite\\Contracts\\Provider\:\:with\(\)\.$#'
 			identifier: method.notFound
-			count: 1
-			path: src/Http/Controllers/Auth/TenantSSOController.php
-
-		-
-			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Services\\GeoIP\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
 			count: 1
 			path: src/Http/Controllers/Auth/TenantSSOController.php
 
@@ -169,81 +109,9 @@ parameters:
 			path: src/Http/Controllers/Auth/UserAuthApiController.php
 
 		-
-			message: '#^Negated boolean expression is always false\.$#'
-			identifier: booleanNot.alwaysFalse
-			count: 1
-			path: src/Http/Controllers/Auth/UserAuthApiController.php
-
-		-
-			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Models\\User\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 2
-			path: src/Http/Controllers/Auth/UserAuthApiController.php
-
-		-
-			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Services\\GeoIP\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 2
-			path: src/Http/Controllers/Auth/UserAuthApiController.php
-
-		-
-			message: '#^Using nullsafe property access "\?\-\>method" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/Auth/UserAuthApiController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\AccessToken\>\|Ssntpl\\Neev\\Models\\AccessToken\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/Auth/UserAuthApiController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Email\>\|Ssntpl\\Neev\\Models\\Email\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 2
-			path: src/Http/Controllers/Auth/UserAuthApiController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 2
-			path: src/Http/Controllers/Auth/UserAuthApiController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\User\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/Auth/UserAuthApiController.php
-
-		-
-			message: '#^Expression on left side of \?\? is not nullable\.$#'
-			identifier: nullCoalesce.expr
-			count: 1
-			path: src/Http/Controllers/Auth/UserAuthController.php
-
-		-
-			message: '#^Negated boolean expression is always false\.$#'
-			identifier: booleanNot.alwaysFalse
-			count: 4
-			path: src/Http/Controllers/Auth/UserAuthController.php
-
-		-
 			message: '#^Parameter \#1 \$view of function view expects view\-string\|null, string given\.$#'
 			identifier: argument.type
 			count: 9
-			path: src/Http/Controllers/Auth/UserAuthController.php
-
-		-
-			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Services\\GeoIP\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/Auth/UserAuthController.php
-
-		-
-			message: '#^Using nullsafe property access "\?\-\>method" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
 			path: src/Http/Controllers/Auth/UserAuthController.php
 
 		-
@@ -253,37 +121,19 @@ parameters:
 			path: src/Http/Controllers/Auth/UserAuthController.php
 
 		-
-			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Email\>\|Ssntpl\\Neev\\Models\\Email\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 2
-			path: src/Http/Controllers/Auth/UserAuthController.php
-
-		-
 			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
-			count: 3
-			path: src/Http/Controllers/Auth/UserAuthController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\User\>\|Ssntpl\\Neev\\Models\\User\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
 			count: 2
-			path: src/Http/Controllers/Auth/UserAuthController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\Email\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 4
-			path: src/Http/Controllers/Auth/UserAuthController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\User\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
 			path: src/Http/Controllers/Auth/UserAuthController.php
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$domain\.$#'
+			identifier: property.notFound
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Http/Controllers/TeamApiController.php
@@ -325,18 +175,6 @@ parameters:
 			path: src/Http/Controllers/TeamApiController.php
 
 		-
-			message: '#^Expression on left side of \?\? is not nullable\.$#'
-			identifier: nullCoalesce.expr
-			count: 1
-			path: src/Http/Controllers/TeamApiController.php
-
-		-
-			message: '#^Negated boolean expression is always false\.$#'
-			identifier: booleanNot.alwaysFalse
-			count: 1
-			path: src/Http/Controllers/TeamApiController.php
-
-		-
 			message: '#^Property Ssntpl\\Neev\\Models\\DomainRule\:\:\$value \(string\|null\) does not accept bool\.$#'
 			identifier: assign.propertyType
 			count: 1
@@ -345,24 +183,6 @@ parameters:
 		-
 			message: '#^Relation ''team'' is not found in Ssntpl\\Neev\\Models\\TeamInvitation model\.$#'
 			identifier: larastan.relationExistence
-			count: 1
-			path: src/Http/Controllers/TeamApiController.php
-
-		-
-			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/TeamApiController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 4
-			path: src/Http/Controllers/TeamApiController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
 			count: 1
 			path: src/Http/Controllers/TeamApiController.php
 
@@ -379,13 +199,13 @@ parameters:
 			path: src/Http/Controllers/TeamApiController.php
 
 		-
-			message: '#^Variable \$domain_rules on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.variable
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$domain\.$#'
+			identifier: property.notFound
 			count: 1
-			path: src/Http/Controllers/TeamApiController.php
+			path: src/Http/Controllers/TeamController.php
 
 		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$domain\.$#'
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$email\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Http/Controllers/TeamController.php
@@ -427,18 +247,6 @@ parameters:
 			path: src/Http/Controllers/TeamController.php
 
 		-
-			message: '#^Expression on left side of \?\? is not nullable\.$#'
-			identifier: nullCoalesce.expr
-			count: 1
-			path: src/Http/Controllers/TeamController.php
-
-		-
-			message: '#^Negated boolean expression is always false\.$#'
-			identifier: booleanNot.alwaysFalse
-			count: 1
-			path: src/Http/Controllers/TeamController.php
-
-		-
 			message: '#^Parameter \#1 \$view of function view expects view\-string\|null, string given\.$#'
 			identifier: argument.type
 			count: 5
@@ -451,24 +259,6 @@ parameters:
 			path: src/Http/Controllers/TeamController.php
 
 		-
-			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Models\\Domain\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/TeamController.php
-
-		-
-			message: '#^Using nullsafe property access "\?\-\>email" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/TeamController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\Domain\>\|Ssntpl\\Neev\\Models\\Domain\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/TeamController.php
-
-		-
 			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Model\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 1
@@ -477,19 +267,7 @@ parameters:
 		-
 			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\Domain\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
-			count: 5
-			path: src/Http/Controllers/TeamController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\User\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 5
-			path: src/Http/Controllers/TeamController.php
-
-		-
-			message: '#^Variable \$domain_rules on left side of \?\? always exists and is not nullable\.$#'
-			identifier: nullCoalesce.variable
-			count: 1
+			count: 2
 			path: src/Http/Controllers/TeamController.php
 
 		-
@@ -499,58 +277,10 @@ parameters:
 			path: src/Http/Controllers/TenantDomainController.php
 
 		-
-			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\AccessToken\>\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/UserApiController.php
-
-		-
-			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Models\\User\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/UserApiController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\Email\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 2
-			path: src/Http/Controllers/UserApiController.php
-
-		-
 			message: '#^Parameter \#1 \$view of function view expects view\-string\|null, string given\.$#'
 			identifier: argument.type
 			count: 8
 			path: src/Http/Controllers/UserController.php
-
-		-
-			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\AccessToken\>\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/UserController.php
-
-		-
-			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Support\\Carbon\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/UserController.php
-
-		-
-			message: '#^Using nullsafe method call on non\-nullable type Illuminate\\Support\\Collection\<int, stdClass\>\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/UserController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Ssntpl\\Neev\\Models\\Email\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/UserController.php
-
-		-
-			message: '#^Instanceof between Ssntpl\\Neev\\Contracts\\ContextContainerInterface&Ssntpl\\Neev\\Contracts\\HasMembersInterface&Ssntpl\\Neev\\Contracts\\IdentityProviderOwnerInterface and Ssntpl\\Neev\\Contracts\\HasMembersInterface will always evaluate to true\.$#'
-			identifier: instanceof.alwaysTrue
-			count: 1
-			path: src/Http/Middleware/EnsureTenantMembership.php
 
 		-
 			message: '#^Relation ''attempt'' is not found in Ssntpl\\Neev\\Models\\AccessToken model\.$#'
@@ -593,12 +323,6 @@ parameters:
 			identifier: nullsafe.neverNull
 			count: 2
 			path: src/Http/Middleware/NeevMiddleware.php
-
-		-
-			message: '#^Strict comparison using \=\=\= between false and false will always evaluate to true\.$#'
-			identifier: identical.alwaysTrue
-			count: 1
-			path: src/Models/LoginAttempt.php
 
 		-
 			message: '#^Method Ssntpl\\Neev\\Models\\Team\:\:model\(\) should return static\(Ssntpl\\Neev\\Models\\Team\) but returns object\.$#'
@@ -711,18 +435,6 @@ parameters:
 		-
 			message: '#^Call to an undefined method Illuminate\\Http\\Request\:\:authenticate\(\)\.$#'
 			identifier: method.notFound
-			count: 1
-			path: src/Services/AuthService.php
-
-		-
-			message: '#^Using nullsafe method call on non\-nullable type Ssntpl\\Neev\\Services\\GeoIP\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Services/AuthService.php
-
-		-
-			message: '#^Using nullsafe property access "\?\-\>id" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
 			count: 1
 			path: src/Services/AuthService.php
 

@@ -30,7 +30,7 @@ class DownloadGeoLiteDb extends Command
 
         $this->info("Downloading {$edition} database...");
         $response = Http::withOptions(['sink' => $tempPath])->get($url);
-        if ($response?->successful()) {
+        if ($response->successful()) {
             $output = null;
             $result = 0;
             exec("tar -xzf " . escapeshellarg($tempPath) . " -C " . escapeshellarg($extractDir), $output, $result);
@@ -55,7 +55,7 @@ class DownloadGeoLiteDb extends Command
             }
             @unlink($tempPath);
         } else {
-            $this->error("Failed to download: " . $response?->status());
+            $this->error("Failed to download: " . $response->status());
         }
 
         return 0;

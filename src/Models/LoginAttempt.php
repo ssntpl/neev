@@ -61,7 +61,7 @@ class LoginAttempt extends Model
             $browser = 'Chrome';
         } elseif (stripos($userAgent, 'Firefox') !== false) {
             $browser = 'Firefox';
-        } elseif (stripos($userAgent, 'Safari') !== false && stripos($userAgent, 'Chrome') === false) {
+        } elseif (stripos($userAgent, 'Safari') !== false) {
             $browser = 'Safari';
         } elseif (stripos($userAgent, 'Edge') !== false) {
             $browser = 'Edge';

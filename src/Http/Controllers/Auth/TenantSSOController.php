@@ -227,7 +227,7 @@ class TenantSSOController extends Controller
 
         $attempt = $user->loginAttempts()->create([
             'method' => LoginAttempt::SSO,
-            'location' => $geoIP?->getLocation($request->ip()),
+            'location' => $geoIP->getLocation($request->ip()),
             'platform' => $clientDetails['platform'] ?? '',
             'browser' => $clientDetails['browser'] ?? '',
             'device' => $clientDetails['device'] ?? '',

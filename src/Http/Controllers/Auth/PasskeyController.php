@@ -108,14 +108,14 @@ class PasskeyController extends Controller
             ],
             'user' => [
                 'id' => base64_encode($userId),
-                'name' => $user->email?->email,
+                'name' => $user->email->email,
                 'displayName' => $user->name,
             ],
             'challenge' => $base64Challenge,
             'pubKeyCredParams' => $pubKeyCredParams,
             'authenticatorSelection' => [
-                'residentKey' => $authenticatorSelection?->residentKey,
-                'userVerification' => $authenticatorSelection?->userVerification,
+                'residentKey' => $authenticatorSelection->residentKey,
+                'userVerification' => $authenticatorSelection->userVerification,
             ],
             'timeout' => 60000,
             'excludeCredentials' => [],
@@ -176,7 +176,7 @@ class PasskeyController extends Controller
 
         $userEntity = new PublicKeyCredentialUserEntity(
             id: strval($user->id),
-            name: $user->email?->email,
+            name: $user->email->email,
             displayName: $user->name
         );
 
@@ -234,7 +234,7 @@ class PasskeyController extends Controller
             $passkey->public_key = Base64UrlSafe::encode($credentialSource->credentialPublicKey);
             $passkey->transports = $input['response']['transports'] ?? [];
             $passkey->ip = $request->ip();
-            $passkey->location = $geoIP?->getLocation($request->ip());
+            $passkey->location = $geoIP->getLocation($request->ip());
             $passkey->save();
         } else {
             $passkey = $user->passkeys()->create([
@@ -244,7 +244,7 @@ class PasskeyController extends Controller
                 'aaguid' => $credentialSource->aaguid->toRfc4122(),
                 'transports' => $input['response']['transports'] ?? [],
                 'ip' => $request->ip(),
-                'location' => $geoIP?->getLocation($request->ip()),
+                'location' => $geoIP->getLocation($request->ip()),
             ]);
         }
 
@@ -260,7 +260,7 @@ class PasskeyController extends Controller
             ]);
         }
         $passkey = Passkey::find($request->passkey_id);
-        if (!$passkey || $passkey?->user_id != $user->id) {
+        if (!$passkey || $passkey->user_id != $user->id) {
             return back()->withErrors([
                 'message' => 'Passkey was not deleted.'
             ]);
@@ -279,7 +279,7 @@ class PasskeyController extends Controller
             ], 400);
         }
         $passkey = Passkey::find($request->passkey_id);
-        if (!$passkey || $passkey?->user_id != $user?->id) {
+        if (!$passkey || $passkey->user_id != $user->id) {
             return response()->json([
                 'status' => 'Failed'
             ], 400);
@@ -392,7 +392,7 @@ class PasskeyController extends Controller
             $clientDetails = LoginAttempt::getClientDetails($request);
             $attempt = $user?->loginAttempts()->create([
                 'method' => LoginAttempt::Passkey,
-                'location' => $geoIP?->getLocation($request->ip()),
+                'location' => $geoIP->getLocation($request->ip()),
                 'multi_factor_method' => null,
                 'platform' => $clientDetails['platform'] ?? '',
                 'browser' => $clientDetails['browser'] ?? '',
@@ -401,9 +401,9 @@ class PasskeyController extends Controller
                 'is_success' => false,
             ]);
         }
-        $passkey = $user?->passkeys?->where('credential_id', Base64UrlSafe::encode(Base64UrlSafe::decode($rawId)))->first();
+        $passkey = $user->passkeys->where('credential_id', Base64UrlSafe::encode(Base64UrlSafe::decode($rawId)))->first();
 
-        if (!$passkey || !$user || $user?->id != (int) base64_decode($input['response']['userHandle'])) {
+        if (!$passkey || $user->id != (int) base64_decode($input['response']['userHandle'])) {
             throw new Exception('Wrong Credentials.');
         }
 
@@ -479,7 +479,7 @@ class PasskeyController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         $passkey = Passkey::find($request->passkey_id);
-        if (!$user || !$passkey || $passkey?->user_id != $user?->id) {
+        if (!$user || !$passkey || $passkey->user_id != $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Passkey was not deleted.',
@@ -517,7 +517,7 @@ class PasskeyController extends Controller
             return response()->json([
                 'status' => 'Success',
                 'token' => $token,
-                'email_verified' => $user?->hasVerifiedEmail($request->email)
+                'email_verified' => $user->hasVerifiedEmail($request->email)
             ]);
         } catch (Exception $e) {
             Log::error($e);

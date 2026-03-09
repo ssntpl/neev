@@ -4,7 +4,6 @@ namespace Ssntpl\Neev\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
-use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Services\TenantResolver;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -50,7 +49,7 @@ class EnsureTenantMembership
         }
 
         // Check if user belongs to this context (Tenant or Team)
-        $isMember = $context instanceof HasMembersInterface && $context->hasMember($user);
+        $isMember = $context->hasMember($user);
         if (!$isMember) {
             // Log out the user
             auth()->logout();

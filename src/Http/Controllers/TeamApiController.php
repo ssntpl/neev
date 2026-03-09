@@ -277,13 +277,6 @@ class TeamApiController extends Controller
                     ['expires_at' => $expiry]
                 );
 
-                if (!$invitation) {
-                    return response()->json([
-                        'status' => 'Failed',
-                        'message' => 'Failed to create invitation.',
-                    ], 400);
-                }
-
                 $invitation->role = $request->role;
                 $invitation->save();
 
@@ -358,7 +351,7 @@ class TeamApiController extends Controller
                     }
                     if (!$team->allUsers->contains($user)) {
                         $team->allUsers()->attach($user, ['joined' => true]);
-                        if ($invitation?->role) {
+                        if ($invitation->role) {
                             $user->assignRole($invitation->role, $team);
                         }
                     }
@@ -577,8 +570,8 @@ class TeamApiController extends Controller
         foreach ($domains as $domain) {
             if ($domain->enforce && $domain->verified_at) {
                 $count = 0;
-                foreach ($team->users ?? [] as $member) {
-                    if (!str_ends_with(strtolower($member->email->email ?? ''), '@' . strtolower($domain->domain))) {
+                foreach ($team->users as $member) {
+                    if (!str_ends_with(strtolower($member->email->email), '@' . strtolower($domain->domain))) {
                         $count++;
                     }
                 }
@@ -642,7 +635,7 @@ class TeamApiController extends Controller
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$domain || !$user || $domain?->owner?->user_id !== $user->id) {
+        if (!$domain || !$user || $domain->owner?->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You do not have the required permissions to update domain.',
@@ -652,8 +645,8 @@ class TeamApiController extends Controller
             if ($request->verify) {
                 if ($domain->verify()) {
                     $domain_rules = ["mfa"];
-                    foreach ($domain_rules ?? [] as $rule) {
-                        $domain?->rules()->create([
+                    foreach ($domain_rules as $rule) {
+                        $domain->rules()->create([
                             'name' => $rule,
                             'value' => false,
                         ]);
@@ -707,7 +700,7 @@ class TeamApiController extends Controller
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$domain || !$user || $domain?->owner?->user_id !== $user->id) {
+        if (!$domain || !$user || $domain->owner?->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You do not have the required permissions to delete domain.',
@@ -735,14 +728,14 @@ class TeamApiController extends Controller
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$user || !$domain || $domain?->owner?->user_id !== $user->id) {
+        if (!$user || !$domain || $domain->owner?->user_id !== $user->id) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You do not have the required permissions to update domain.',
             ], 400);
         }
         try {
-            foreach ($domain?->rules ?? [] as $rule) {
+            foreach ($domain->rules as $rule) {
                 if (isset($request->{$rule->name})) {
                     $rule->value = (bool) $request->{$rule->name};
                 }
@@ -786,7 +779,7 @@ class TeamApiController extends Controller
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
-        if (!$user || !$domain || !$domain?->verified_at || !$domain->owner?->users->contains($user)) {
+        if (!$user || !$domain || !$domain->verified_at || !$domain->owner?->users->contains($user)) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'You do not have the required permissions to change primary domain.',

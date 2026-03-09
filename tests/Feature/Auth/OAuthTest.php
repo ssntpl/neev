@@ -238,17 +238,4 @@ class OAuthTest extends TestCase
         $this->assertEquals(1, Team::where('user_id', $user->id)->count());
     }
 
-    public function test_callback_redirects_when_oauth_user_is_null(): void
-    {
-        $provider = Mockery::mock(Provider::class);
-        $provider->shouldReceive('user')->andReturn(null);
-
-        Socialite::shouldReceive('driver')
-            ->with('google')
-            ->andReturn($provider);
-
-        $response = $this->get('/oauth/google/callback?code=test-auth-code');
-
-        $response->assertRedirect(route('login'));
-    }
 }

@@ -227,7 +227,7 @@ class UserApiController extends Controller
             ]);
         }
 
-        Mail::to($email?->email)->send(new EmailOTP($email->user?->name, $otp, $expiryMinutes));
+        Mail::to($email->email)->send(new EmailOTP($email->user?->name, $otp, $expiryMinutes));
     }
 
     public function addEmail(Request $request)
@@ -295,7 +295,7 @@ class UserApiController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         $email = $user?->emails?->where('email', $request->email)->first();
-        if (!$email || !$email?->verified_at) {
+        if (!$email || !$email->verified_at) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Your primary email was not changed.',
@@ -348,7 +348,7 @@ class UserApiController extends Controller
                 'message' => 'User not found.',
             ], 404);
         }
-        $attempts = $user?->loginAttempts()?->orderBy('created_at', 'desc')?->get();
+        $attempts = $user->loginAttempts()->orderBy('created_at', 'desc')->get();
         return response()->json([
             'status' => 'Success',
             'data' => $attempts,
@@ -426,7 +426,7 @@ class UserApiController extends Controller
     public function updateApiTokens(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
-        $token = $user?->accessTokens?->find($request->token_id);
+        $token = $user?->accessTokens->find($request->token_id);
         if (!$token) {
             return response()->json([
                 'status' => 'Failed',
@@ -462,7 +462,7 @@ class UserApiController extends Controller
                 'message' => 'User not found.',
             ], 404);
         }
-        $token = $user->accessTokens?->find($request->token_id);
+        $token = $user->accessTokens->find($request->token_id);
         if (!$token) {
             return response()->json([
                 'status' => 'Failed',

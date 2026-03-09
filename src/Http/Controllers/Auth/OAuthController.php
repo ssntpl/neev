@@ -51,14 +51,11 @@ class OAuthController extends Controller
         }
 
         $oauthUser = Socialite::driver($service)->user();
-        if (!$oauthUser) {
-            return redirect(route('login'));
-        }
 
         $email = Email::findByEmail($oauthUser->email);
         if ($email) {
-            $user = $email?->user;
-            if (!$user || !$email?->verified_at) {
+            $user = $email->user;
+            if (!$user || !$email->verified_at) {
                 return redirect(route('login'));
             }
         } else {
@@ -75,9 +72,6 @@ class OAuthController extends Controller
 
     public function register($oauthUser)
     {
-        if (!$oauthUser) {
-            return null;
-        }
         DB::beginTransaction();
         $userData = ['name' => $oauthUser->name];
 
@@ -91,11 +85,6 @@ class OAuthController extends Controller
         }
 
         $user = User::model()->create($userData);
-
-        if (!$user) {
-            DB::rollBack();
-            return null;
-        }
 
         try {
             $user->emails()->create([
