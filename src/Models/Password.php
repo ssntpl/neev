@@ -4,6 +4,12 @@ namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property string $password
+ * @property \Carbon\Carbon|null $created_at
+ */
 class Password extends Model
 {
     protected $fillable = [
@@ -35,9 +41,9 @@ class Password extends Model
             ];
         }
 
-        return $currentPassword ? [
+        return [
             'message' => 'You have changed your password '.$currentPassword->created_at->diffForHumans(),
-        ] : false;
+        ];
     }
 
     public static function isLoginBlock($user)

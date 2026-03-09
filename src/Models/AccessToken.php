@@ -4,6 +4,20 @@ namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property int|null $tenant_id
+ * @property int|null $attempt_id
+ * @property string $name
+ * @property string $token
+ * @property string $token_type
+ * @property array<int, string>|null $permissions
+ * @property \Carbon\Carbon|null $last_used_at
+ * @property \Carbon\Carbon|null $expires_at
+ * @property \Carbon\Carbon|null $created_at
+ * @property \Carbon\Carbon|null $updated_at
+ */
 class AccessToken extends Model
 {
     public const api_token = 'api_token';

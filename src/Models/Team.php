@@ -18,6 +18,27 @@ use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Ssntpl\Neev\Support\SlugHelper;
 use Ssntpl\Neev\Traits\HasTenantAuth;
 
+/**
+ * @property int $id
+ * @property int|null $tenant_id
+ * @property int $user_id
+ * @property string $name
+ * @property string|null $slug
+ * @property bool $is_public
+ * @property \Carbon\Carbon|null $activated_at
+ * @property string|null $inactive_reason
+ * @property \Carbon\Carbon|null $created_at
+ * @property \Carbon\Carbon|null $updated_at
+ * @property-read User|null $owner
+ * @property-read Domain|null $primaryDomain
+ * @property-read Domain|null $domain
+ * @property-read TeamAuthSettings|null $authSettings
+ * @property-read Tenant|null $tenant
+ * @property-read Tenant|null $managedTenant
+ * @property-read string|null $webDomain
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Domain> $domains
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, TeamInvitation> $invitations
+ */
 class Team extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
     use HasTenantAuth;
@@ -32,6 +53,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
         });
     }
 
+    /** @return static */
     public static function model()
     {
         $class = config('neev.team_model', Team::class);

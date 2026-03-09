@@ -148,13 +148,11 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
 
     protected function findTenant(string $identifier): ?Tenant
     {
-        $class = Tenant::getClass();
-
         if (ctype_digit($identifier)) {
-            return $class::find((int) $identifier);
+            return Tenant::find((int) $identifier);
         }
 
-        $tenant = $class::where('slug', $identifier)->first();
+        $tenant = Tenant::where('slug', $identifier)->first();
         if ($tenant) {
             return $tenant;
         }
@@ -162,18 +160,17 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
         // Try domain resolution
         $domain = Domain::where('domain', $identifier)->where('owner_type', 'tenant')->first();
 
+        /** @var Tenant|null */
         return $domain?->owner;
     }
 
     protected function findTeam(string $identifier): ?Team
     {
-        $class = Team::getClass();
-
         if (ctype_digit($identifier)) {
-            return $class::find((int) $identifier);
+            return Team::find((int) $identifier);
         }
 
-        $team = $class::where('slug', $identifier)->first();
+        $team = Team::where('slug', $identifier)->first();
         if ($team) {
             return $team;
         }
@@ -181,6 +178,7 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
         // Try domain resolution
         $domain = Domain::where('domain', $identifier)->where('owner_type', 'team')->first();
 
+        /** @var Team|null */
         return $domain?->owner;
     }
 

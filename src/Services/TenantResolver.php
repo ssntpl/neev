@@ -237,9 +237,14 @@ class TenantResolver
 
     /**
      * Get the resolved context container (Tenant or Team).
+     *
+     * Both Team and Tenant implement all four context interfaces.
+     *
+     * @return (ContextContainerInterface&\Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface&\Ssntpl\Neev\Contracts\HasMembersInterface)|null
      */
     public function resolvedContext(): ?ContextContainerInterface
     {
+        /** @var (ContextContainerInterface&\Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface&\Ssntpl\Neev\Contracts\HasMembersInterface)|null */
         return $this->resolvedContext;
     }
 

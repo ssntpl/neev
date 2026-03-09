@@ -34,6 +34,7 @@ use Webauthn\CeremonyStep\CheckUserWasPresent;
 use Webauthn\CollectedClientData;
 use Webauthn\PublicKeyCredential;
 use Webauthn\PublicKeyCredentialCreationOptions;
+use Webauthn\PublicKeyCredentialDescriptor;
 use Webauthn\PublicKeyCredentialParameters;
 use Webauthn\PublicKeyCredentialRpEntity;
 use Webauthn\PublicKeyCredentialSource;
@@ -304,10 +305,10 @@ class PasskeyController extends Controller
             $allowCredentials = [];
 
             foreach ($user->passkeys as $passkey) {
-                $allowCredentials[] = [
-                    'type' => 'public-key',
-                    'id' => $passkey->credential_id,
-                ];
+                $allowCredentials[] = new PublicKeyCredentialDescriptor(
+                    type: 'public-key',
+                    id: $passkey->credential_id,
+                );
             }
 
             $rpId = parse_url(config('app.url'), PHP_URL_HOST);

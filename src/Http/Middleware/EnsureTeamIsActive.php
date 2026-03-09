@@ -17,6 +17,7 @@ class EnsureTeamIsActive
      */
     public function handle(Request $request, Closure $next): Response
     {
+        /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = $request->user();
 
         if (!$user) {

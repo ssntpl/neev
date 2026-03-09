@@ -315,7 +315,7 @@ class TenantDomainTest extends TestCase
             ->postJson('/neev/tenant-domains/' . $domain->id . '/regenerate-token');
 
         $response->assertStatus(400)
-            ->assertJsonPath('message', 'Only custom domains require verification.');
+            ->assertJsonPath('message', 'Only domains with verification tokens can be regenerated.');
     }
 
     public function test_regenerate_token_rejects_non_owner(): void

@@ -5,6 +5,21 @@ namespace Ssntpl\Neev\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\Request;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property string $method
+ * @property string|null $multi_factor_method
+ * @property array<string, mixed>|null $location
+ * @property string|null $platform
+ * @property string|null $browser
+ * @property string|null $device
+ * @property string|null $ip_address
+ * @property bool $is_success
+ * @property bool $is_suspicious
+ * @property \Carbon\Carbon|null $created_at
+ * @property \Carbon\Carbon|null $updated_at
+ */
 class LoginAttempt extends Model
 {
     public const Password = 'password';

@@ -23,6 +23,7 @@ class TenantDomainController extends Controller
     public function index(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
+        /** @var Team|null $team */
         $team = Team::model()->find($request->team_id);
 
         if (!$user || !$team) {
@@ -53,6 +54,7 @@ class TenantDomainController extends Controller
     public function store(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
+        /** @var Team|null $team */
         $team = Team::model()->find($request->team_id);
 
         if (!$user || !$team) {
@@ -83,7 +85,6 @@ class TenantDomainController extends Controller
                 'owner_type' => 'team',
                 'owner_id' => $team->id,
                 'domain' => $domain,
-                'type' => $type,
                 'is_primary' => $team->domains()->count() === 0, // First domain is primary
             ]);
 
@@ -137,6 +138,7 @@ class TenantDomainController extends Controller
             ], 404);
         }
 
+        /** @var Team|null $owner */
         $owner = $tenantDomain->owner;
         if (!$owner || !$owner->hasUser($user)) {
             return response()->json([
@@ -166,6 +168,7 @@ class TenantDomainController extends Controller
             ], 404);
         }
 
+        /** @var Team|null $owner */
         $owner = $tenantDomain->owner;
         if (!$owner || $owner->user_id !== $user->id) {
             return response()->json([
@@ -222,6 +225,7 @@ class TenantDomainController extends Controller
             ], 404);
         }
 
+        /** @var Team|null $owner */
         $owner = $tenantDomain->owner;
         if (!$owner || $owner->user_id !== $user->id) {
             return response()->json([
@@ -274,6 +278,7 @@ class TenantDomainController extends Controller
             ], 404);
         }
 
+        /** @var Team|null $owner */
         $owner = $tenantDomain->owner;
         if (!$owner || $owner->user_id !== $user->id) {
             return response()->json([
@@ -282,10 +287,10 @@ class TenantDomainController extends Controller
             ], 403);
         }
 
-        if ($tenantDomain->type !== 'custom') {
+        if (!$tenantDomain->verification_token) {
             return response()->json([
                 'status' => 'Failed',
-                'message' => 'Only custom domains require verification.',
+                'message' => 'Only domains with verification tokens can be regenerated.',
             ], 400);
         }
 
@@ -328,6 +333,7 @@ class TenantDomainController extends Controller
             ], 404);
         }
 
+        /** @var Team|null $owner */
         $owner = $tenantDomain->owner;
         if (!$owner || $owner->user_id !== $user->id) {
             return response()->json([

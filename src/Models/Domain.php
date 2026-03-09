@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Cache;
  * @property \Carbon\Carbon|null $verified_at
  * @property \Carbon\Carbon|null $verification_failed_at
  * @property-read Model|null $owner
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, DomainRule> $rules
  */
 class Domain extends Model
 {

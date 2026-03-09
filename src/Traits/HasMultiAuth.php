@@ -22,7 +22,7 @@ trait HasMultiAuth
 
     public function multiFactorAuth($method)
     {
-        return $this->multiFactorAuths?->where('method', $method)->first();
+        return $this->multiFactorAuths->where('method', $method)->first();
     }
 
     public function preferredMultiFactorAuth()
@@ -120,7 +120,7 @@ trait HasMultiAuth
                 break;
 
             case 'recovery':
-                $code = $this->recoveryCodes?->first(function ($recoveryCode) use ($otp) {
+                $code = $this->recoveryCodes->first(function ($recoveryCode) use ($otp) {
                     return Hash::check($otp, $recoveryCode->code);
                 });
                 if ($code) {

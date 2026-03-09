@@ -6,6 +6,21 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Cache;
 
+/**
+ * @property int $id
+ * @property int $tenant_id
+ * @property string $auth_method
+ * @property string|null $sso_provider
+ * @property string|null $sso_client_id
+ * @property string|null $sso_client_secret
+ * @property string|null $sso_tenant_id
+ * @property array<string, mixed>|null $sso_extra_config
+ * @property bool $auto_provision
+ * @property string|null $auto_provision_role
+ * @property \Carbon\Carbon|null $created_at
+ * @property \Carbon\Carbon|null $updated_at
+ * @property-read Tenant|null $tenant
+ */
 class TenantAuthSettings extends Model
 {
     protected static function booted(): void

@@ -108,7 +108,7 @@ class TenantSSOController extends Controller
             return $driver->with($params)->redirect();
         } catch (Exception $e) {
             Log::error('Tenant SSO redirect error', [
-                'tenant_id' => $tenant->id,
+                'tenant_id' => $tenant->getContextId(),
                 'error' => $e->getMessage(),
             ]);
 
@@ -119,6 +119,9 @@ class TenantSSOController extends Controller
     /**
      * Validate that the redirect_uri belongs to the tenant's domains.
      */
+    /**
+     * @param \Ssntpl\Neev\Contracts\ContextContainerInterface&\Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface $tenant
+     */
     protected function isValidRedirectUri($tenant, string $redirectUri): bool
     {
         $parsedUrl = parse_url($redirectUri);
@@ -128,9 +131,9 @@ class TenantSSOController extends Controller
 
         $host = $parsedUrl['host'];
 
-        // Check against tenant domains
+        // Check against tenant domains (both Team and Tenant models have domains())
         if (method_exists($tenant, 'domains')) {
-            foreach ($tenant->domains as $domain) {
+            foreach ($tenant->domains()->get() as $domain) {
                 if ($domain->domain === $host || str_ends_with($host, '.' . $domain->domain)) {
                     return true;
                 }
@@ -184,10 +187,7 @@ class TenantSSOController extends Controller
             $user = $this->ssoManager->findOrCreateUser($tenant, $ssoUser);
 
             // Ensure user has membership in the resolved context (Team or Tenant)
-            if ($tenant instanceof \Ssntpl\Neev\Contracts\HasMembersInterface
-                && $tenant instanceof \Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface) {
-                $this->ssoManager->ensureMembership($user, $tenant);
-            }
+            $this->ssoManager->ensureMembership($user, $tenant);
 
             // Check if we need to redirect to a SPA (redirect_uri was stored)
             $redirectUri = session()->pull('sso_redirect_uri');

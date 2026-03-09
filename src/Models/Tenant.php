@@ -24,6 +24,12 @@ use Ssntpl\Neev\Database\Factories\TenantFactory;
  * @property int|null $platform_team_id
  * @property \Carbon\Carbon|null $activated_at
  * @property string|null $inactive_reason
+ * @property \Carbon\Carbon|null $created_at
+ * @property \Carbon\Carbon|null $updated_at
+ * @property-read TenantAuthSettings|null $authSettings
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $teams
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Domain> $domains
+ * @property-read Tenant|null $managedBy
  */
 class Tenant extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
@@ -47,6 +53,7 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
         return TenantFactory::new();
     }
 
+    /** @return static */
     public static function model()
     {
         $class = config('neev.tenant_model', Tenant::class);

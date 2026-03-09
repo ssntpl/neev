@@ -12,9 +12,30 @@ use Ssntpl\Neev\Traits\NeevAuthenticatable;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 
 /**
+ * @property int $id
  * @property int|null $tenant_id
+ * @property string $name
  * @property string|null $username
+ * @property bool $active
+ * @property int|null $current_team_id
+ * @property \Carbon\Carbon|null $created_at
+ * @property \Carbon\Carbon|null $updated_at
  * @property-read Email|null $email
+ * @property-read Password|null $password
+ * @property-read MultiFactorAuth|null $preferredMultiFactorAuth
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Email> $emails
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Password> $passwords
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Passkey> $passkeys
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, MultiFactorAuth> $multiFactorAuths
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, RecoveryCode> $recoveryCodes
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, LoginAttempt> $loginAttempts
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, AccessToken> $accessTokens
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $teams
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $allTeams
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $ownedTeams
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $teamRequests
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $sendRequests
+ * @property-read Team|null $currentTeam
  */
 class User extends Authenticatable
 {
@@ -30,6 +51,7 @@ class User extends Authenticatable
         return UserFactory::new();
     }
 
+    /** @return static */
     public static function model()
     {
         $class = config('neev.user_model', User::class);

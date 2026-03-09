@@ -4,6 +4,18 @@ namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @property int $id
+ * @property int $user_id
+ * @property string $method
+ * @property string|null $secret
+ * @property string|null $otp
+ * @property bool $preferred
+ * @property \Carbon\Carbon|null $expires_at
+ * @property \Carbon\Carbon|null $last_used
+ * @property \Carbon\Carbon|null $created_at
+ * @property \Carbon\Carbon|null $updated_at
+ */
 class MultiFactorAuth extends Model
 {
     protected $fillable = [
