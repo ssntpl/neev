@@ -1,0 +1,270 @@
+// Neev v0.4.0 Database Schema
+// Paste into https://dbdiagram.io
+
+Table tenants {
+  id bigint [pk, increment]
+  name varchar
+  slug varchar [unique]
+  managed_by_tenant_id bigint [null, ref: > tenants.id]
+  platform_team_id bigint [null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table users {
+  id bigint [pk, increment]
+  tenant_id bigint [null, ref: > tenants.id]
+  name varchar
+  username varchar [null]
+  active boolean [default: true]
+  current_team_id bigint [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    current_team_id
+  }
+}
+
+Table passwords {
+  id bigint [pk, increment]
+  user_id bigint [ref: > users.id]
+  password varchar
+  created_at timestamp [null]
+}
+
+Table emails {
+  id bigint [pk, increment]
+  tenant_id bigint [null, ref: > tenants.id]
+  user_id bigint [ref: > users.id]
+  email varchar
+  is_primary boolean [default: false]
+  verified_at timestamp [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (user_id, email) [unique]
+    (tenant_id, email) [unique]
+    email
+  }
+}
+
+Table login_attempts {
+  id bigint [pk, increment]
+  user_id bigint [ref: > users.id]
+  method varchar
+  multi_factor_method varchar [null]
+  location json [null]
+  platform varchar [null]
+  browser varchar [null]
+  device varchar [null]
+  ip_address varchar [null]
+  is_success boolean [default: false]
+  is_suspicious boolean [default: false]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    user_id
+  }
+}
+
+Table otp {
+  id bigint [pk, increment]
+  owner_id bigint
+  owner_type varchar
+  otp text
+  expires_at timestamp
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (owner_id, owner_type) [unique]
+  }
+
+  Note: 'Polymorphic (owner can be Email, MultiFactorAuth, etc.)'
+}
+
+Table passkeys {
+  id bigint [pk, increment]
+  user_id bigint [ref: > users.id]
+  credential_id varchar [unique]
+  name varchar [null]
+  ip varchar [null]
+  location text [null]
+  last_used timestamp [null]
+  public_key text
+  aaguid text
+  transports text [null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table multi_factor_auths {
+  id bigint [pk, increment]
+  user_id bigint [ref: > users.id]
+  method varchar
+  secret text [null, note: 'encrypted']
+  otp text [null]
+  preferred boolean [default: false]
+  expires_at timestamp [null]
+  last_used timestamp [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (user_id, method) [unique]
+    user_id
+  }
+}
+
+Table recovery_codes {
+  id bigint [pk, increment]
+  user_id bigint [ref: > users.id]
+  code varchar
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table access_tokens {
+  id bigint [pk, increment]
+  user_id bigint [ref: > users.id]
+  tenant_id bigint [null, ref: > tenants.id]
+  attempt_id bigint [null, ref: > login_attempts.id]
+  name varchar
+  token varchar [unique, note: 'SHA-256 hashed']
+  token_type varchar [default: 'login']
+  permissions json [null]
+  last_used_at timestamp [null]
+  expires_at timestamp [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    user_id
+    attempt_id
+    expires_at
+  }
+}
+
+Table teams {
+  id bigint [pk, increment]
+  tenant_id bigint [null, ref: > tenants.id]
+  user_id bigint [ref: > users.id, note: 'owner']
+  name varchar
+  slug varchar [unique, null]
+  is_public boolean [default: true]
+  activated_at timestamp [null]
+  inactive_reason varchar [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (name, user_id) [unique]
+    (tenant_id, slug) [unique]
+    slug
+  }
+}
+
+Table team_user {
+  id bigint [pk, increment]
+  team_id bigint [ref: > teams.id]
+  user_id bigint [ref: > users.id]
+  role varchar [null]
+  joined boolean [default: false]
+  action enum_action [note: 'request_to_user | request_from_user']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (team_id, user_id) [unique]
+    team_id
+    user_id
+  }
+
+  Note: 'Pivot table for team membership'
+}
+
+Table team_invitations {
+  id bigint [pk, increment]
+  team_id bigint [ref: > teams.id]
+  email varchar
+  role varchar [null]
+  expires_at timestamp [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (team_id, email) [unique]
+  }
+}
+
+Table domains {
+  id bigint [pk, increment]
+  owner_type varchar [null, note: 'team or tenant']
+  owner_id bigint [null]
+  enforce boolean [default: false]
+  domain varchar
+  verification_token varchar [null, note: 'plaintext']
+  is_primary boolean [default: false]
+  verified_at timestamp [null]
+  verification_failed_at timestamp [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    domain
+    (owner_type, owner_id)
+    (domain, verified_at)
+  }
+
+  Note: 'Polymorphic owner: Team or Tenant'
+}
+
+Table domain_rules {
+  id bigint [pk, increment]
+  domain_id bigint [ref: > domains.id]
+  name varchar
+  value varchar [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (name, domain_id) [unique]
+  }
+}
+
+Table team_auth_settings {
+  id bigint [pk, increment]
+  team_id bigint [unique, ref: - teams.id]
+  auth_method varchar [default: 'password']
+  sso_provider varchar [null]
+  sso_client_id text [null]
+  sso_client_secret text [null, note: 'encrypted']
+  sso_tenant_id varchar [null]
+  sso_extra_config json [null]
+  auto_provision boolean [default: false]
+  auto_provision_role varchar [null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+Table tenant_auth_settings {
+  id bigint [pk, increment]
+  tenant_id bigint [unique, ref: - tenants.id]
+  auth_method varchar [default: 'password']
+  sso_provider varchar [null]
+  sso_client_id text [null]
+  sso_client_secret text [null, note: 'encrypted']
+  sso_tenant_id varchar [null]
+  sso_extra_config json [null]
+  auto_provision boolean [default: false]
+  auto_provision_role varchar [null]
+  created_at timestamp
+  updated_at timestamp
+}
+
+// Cross-table refs that can't be inline
+Ref: users.current_team_id > teams.id
+Ref: tenants.platform_team_id > teams.id
