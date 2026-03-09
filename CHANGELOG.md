@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-03-09
+
+### Fixed
+- `Domain::$type` reference in `TenantDomainController` — column was removed in v0.4.0 polymorphic refactor but `store()` and `regenerateToken()` still referenced it
+- `PasskeyController` using plain arrays instead of `PublicKeyCredentialDescriptor` objects for WebAuthn credential descriptors
+- Unreachable ternary branch in `Password::checkPasswordWarning()`
+- Redundant `stripos` Chrome guard in Safari detection (`LoginAttempt::getClientDetails`)
+
+### Changed
+- PHPStan baseline reduced from 318 to 109 errors (66% reduction)
+- Added comprehensive `@property` docblocks to all 17 Eloquent models for static analysis and IDE support
+- Added `@return static` to `model()` factory methods on User, Team, and Tenant for proper type narrowing
+- `TenantResolver::resolvedContext()` now returns intersection PHPDoc type (`ContextContainerInterface & IdentityProviderOwnerInterface & HasMembersInterface`)
+- Removed dead code branches where values are provably non-null (after `create()`, Socialite `user()`, etc.)
+- Removed unnecessary nullsafe operators on type-hinted parameters
+- Removed always-true `instanceof HasMembersInterface` check in `EnsureTenantMembership`
+
+### Removed
+- `test_callback_redirects_when_oauth_user_is_null` test — tested an impossible code path (Socialite `user()` never returns null)
+
 ## [0.4.1] - 2026-03-09
 
 ### Changed
@@ -173,7 +193,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive Blade views and email templates
 - Artisan commands for installation, GeoIP download, and cleanup
 
-[Unreleased]: https://github.com/ssntpl/neev/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/ssntpl/neev/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/ssntpl/neev/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ssntpl/neev/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ssntpl/neev/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/ssntpl/neev/compare/v0.2.0...v0.3.0
