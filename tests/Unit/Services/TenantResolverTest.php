@@ -345,4 +345,84 @@ class TenantResolverTest extends TestCase
         $this->assertTrue($this->resolver->isEnabled());
     }
 
+    // ---------------------------------------------------------------
+    // runInContext()
+    // ---------------------------------------------------------------
+
+    public function test_run_in_context_sets_tenant_for_callback(): void
+    {
+        $this->enableTenantIsolation();
+
+        $tenant = TenantFactory::new()->create();
+
+        $this->assertFalse($this->resolver->hasTenant());
+
+        $result = $this->resolver->runInContext($tenant, function () {
+            return $this->resolver->currentId();
+        });
+
+        $this->assertSame($tenant->id, $result);
+    }
+
+    public function test_run_in_context_restores_previous_state(): void
+    {
+        $this->enableTenantIsolation();
+
+        $tenantA = TenantFactory::new()->create();
+        $tenantB = TenantFactory::new()->create();
+
+        // Resolve tenant A first
+        $request = Request::create('http://example.com/api');
+        $request->headers->set('X-Tenant', (string) $tenantA->id);
+        $this->resolver->resolve($request);
+
+        $this->assertSame($tenantA->id, $this->resolver->currentId());
+        $this->assertSame('header', $this->resolver->resolvedVia());
+
+        // Run in context of tenant B
+        $this->resolver->runInContext($tenantB, function () use ($tenantB) {
+            $this->assertSame($tenantB->id, $this->resolver->currentId());
+        });
+
+        // Should restore tenant A
+        $this->assertSame($tenantA->id, $this->resolver->currentId());
+        $this->assertSame('header', $this->resolver->resolvedVia());
+    }
+
+    public function test_run_in_context_restores_state_on_exception(): void
+    {
+        $this->enableTenantIsolation();
+
+        $tenant = TenantFactory::new()->create();
+
+        $this->assertFalse($this->resolver->hasTenant());
+
+        try {
+            $this->resolver->runInContext($tenant, function () {
+                throw new \RuntimeException('test');
+            });
+        } catch (\RuntimeException) {
+            // expected
+        }
+
+        $this->assertFalse($this->resolver->hasTenant());
+    }
+
+    public function test_run_in_context_restores_null_state(): void
+    {
+        $this->enableTenantIsolation();
+
+        $tenant = TenantFactory::new()->create();
+
+        // No context initially
+        $this->assertNull($this->resolver->currentId());
+
+        $this->resolver->runInContext($tenant, function () use ($tenant) {
+            $this->assertSame($tenant->id, $this->resolver->currentId());
+        });
+
+        // Back to no context
+        $this->assertNull($this->resolver->currentId());
+        $this->assertFalse($this->resolver->hasTenant());
+    }
 }

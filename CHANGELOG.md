@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.3] - 2026-03-10
+
+### Fixed
+- **TenantScope fails closed** — when tenant isolation is enabled but no tenant is resolved, queries now return empty results (`WHERE 1 = 0`) instead of silently running unscoped, preventing accidental cross-tenant data leakage
+
+### Added
+- `TenantResolver::runInContext()` — run a callback within a specific tenant/team context, with automatic state save/restore (useful for platform code provisioning tenant resources outside a request)
+- `tenant_id` is now mass-assignable on `User` and `Email` models, allowing platform code to explicitly set tenant ownership when creating records outside tenant context
+
 ## [0.4.2] - 2026-03-09
 
 ### Fixed

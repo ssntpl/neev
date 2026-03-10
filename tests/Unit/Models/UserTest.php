@@ -48,7 +48,7 @@ class UserTest extends TestCase
     {
         $user = new User();
 
-        $this->assertEquals(['name', 'username', 'active'], $user->getFillable());
+        $this->assertEquals(['name', 'username', 'active', 'tenant_id'], $user->getFillable());
     }
 
     // -----------------------------------------------------------------

@@ -62,7 +62,7 @@ class TenantScopeTest extends TestCase
     // Skips scope when no tenant resolved (allows auth pipeline to work)
     // -----------------------------------------------------------------
 
-    public function test_skips_scope_when_no_tenant_resolved(): void
+    public function test_fails_closed_when_no_tenant_resolved(): void
     {
         $this->enableTenantIsolation();
 
@@ -76,9 +76,8 @@ class TenantScopeTest extends TestCase
 
         $scope->apply($builder, $model);
 
-        // Scope should not be applied — no tenant_id filter or strict block
-        $this->assertStringNotContainsString('tenant_id', $builder->toSql());
-        $this->assertStringNotContainsString('1 = 0', $builder->toSql());
+        // Scope should fail closed — return empty results
+        $this->assertStringContainsString('1 = 0', $builder->toSql());
     }
 
     // -----------------------------------------------------------------

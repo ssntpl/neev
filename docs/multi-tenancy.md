@@ -195,6 +195,12 @@ $resolver->resolvedVia();                  // 'subdomain', 'header', or 'custom'
 $resolver->isResolvedDomainVerified();     // Whether the domain is verified
 $resolver->currentId();                     // Context ID (Team ID or Tenant ID)
 $resolver->isIsolated();                    // true if identity_strategy is 'isolated'
+
+// Run code in a specific tenant context (useful for platform provisioning)
+$resolver->runInContext($tenant, function () {
+    $user = User::create([...]);         // tenant_id auto-set
+    Email::create(['email' => $email, 'user_id' => $user->id]); // tenant_id auto-set
+});
 ```
 
 ---
@@ -336,7 +342,43 @@ public function index(ContextManager $context)
 
 `ContextManager` is request-scoped — it is cleared after each HTTP request. In artisan commands or queue jobs, there is no HTTP request, so you must set the tenant context manually.
 
-**In Artisan commands:**
+**Using `runInContext()` (recommended):**
+
+`runInContext()` temporarily sets the tenant context for a callback, then restores the previous state — even if the callback throws an exception. This is the safest approach for any code that needs to operate within a tenant context outside of a request.
+
+```php
+$resolver = app(TenantResolver::class);
+
+$resolver->runInContext($tenant, function () {
+    // All scoped queries and auto-assignment work within this callback
+    $projects = Project::all(); // Scoped to $tenant
+    $user = User::create([...]); // tenant_id auto-set
+});
+// Previous context (or no context) is restored here
+```
+
+**Platform provisioning example:**
+
+When creating tenant resources from platform context (e.g., provisioning the first user for a new tenant), `runInContext()` ensures all `BelongsToTenant` models get the correct `tenant_id` automatically:
+
+```php
+$resolver->runInContext($tenant, function () use ($data) {
+    $user = User::create(['name' => $data['name']]);
+    Email::create(['email' => $data['email'], 'user_id' => $user->id]);
+    // Both records get tenant_id set automatically
+});
+```
+
+Alternatively, you can set `tenant_id` explicitly via mass assignment (both `User` and `Email` include `tenant_id` in their fillable attributes):
+
+```php
+$user = User::create(['name' => $data['name'], 'tenant_id' => $tenant->id]);
+Email::create(['email' => $data['email'], 'user_id' => $user->id, 'tenant_id' => $tenant->id]);
+```
+
+**Using `setCurrentTenant()` (manual):**
+
+For long-running processes where you need context to persist:
 
 ```php
 $resolver = app(TenantResolver::class);
@@ -361,10 +403,11 @@ class ProcessTenantReport implements ShouldQueue
     {
         $team = Team::find($this->teamId);
         $resolver = app(TenantResolver::class);
-        $resolver->setCurrentTenant($team);
 
-        // All scoped queries now work
-        $projects = Project::all(); // Scoped to $team
+        $resolver->runInContext($team, function () {
+            // All scoped queries now work
+            $projects = Project::all(); // Scoped to $team
+        });
     }
 }
 ```
@@ -847,7 +890,7 @@ That's it. All queries on `Project` are now automatically scoped to the current 
 
 - **Querying**: A `WHERE tenant_id = <current_tenant_id>` clause is added to every query automatically.
 - **Creating**: `tenant_id` is set from the resolved tenant. You can override it by setting the value explicitly.
-- **No tenant context**: When there is no resolved tenant (console commands, queue jobs without tenant context), the scope is a no-op — queries run unscoped.
+- **No tenant context**: When tenant isolation is enabled but no tenant is resolved, the scope **fails closed** — queries return empty results. Use `runInContext()` or `setCurrentTenant()` to establish context in console commands and queue jobs, or `withoutTenantScope()` when you explicitly need cross-tenant access.
 
 #### Querying
 

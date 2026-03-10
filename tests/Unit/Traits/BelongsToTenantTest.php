@@ -180,7 +180,7 @@ class BelongsToTenantTest extends TestCase
         $this->assertEquals('Team A Item', $items->first()->name);
     }
 
-    public function test_tenant_scope_skips_when_no_tenant_resolved(): void
+    public function test_tenant_scope_fails_closed_when_no_tenant_resolved(): void
     {
         $this->enableTenantIsolation();
         $teamA = TeamFactory::new()->create();
@@ -195,14 +195,13 @@ class BelongsToTenantTest extends TestCase
             'tenant_id' => $teamB->id,
         ]);
 
-        // No tenant resolved yet — scope skips to allow auth pipeline to work.
-        // Queries return all records (scope not applied).
+        // No tenant resolved — scope fails closed, returns empty results.
         $resolver = app(TenantResolver::class);
         $resolver->clear();
 
         $items = TenantItem::all();
 
-        $this->assertCount(2, $items);
+        $this->assertCount(0, $items);
     }
 
     // -----------------------------------------------------------------

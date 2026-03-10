@@ -22,9 +22,9 @@ class TenantScope implements Scope
         }
 
         if (! $resolver->hasTenant()) {
-            // Tenant isolation enabled but no tenant resolved yet.
-            // Skip scope to allow authentication pipeline to function.
-            // Once tenant is resolved, scope applies on subsequent queries.
+            // Tenant isolation enabled but no tenant resolved — fail closed.
+            // Return empty results to prevent cross-tenant data leakage.
+            $builder->whereRaw('1 = 0');
             return;
         }
 

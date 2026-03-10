@@ -23,6 +23,7 @@ class Email extends Model
     use BelongsToTenant;
 
     protected $fillable = [
+        'tenant_id',
         'user_id',
         'email',
         'is_primary',

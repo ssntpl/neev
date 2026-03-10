@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Services;
 
+use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
@@ -335,4 +336,42 @@ class TenantResolver
         return config('neev.tenant', false);
     }
 
+    /**
+     * Run a callback within a specific tenant/team context.
+     *
+     * Useful for platform code that needs to create tenant-scoped records
+     * outside of a request (e.g., provisioning the first user for a new tenant).
+     */
+    public function runInContext(ContextContainerInterface $context, Closure $callback): mixed
+    {
+        $previous = [
+            'context' => $this->resolvedContext,
+            'tenant' => $this->resolvedTenantModel,
+            'team' => $this->currentTenant,
+            'via' => $this->resolvedVia,
+            'domain' => $this->resolvedDomain,
+            'customDomain' => $this->resolvedCustomDomain,
+        ];
+
+        $this->setResolved($context, 'manual', 'manual');
+
+        try {
+            return $callback();
+        } finally {
+            $this->resolvedContext = $previous['context'];
+            $this->resolvedTenantModel = $previous['tenant'];
+            $this->currentTenant = $previous['team'];
+            $this->resolvedVia = $previous['via'];
+            $this->resolvedDomain = $previous['domain'];
+            $this->resolvedCustomDomain = $previous['customDomain'];
+
+            if (app()->bound(ContextManager::class)) {
+                if ($previous['context']) {
+                    app(ContextManager::class)->setContext($previous['context']);
+                } else {
+                    app(ContextManager::class)->clear();
+                }
+            }
+        }
+    }
 }
