@@ -252,7 +252,7 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
 
         Route::get('/teams', [TeamApiController::class, 'teams']);
         Route::get('/teams/invitations', [TeamApiController::class, 'getInvitations']);
-        Route::put('/teams/switch', [TeamApiController::class, 'switchTeam']);
+        Route::put('/teams/default', [TeamApiController::class, 'setDefaultTeam']);
         Route::get('/teams/{id}', [TeamApiController::class, 'getTeam']);
         Route::post('/teams', [TeamApiController::class, 'createTeam']);
         Route::put('/teams', [TeamApiController::class, 'updateTeam']);

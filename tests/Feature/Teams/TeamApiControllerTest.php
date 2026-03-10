@@ -62,31 +62,31 @@ class TeamApiControllerTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // PUT /neev/teams/switch — switch team
+    // PUT /neev/teams/default — set default team
     // -----------------------------------------------------------------
 
-    public function test_switch_team_success(): void
+    public function test_set_default_team_success(): void
     {
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
         $team->users()->attach($user, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->putJson('/neev/teams/switch', ['team_id' => $team->id]);
+            ->putJson('/neev/teams/default', ['team_id' => $team->id]);
 
         $response->assertOk()
             ->assertJsonPath('status', 'Success')
-            ->assertJsonPath('message', 'Team switched successfully.');
+            ->assertJsonPath('message', 'Default team updated successfully.');
     }
 
-    public function test_switch_team_user_not_member_returns_error(): void
+    public function test_set_default_team_user_not_member_returns_error(): void
     {
         [$user, $token] = $this->authenticatedUser();
         $otherUser = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $otherUser->id]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->putJson('/neev/teams/switch', ['team_id' => $team->id]);
+            ->putJson('/neev/teams/default', ['team_id' => $team->id]);
 
         $response->assertStatus(400)
             ->assertJsonPath('status', 'Failed')

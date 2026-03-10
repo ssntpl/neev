@@ -35,7 +35,7 @@ users table (single table, single model)
 │   ├── NULL = platform user (SaaS operator, global admin, consultant)
 │   └── N = tenant-scoped user (staff, customer, vendor within tenant N)
 ├── name, username, active
-├── current_team_id
+├── default_team_id
 └── timestamps
 
 Trait composition on User model:

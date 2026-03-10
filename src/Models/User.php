@@ -17,7 +17,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
  * @property string $name
  * @property string|null $username
  * @property bool $active
- * @property int|null $current_team_id
+ * @property int|null $default_team_id
  * @property \Carbon\Carbon|null $created_at
  * @property \Carbon\Carbon|null $updated_at
  * @property-read Email|null $email
@@ -35,7 +35,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $ownedTeams
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $teamRequests
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $sendRequests
- * @property-read Team|null $currentTeam
+ * @property-read Team|null $defaultTeam
  */
 class User extends Authenticatable
 {

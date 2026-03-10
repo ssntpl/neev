@@ -10,10 +10,10 @@ return new class () extends Migration {
      */
     public function up(): void
     {
-        // users.current_team_id — foreign key added in teams migration, no index
-        if (Schema::hasColumn('users', 'current_team_id')) {
+        // users.default_team_id — foreign key added in teams migration, no index
+        if (Schema::hasColumn('users', 'default_team_id')) {
             Schema::table('users', function (Blueprint $table) {
-                $table->index('current_team_id');
+                $table->index('default_team_id');
             });
         }
 
@@ -52,9 +52,9 @@ return new class () extends Migration {
      */
     public function down(): void
     {
-        if (Schema::hasColumn('users', 'current_team_id')) {
+        if (Schema::hasColumn('users', 'default_team_id')) {
             Schema::table('users', function (Blueprint $table) {
-                $table->dropIndex(['current_team_id']);
+                $table->dropIndex(['default_team_id']);
             });
         }
 

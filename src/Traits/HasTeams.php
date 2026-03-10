@@ -10,11 +10,16 @@ use Ssntpl\Neev\Models\Team;
 trait HasTeams
 {
     /**
-     * Get the user's current team.
+     * Get the user's default team — the team to land on after login
+     * when no team context is provided in the request.
+     *
+     * This is a user preference persisted in the database, NOT the
+     * request-scoped team context (which comes from TenantResolver/ContextManager).
+     * Updated automatically when the user switches teams via setDefaultTeam().
      */
-    public function currentTeam(): BelongsTo
+    public function defaultTeam(): BelongsTo
     {
-        return $this->belongsTo(Team::getClass(), 'current_team_id');
+        return $this->belongsTo(Team::getClass(), 'default_team_id');
     }
 
     /**
@@ -29,17 +34,23 @@ trait HasTeams
         return $this->teams()->where('teams.id', $team->id)->exists();
     }
 
-    public function switchTeam($team)
+    /**
+     * Set the user's default team preference.
+     *
+     * Persists the team ID to the database so the user returns to this
+     * team on their next login. Returns false if the user is not a member.
+     */
+    public function setDefaultTeam($team)
     {
         if (! $this->belongsToTeam($team)) {
             return false;
         }
 
         $this->forceFill([
-            'current_team_id' => $team?->id,
+            'default_team_id' => $team?->id,
         ])->save();
 
-        $this->setRelation('currentTeam', $team);
+        $this->setRelation('defaultTeam', $team);
 
         return true;
     }

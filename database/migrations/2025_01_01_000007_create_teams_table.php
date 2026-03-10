@@ -26,7 +26,7 @@ return new class () extends Migration {
         });
 
         Schema::table('users', function (Blueprint $table) {
-            $table->foreignId('current_team_id')->nullable()->constrained('teams')->nullOnDelete();
+            $table->foreignId('default_team_id')->nullable()->constrained('teams')->nullOnDelete();
         });
 
         Schema::table('tenants', function (Blueprint $table) {
@@ -51,7 +51,7 @@ return new class () extends Migration {
     {
         Schema::dropIfExists('team_user');
         Schema::table('users', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('current_team_id');
+            $table->dropConstrainedForeignId('default_team_id');
         });
         if (Schema::hasColumn('tenants', 'platform_team_id')) {
             Schema::table('tenants', function (Blueprint $table) {

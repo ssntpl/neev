@@ -455,7 +455,7 @@ $team = Team::create([
 $user->teams;          // Teams user belongs to
 $user->ownedTeams;     // Teams user owns
 $user->teamRequests;   // Pending invitations
-$user->switchTeam($team); // Switch active team
+$user->setDefaultTeam($team); // Set default team for next login
 ```
 
 ### Team Relationships

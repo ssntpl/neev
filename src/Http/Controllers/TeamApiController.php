@@ -48,7 +48,7 @@ class TeamApiController extends Controller
         ]);
     }
 
-    public function switchTeam(Request $request)
+    public function setDefaultTeam(Request $request)
     {
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
@@ -68,11 +68,13 @@ class TeamApiController extends Controller
             ], 400);
         }
 
+        $user->setDefaultTeam($team);
+
         $team->load('owner.email', 'users.email');
 
         return response()->json([
             'status' => 'Success',
-            'message' => 'Team switched successfully.',
+            'message' => 'Default team updated successfully.',
             'data' => $team,
         ]);
     }

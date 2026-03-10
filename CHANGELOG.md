@@ -10,7 +10,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.4.3] - 2026-03-10
 
 ### Fixed
-- **TenantScope fails closed** — when tenant isolation is enabled but no tenant is resolved, queries now return empty results (`WHERE 1 = 0`) instead of silently running unscoped, preventing accidental cross-tenant data leakage
+- **TenantScope scopes to platform users when no tenant resolved** — when tenant isolation is enabled but no tenant is resolved, queries now scope to `WHERE tenant_id IS NULL` (platform users only) instead of silently running unscoped, preventing cross-tenant data leakage while supporting platform-level users
+- Moved `TenantScope` PHPStan suppression from baseline to inline `@phpstan-ignore` comments colocated with the calls
+
+### Changed
+- **Renamed `current_team_id` → `default_team_id`** — clarifies this is a user preference (which team to land on after login), not the request-scoped team context (which comes from `TenantResolver`/`ContextManager`)
+- **Renamed `currentTeam()` → `defaultTeam()`** on `HasTeams` trait — relationship accessor for the user's default team preference
+- **Renamed `switchTeam()` → `setDefaultTeam()`** on `HasTeams` trait — persists the user's default team preference to the database
+- **Renamed `switchTeam()` → `setDefaultTeam()`** on `TeamApiController` — API endpoint moved from `PUT /neev/teams/switch` to `PUT /neev/teams/default`
 
 ### Added
 - `TenantResolver::runInContext()` — run a callback within a specific tenant/team context, with automatic state save/restore (useful for platform code provisioning tenant resources outside a request)

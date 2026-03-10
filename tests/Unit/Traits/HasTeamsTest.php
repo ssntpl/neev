@@ -14,28 +14,28 @@ class HasTeamsTest extends TestCase
     use WithNeevConfig;
 
     // -----------------------------------------------------------------
-    // currentTeam()
+    // defaultTeam()
     // -----------------------------------------------------------------
 
-    public function test_current_team_returns_team_when_current_team_id_is_set(): void
+    public function test_current_team_returns_team_when_default_team_id_is_set(): void
     {
         $user = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
         $team->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
 
-        $user->forceFill(['current_team_id' => $team->id])->save();
+        $user->forceFill(['default_team_id' => $team->id])->save();
         $user->refresh();
 
-        $this->assertNotNull($user->currentTeam);
-        $this->assertTrue($user->currentTeam->is($team));
+        $this->assertNotNull($user->defaultTeam);
+        $this->assertTrue($user->defaultTeam->is($team));
     }
 
-    public function test_current_team_returns_null_when_current_team_id_is_not_set(): void
+    public function test_current_team_returns_null_when_default_team_id_is_not_set(): void
     {
         $user = User::factory()->create();
 
-        $this->assertNull($user->currentTeam);
+        $this->assertNull($user->defaultTeam);
     }
 
     // -----------------------------------------------------------------
@@ -78,21 +78,21 @@ class HasTeamsTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // switchTeam()
+    // setDefaultTeam()
     // -----------------------------------------------------------------
 
-    public function test_switch_team_sets_current_team_id_and_returns_true_for_member(): void
+    public function test_switch_team_sets_default_team_id_and_returns_true_for_member(): void
     {
         $user = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
         $team->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
 
-        $result = $user->switchTeam($team);
+        $result = $user->setDefaultTeam($team);
 
         $this->assertTrue($result);
-        $this->assertEquals($team->id, $user->fresh()->current_team_id);
-        $this->assertTrue($user->currentTeam->is($team));
+        $this->assertEquals($team->id, $user->fresh()->default_team_id);
+        $this->assertTrue($user->defaultTeam->is($team));
     }
 
     public function test_switch_team_returns_false_for_non_member(): void
@@ -100,10 +100,10 @@ class HasTeamsTest extends TestCase
         $user = User::factory()->create();
         $team = TeamFactory::new()->create();
 
-        $result = $user->switchTeam($team);
+        $result = $user->setDefaultTeam($team);
 
         $this->assertFalse($result);
-        $this->assertNull($user->fresh()->current_team_id);
+        $this->assertNull($user->fresh()->default_team_id);
     }
 
     public function test_switch_team_can_switch_between_multiple_teams(): void
@@ -115,11 +115,11 @@ class HasTeamsTest extends TestCase
         $teamA->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
         $teamB->allUsers()->attach($user, ['joined' => true, 'action' => 'request_to_user']);
 
-        $user->switchTeam($teamA);
-        $this->assertEquals($teamA->id, $user->fresh()->current_team_id);
+        $user->setDefaultTeam($teamA);
+        $this->assertEquals($teamA->id, $user->fresh()->default_team_id);
 
-        $user->switchTeam($teamB);
-        $this->assertEquals($teamB->id, $user->fresh()->current_team_id);
+        $user->setDefaultTeam($teamB);
+        $this->assertEquals($teamB->id, $user->fresh()->default_team_id);
     }
 
     // -----------------------------------------------------------------

@@ -106,7 +106,7 @@ class EnsureTeamIsActiveTest extends TestCase
         $this->attachUserToTeam($user, $team);
 
         // Set as current team
-        $user->update(['current_team_id' => $team->id]);
+        $user->update(['default_team_id' => $team->id]);
         $user->refresh();
 
         $request = $this->buildRequest('/dashboard', $user, 'json');
@@ -131,7 +131,7 @@ class EnsureTeamIsActiveTest extends TestCase
         $team = TeamFactory::new()->inactive()->create(['user_id' => $user->id]);
         $this->attachUserToTeam($user, $team);
 
-        $user->update(['current_team_id' => $team->id]);
+        $user->update(['default_team_id' => $team->id]);
         $user->refresh();
 
         $request = $this->buildRequest('/dashboard', $user, 'html');
@@ -156,7 +156,7 @@ class EnsureTeamIsActiveTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $user->id]); // active by default
         $this->attachUserToTeam($user, $team);
 
-        $user->update(['current_team_id' => $team->id]);
+        $user->update(['default_team_id' => $team->id]);
         $user->refresh();
 
         $request = $this->buildRequest('/dashboard', $user);
@@ -184,7 +184,7 @@ class EnsureTeamIsActiveTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Fallback to first team when no currentTeam set
+    // Fallback to first team when no defaultTeam set
     // -----------------------------------------------------------------
 
     public function test_uses_first_team_when_no_current_team_set(): void
@@ -193,7 +193,7 @@ class EnsureTeamIsActiveTest extends TestCase
         $team = TeamFactory::new()->inactive('under review')->create(['user_id' => $user->id]);
         $this->attachUserToTeam($user, $team);
 
-        // Do NOT set current_team_id -- middleware should fall back to teams->first()
+        // Do NOT set default_team_id -- middleware should fall back to teams->first()
         $request = $this->buildRequest('/dashboard', $user, 'json');
 
         $response = $this->middleware->handle($request, $this->passThrough());
@@ -214,7 +214,7 @@ class EnsureTeamIsActiveTest extends TestCase
         $team = TeamFactory::new()->inactive()->create(['user_id' => $user->id]);
         $this->attachUserToTeam($user, $team);
 
-        $user->update(['current_team_id' => $team->id]);
+        $user->update(['default_team_id' => $team->id]);
         $user->refresh();
 
         $request = $this->buildRequest('/dashboard', $user, 'json');

@@ -110,8 +110,8 @@ $user->teamRequests;
 // Join requests sent by user
 $user->sendRequests;
 
-// Switch current team
-$user->switchTeam($team);
+// Set default team (persisted preference for next login)
+$user->setDefaultTeam($team);
 
 // Check team membership
 $user->belongsToTeam($team);
@@ -367,10 +367,10 @@ Content-Type: application/json
 {"team_id": 2}
 ```
 
-### Current Team
+### Default Team
 
 ```php
-$user->currentTeam;  // The user's active team
+$user->defaultTeam;  // The user's default team (preference, not request context)
 ```
 
 ---

@@ -19,12 +19,12 @@ Table users {
   name varchar
   username varchar [null]
   active boolean [default: true]
-  current_team_id bigint [null]
+  default_team_id bigint [null]
   created_at timestamp
   updated_at timestamp
 
   indexes {
-    current_team_id
+    default_team_id
   }
 }
 
@@ -267,5 +267,5 @@ Table tenant_auth_settings {
 }
 
 // Cross-table refs that can't be inline
-Ref: users.current_team_id > teams.id
+Ref: users.default_team_id > teams.id
 Ref: tenants.platform_team_id > teams.id

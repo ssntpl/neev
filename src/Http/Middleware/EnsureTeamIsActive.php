@@ -27,7 +27,7 @@ class EnsureTeamIsActive
             return redirect()->route('login');
         }
 
-        $team = $user->currentTeam ?? $user->teams->first();
+        $team = $user->defaultTeam ?? $user->teams->first();
 
         if ($team && !$team->isActive()) {
             if ($request->expectsJson()) {
