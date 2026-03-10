@@ -22,9 +22,10 @@ class TenantScope implements Scope
         }
 
         if (! $resolver->hasTenant()) {
-            // Tenant isolation enabled but no tenant resolved — fail closed.
-            // Return empty results to prevent cross-tenant data leakage.
-            $builder->whereRaw('1 = 0');
+            // Tenant isolation enabled but no tenant resolved — scope to platform users only.
+            // Only users with tenant_id = null (platform admins, global users) are visible.
+            // Tenant-scoped users remain invisible, preventing cross-tenant data leakage.
+            $builder->whereNull($model->getQualifiedTenantIdColumn());
             return;
         }
 

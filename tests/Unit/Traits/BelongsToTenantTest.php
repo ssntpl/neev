@@ -180,7 +180,7 @@ class BelongsToTenantTest extends TestCase
         $this->assertEquals('Team A Item', $items->first()->name);
     }
 
-    public function test_tenant_scope_fails_closed_when_no_tenant_resolved(): void
+    public function test_tenant_scope_hides_tenant_items_when_no_tenant_resolved(): void
     {
         $this->enableTenantIsolation();
         $teamA = TeamFactory::new()->create();
@@ -195,13 +195,37 @@ class BelongsToTenantTest extends TestCase
             'tenant_id' => $teamB->id,
         ]);
 
-        // No tenant resolved — scope fails closed, returns empty results.
+        // No tenant resolved — only platform items (tenant_id = null) are visible.
         $resolver = app(TenantResolver::class);
         $resolver->clear();
 
         $items = TenantItem::all();
 
         $this->assertCount(0, $items);
+    }
+
+    public function test_tenant_scope_shows_platform_items_when_no_tenant_resolved(): void
+    {
+        $this->enableTenantIsolation();
+        $team = TeamFactory::new()->create();
+
+        TenantItem::withoutTenantScope()->create([
+            'name' => 'Tenant Item',
+            'tenant_id' => $team->id,
+        ]);
+        TenantItem::withoutTenantScope()->create([
+            'name' => 'Platform Item',
+            'tenant_id' => null,
+        ]);
+
+        // No tenant resolved — only platform items (tenant_id = null) are visible.
+        $resolver = app(TenantResolver::class);
+        $resolver->clear();
+
+        $items = TenantItem::all();
+
+        $this->assertCount(1, $items);
+        $this->assertEquals('Platform Item', $items->first()->name);
     }
 
     // -----------------------------------------------------------------
