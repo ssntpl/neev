@@ -427,12 +427,6 @@ parameters:
 			path: src/Scopes/TeamScope.php
 
 		-
-			message: '#^Call to an undefined method TModel of Illuminate\\Database\\Eloquent\\Model\:\:getQualifiedTenantIdColumn\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: src/Scopes/TenantScope.php
-
-		-
 			message: '#^Call to an undefined method Illuminate\\Http\\Request\:\:authenticate\(\)\.$#'
 			identifier: method.notFound
 			count: 1
