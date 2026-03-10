@@ -209,7 +209,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive Blade views and email templates
 - Artisan commands for installation, GeoIP download, and cleanup
 
-[Unreleased]: https://github.com/ssntpl/neev/compare/v0.4.2...HEAD
+[Unreleased]: https://github.com/ssntpl/neev/compare/v0.4.3...HEAD
+[0.4.3]: https://github.com/ssntpl/neev/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/ssntpl/neev/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ssntpl/neev/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/ssntpl/neev/compare/v0.3.0...v0.4.0
