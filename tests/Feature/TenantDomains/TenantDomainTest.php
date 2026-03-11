@@ -65,7 +65,6 @@ class TenantDomainTest extends TestCase
             ->getJson('/neev/tenant-domains/?team_id=' . $team->id);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonCount(1, 'data');
     }
 
@@ -76,8 +75,7 @@ class TenantDomainTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/tenant-domains/?team_id=99999');
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     public function test_list_tenant_domains_rejects_non_member(): void
@@ -107,8 +105,7 @@ class TenantDomainTest extends TestCase
                 'type' => 'subdomain',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $domain = Domain::where('domain', 'myteam.test.com')->first();
         $this->assertNotNull($domain);
@@ -129,7 +126,6 @@ class TenantDomainTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonStructure(['verification_token', 'dns_record']);
 
         $domain = Domain::where('domain', 'custom.example.com')->first();
@@ -193,7 +189,6 @@ class TenantDomainTest extends TestCase
             ->getJson('/neev/tenant-domains/' . $domain->id);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('data.id', $domain->id);
     }
 
@@ -240,8 +235,7 @@ class TenantDomainTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/tenant-domains/' . $domain2->id);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertDatabaseMissing('domains', ['id' => $domain2->id]);
     }
@@ -361,8 +355,7 @@ class TenantDomainTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/tenant-domains/' . $secondary->id . '/primary');
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $secondary->refresh();
         $this->assertTrue($secondary->is_primary);
@@ -416,7 +409,6 @@ class TenantDomainTest extends TestCase
             ->getJson('/neev/tenant-domains/current');
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('data.team.id', $team->id);
     }
 
@@ -432,8 +424,7 @@ class TenantDomainTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/tenant-domains/current');
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -477,7 +468,6 @@ class TenantDomainTest extends TestCase
             ->postJson('/neev/tenant-domains/' . $domain->id . '/verify');
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Domain is already verified.');
     }
 
@@ -511,8 +501,7 @@ class TenantDomainTest extends TestCase
                 'type' => 'custom',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
     }
 
     // -----------------------------------------------------------------
@@ -530,8 +519,7 @@ class TenantDomainTest extends TestCase
                 'type' => 'subdomain',
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -552,8 +540,7 @@ class TenantDomainTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/tenant-domains/' . $domain->id);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
     }
 
     // -----------------------------------------------------------------

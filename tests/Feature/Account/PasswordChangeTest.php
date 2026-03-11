@@ -50,7 +50,6 @@ class PasswordChangeTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Password has been successfully updated.');
     }
 
@@ -66,7 +65,6 @@ class PasswordChangeTest extends TestCase
             ]);
 
         $response->assertStatus(403)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Current Password is Wrong.');
     }
 

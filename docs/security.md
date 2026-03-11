@@ -254,7 +254,6 @@ curl -X GET https://yourapp.com/neev/sessions \
 
 ```json
 {
-  "status": "Success",
   "data": [
     {
       "id": 1,
@@ -316,7 +315,7 @@ php artisan migrate
 |------|-------------|
 | `login` | Session token after login |
 | `api_token` | API access token |
-| `mfa_token` | Temporary MFA verification token |
+| `mfa_jwt` | Short-lived JWT used only for MFA verification (not stored) |
 
 ### Token Storage
 

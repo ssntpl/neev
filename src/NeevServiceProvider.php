@@ -29,6 +29,7 @@ use Ssntpl\Neev\Http\Middleware\EnsurePasswordNotExpired;
 use Ssntpl\Neev\Http\Middleware\EnsureTeamIsActive;
 use Ssntpl\Neev\Http\Middleware\EnsureTenantIsActive;
 use Ssntpl\Neev\Http\Middleware\EnsureTenantMembership;
+use Ssntpl\Neev\Http\Middleware\JwtLoginMiddleware;
 use Ssntpl\Neev\Http\Middleware\NeevAPIMiddleware;
 use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
 use Ssntpl\Neev\Http\Middleware\ResolveTeamMiddleware;
@@ -58,6 +59,14 @@ class NeevServiceProvider extends ServiceProvider
             TenantMiddleware::class,
             ResolveTeamMiddleware::class,
             NeevAPIMiddleware::class,
+            EnsureTenantMembership::class,
+            BindContextMiddleware::class,
+        ]);
+
+        Route::middlewareGroup('neev:login', [
+            TenantMiddleware::class,
+            ResolveTeamMiddleware::class,
+            JwtLoginMiddleware::class,
             EnsureTenantMembership::class,
             BindContextMiddleware::class,
         ]);

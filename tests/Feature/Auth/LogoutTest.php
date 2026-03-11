@@ -47,7 +47,6 @@ class LogoutTest extends TestCase
 
         $response->assertOk();
         $response->assertJson([
-            'status' => 'Success',
             'message' => 'Logged out successfully.',
         ]);
 
@@ -130,7 +129,6 @@ class LogoutTest extends TestCase
 
         $response->assertOk();
         $response->assertJson([
-            'status' => 'Success',
             'message' => 'Logged out from all other devices successfully.',
         ]);
 

@@ -28,14 +28,12 @@ class TenantDomainController extends Controller
 
         if (!$user || !$team) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Team not found.',
             ], 400);
         }
 
         if (!$team->hasUser($user)) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'You do not have access to this team.',
             ], 403);
         }
@@ -43,7 +41,6 @@ class TenantDomainController extends Controller
         $domains = $team->domains;
 
         return response()->json([
-            'status' => 'Success',
             'data' => $domains,
         ]);
     }
@@ -59,7 +56,6 @@ class TenantDomainController extends Controller
 
         if (!$user || !$team) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Team not found.',
             ], 400);
         }
@@ -67,7 +63,6 @@ class TenantDomainController extends Controller
         // Only team owner can add domains
         if ($team->user_id !== $user->id) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Only team owner can add domains.',
             ], 403);
         }
@@ -99,7 +94,6 @@ class TenantDomainController extends Controller
             }
 
             $response = [
-                'status' => 'Success',
                 'message' => 'Domain added successfully.',
                 'data' => $tenantDomain,
             ];
@@ -117,7 +111,6 @@ class TenantDomainController extends Controller
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Unable to add domain.',
             ], 400);
         }
@@ -133,7 +126,6 @@ class TenantDomainController extends Controller
 
         if (!$tenantDomain) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Domain not found.',
             ], 404);
         }
@@ -142,13 +134,11 @@ class TenantDomainController extends Controller
         $owner = $tenantDomain->owner;
         if (!$owner || !$owner->hasUser($user)) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'You do not have access to this domain.',
             ], 403);
         }
 
         return response()->json([
-            'status' => 'Success',
             'data' => $tenantDomain,
         ]);
     }
@@ -163,7 +153,6 @@ class TenantDomainController extends Controller
 
         if (!$tenantDomain) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Domain not found.',
             ], 404);
         }
@@ -172,7 +161,6 @@ class TenantDomainController extends Controller
         $owner = $tenantDomain->owner;
         if (!$owner || $owner->user_id !== $user->id) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Only team owner can delete domains.',
             ], 403);
         }
@@ -180,7 +168,6 @@ class TenantDomainController extends Controller
         // Don't allow deleting the last domain
         if ($owner->domains()->count() <= 1) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Cannot delete the last domain. Team must have at least one domain.',
             ], 400);
         }
@@ -198,13 +185,11 @@ class TenantDomainController extends Controller
             }
 
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Domain deleted successfully.',
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Unable to delete domain.',
             ], 400);
         }
@@ -220,7 +205,6 @@ class TenantDomainController extends Controller
 
         if (!$tenantDomain) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Domain not found.',
             ], 404);
         }
@@ -229,14 +213,12 @@ class TenantDomainController extends Controller
         $owner = $tenantDomain->owner;
         if (!$owner || $owner->user_id !== $user->id) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Only team owner can verify domains.',
             ], 403);
         }
 
         if ($tenantDomain->isVerified()) {
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Domain is already verified.',
             ]);
         }
@@ -244,20 +226,17 @@ class TenantDomainController extends Controller
         try {
             if ($tenantDomain->verify()) {
                 return response()->json([
-                    'status' => 'Success',
                     'message' => 'Domain verified successfully.',
                     'data' => $tenantDomain->fresh(),
                 ]);
             }
 
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'DNS verification failed. Please check your DNS record.',
             ], 400);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Unable to verify domain.',
             ], 400);
         }
@@ -273,7 +252,6 @@ class TenantDomainController extends Controller
 
         if (!$tenantDomain) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Domain not found.',
             ], 404);
         }
@@ -282,14 +260,12 @@ class TenantDomainController extends Controller
         $owner = $tenantDomain->owner;
         if (!$owner || $owner->user_id !== $user->id) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Only team owner can regenerate tokens.',
             ], 403);
         }
 
         if (!$tenantDomain->verification_token) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Only domains with verification tokens can be regenerated.',
             ], 400);
         }
@@ -300,7 +276,6 @@ class TenantDomainController extends Controller
             $tenantDomain->save();
 
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Verification token regenerated.',
                 'verification_token' => $token,
                 'dns_record' => [
@@ -312,7 +287,6 @@ class TenantDomainController extends Controller
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Unable to regenerate verification token.',
             ], 400);
         }
@@ -328,7 +302,6 @@ class TenantDomainController extends Controller
 
         if (!$tenantDomain) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Domain not found.',
             ], 404);
         }
@@ -337,14 +310,12 @@ class TenantDomainController extends Controller
         $owner = $tenantDomain->owner;
         if (!$owner || $owner->user_id !== $user->id) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Only team owner can change primary domain.',
             ], 403);
         }
 
         if (!$tenantDomain->isVerified()) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Only verified domains can be set as primary.',
             ], 400);
         }
@@ -353,14 +324,12 @@ class TenantDomainController extends Controller
             $tenantDomain->markAsPrimary();
 
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Domain set as primary.',
                 'data' => $tenantDomain,
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Unable to set primary domain.',
             ], 400);
         }
@@ -376,13 +345,11 @@ class TenantDomainController extends Controller
 
         if (!$tenant) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'No tenant context.',
             ], 400);
         }
 
         return response()->json([
-            'status' => 'Success',
             'data' => [
                 'team' => $tenant,
                 'domain' => $tenantDomain,

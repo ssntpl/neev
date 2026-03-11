@@ -2,12 +2,13 @@
 
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
+use Firebase\JWT\JWT;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Str;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
-use Ssntpl\Neev\Models\AccessToken;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\JwtSecret;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
 
@@ -17,11 +18,7 @@ class MFATest extends TestCase
     use WithNeevConfig;
 
     /**
-     * Create a user with an MFA-token (simulating post-login pre-MFA state).
-     *
-     * We manually create the access token as an mfa_token type, which is
-     * the state the system puts you in after password login when MFA is enabled.
-     * The NeevAPIMiddleware allows mfa_token only on the /neev/mfa/otp/verify path.
+     * Create a user with an MFA JWT token (post-login pre-MFA state).
      */
     private function createUserWithMFAToken(string $mfaMethod = 'authenticator', ?string $secret = null): array
     {
@@ -35,21 +32,18 @@ class MFATest extends TestCase
             'secret' => $secret,
         ]);
 
-        // Create an mfa_token (the middleware allows this only for /neev/mfa/otp/verify)
-        $plainText = Str::random(40);
-        $accessToken = $user->accessTokens()->create([
-            'name' => 'mfa_token',
-            'token' => $plainText,
-            'token_type' => AccessToken::mfa_token,
-            'expires_at' => now()->addMinutes(60),
+        $attempt = $user->loginAttempts()->create([
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => $mfaMethod,
+            'is_success' => false,
         ]);
 
-        $fullToken = $accessToken->id . '|' . $plainText;
+        $fullToken = $this->createMfaJwtToken($user->id, $attempt->id);
 
         return [
             'user' => $user,
             'plainTextToken' => $fullToken,
-            'accessToken' => $accessToken,
+            'attempt' => $attempt,
             'secret' => $secret,
         ];
     }
@@ -58,13 +52,12 @@ class MFATest extends TestCase
     // POST /neev/mfa/otp/verify (authenticator)
     // -----------------------------------------------------------------
 
-    public function test_successful_authenticator_mfa_verification_promotes_token(): void
+    public function test_successful_authenticator_mfa_verification_returns_token(): void
     {
         $this->enableMFA();
 
         $data = $this->createUserWithMFAToken('authenticator');
 
-        // Generate a valid TOTP from the same secret
         $totp = TOTP::create($data['secret']);
         $validOTP = $totp->now();
 
@@ -75,17 +68,19 @@ class MFATest extends TestCase
             ]);
 
         $response->assertOk();
-        $response->assertJson(['status' => 'Success']);
-        $response->assertJsonStructure(['status', 'token', 'email_verified']);
+        $response->assertJson([
+            'auth_state' => 'authenticated',
+            'expires_in' => 1440,
+        ]);
+        $this->assertNotEmpty($response->json('token'));
 
-        // Token should be promoted from mfa_token to login
-        $this->assertDatabaseHas('access_tokens', [
-            'id' => $data['accessToken']->id,
-            'token_type' => AccessToken::login,
+        $this->assertDatabaseHas('login_attempts', [
+            'id' => $data['attempt']->id,
+            'is_success' => true,
         ]);
     }
 
-    public function test_failed_authenticator_mfa_returns_401(): void
+    public function test_failed_authenticator_mfa_returns_400(): void
     {
         $this->enableMFA();
 
@@ -94,19 +89,17 @@ class MFATest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
             ->postJson('/neev/mfa/otp/verify', [
                 'auth_method' => 'authenticator',
-                'otp' => '000000', // Wrong OTP
+                'otp' => '000000',
             ]);
 
         $response->assertStatus(400);
         $response->assertJson([
-            'status' => 'Failed',
             'message' => 'Code verification failed.',
         ]);
 
-        // Token should remain as mfa_token
-        $this->assertDatabaseHas('access_tokens', [
-            'id' => $data['accessToken']->id,
-            'token_type' => AccessToken::mfa_token,
+        $this->assertDatabaseHas('login_attempts', [
+            'id' => $data['attempt']->id,
+            'is_success' => false,
         ]);
     }
 
@@ -128,16 +121,12 @@ class MFATest extends TestCase
             'expires_at' => now()->addMinutes(15),
         ]);
 
-        // Create mfa_token
-        $plainText = Str::random(40);
-        $accessToken = $user->accessTokens()->create([
-            'name' => 'mfa_token',
-            'token' => $plainText,
-            'token_type' => AccessToken::mfa_token,
-            'expires_at' => now()->addMinutes(60),
+        $attempt = $user->loginAttempts()->create([
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => 'email',
+            'is_success' => false,
         ]);
-
-        $fullToken = $accessToken->id . '|' . $plainText;
+        $fullToken = $this->createMfaJwtToken($user->id, $attempt->id);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $fullToken)
             ->postJson('/neev/mfa/otp/verify', [
@@ -146,16 +135,18 @@ class MFATest extends TestCase
             ]);
 
         $response->assertOk();
-        $response->assertJson(['status' => 'Success']);
+        $response->assertJson([
+            'auth_state' => 'authenticated',
+            'expires_in' => 1440,
+        ]);
 
-        // Token should be promoted
-        $this->assertDatabaseHas('access_tokens', [
-            'id' => $accessToken->id,
-            'token_type' => AccessToken::login,
+        $this->assertDatabaseHas('login_attempts', [
+            'id' => $attempt->id,
+            'is_success' => true,
         ]);
     }
 
-    public function test_expired_email_mfa_otp_returns_401(): void
+    public function test_expired_email_mfa_otp_returns_400(): void
     {
         $this->enableMFA();
 
@@ -166,18 +157,15 @@ class MFATest extends TestCase
             'method' => 'email',
             'preferred' => true,
             'otp' => $otpPlaintext,
-            'expires_at' => now()->subMinutes(5), // Expired
+            'expires_at' => now()->subMinutes(5),
         ]);
 
-        $plainText = Str::random(40);
-        $accessToken = $user->accessTokens()->create([
-            'name' => 'mfa_token',
-            'token' => $plainText,
-            'token_type' => AccessToken::mfa_token,
-            'expires_at' => now()->addMinutes(60),
+        $attempt = $user->loginAttempts()->create([
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => 'email',
+            'is_success' => false,
         ]);
-
-        $fullToken = $accessToken->id . '|' . $plainText;
+        $fullToken = $this->createMfaJwtToken($user->id, $attempt->id);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $fullToken)
             ->postJson('/neev/mfa/otp/verify', [
@@ -198,28 +186,22 @@ class MFATest extends TestCase
 
         $user = User::factory()->create();
 
-        // Add an authenticator MFA (required to have some MFA set up)
         $user->multiFactorAuths()->create([
             'method' => 'authenticator',
             'preferred' => true,
             'secret' => Base32::encodeUpper(random_bytes(32)),
         ]);
 
-        // Generate recovery codes
         config(['neev.recovery_codes' => 8]);
         $codes = $user->generateRecoveryCodes();
         $validCode = $codes[0];
 
-        // Create mfa_token
-        $plainText = Str::random(40);
-        $accessToken = $user->accessTokens()->create([
-            'name' => 'mfa_token',
-            'token' => $plainText,
-            'token_type' => AccessToken::mfa_token,
-            'expires_at' => now()->addMinutes(60),
+        $attempt = $user->loginAttempts()->create([
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => 'recovery',
+            'is_success' => false,
         ]);
-
-        $fullToken = $accessToken->id . '|' . $plainText;
+        $fullToken = $this->createMfaJwtToken($user->id, $attempt->id);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $fullToken)
             ->postJson('/neev/mfa/otp/verify', [
@@ -228,16 +210,18 @@ class MFATest extends TestCase
             ]);
 
         $response->assertOk();
-        $response->assertJson(['status' => 'Success']);
+        $response->assertJson([
+            'auth_state' => 'authenticated',
+            'expires_in' => 1440,
+        ]);
 
-        // Token should be promoted
-        $this->assertDatabaseHas('access_tokens', [
-            'id' => $accessToken->id,
-            'token_type' => AccessToken::login,
+        $this->assertDatabaseHas('login_attempts', [
+            'id' => $attempt->id,
+            'is_success' => true,
         ]);
     }
 
-    public function test_invalid_recovery_code_returns_401(): void
+    public function test_invalid_recovery_code_returns_400(): void
     {
         $this->enableMFA();
 
@@ -252,16 +236,12 @@ class MFATest extends TestCase
         config(['neev.recovery_codes' => 8]);
         $user->generateRecoveryCodes();
 
-        // Create mfa_token
-        $plainText = Str::random(40);
-        $accessToken = $user->accessTokens()->create([
-            'name' => 'mfa_token',
-            'token' => $plainText,
-            'token_type' => AccessToken::mfa_token,
-            'expires_at' => now()->addMinutes(60),
+        $attempt = $user->loginAttempts()->create([
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => 'recovery',
+            'is_success' => false,
         ]);
-
-        $fullToken = $accessToken->id . '|' . $plainText;
+        $fullToken = $this->createMfaJwtToken($user->id, $attempt->id);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $fullToken)
             ->postJson('/neev/mfa/otp/verify', [
@@ -271,7 +251,6 @@ class MFATest extends TestCase
 
         $response->assertStatus(400);
         $response->assertJson([
-            'status' => 'Failed',
             'message' => 'Code verification failed.',
         ]);
     }
@@ -282,20 +261,15 @@ class MFATest extends TestCase
 
     public function test_mfa_verify_returns_403_for_nonexistent_user(): void
     {
-        // Create a token for a user, then delete the user
         $user = User::factory()->create();
 
-        $plainText = Str::random(40);
-        $accessToken = $user->accessTokens()->create([
-            'name' => 'mfa_token',
-            'token' => $plainText,
-            'token_type' => AccessToken::mfa_token,
-            'expires_at' => now()->addMinutes(60),
+        $attempt = $user->loginAttempts()->create([
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => 'authenticator',
+            'is_success' => false,
         ]);
+        $fullToken = $this->createMfaJwtToken($user->id, $attempt->id);
 
-        $fullToken = $accessToken->id . '|' . $plainText;
-
-        // Delete user data to simulate orphaned token
         $user->emails()->delete();
         $user->passwords()->delete();
         $user->forceDelete();
@@ -306,7 +280,6 @@ class MFATest extends TestCase
                 'otp' => '123456',
             ]);
 
-        // Middleware returns 403 for missing user
         $response->assertStatus(403);
     }
 
@@ -324,20 +297,30 @@ class MFATest extends TestCase
     {
         $user = User::factory()->create();
 
-        $plainText = Str::random(40);
-        $accessToken = $user->accessTokens()->create([
-            'name' => 'mfa_token',
-            'token' => $plainText,
-            'token_type' => AccessToken::mfa_token,
-            'expires_at' => now()->addMinutes(60),
+        $attempt = $user->loginAttempts()->create([
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => 'authenticator',
+            'is_success' => false,
         ]);
+        $fullToken = $this->createMfaJwtToken($user->id, $attempt->id);
 
-        $fullToken = $accessToken->id . '|' . $plainText;
-
-        // Try accessing a non-MFA endpoint
         $response = $this->withHeader('Authorization', 'Bearer ' . $fullToken)
             ->postJson('/neev/logout');
 
         $response->assertStatus(401);
+    }
+
+    private function createMfaJwtToken(int $userId, int $attemptId): string
+    {
+        $now = time();
+        $payload = [
+            'user_id' => (string) $userId,
+            'type' => 'mfa',
+            'iat' => $now,
+            'exp' => $now + (30 * 60),
+            'attempt_id' => $attemptId,
+        ];
+
+        return JWT::encode($payload, JwtSecret::get(), 'HS256');
     }
 }

@@ -34,7 +34,6 @@ class SessionsTest extends TestCase
             ->getJson('/neev/sessions');
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonStructure(['data']);
 
         // Should have at least 1 session (the current login token)
@@ -57,7 +56,6 @@ class SessionsTest extends TestCase
             ->getJson('/neev/loginAttempts');
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonStructure(['data']);
 
         $this->assertGreaterThanOrEqual(2, count($response->json('data')));
@@ -70,8 +68,7 @@ class SessionsTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/loginAttempts');
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
     }
 
     // -----------------------------------------------------------------
@@ -88,7 +85,6 @@ class SessionsTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Account has been deleted.');
 
         $this->assertDatabaseMissing('users', ['id' => $user->id]);
@@ -104,7 +100,6 @@ class SessionsTest extends TestCase
             ]);
 
         $response->assertStatus(403)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Password is Wrong.');
 
         $this->assertDatabaseHas('users', ['id' => $user->id]);

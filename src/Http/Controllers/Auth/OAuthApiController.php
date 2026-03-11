@@ -21,7 +21,6 @@ class OAuthApiController extends Controller
     {
         if (!in_array($service, config('neev.oauth', []))) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'OAuth provider not supported.',
             ], 404);
         }
@@ -43,7 +42,6 @@ class OAuthApiController extends Controller
             ->getTargetUrl();
 
         return response()->json([
-            'status' => 'Success',
             'url' => $url,
         ]);
     }
@@ -52,14 +50,12 @@ class OAuthApiController extends Controller
     {
         if (!in_array($service, config('neev.oauth', []))) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'OAuth provider not supported.',
             ], 404);
         }
 
         if (!$request->code) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Authorization code is required.',
             ], 400);
         }
@@ -80,7 +76,6 @@ class OAuthApiController extends Controller
                 $user = $email->user;
                 if (!$user || !$email->verified_at) {
                     return response()->json([
-                        'status' => 'Failed',
                         'message' => 'Account not found or email not verified.',
                     ], 401);
                 }
@@ -88,7 +83,6 @@ class OAuthApiController extends Controller
                 $user = $this->register($oauthUser);
                 if (!$user) {
                     return response()->json([
-                        'status' => 'Failed',
                         'message' => 'Unable to register user.',
                     ], 500);
                 }
@@ -99,25 +93,24 @@ class OAuthApiController extends Controller
                 request: $request,
                 geoIP: $geoIP,
                 user: $user,
-                method: $service
+                method: $service,
+                expiryMinutes: 1440
             );
 
             if (!$token) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'Something went wrong.',
                 ], 500);
             }
 
             return response()->json([
-                'status' => 'Success',
+                'auth_state' => 'authenticated',
                 'token' => $token,
-                'email_verified' => $user->hasVerifiedEmail(),
+                'expires_in' => 1440,
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'OAuth authentication failed.',
             ], 500);
         }

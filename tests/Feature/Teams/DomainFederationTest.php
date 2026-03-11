@@ -52,7 +52,6 @@ class DomainFederationTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonStructure(['token']);
 
         $this->assertDatabaseHas('domains', [
@@ -93,8 +92,7 @@ class DomainFederationTest extends TestCase
                 'domain' => 'forbidden.com',
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
 
         $this->assertDatabaseMissing('domains', [
             'domain' => 'forbidden.com',
@@ -117,7 +115,6 @@ class DomainFederationTest extends TestCase
             ->getJson('/neev/domains?team_id=' . $team->id);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonCount(2, 'data');
     }
 
@@ -128,8 +125,7 @@ class DomainFederationTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/domains?team_id=99999');
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -151,8 +147,7 @@ class DomainFederationTest extends TestCase
                 'enforce' => true,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertTrue($domain->fresh()->enforce);
     }
@@ -172,7 +167,6 @@ class DomainFederationTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonStructure(['token']);
     }
 
@@ -190,8 +184,7 @@ class DomainFederationTest extends TestCase
                 'enforce' => true,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -214,8 +207,7 @@ class DomainFederationTest extends TestCase
                 'domain_id' => $domainB->id,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertTrue($domainB->fresh()->is_primary);
         $this->assertFalse($domainA->fresh()->is_primary);
@@ -237,8 +229,7 @@ class DomainFederationTest extends TestCase
                 'domain_id' => $domain->id,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -256,8 +247,7 @@ class DomainFederationTest extends TestCase
                 'domain_id' => $domain->id,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertDatabaseMissing('domains', ['id' => $domain->id]);
     }
@@ -275,8 +265,7 @@ class DomainFederationTest extends TestCase
                 'domain_id' => $domain->id,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
 
         $this->assertDatabaseHas('domains', ['id' => $domain->id]);
     }
@@ -305,8 +294,7 @@ class DomainFederationTest extends TestCase
                 'mfa' => true,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $rule = $domain->rules()->where('name', 'mfa')->first();
         $this->assertTrue((bool) $rule->value);
@@ -326,8 +314,7 @@ class DomainFederationTest extends TestCase
                 'mfa' => true,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     public function test_update_domain_rules_returns_error_for_nonexistent_domain(): void
@@ -340,8 +327,7 @@ class DomainFederationTest extends TestCase
                 'mfa' => true,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -367,7 +353,6 @@ class DomainFederationTest extends TestCase
             ->getJson('/neev/domains/rules?domain_id=' . $domain->id);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonCount(1, 'data');
     }
 
@@ -382,8 +367,7 @@ class DomainFederationTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/domains/rules?domain_id=' . $domain->id);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     public function test_get_domain_rules_returns_error_for_nonexistent_domain(): void
@@ -393,8 +377,7 @@ class DomainFederationTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/domains/rules?domain_id=99999');
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -420,8 +403,7 @@ class DomainFederationTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/domains?team_id=' . $team->id);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
     }
 
     // -----------------------------------------------------------------
@@ -440,8 +422,7 @@ class DomainFederationTest extends TestCase
                 'enforce' => true,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $domain = Domain::where('domain', 'enforced-domain.com')->first();
         $this->assertNotNull($domain);
@@ -465,8 +446,7 @@ class DomainFederationTest extends TestCase
                 'domain_id' => $domain->id,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
     }
 
     // -----------------------------------------------------------------
@@ -492,8 +472,7 @@ class DomainFederationTest extends TestCase
                 'verify' => true,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -510,8 +489,7 @@ class DomainFederationTest extends TestCase
                 'enforce' => true,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -527,8 +505,7 @@ class DomainFederationTest extends TestCase
                 'domain_id' => 99999,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -545,8 +522,7 @@ class DomainFederationTest extends TestCase
                 'domain' => 'orphan.com',
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -562,8 +538,7 @@ class DomainFederationTest extends TestCase
                 'domain_id' => 99999,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -585,8 +560,7 @@ class DomainFederationTest extends TestCase
                 'domain_id' => $domain->id,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertDatabaseMissing('domains', ['id' => $domain->id]);
         $this->assertDatabaseMissing('domain_rules', ['domain_id' => $domain->id]);

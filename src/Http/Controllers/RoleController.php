@@ -25,13 +25,11 @@ class RoleController extends Controller
         try {
             $this->changeRole($request);
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Role has been changed.'
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Failed to process change role request.'
             ], 400);
         }

@@ -37,7 +37,6 @@ class ProfileTest extends TestCase
             ->getJson('/neev/users');
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('data.id', $user->id)
             ->assertJsonPath('data.name', $user->name);
 
@@ -77,7 +76,6 @@ class ProfileTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('data.name', 'Updated Name');
 
         $this->assertDatabaseHas('users', [
@@ -109,8 +107,7 @@ class ProfileTest extends TestCase
                 'username' => 'newusername',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertEquals('newusername', $user->fresh()->username);
     }
@@ -127,8 +124,7 @@ class ProfileTest extends TestCase
                 'username' => 'taken',
             ]);
 
-        $response->assertStatus(500)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(500);
     }
 
     public function test_update_user_name_and_username_simultaneously(): void
@@ -144,7 +140,6 @@ class ProfileTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('data.name', 'New Full Name');
 
         $user->refresh();

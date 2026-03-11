@@ -87,13 +87,13 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 <p>Or enter manually: {{ $response['secret'] }}</p>
 ```
 
-### Verify Setup
+### Verify OTP During Login
 
-Before enabling, verify the user can generate valid codes:
+Verify the OTP after an MFA-required login:
 
 ```bash
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
-  -H "Authorization: Bearer {token}" \
+  -H "Authorization: Bearer {mfa_jwt_token}" \
   -H "Content-Type: application/json" \
   -d '{
     "auth_method": "authenticator",
@@ -161,7 +161,7 @@ curl -X POST https://yourapp.com/neev/email/otp/send \
 
 ```bash
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
-  -H "Authorization: Bearer {token}" \
+  -H "Authorization: Bearer {mfa_jwt_token}" \
   -H "Content-Type: application/json" \
   -d '{
     "auth_method": "email",
@@ -186,7 +186,6 @@ curl -X POST https://yourapp.com/neev/recoveryCodes \
 
 ```json
 {
-  "status": "Success",
   "message": "New recovery codes are generated.",
   "data": [
     "abc123defg",
@@ -205,7 +204,7 @@ curl -X POST https://yourapp.com/neev/recoveryCodes \
 
 ```bash
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
-  -H "Authorization: Bearer {mfa_token}" \
+  -H "Authorization: Bearer {mfa_jwt_token}" \
   -H "Content-Type: application/json" \
   -d '{
     "auth_method": "recovery",
@@ -274,13 +273,17 @@ curl -X POST https://yourapp.com/neev/login \
   -d '{"email": "john@example.com", "password": "password"}'
 ```
 
-Response includes `preferred_mfa`:
+Response includes `auth_state` and `mfa_options`:
 
 ```json
 {
-  "status": "Success",
-  "token": "1|mfa_token...",
-  "preferred_mfa": "authenticator"
+  "auth_state": "mfa_required",
+  "token": "jwt_mfa_token...",
+  "expires_in": 30,
+  "mfa_options": [
+    "authenticator",
+    "email"
+  ]
 }
 ```
 
@@ -288,7 +291,7 @@ Response includes `preferred_mfa`:
 
 ```bash
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
-  -H "Authorization: Bearer 1|mfa_token..." \
+  -H "Authorization: Bearer jwt_mfa_token..." \
   -d '{"auth_method": "authenticator", "otp": "123456"}'
 ```
 
@@ -296,9 +299,9 @@ Response with full token:
 
 ```json
 {
-  "status": "Success",
+  "auth_state": "authenticated",
   "token": "1|full_access_token...",
-  "email_verified": true
+  "expires_in": 1440
 }
 ```
 

@@ -145,10 +145,26 @@ curl -X POST https://yourapp.com/neev/login \
 
 ```json
 {
-  "status": "Success",
+  "auth_state": "authenticated",
   "token": "1|abc123def456...",
-  "email_verified": true,
-  "preferred_mfa": null
+  "expires_in": 1440,
+  "mfa_options": null
+}
+```
+
+`expires_in` is returned in minutes.
+
+**Response (with MFA enabled):**
+
+```json
+{
+  "auth_state": "mfa_required",
+  "token": "jwt_mfa_token...",
+  "expires_in": 30,
+  "mfa_options": [
+    "authenticator",
+    "email"
+  ]
 }
 ```
 
@@ -230,7 +246,7 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 |--------|----------|-------------|------|
 | POST | `/neev/mfa/add` | Enable MFA method | Yes |
 | DELETE | `/neev/mfa/delete` | Disable MFA method | Yes |
-| POST | `/neev/mfa/otp/verify` | Verify MFA code | MFA Token |
+| POST | `/neev/mfa/otp/verify` | Verify MFA code | MFA JWT |
 | POST | `/neev/recoveryCodes` | Generate recovery codes | Yes |
 
 ### Passkey Endpoints
@@ -431,7 +447,7 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 
 # Verify MFA during login
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
-  -H "Authorization: Bearer {mfa_token}" \
+  -H "Authorization: Bearer {mfa_jwt_token}" \
   -d '{"auth_method": "authenticator", "otp": "123456"}'
 ```
 

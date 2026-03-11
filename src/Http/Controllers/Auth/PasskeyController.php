@@ -58,7 +58,6 @@ class PasskeyController extends Controller
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'User not found.',
             ]);
         }
@@ -66,7 +65,6 @@ class PasskeyController extends Controller
         $passkeys = $user->passkeys()->get();
 
         return response()->json([
-            'status' => 'Success',
             'data' => $passkeys
         ]);
     }
@@ -76,7 +74,6 @@ class PasskeyController extends Controller
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'User not found',
             ], 400);
         }
@@ -129,7 +126,6 @@ class PasskeyController extends Controller
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'User not found',
             ], 400);
         }
@@ -274,20 +270,17 @@ class PasskeyController extends Controller
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'User not found',
             ], 400);
         }
         $passkey = Passkey::find($request->passkey_id);
         if (!$passkey || $passkey->user_id != $user->id) {
             return response()->json([
-                'status' => 'Failed'
             ], 400);
         }
         $passkey->name = $request->name;
         $passkey->save();
         return response()->json([
-            'status' => 'Success',
             'message' => 'Passkey name has been updated.',
             'data' => $passkey
         ]);
@@ -329,7 +322,6 @@ class PasskeyController extends Controller
             );
 
             return response()->json([
-                'status' => 'Success',
                 'challenge' => $base64Challenge,
                 'timeout' => $options->timeout,
                 'rpId' => $options->rpId,
@@ -340,7 +332,6 @@ class PasskeyController extends Controller
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Unable to generate login options.'
             ]);
         }
@@ -462,14 +453,12 @@ class PasskeyController extends Controller
         try {
             $res = $this->register($request, $geoIP);
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Passkey has been registered.',
                 'data' => $res,
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Unable to register passkey.',
             ], 400);
         }
@@ -481,14 +470,12 @@ class PasskeyController extends Controller
         $passkey = Passkey::find($request->passkey_id);
         if (!$user || !$passkey || $passkey->user_id != $user->id) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Passkey was not deleted.',
             ]);
         }
         $passkey->delete();
 
         return response()->json([
-            'status' => 'Success',
             'message' => 'Passkey has been deleted.',
         ]);
     }
@@ -512,17 +499,16 @@ class PasskeyController extends Controller
             [$user, $attempt] = $this->passkeyLogin($request, $geoIP);
 
             $authController = new UserAuthApiController();
-            $token = $authController->getToken(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Passkey, attempt: $attempt ?? null);
+            $token = $authController->getToken(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Passkey, expiryMinutes: 1440, attempt: $attempt ?? null);
 
             return response()->json([
-                'status' => 'Success',
+                'auth_state' => 'authenticated',
                 'token' => $token,
-                'email_verified' => $user->hasVerifiedEmail($request->email)
+                'expires_in' => 1440,
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Unable to authenticate with passkey.',
             ], 400);
         }

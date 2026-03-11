@@ -42,7 +42,6 @@ class APITokenTest extends TestCase
             ->getJson('/neev/apiTokens');
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonCount(2, 'data');
     }
 
@@ -71,7 +70,6 @@ class APITokenTest extends TestCase
             ->getJson('/neev/apiTokens');
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonCount(0, 'data');
     }
 
@@ -89,7 +87,6 @@ class APITokenTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Token has been added.')
             ->assertJsonStructure(['data']);
     }
@@ -146,7 +143,6 @@ class APITokenTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('data.name', 'Renamed Token');
 
         $this->assertDatabaseHas('access_tokens', [
@@ -168,8 +164,7 @@ class APITokenTest extends TestCase
                 'permissions' => ['read', 'write', 'delete'],
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $updatedToken = AccessToken::find($apiToken->accessToken->id);
         $this->assertEquals(['read', 'write', 'delete'], $updatedToken->permissions);
@@ -185,8 +180,7 @@ class APITokenTest extends TestCase
                 'name' => 'Ghost Token',
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -204,8 +198,7 @@ class APITokenTest extends TestCase
                 'token_id' => $apiToken->accessToken->id,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertDatabaseMissing('access_tokens', [
             'id' => $apiToken->accessToken->id,
@@ -247,8 +240,7 @@ class APITokenTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/apiTokens/deleteAll');
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertEquals(0, $user->apiTokens()->count());
     }
@@ -279,7 +271,6 @@ class APITokenTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/apiTokens/deleteAll');
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
     }
 }

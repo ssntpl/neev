@@ -23,7 +23,6 @@ class TeamApiController extends Controller
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'User not found',
             ], 400);
         }
@@ -39,7 +38,6 @@ class TeamApiController extends Controller
         $teamRequests = $user->teamRequests;
 
         return response()->json([
-            'status' => 'Success',
             'data' => [
                 'invitations' => $invitations,
                 'teamRequests' => $teamRequests,
@@ -54,7 +52,6 @@ class TeamApiController extends Controller
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'User not found',
             ], 400);
         }
@@ -63,7 +60,6 @@ class TeamApiController extends Controller
         $team = Team::model()->find($request->team_id);
         if (!$team || !$team->hasUser($user)) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Team not found',
             ], 400);
         }
@@ -73,7 +69,6 @@ class TeamApiController extends Controller
         $team->load('owner.email', 'users.email');
 
         return response()->json([
-            'status' => 'Success',
             'message' => 'Default team updated successfully.',
             'data' => $team,
         ]);
@@ -86,7 +81,6 @@ class TeamApiController extends Controller
         $teams = $user?->teams?->load('owner');
 
         return response()->json([
-            'status' => 'Success',
             'data' => $teams,
         ]);
     }
@@ -97,14 +91,12 @@ class TeamApiController extends Controller
         $team = Team::model()->find($id);
         if (!$team) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Team not found',
             ], 400);
         }
 
         if (!$team->hasUser($request->user())) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Team not found',
             ], 400);
         }
@@ -112,7 +104,6 @@ class TeamApiController extends Controller
         $team->load('owner.email', 'users.email', 'joinRequests', 'invitedUsers', 'invitations');
 
         return response()->json([
-            'status' => 'Success',
             'data' => $team,
         ]);
     }
@@ -125,7 +116,6 @@ class TeamApiController extends Controller
             $user = User::model()->find($user?->id);
             if (!$user) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'User not found',
                 ], 400);
             }
@@ -138,7 +128,6 @@ class TeamApiController extends Controller
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ], 400);
         }
@@ -146,7 +135,6 @@ class TeamApiController extends Controller
         $team->load('owner.email', 'users.email');
 
         return response()->json([
-            'status' => 'Success',
             'data' => $team,
         ]);
     }
@@ -158,7 +146,6 @@ class TeamApiController extends Controller
             $team = Team::model()->find($request->team_id);
             if (!$team) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'Team not found',
                 ], 400);
             }
@@ -171,14 +158,12 @@ class TeamApiController extends Controller
             $team->save();
 
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Team has been updated.',
                 'data' => $team,
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ], 400);
         }
@@ -193,7 +178,6 @@ class TeamApiController extends Controller
             $team = Team::model()->find($request->team_id);
             if ($user->id != $team->user_id || count($user->ownedTeams) < 2) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'You cannot delete this team.',
                 ], 400);
             }
@@ -201,13 +185,11 @@ class TeamApiController extends Controller
             $team->delete();
 
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Team has been deleted.',
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ], 400);
         }
@@ -224,13 +206,11 @@ class TeamApiController extends Controller
             $member = User::model()->find($request->user_id);
             if (!$user || !$team || !$member) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'not found',
                 ], 400);
             }
             if (!$team->hasUser($member)) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'This user is not the member in this team.',
                 ], 400);
             }
@@ -238,20 +218,17 @@ class TeamApiController extends Controller
                 $team->user_id = $member->id;
                 $team->save();
                 return response()->json([
-                    'status' => 'Success',
                     'message' => $member->name . ' is now the owner of the team.',
                 ]);
             }
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ], 400);
         }
 
         return response()->json([
-            'status' => 'Failed',
             'message' => 'You cannot change owner.',
         ], 400);
     }
@@ -265,7 +242,6 @@ class TeamApiController extends Controller
             $team = Team::model()->find($request->team_id);
             if ($user->id != $team->user_id || ($team->domain?->enforce && $team->domain?->verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->domain?->domain)))) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'You cannot invite member in this team.',
                 ], 400);
             }
@@ -290,14 +266,12 @@ class TeamApiController extends Controller
 
                 Mail::to($request->email)->send(new TeamInvitation($team->name, 'there', $signedUrl, $expiry, false));
                 return response()->json([
-                    'status' => 'Success',
                     'message' => 'Invite link sent successfully.',
                     'data' => $invitation
                 ]);
             }
             if ($team->users->contains($member)) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'User already added.',
                 ], 400);
             } elseif (!$team->allUsers->contains($member)) {
@@ -315,13 +289,11 @@ class TeamApiController extends Controller
             Mail::to($member->email->email)->send(new TeamInvitation($team->name, $member->name));
 
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Invite link sent successfully.',
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ], 400);
         }
@@ -336,7 +308,6 @@ class TeamApiController extends Controller
                 $invitation = \Ssntpl\Neev\Models\TeamInvitation::find($request->invitation_id);
                 if (!$invitation || !$user->emails->where('email', $invitation->email)->first()?->exists()) {
                     return response()->json([
-                        'status' => 'Failed',
                         'message' => 'Invitation not found',
                     ], 400);
                 }
@@ -344,12 +315,11 @@ class TeamApiController extends Controller
                 if ($request->action == 'reject') {
                     $invitation->delete();
                     return response()->json([
-                        'status' => 'Success',
                         'message' => 'Invitation Revoked Successfully',
                     ]);
                 } elseif ($request->action == 'accept') {
                     if ($team->users->contains($user)) {
-                        return response()->json(['status' => 'Failed', 'message' => 'Already Added.'], 400);
+                        return response()->json(['message' => 'Already Added.'], 400);
                     }
                     if (!$team->allUsers->contains($user)) {
                         $team->allUsers()->attach($user, ['joined' => true]);
@@ -359,7 +329,6 @@ class TeamApiController extends Controller
                     }
                     $invitation->delete();
                     return response()->json([
-                        'status' => 'Success',
                         'message' => 'Invitation Accepted Successfully',
                     ]);
                 }
@@ -370,21 +339,18 @@ class TeamApiController extends Controller
                     $team->allUsers()->detach($user);
                     $user->removeRole($team);
                     return response()->json([
-                        'status' => 'Success',
                         'message' => 'Invitation Rejected Successfully',
                     ]);
                 } elseif ($request->action == 'accept') {
                     $membership = $team->invitedUsers->where('id', $user->id)->first()?->membership;
                     if (!$membership) {
                         return response()->json([
-                            'status' => 'Failed',
                             'message' => 'Invitation not found',
                         ], 400);
                     }
                     $membership->joined = true;
                     $membership->save();
                     return response()->json([
-                        'status' => 'Success',
                         'message' => 'Invitation Accepted Successfully',
                     ]);
                 }
@@ -392,13 +358,11 @@ class TeamApiController extends Controller
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ], 400);
         }
 
         return response()->json([
-            'status' => 'Failed',
             'message' => 'Invalid Action.',
         ], 400);
     }
@@ -416,18 +380,15 @@ class TeamApiController extends Controller
                 if ($invitation) {
                     $invitation->delete();
                     return response()->json([
-                        'status' => 'Success',
                         'message' => 'Invitation Revoked Successfully',
                     ]);
                 }
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'Invitation not found.',
                 ], 400);
             }
             if ($user->id == $team->user_id) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'You cannot leave from this team.',
                 ], 400);
             }
@@ -436,13 +397,11 @@ class TeamApiController extends Controller
                 if ($user->active) {
                     $user->deactivate();
                     return response()->json([
-                        'status' => 'Success',
                         'message' => 'User Deactivated Successfully',
                     ]);
                 } else {
                     $user->activate();
                     return response()->json([
-                        'status' => 'Success',
                         'message' => 'User Activated Successfully',
                     ]);
                 }
@@ -452,13 +411,11 @@ class TeamApiController extends Controller
             $user->removeRole($team);
 
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Removed Successfully',
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ], 400);
         }
@@ -475,7 +432,6 @@ class TeamApiController extends Controller
             if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
                 if ($team->users->contains($user)) {
                     return response()->json([
-                        'status' => 'Failed',
                         'message' => 'Already Added.',
                     ], 400);
                 }
@@ -486,20 +442,17 @@ class TeamApiController extends Controller
                 Mail::to($team->owner->email->email)->send(new TeamJoinRequest($team->name, $user->name, $team->owner->name, $team->id));
 
                 return response()->json([
-                    'status' => 'Success',
                     'message' => 'Request sent successfully.',
                 ]);
             }
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ], 400);
         }
 
         return response()->json([
-            'status' => 'Failed',
             'message' => 'Team not found.',
         ], 400);
     }
@@ -517,14 +470,12 @@ class TeamApiController extends Controller
                 $team->allUsers()->detach($member);
 
                 return response()->json([
-                    'status' => 'Success',
                     'message' => 'Rejected Successfully',
                 ]);
             } elseif ($request->action == 'accept') {
                 $membership = $team->joinRequests->where('id', $member->id)->first()?->membership;
                 if (!$membership) {
                     return response()->json([
-                        'status' => 'Failed',
                         'message' => 'Request not found',
                     ], 400);
                 }
@@ -535,20 +486,17 @@ class TeamApiController extends Controller
                 }
 
                 return response()->json([
-                    'status' => 'Success',
                     'message' => 'Accepted Successfully',
                 ]);
             }
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ], 400);
         }
 
         return response()->json([
-            'status' => 'Failed',
             'message' => 'Invalid Action.',
         ], 400);
     }
@@ -559,7 +507,6 @@ class TeamApiController extends Controller
         $team = Team::model()->find($request->team_id);
         if (!$team) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Team not found.',
             ], 400);
         }
@@ -582,7 +529,6 @@ class TeamApiController extends Controller
         }
 
         return response()->json([
-            'status' => 'Success',
             'message' => 'Domains fetched successfully.',
             'data' => $domains,
         ]);
@@ -596,7 +542,6 @@ class TeamApiController extends Controller
         $team = Team::model()->find($request->team_id);
         if (!$user || !$team) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Not found.',
             ], 400);
         }
@@ -604,7 +549,6 @@ class TeamApiController extends Controller
         if ($team->user_id !== $user->id) {
             //  || !str_ends_with(strtolower($user->email->email), '@' . strtolower($request->domain))
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'You do not have the required permissions to federate domain.',
             ], 400);
         }
@@ -619,14 +563,12 @@ class TeamApiController extends Controller
             ]);
 
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Domain federated successfully.',
                 'token' => $token
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ]);
         }
@@ -639,7 +581,6 @@ class TeamApiController extends Controller
         $domain = Domain::find($request->domain_id);
         if (!$domain || !$user || $domain->owner?->user_id !== $user->id) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'You do not have the required permissions to update domain.',
             ], 400);
         }
@@ -655,13 +596,11 @@ class TeamApiController extends Controller
                     }
 
                     return response()->json([
-                        'status' => 'Success',
                         'message' => 'Domain verified successfully!',
                     ]);
                 }
 
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'DNS record not found. Please try again later.',
                 ], 400);
             }
@@ -672,7 +611,6 @@ class TeamApiController extends Controller
                 $domain->save();
 
                 return response()->json([
-                    'status' => 'Success',
                     'message' => 'Domain verification token has been updated.',
                     'token' => $token
                 ]);
@@ -684,14 +622,12 @@ class TeamApiController extends Controller
             $domain->save();
 
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Domain has been updated.',
                 'data' => $domain
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ], 400);
         }
@@ -704,7 +640,6 @@ class TeamApiController extends Controller
         $domain = Domain::find($request->domain_id);
         if (!$domain || !$user || $domain->owner?->user_id !== $user->id) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'You do not have the required permissions to delete domain.',
             ], 400);
         }
@@ -713,13 +648,11 @@ class TeamApiController extends Controller
             $domain->delete();
 
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Domain has been deleted.',
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ], 400);
         }
@@ -732,7 +665,6 @@ class TeamApiController extends Controller
         $domain = Domain::find($request->domain_id);
         if (!$user || !$domain || $domain->owner?->user_id !== $user->id) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'You do not have the required permissions to update domain.',
             ], 400);
         }
@@ -745,14 +677,12 @@ class TeamApiController extends Controller
             }
 
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Domain Rules have been updated.',
                 'data' => $domain->rules
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'An unexpected error occurred.',
             ], 400);
         }
@@ -765,13 +695,11 @@ class TeamApiController extends Controller
         $domain = Domain::find($request->domain_id);
         if (!$domain || !$user || !$domain->owner?->users->contains($user)) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'You do not have the required permissions to get domain rules.',
             ], 400);
         }
 
         return response()->json([
-            'status' => 'Success',
             'data' => $domain->rules
         ]);
     }
@@ -783,7 +711,6 @@ class TeamApiController extends Controller
         $domain = Domain::find($request->domain_id);
         if (!$user || !$domain || !$domain->verified_at || !$domain->owner?->users->contains($user)) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'You do not have the required permissions to change primary domain.',
             ], 400);
         }
@@ -792,7 +719,6 @@ class TeamApiController extends Controller
         if ($pdomain) {
             if ($pdomain->id == $domain->id) {
                 return response()->json([
-                    'status' => 'Success',
                     'message' => 'Primary domain is already set.',
                 ]);
             }
@@ -803,7 +729,6 @@ class TeamApiController extends Controller
         $domain->save();
 
         return response()->json([
-            'status' => 'Success',
             'message' => $domain->domain . ' has been set as primary domain.',
         ]);
     }
