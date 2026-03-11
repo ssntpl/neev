@@ -58,14 +58,6 @@ class NeevMiddleware
             return $this->unauthenticated($request, 'Unauthenticated.');
         }
 
-        $emailBypassPaths = ['email/verify*', 'email/send', 'logout', 'email/change', 'email/update'];
-        if (!$user->email?->verified_at && !$request->is($emailBypassPaths)) {
-            if ($request->expectsJson()) {
-                return response()->json(['message' => 'Email not verified.'], 403);
-            }
-            return redirect(route('verification.notice'));
-        }
-
         return $next($request);
     }
 

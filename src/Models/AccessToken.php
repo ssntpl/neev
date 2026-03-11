@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Ssntpl\Neev\Traits\BelongsToTenant;
 
 /**
  * @property int $id
@@ -20,6 +21,8 @@ use Illuminate\Database\Eloquent\Model;
  */
 class AccessToken extends Model
 {
+    use BelongsToTenant;
+
     public const api_token = 'api_token';
     public const mfa_token = 'mfa_token';
     public const login = 'login';
@@ -50,11 +53,6 @@ class AccessToken extends Model
     public function user()
     {
         return $this->belongsTo(User::getClass(), 'user_id');
-    }
-
-    public function tenant()
-    {
-        return $this->belongsTo(Tenant::getClass(), 'tenant_id');
     }
 
     public function attempt()

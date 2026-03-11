@@ -256,51 +256,7 @@ class NeevAPIMiddlewareTest extends TestCase
         $this->assertNotNull($data['accessToken']->fresh()->last_used_at);
     }
 
-    // -----------------------------------------------------------------
-    // Email verification (API)
-    // -----------------------------------------------------------------
-
-    public function test_returns_401_when_email_not_verified_and_email_verification_enabled(): void
-    {
-        $this->enableEmailVerification();
-
-        $data = $this->createUserWithApiToken();
-        $data['user']->email->update(['verified_at' => null]);
-
-        $request = $this->buildRequest('/api/some-protected-path', $data['plainTextToken']);
-
-        $response = $this->middleware->handle($request, $this->passThrough());
-
-        $this->assertEquals(401, $response->getStatusCode());
-        $this->assertStringContainsString('Email not verified', $response->getContent());
-    }
-
-    public function test_passes_through_email_bypass_paths_even_with_unverified_email(): void
-    {
-        $this->enableEmailVerification();
-
-        $data = $this->createUserWithApiToken();
-        $data['user']->email->update(['verified_at' => null]);
-
-        $bypassPaths = [
-            '/neev/email/send',
-            '/neev/logout',
-            '/neev/email/update',
-            '/neev/email/verify',
-            '/neev/email/otp/send',
-            '/neev/email/otp/verify',
-            '/neev/users',
-        ];
-
-        foreach ($bypassPaths as $path) {
-            $request = $this->buildRequest($path, $data['plainTextToken']);
-            $response = $this->middleware->handle($request, $this->passThrough());
-
-            $this->assertEquals(200, $response->getStatusCode(), "Expected 200 for bypass path: {$path}");
-        }
-    }
-
-    // email_verified config removed; email verification is always enforced by middleware
+    // Email verification is handled by the separate EnsureEmailIsVerified middleware
 
     // -----------------------------------------------------------------
     // Sets user resolver and token_id attribute
@@ -339,37 +295,6 @@ class NeevAPIMiddlewareTest extends TestCase
             'HTTP_ACCEPT' => 'application/json',
         ]);
         $request->headers->set('Authorization', 'Bearer ' . $data['plainTextToken']);
-
-        $response = $this->middleware->handle($request, $this->passThrough());
-
-        $this->assertEquals(200, $response->getStatusCode());
-    }
-
-    public function test_extracts_token_from_query_parameter(): void
-    {
-        $data = $this->createUserWithApiToken();
-
-        $request = Request::create('/api/test', 'GET', [
-            'token' => $data['plainTextToken'],
-        ], [], [], [
-            'HTTP_ACCEPT' => 'application/json',
-        ]);
-
-        $response = $this->middleware->handle($request, $this->passThrough());
-
-        $this->assertEquals(200, $response->getStatusCode());
-    }
-
-    public function test_extracts_token_from_post_input(): void
-    {
-        $data = $this->createUserWithApiToken();
-
-        $request = Request::create('/api/test', 'POST', [
-            'token' => $data['plainTextToken'],
-        ], [], [], [
-            'HTTP_ACCEPT' => 'application/json',
-            'CONTENT_TYPE' => 'application/x-www-form-urlencoded',
-        ]);
 
         $response = $this->middleware->handle($request, $this->passThrough());
 

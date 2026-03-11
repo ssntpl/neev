@@ -24,6 +24,7 @@ use Ssntpl\Neev\Commands\Tenant\ListTenantsCommand;
 use Ssntpl\Neev\Commands\Tenant\ShowTenantCommand;
 use Ssntpl\Neev\Http\Middleware\BindContextMiddleware;
 use Ssntpl\Neev\Http\Middleware\EnsureContextSSO;
+use Ssntpl\Neev\Http\Middleware\EnsureEmailIsVerified;
 use Ssntpl\Neev\Http\Middleware\EnsurePasswordNotExpired;
 use Ssntpl\Neev\Http\Middleware\EnsureTeamIsActive;
 use Ssntpl\Neev\Http\Middleware\EnsureTenantIsActive;
@@ -73,6 +74,7 @@ class NeevServiceProvider extends ServiceProvider
         Route::aliasMiddleware('neev:resolve-team', ResolveTeamMiddleware::class);
         Route::aliasMiddleware('neev:ensure-sso', EnsureContextSSO::class);
         Route::aliasMiddleware('neev:password-not-expired', EnsurePasswordNotExpired::class);
+        Route::aliasMiddleware('neev:verified-email', EnsureEmailIsVerified::class);
 
         $this->publishes([
             __DIR__.'/../config/neev.php' => config_path('neev.php'),
