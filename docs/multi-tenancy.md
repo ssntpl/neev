@@ -744,7 +744,8 @@ The `emails` table also has a unique constraint on `(tenant_id, email)`, allowin
 | id | bigint | Primary key |
 | name | string | Tenant name |
 | slug | string | Unique URL-friendly identifier |
-| managed_by_tenant_id | bigint (nullable) | Parent tenant (reseller model) |
+| activated_at | timestamp (nullable) | Activation time |
+| inactive_reason | string (nullable) | Reason for deactivation |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 

@@ -4,7 +4,6 @@ namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
@@ -20,7 +19,6 @@ use Ssntpl\Neev\Database\Factories\TenantFactory;
  * @property int $id
  * @property string $name
  * @property string $slug
- * @property int|null $managed_by_tenant_id
  * @property \Carbon\Carbon|null $activated_at
  * @property string|null $inactive_reason
  * @property \Carbon\Carbon|null $created_at
@@ -28,7 +26,6 @@ use Ssntpl\Neev\Database\Factories\TenantFactory;
  * @property-read TenantAuthSettings|null $authSettings
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $teams
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Domain> $domains
- * @property-read Tenant|null $managedBy
  */
 class Tenant extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
@@ -37,7 +34,6 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
     protected $fillable = [
         'name',
         'slug',
-        'managed_by_tenant_id',
         'activated_at',
         'inactive_reason',
     ];
@@ -70,16 +66,6 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
     public function teams(): HasMany
     {
         return $this->hasMany(Team::getClass());
-    }
-
-    public function managedBy(): BelongsTo
-    {
-        return $this->belongsTo(Tenant::getClass(), 'managed_by_tenant_id');
-    }
-
-    public function managedTenants(): HasMany
-    {
-        return $this->hasMany(Tenant::getClass(), 'managed_by_tenant_id');
     }
 
     public function authSettings(): HasOne

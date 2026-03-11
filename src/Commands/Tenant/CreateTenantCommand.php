@@ -21,8 +21,7 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
                             {--slug= : Custom slug (auto-generated from name if omitted)}
                             {--owner= : Owner user ID or email}
                             {--domain= : Domain to attach}
-                            {--activate : Activate the team immediately}
-                            {--managed-by= : Parent tenant ID or slug (isolated mode only)}';
+                            {--activate : Activate the team immediately}';
 
     protected $description = 'Create a new tenant (isolated mode) or team (shared mode)';
 
@@ -41,17 +40,10 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
     {
         $slug = $this->option('slug') ?: SlugHelper::generateForTenant($name);
 
-        $attributes = [
+        $tenant = Tenant::getClass()::create([
             'name' => $name,
             'slug' => $slug,
-        ];
-
-        if ($managedBy = $this->option('managed-by')) {
-            $parent = $this->resolveTenant($managedBy);
-            $attributes['managed_by_tenant_id'] = $parent->id;
-        }
-
-        $tenant = Tenant::getClass()::create($attributes);
+        ]);
 
         $this->info("Tenant created: {$tenant->name} (slug: {$tenant->slug}, ID: {$tenant->id})");
 

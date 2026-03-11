@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.4] - 2026-03-11
+
+### Fixed
+- **Cross-tenant token authentication** — `NeevAPIMiddleware` no longer bypasses `TenantScope` when looking up the authenticated user; the scope now naturally rejects tokens from other tenants at the auth layer instead of relying on downstream `EnsureTenantMembership` middleware
+- **`AccessToken` tenant scoping** — added `BelongsToTenant` trait to `AccessToken` model so token lookups are tenant-scoped, preventing cross-tenant token resolution before hash verification
+- **Bearer token extraction** — API tokens are now only accepted via the `Authorization: Bearer` header; removed insecure fallback to query string and request body (tokens in URLs leak via logs, referrers, and browser history)
+
+### Changed
+- **Email verification extracted to dedicated middleware** — removed hardcoded email verification checks (with fragile bypass path lists) from `NeevMiddleware` and `NeevAPIMiddleware`; added `EnsureEmailIsVerified` middleware registered as `neev:verified-email` alias for consuming apps to apply where needed
+- **Consolidated migration indexes** — merged all indexes from the separate `add_performance_indexes` migration into their original table creation migrations; deleted `2025_01_01_000013_add_performance_indexes.php`
+
+### Removed
+- **`platform_team_id`** column from `tenants` table — the concept of a "platform team" linked to a tenant was only used by CLI commands and had no runtime purpose; `CreateTenantCommand` still creates a default team when `--owner` is provided but no longer links it via a foreign key
+- **`managed_by_tenant_id`** column from `tenants` table — the reseller/tenant hierarchy feature had no runtime implementation and the "platform as tenant" model conflicts with `TenantScope` design (platform operates as `tenant_id = NULL`)
+- **`--tenant` option** from `neev:member:add` and `neev:member:list` commands — member management now requires `--team` directly
+- **`--managed-by` option** from `neev:tenant:create` command
+- `platformTeam()` relationship from `Tenant` model and `managedTenant()` from `Team` model
+- `managedBy()` and `managedTenants()` relationships from `Tenant` model
+
 ## [0.4.3] - 2026-03-10
 
 ### Fixed
@@ -209,7 +228,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive Blade views and email templates
 - Artisan commands for installation, GeoIP download, and cleanup
 
-[Unreleased]: https://github.com/ssntpl/neev/compare/v0.4.3...HEAD
+[Unreleased]: https://github.com/ssntpl/neev/compare/v0.4.4...HEAD
+[0.4.4]: https://github.com/ssntpl/neev/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/ssntpl/neev/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/ssntpl/neev/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/ssntpl/neev/compare/v0.4.0...v0.4.1

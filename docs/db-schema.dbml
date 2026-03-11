@@ -5,7 +5,6 @@ Table tenants {
   id bigint [pk, increment]
   name varchar
   slug varchar [unique]
-  managed_by_tenant_id bigint [null, ref: > tenants.id]
   activated_at timestamp [null]
   inactive_reason varchar [null]
   created_at timestamp

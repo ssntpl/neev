@@ -194,8 +194,6 @@ Contains:
 * Billing, licensing, provisioning
 * Tenant lifecycle management
 
-A platform team may represent a customer account.
-
 ---
 
 ### Data Plane
@@ -210,66 +208,6 @@ Contains:
 * Product data
 
 Each tenant remains an independent identity boundary.
-
----
-
-### Relationship Between Planes
-
-A platform team may be linked to a tenant.
-
-Example:
-
-```
-Platform Team  ←→  Tenant
-```
-
-Meaning:
-
-* Team represents customer account on platform.
-* Tenant represents actual product environment.
-
-Important:
-
-* Team is NOT the tenant.
-* Identity boundaries remain independent.
-* Users are not automatically shared.
-
----
-
-## Tenant Hierarchy (Reseller Model)
-
-Tenant-to-tenant relationships may exist for business purposes.
-
-Example:
-
-```
-Tenant A (reseller)
-    manages
-Tenant B (customer)
-```
-
-### Allowed
-
-* Billing relationship
-* Provisioning relationship
-* Reporting relationship
-
-### Not allowed (core rule)
-
-* No identity inheritance
-* No shared authentication
-* No automatic authorization
-* No data access across tenants
-
-Identity context always resolves to exactly one tenant.
-
-Recommended column:
-
-```
-managed_by_tenant_id
-```
-
-This represents business hierarchy only.
 
 ---
 

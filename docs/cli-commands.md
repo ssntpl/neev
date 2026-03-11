@@ -62,11 +62,8 @@ Create a new tenant or team.
 # Shared mode — creates a team
 php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --activate
 
-# Isolated mode — creates a tenant with platform team
+# Isolated mode — creates a tenant (and a default team if --owner is provided)
 php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --domain=acme.yourapp.com
-
-# With custom slug and parent tenant (isolated)
-php artisan neev:tenant:create "Sub Tenant" --slug=sub-tenant --managed-by=acme-corp
 ```
 
 | Argument / Option | Description |
@@ -76,11 +73,10 @@ php artisan neev:tenant:create "Sub Tenant" --slug=sub-tenant --managed-by=acme-
 | `--owner=` | Owner by user ID or email address |
 | `--domain=` | Attach a domain (auto-verifies subdomains, shows DNS instructions for custom) |
 | `--activate` | Activate the team immediately |
-| `--managed-by=` | Parent tenant ID or slug (isolated mode only) |
 
 **Shared mode**: Creates a `Team` with the given owner. If `--activate` is passed, sets `activated_at`.
 
-**Isolated mode**: Creates a `Tenant`. If `--owner` is provided, also creates a platform team with the owner attached. If `--domain` is provided, attaches it to the tenant.
+**Isolated mode**: Creates a `Tenant`. If `--owner` is provided, also creates a default team with the owner attached. If `--domain` is provided, attaches it to the tenant.
 
 ### `neev:tenant:list`
 
@@ -206,16 +202,12 @@ Add a user to a team directly.
 ```bash
 # Add by team
 php artisan neev:member:add user@example.com --team=acme-corp --role=editor
-
-# Add to tenant's platform team
-php artisan neev:member:add user@example.com --tenant=acme-corp --role=member
 ```
 
 | Argument / Option | Description |
 |-------------------|-------------|
 | `email` | Email of the user to add (prompted if omitted) |
-| `--team=` | Team ID or slug |
-| `--tenant=` | Tenant ID or slug (adds to platform team) |
+| `--team=` | Team ID or slug (required) |
 | `--role=` | Role to assign |
 
 Looks up the user via the `emails` table and attaches them with `joined=true`.
@@ -243,13 +235,12 @@ List members of a team or tenant.
 
 ```bash
 php artisan neev:member:list --team=acme-corp
-php artisan neev:member:list --tenant=acme-corp --json
+php artisan neev:member:list --team=acme-corp --json
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--team=` | Team ID or slug |
-| `--tenant=` | Tenant ID or slug (lists platform team members) |
+| `--team=` | Team ID or slug (required) |
 | `--json` | Output as JSON |
 
 Columns: ID, Name, Email, Role, Joined, Since.
