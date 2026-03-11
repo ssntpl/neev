@@ -26,11 +26,7 @@ return new class () extends Migration {
         });
 
         Schema::table('users', function (Blueprint $table) {
-            $table->foreignId('default_team_id')->nullable()->constrained('teams')->nullOnDelete();
-        });
-
-        Schema::table('tenants', function (Blueprint $table) {
-            $table->foreignId('platform_team_id')->nullable()->constrained('teams')->nullOnDelete();
+            $table->foreignId('default_team_id')->nullable()->index()->constrained('teams')->nullOnDelete();
         });
 
         Schema::create('team_user', function (Blueprint $table) {
@@ -41,6 +37,8 @@ return new class () extends Migration {
             $table->enum('action', ['request_to_user', 'request_from_user'])->default('request_to_user');
             $table->timestamps();
             $table->unique(['team_id', 'user_id']);
+            $table->index('team_id');
+            $table->index('user_id');
         });
     }
 
@@ -51,13 +49,9 @@ return new class () extends Migration {
     {
         Schema::dropIfExists('team_user');
         Schema::table('users', function (Blueprint $table) {
+            $table->dropIndex(['default_team_id']);
             $table->dropConstrainedForeignId('default_team_id');
         });
-        if (Schema::hasColumn('tenants', 'platform_team_id')) {
-            Schema::table('tenants', function (Blueprint $table) {
-                $table->dropConstrainedForeignId('platform_team_id');
-            });
-        }
         Schema::dropIfExists('teams');
     }
 };

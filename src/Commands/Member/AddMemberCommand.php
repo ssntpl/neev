@@ -13,8 +13,7 @@ class AddMemberCommand extends Command implements PromptsForMissingInput
     use ResolvesTenantContext;
 
     protected $signature = 'neev:member:add {email : Email of the user to add}
-                            {--team= : Team ID or slug}
-                            {--tenant= : Tenant ID or slug (uses platform team)}
+                            {--team= : Team ID or slug (required)}
                             {--role= : Role to assign to the member}';
 
     protected $description = 'Add a user to a team (bypasses invitation flow)';
@@ -51,19 +50,7 @@ class AddMemberCommand extends Command implements PromptsForMissingInput
             return $this->resolveTeam($teamRef);
         }
 
-        if ($tenantRef = $this->option('tenant')) {
-            $tenant = $this->resolveTenant($tenantRef);
-
-            if (! $tenant->platform_team_id) {
-                $this->error("Tenant '{$tenant->name}' has no platform team.");
-
-                return null;
-            }
-
-            return $tenant->platformTeam;
-        }
-
-        $this->error('You must specify --team or --tenant.');
+        $this->error('You must specify --team.');
 
         return null;
     }

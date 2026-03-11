@@ -57,11 +57,6 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
             $this->line("  <info>Managed by:</info> {$parent->name} (ID: {$parent->id})");
         }
 
-        if ($tenant->platform_team_id) {
-            $team = $tenant->platformTeam;
-            $this->line("  <info>Platform team:</info> {$team->name} (ID: {$team->id})");
-        }
-
         $this->line("  <info>Teams:</info>  {$tenant->teams()->count()}");
         $this->line("  <info>Created:</info> {$tenant->created_at->format('Y-m-d H:i')}");
 

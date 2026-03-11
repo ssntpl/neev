@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
@@ -34,7 +33,6 @@ use Ssntpl\Neev\Traits\HasTenantAuth;
  * @property-read Domain|null $domain
  * @property-read TeamAuthSettings|null $authSettings
  * @property-read Tenant|null $tenant
- * @property-read Tenant|null $managedTenant
  * @property-read string|null $webDomain
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Domain> $domains
  * @property-read \Illuminate\Database\Eloquent\Collection<int, TeamInvitation> $invitations
@@ -219,11 +217,6 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::getClass());
-    }
-
-    public function managedTenant(): HasOne
-    {
-        return $this->hasOne(Tenant::getClass(), 'platform_team_id');
     }
 
     // -----------------------------------------------------------------

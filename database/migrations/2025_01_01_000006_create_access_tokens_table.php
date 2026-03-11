@@ -22,6 +22,9 @@ return new class () extends Migration {
             $table->timestamp('last_used_at')->nullable();
             $table->timestamp('expires_at')->nullable();
             $table->timestamps();
+            $table->index('user_id');
+            $table->index('attempt_id');
+            $table->index('expires_at');
         });
     }
 

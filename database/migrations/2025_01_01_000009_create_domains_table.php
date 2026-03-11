@@ -20,6 +20,7 @@ return new class () extends Migration {
             $table->timestamp('verified_at')->nullable();
             $table->timestamp('verification_failed_at')->nullable();
             $table->timestamps();
+            $table->index(['domain', 'verified_at']);
         });
 
         Schema::create('domain_rules', function (Blueprint $table) {

@@ -21,6 +21,7 @@ return new class () extends Migration {
             $table->timestamp('last_used')->nullable();
             $table->timestamps();
             $table->unique(['user_id', 'method']);
+            $table->index('user_id');
         });
     }
 

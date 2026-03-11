@@ -6,7 +6,6 @@ Table tenants {
   name varchar
   slug varchar [unique]
   managed_by_tenant_id bigint [null, ref: > tenants.id]
-  platform_team_id bigint [null]
   activated_at timestamp [null]
   inactive_reason varchar [null]
   created_at timestamp
@@ -268,4 +267,3 @@ Table tenant_auth_settings {
 
 // Cross-table refs that can't be inline
 Ref: users.default_team_id > teams.id
-Ref: tenants.platform_team_id > teams.id

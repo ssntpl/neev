@@ -21,7 +21,6 @@ use Ssntpl\Neev\Database\Factories\TenantFactory;
  * @property string $name
  * @property string $slug
  * @property int|null $managed_by_tenant_id
- * @property int|null $platform_team_id
  * @property \Carbon\Carbon|null $activated_at
  * @property string|null $inactive_reason
  * @property \Carbon\Carbon|null $created_at
@@ -39,7 +38,6 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
         'name',
         'slug',
         'managed_by_tenant_id',
-        'platform_team_id',
         'activated_at',
         'inactive_reason',
     ];
@@ -82,11 +80,6 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
     public function managedTenants(): HasMany
     {
         return $this->hasMany(Tenant::getClass(), 'managed_by_tenant_id');
-    }
-
-    public function platformTeam(): BelongsTo
-    {
-        return $this->belongsTo(Team::getClass(), 'platform_team_id');
     }
 
     public function authSettings(): HasOne

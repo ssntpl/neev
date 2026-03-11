@@ -10,8 +10,7 @@ class ListMembersCommand extends Command
     use ResolvesTenantContext;
 
     protected $signature = 'neev:member:list
-                            {--team= : Team ID or slug}
-                            {--tenant= : Tenant ID or slug (lists platform team members)}
+                            {--team= : Team ID or slug (required)}
                             {--json : Output as JSON}';
 
     protected $description = 'List members of a team or tenant';
@@ -58,19 +57,7 @@ class ListMembersCommand extends Command
             return $this->resolveTeam($teamRef);
         }
 
-        if ($tenantRef = $this->option('tenant')) {
-            $tenant = $this->resolveTenant($tenantRef);
-
-            if (! $tenant->platform_team_id) {
-                $this->error("Tenant '{$tenant->name}' has no platform team.");
-
-                return null;
-            }
-
-            return $tenant->platformTeam;
-        }
-
-        $this->error('You must specify --team or --tenant.');
+        $this->error('You must specify --team.');
 
         return null;
     }
