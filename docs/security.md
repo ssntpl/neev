@@ -340,8 +340,11 @@ Tokens are formatted as `{id}|{token}`:
 ### Token Expiry
 
 ```php
-// Login tokens (default 24 hours, 60 min if MFA pending)
-$token = $user->createLoginToken(1440);
+// Login tokens (configured in neev.login_token_expiry_minutes)
+$token = $user->createLoginToken(config('neev.login_token_expiry_minutes', 1440));
+
+// MFA JWTs (configured in neev.mfa_jwt_expiry_minutes)
+$mfaJwtExpiry = config('neev.mfa_jwt_expiry_minutes', 30);
 
 // API tokens (optional expiry)
 $token = $user->createApiToken('name', ['read'], 43200);  // 30 days

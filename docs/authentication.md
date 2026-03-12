@@ -83,7 +83,8 @@ curl -X POST https://yourapp.com/neev/login \
   "auth_state": "authenticated",
   "token": "1|abc123def456...",
   "expires_in": 1440,
-  "mfa_options": null
+  "mfa_options": null,
+  "email_verified": true
 }
 ```
 
@@ -97,7 +98,8 @@ curl -X POST https://yourapp.com/neev/login \
   "mfa_options": [
     "authenticator",
     "email"
-  ]
+  ],
+  "email_verified": true
 }
 ```
 

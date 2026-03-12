@@ -276,6 +276,7 @@ class PasskeyController extends Controller
         $passkey = Passkey::find($request->passkey_id);
         if (!$passkey || $passkey->user_id != $user->id) {
             return response()->json([
+                'message' => 'Passkey not found'
             ], 400);
         }
         $passkey->name = $request->name;
@@ -499,12 +500,14 @@ class PasskeyController extends Controller
             [$user, $attempt] = $this->passkeyLogin($request, $geoIP);
 
             $authController = new UserAuthApiController();
-            $token = $authController->getToken(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Passkey, expiryMinutes: 1440, attempt: $attempt ?? null);
+            $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
+            $token = $authController->getToken(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Passkey, expiryMinutes: $expiryMinutes, attempt: $attempt ?? null);
 
             return response()->json([
                 'auth_state' => 'authenticated',
                 'token' => $token,
-                'expires_in' => 1440,
+                'expires_in' => $expiryMinutes,
+                'email_verified' => $user->hasVerifiedEmail(),
             ]);
         } catch (Exception $e) {
             Log::error($e);

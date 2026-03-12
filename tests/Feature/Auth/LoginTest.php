@@ -39,7 +39,8 @@ class LoginTest extends TestCase
         $response->assertJson([
             'auth_state' => 'authenticated',
             'mfa_options' => null,
-            'expires_in' => 1440,
+            'expires_in' => config('neev.login_token_expiry_minutes', 1440),
+            'email_verified' => true,
         ]);
         $this->assertNotEmpty($response->json('token'));
     }
@@ -58,7 +59,10 @@ class LoginTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJson(['auth_state' => 'authenticated']);
+        $response->assertJson([
+            'auth_state' => 'authenticated',
+            'email_verified' => true,
+        ]);
     }
 
     public function test_login_returns_email_verified_false_for_unverified_user(): void
@@ -73,7 +77,10 @@ class LoginTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJson(['auth_state' => 'authenticated']);
+        $response->assertJson([
+            'auth_state' => 'authenticated',
+            'email_verified' => false,
+        ]);
     }
 
     public function test_wrong_password_returns_401(): void
@@ -204,7 +211,8 @@ class LoginTest extends TestCase
         $response->assertJson([
             'auth_state' => 'mfa_required',
             'mfa_options' => ['authenticator'],
-            'expires_in' => 30,
+            'expires_in' => config('neev.mfa_jwt_expiry_minutes', 30),
+            'email_verified' => true,
         ]);
         $this->assertNotEmpty($response->json('token'));
     }

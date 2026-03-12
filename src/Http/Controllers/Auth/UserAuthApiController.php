@@ -101,7 +101,7 @@ class UserAuthApiController extends Controller
                 $verificationMethod = null;
             }
 
-            $expiryMinutes = 60 * 24;
+            $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
             $token = $this->getToken($request, $geoIP, $user, LoginAttempt::Password, $expiryMinutes);
             if (!$token) {
                 return response()->json([
@@ -182,7 +182,8 @@ class UserAuthApiController extends Controller
                 UserApiController::sendMailOTP($user->email, true);
             }
 
-            $expirySeconds = 30 * 60;
+            $expiryMinutes = config('neev.mfa_jwt_expiry_minutes', 30);
+            $expirySeconds = $expiryMinutes * 60;
             $tempToken = $this->getJwtToken($user->id, "mfa", $expirySeconds, [
                 'attempt_id' => $attempt?->id
             ]);
@@ -190,11 +191,12 @@ class UserAuthApiController extends Controller
             return response()->json([
                 'auth_state' => 'mfa_required',
                 'token' => $tempToken,
-                'expires_in' => (int) ($expirySeconds / 60),
+                'expires_in' => $expiryMinutes,
                 'mfa_options' => $this->getMfaOptions($user),
+                'email_verified' => $user->hasVerifiedEmail(),
             ]);
         }
-        $expiryMinutes = 60 * 24;
+        $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
         $token = $this->getToken(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, expiryMinutes: $expiryMinutes, attempt: null);
 
         return response()->json([
@@ -202,6 +204,7 @@ class UserAuthApiController extends Controller
             'token' => $token,
             'expires_in' => $expiryMinutes,
             'mfa_options' => null,
+            'email_verified' => $user->hasVerifiedEmail(),
         ]);
     }
 
@@ -490,13 +493,14 @@ class UserAuthApiController extends Controller
             ], 403);
         }
 
-        $expiryMinutes = 60 * 24;
+        $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
         $token = $this->getToken(request: $request, geoIP: $geoIP, user: $email->user, method: LoginAttempt::MagicAuth, expiryMinutes: $expiryMinutes);
 
         return response()->json([
             'auth_state' => 'authenticated',
             'token' => $token,
             'expires_in' => $expiryMinutes,
+            'email_verified' => $email->user?->hasVerifiedEmail() ?? false,
         ]);
     }
 
@@ -536,7 +540,7 @@ class UserAuthApiController extends Controller
             ], 400);
         }
 
-        $expiryMinutes = 60 * 24;
+        $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
         $claims = (array) $request->attributes->get('jwt_claims', []);
         $attemptId = $claims['attempt_id'] ?? null;
         $attempt = $attemptId ? $user->loginAttempts()->find($attemptId) : null;
@@ -552,6 +556,7 @@ class UserAuthApiController extends Controller
             'auth_state' => 'authenticated',
             'token' => $token,
             'expires_in' => $expiryMinutes,
+            'email_verified' => $user->hasVerifiedEmail(),
         ]);
     }
 }

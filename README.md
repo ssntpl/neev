@@ -148,11 +148,12 @@ curl -X POST https://yourapp.com/neev/login \
   "auth_state": "authenticated",
   "token": "1|abc123def456...",
   "expires_in": 1440,
-  "mfa_options": null
+  "mfa_options": null,
+  "email_verified": true
 }
 ```
 
-`expires_in` is returned in minutes.
+`expires_in` is returned in minutes (defaults from `login_token_expiry_minutes` and `mfa_jwt_expiry_minutes`).
 
 **Response (with MFA enabled):**
 
@@ -164,7 +165,8 @@ curl -X POST https://yourapp.com/neev/login \
   "mfa_options": [
     "authenticator",
     "email"
-  ]
+  ],
+  "email_verified": true
 }
 ```
 

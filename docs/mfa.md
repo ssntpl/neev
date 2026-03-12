@@ -283,7 +283,8 @@ Response includes `auth_state` and `mfa_options`:
   "mfa_options": [
     "authenticator",
     "email"
-  ]
+  ],
+  "email_verified": true
 }
 ```
 
@@ -301,7 +302,8 @@ Response with full token:
 {
   "auth_state": "authenticated",
   "token": "1|full_access_token...",
-  "expires_in": 1440
+  "expires_in": 1440,
+  "email_verified": true
 }
 ```
 

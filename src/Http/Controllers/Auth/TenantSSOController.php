@@ -235,7 +235,8 @@ class TenantSSOController extends Controller
             'is_success' => true,
         ]);
 
-        $token = $user->createLoginToken(1440); // 24 hours
+        $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
+        $token = $user->createLoginToken($expiryMinutes);
         $accessToken = $token->accessToken;
         $accessToken->attempt_id = $attempt->id;
         $accessToken->save();

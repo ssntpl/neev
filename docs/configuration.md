@@ -377,6 +377,22 @@ Days until password must be changed. Set to `0` to disable.
 
 ## Token Expiry
 
+### Login Token Expiry
+
+```php
+'login_token_expiry_minutes' => 1440,
+```
+
+Minutes before login access tokens expire.
+
+### MFA JWT Expiry
+
+```php
+'mfa_jwt_expiry_minutes' => 30,
+```
+
+Minutes before temporary MFA JWTs expire.
+
 ### URL Token Expiry
 
 ```php
@@ -497,6 +513,8 @@ return [
     'password_hard_expiry_days' => 90,
 
     // Token Expiry
+    'login_token_expiry_minutes' => 1440,
+    'mfa_jwt_expiry_minutes' => 30,
     'url_expiry_time' => 60,
     'otp_expiry_time' => 15,
 

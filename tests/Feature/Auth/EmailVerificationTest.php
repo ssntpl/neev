@@ -246,11 +246,12 @@ class EmailVerificationTest extends TestCase
     private function createMfaJwtToken(int $userId): string
     {
         $now = time();
+        $expirySeconds = (int) config('neev.mfa_jwt_expiry_minutes', 30) * 60;
         $payload = [
             'user_id' => (string) $userId,
             'type' => 'mfa',
             'iat' => $now,
-            'exp' => $now + (30 * 60),
+            'exp' => $now + $expirySeconds,
         ];
 
         return JWT::encode($payload, JwtSecret::get(), 'HS256');

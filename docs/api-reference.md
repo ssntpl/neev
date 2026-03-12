@@ -81,7 +81,8 @@ POST /neev/login
     "auth_state": "authenticated",
     "token": "1|abc123...",
     "expires_in": 1440,
-    "mfa_options": null
+    "mfa_options": null,
+    "email_verified": true
 }
 ```
 
@@ -95,7 +96,8 @@ POST /neev/login
     "mfa_options": [
         "authenticator",
         "email"
-    ]
+    ],
+    "email_verified": true
 }
 ```
 
@@ -144,7 +146,8 @@ GET /neev/loginUsingLink?id={email_id}&signature={signature}&expires={timestamp}
 {
     "auth_state": "authenticated",
     "token": "1|abc123...",
-    "expires_in": 1440
+    "expires_in": 1440,
+    "email_verified": true
 }
 ```
 
@@ -420,7 +423,8 @@ Authorization: Bearer {mfa_jwt_token}
 {
     "auth_state": "authenticated",
     "token": "1|abc123...",
-    "expires_in": 1440
+    "expires_in": 1440,
+    "email_verified": true
 }
 ```
 
@@ -596,7 +600,8 @@ POST /neev/passkeys/login
 {
     "auth_state": "authenticated",
     "token": "1|abc123...",
-    "expires_in": 1440
+    "expires_in": 1440,
+    "email_verified": true
 }
 ```
 

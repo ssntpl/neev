@@ -34,7 +34,8 @@ class RegistrationTest extends TestCase
         $response->assertOk();
         $response->assertJson([
             'auth_state' => 'authenticated',
-            'expires_in' => 1440,
+            'expires_in' => config('neev.login_token_expiry_minutes', 1440),
+            'email_verified' => false,
         ]);
         $this->assertNotEmpty($response->json('token'));
         $this->assertDatabaseHas('emails', ['email' => 'test@company.com']);

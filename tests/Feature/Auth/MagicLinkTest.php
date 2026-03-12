@@ -80,7 +80,8 @@ class MagicLinkTest extends TestCase
         $response->assertOk();
         $response->assertJson([
             'auth_state' => 'authenticated',
-            'expires_in' => 1440,
+            'expires_in' => config('neev.login_token_expiry_minutes', 1440),
+            'email_verified' => true,
         ]);
         $this->assertNotEmpty($response->json('token'));
     }
@@ -100,7 +101,10 @@ class MagicLinkTest extends TestCase
         $response = $this->getJson($signedUrl);
 
         $response->assertOk();
-        $response->assertJson(['auth_state' => 'authenticated']);
+        $response->assertJson([
+            'auth_state' => 'authenticated',
+            'email_verified' => true,
+        ]);
     }
 
     public function test_login_using_link_with_invalid_signature_returns_403(): void

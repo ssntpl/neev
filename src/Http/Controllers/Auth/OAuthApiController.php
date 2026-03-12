@@ -89,12 +89,13 @@ class OAuthApiController extends Controller
             }
 
             $authController = new UserAuthApiController();
+            $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
             $token = $authController->getToken(
                 request: $request,
                 geoIP: $geoIP,
                 user: $user,
                 method: $service,
-                expiryMinutes: 1440
+                expiryMinutes: $expiryMinutes
             );
 
             if (!$token) {
@@ -106,7 +107,8 @@ class OAuthApiController extends Controller
             return response()->json([
                 'auth_state' => 'authenticated',
                 'token' => $token,
-                'expires_in' => 1440,
+                'expires_in' => $expiryMinutes,
+                'email_verified' => $user->hasVerifiedEmail(),
             ]);
         } catch (Exception $e) {
             Log::error($e);

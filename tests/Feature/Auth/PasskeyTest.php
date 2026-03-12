@@ -71,7 +71,8 @@ class PasskeyTest extends TestCase
                 'passkey_id' => $passkey->id,
             ]);
 
-        $response->assertOk();
+        $response->assertOk()
+            ->assertJsonPath('message', 'Passkey was not deleted.');
 
         // Passkey should still exist
         $this->assertDatabaseHas('passkeys', ['id' => $passkey->id]);
@@ -86,7 +87,8 @@ class PasskeyTest extends TestCase
                 'passkey_id' => 99999,
             ]);
 
-        $response->assertOk();
+        $response->assertOk()
+            ->assertJsonPath('message', 'Passkey was not deleted.');
     }
 
     // -----------------------------------------------------------------
@@ -124,7 +126,8 @@ class PasskeyTest extends TestCase
                 'name' => 'Hijacked Name',
             ]);
 
-        $response->assertStatus(400);
+        $response->assertStatus(400)
+            ->assertJsonPath('message', 'Passkey not found');
     }
 
     public function test_update_passkey_name_rejects_nonexistent(): void
@@ -137,7 +140,8 @@ class PasskeyTest extends TestCase
                 'name' => 'Ghost',
             ]);
 
-        $response->assertStatus(400);
+        $response->assertStatus(400)
+            ->assertJsonPath('message', 'Passkey not found');
     }
 
     // -----------------------------------------------------------------

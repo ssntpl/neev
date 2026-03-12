@@ -70,7 +70,8 @@ class MFATest extends TestCase
         $response->assertOk();
         $response->assertJson([
             'auth_state' => 'authenticated',
-            'expires_in' => 1440,
+            'expires_in' => config('neev.login_token_expiry_minutes', 1440),
+            'email_verified' => true,
         ]);
         $this->assertNotEmpty($response->json('token'));
 
@@ -137,7 +138,8 @@ class MFATest extends TestCase
         $response->assertOk();
         $response->assertJson([
             'auth_state' => 'authenticated',
-            'expires_in' => 1440,
+            'expires_in' => config('neev.login_token_expiry_minutes', 1440),
+            'email_verified' => true,
         ]);
 
         $this->assertDatabaseHas('login_attempts', [
@@ -212,7 +214,8 @@ class MFATest extends TestCase
         $response->assertOk();
         $response->assertJson([
             'auth_state' => 'authenticated',
-            'expires_in' => 1440,
+            'expires_in' => config('neev.login_token_expiry_minutes', 1440),
+            'email_verified' => true,
         ]);
 
         $this->assertDatabaseHas('login_attempts', [
@@ -313,11 +316,12 @@ class MFATest extends TestCase
     private function createMfaJwtToken(int $userId, int $attemptId): string
     {
         $now = time();
+        $expirySeconds = (int) config('neev.mfa_jwt_expiry_minutes', 30) * 60;
         $payload = [
             'user_id' => (string) $userId,
             'type' => 'mfa',
             'iat' => $now,
-            'exp' => $now + (30 * 60),
+            'exp' => $now + $expirySeconds,
             'attempt_id' => $attemptId,
         ];
 
