@@ -81,7 +81,7 @@ class EmailManagementTest extends TestCase
             ]);
 
         // The controller returns Success with "Email already exist." message
-        $response->assertOk()
+        $response->assertStatus(400)
             ->assertJsonPath('message', 'Email already exist.');
 
         // Should still only have one record of this email
@@ -103,7 +103,7 @@ class EmailManagementTest extends TestCase
             ]);
 
         // Controller checks if email exists globally and returns early
-        $response->assertOk()
+        $response->assertStatus(400)
             ->assertJsonPath('message', 'Email already exist.');
     }
 

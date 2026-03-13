@@ -201,7 +201,14 @@ class TenantSSOController extends Controller
 
                 // Build redirect URL with token in fragment (not query string)
                 // Fragment (#) is not sent to server in HTTP requests, preventing token leakage via referrer headers/logs
-                return redirect($redirectUri . '#token=' . urlencode($token));
+                $params = [
+                    'token' => $token,
+                    'auth_state' => 'authenticated',
+                    'email_verified' => $user->hasVerifiedEmail(),
+                    'expires_in' => $expiryMinutes
+                ];
+
+                return redirect($redirectUri . '#' . http_build_query($params));
             }
 
             // Web flow: use session-based authentication

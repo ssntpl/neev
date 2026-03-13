@@ -223,7 +223,7 @@ class UserApiController extends Controller
         if (Email::findByEmail($request->email)) {
             return response()->json([
                 'message' => 'Email already exist.',
-            ]);
+            ], 400);
         }
 
         $email = $user->emails()->create([
