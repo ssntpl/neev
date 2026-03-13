@@ -71,7 +71,7 @@ class PasskeyTest extends TestCase
                 'passkey_id' => $passkey->id,
             ]);
 
-        $response->assertOk()
+        $response->assertStatus(400)
             ->assertJsonPath('message', 'Passkey was not deleted.');
 
         // Passkey should still exist
@@ -87,7 +87,7 @@ class PasskeyTest extends TestCase
                 'passkey_id' => 99999,
             ]);
 
-        $response->assertOk()
+        $response->assertStatus(400)
             ->assertJsonPath('message', 'Passkey was not deleted.');
     }
 

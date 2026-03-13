@@ -472,7 +472,7 @@ class PasskeyController extends Controller
         if (!$user || !$passkey || $passkey->user_id != $user->id) {
             return response()->json([
                 'message' => 'Passkey was not deleted.',
-            ]);
+            ], 400);
         }
         $passkey->delete();
 
