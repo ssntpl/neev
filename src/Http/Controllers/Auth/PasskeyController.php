@@ -59,7 +59,7 @@ class PasskeyController extends Controller
         if (!$user) {
             return response()->json([
                 'message' => 'User not found.',
-            ]);
+            ], 404);
         }
 
         $passkeys = $user->passkeys()->get();
@@ -334,7 +334,7 @@ class PasskeyController extends Controller
             Log::error($e);
             return response()->json([
                 'message' => 'Unable to generate login options.'
-            ]);
+            ], 400);
         }
     }
 

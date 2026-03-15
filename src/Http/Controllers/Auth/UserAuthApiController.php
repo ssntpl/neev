@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
@@ -186,7 +187,7 @@ class UserAuthApiController extends Controller
             $expiryMinutes = config('neev.mfa_jwt_expiry_minutes', 30);
             $expirySeconds = $expiryMinutes * 60;
             $tempToken = $this->getJwtToken($user->id, "mfa", $expirySeconds, [
-                'attempt_id' => $attempt?->id
+                'attempt_id' => $attempt->id
             ]);
 
             return response()->json([
@@ -219,6 +220,7 @@ class UserAuthApiController extends Controller
     {
         $now = time();
         $payload = array_merge([
+            'jti' => Str::uuid()->toString(),
             'user_id' => $userId,
             'type' => $type,
             'iat' => $now,
@@ -256,14 +258,14 @@ class UserAuthApiController extends Controller
         if (!$accessToken || $accessToken->user?->id !== $request->user()?->id) {
             return response()->json([
                 'message' => 'Invalid Token.',
-            ]);
+            ], 401);
         }
 
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
                 'message' => 'Invalid Token.',
-            ]);
+            ], 401);
         }
 
         $accessToken->delete();
@@ -281,7 +283,7 @@ class UserAuthApiController extends Controller
         if (!$user) {
             return response()->json([
                 'message' => 'Invalid Token.',
-            ]);
+            ], 401);
         }
 
         $currentTokenId = $request->attributes->get('token_id');

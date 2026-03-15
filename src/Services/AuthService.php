@@ -38,8 +38,10 @@ class AuthService
     {
         try {
             if ($attempt) {
-                $attempt->is_success = true;
-                $attempt->save();
+                if (!$attempt->is_success) {
+                    $attempt->is_success = true;
+                    $attempt->save();
+                }
                 return $attempt;
             }
 

@@ -225,6 +225,7 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
         Route::post('/email/send', [UserAuthApiController::class, 'sendMailVerificationLink']);
         Route::get('/email/verify', [UserAuthApiController::class, 'emailVerify'])->name('mail.verify');
         Route::post('/email/update', [UserApiController::class, 'emailUpdate']);
+        Route::get('/mfa', [UserApiController::class, 'getMFAMethods']);
         Route::post('/mfa/add', [UserApiController::class, 'addMultiFactorAuthentication']);
         Route::put('/mfa/preferred', [UserApiController::class, 'setPreferredMFA']);
         Route::delete('/mfa/delete', [UserApiController::class, 'deleteMultiFactorAuthentication']);

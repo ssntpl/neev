@@ -189,14 +189,13 @@ class PasskeyTest extends TestCase
     {
         $response = $this->getJson('/neev/passkeys/login/options?email=nobody@example.com');
 
-        $response->assertOk();
+        $response->assertStatus(400);
     }
 
     public function test_generate_login_options_requires_email(): void
     {
-        // Validation is inside a try/catch so it returns a Failed response, not 422
         $response = $this->getJson('/neev/passkeys/login/options');
 
-        $response->assertOk();
+        $response->assertStatus(400);
     }
 }

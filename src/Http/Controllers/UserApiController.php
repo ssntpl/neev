@@ -46,6 +46,15 @@ class UserApiController extends Controller
         ]);
     }
 
+    public function getMFAMethods(Request $request)
+    {
+        $user = User::model()->find($request->user()?->id);
+
+        return response()->json([
+            'data' => $user?->multiFactorAuths,
+        ]);
+    }
+
     public function addMultiFactorAuthentication(Request $request)
     {
         $request->validate([
