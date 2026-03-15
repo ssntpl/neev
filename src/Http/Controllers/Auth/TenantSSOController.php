@@ -204,8 +204,8 @@ class TenantSSOController extends Controller
                 $params = [
                     'token' => $token,
                     'auth_state' => 'authenticated',
-                    'email_verified' => $user->hasVerifiedEmail(),
-                    'expires_in' => $expiryMinutes
+                    'email_verified' => $user->hasVerifiedEmail() ? 'true' : 'false',
+                    'expires_in' => $expiryMinutes,
                 ];
 
                 return redirect($redirectUri . '#' . http_build_query($params));

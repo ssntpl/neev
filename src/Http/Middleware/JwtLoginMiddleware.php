@@ -58,5 +58,4 @@ class JwtLoginMiddleware
 
         return $next($request);
     }
-
 }

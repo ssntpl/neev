@@ -2,19 +2,19 @@
 
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
-use Firebase\JWT\JWT;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
-use Ssntpl\Neev\Services\JwtSecret;
 use Ssntpl\Neev\Tests\TestCase;
+use Ssntpl\Neev\Tests\Traits\WithMfaJwtToken;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
 
 class MFATest extends TestCase
 {
     use RefreshDatabase;
+    use WithMfaJwtToken;
     use WithNeevConfig;
 
     /**
@@ -313,18 +313,4 @@ class MFATest extends TestCase
         $response->assertStatus(401);
     }
 
-    private function createMfaJwtToken(int $userId, int $attemptId): string
-    {
-        $now = time();
-        $expirySeconds = (int) config('neev.mfa_jwt_expiry_minutes', 30) * 60;
-        $payload = [
-            'user_id' => (string) $userId,
-            'type' => 'mfa',
-            'iat' => $now,
-            'exp' => $now + $expirySeconds,
-            'attempt_id' => $attemptId,
-        ];
-
-        return JWT::encode($payload, JwtSecret::get(), 'HS256');
-    }
 }

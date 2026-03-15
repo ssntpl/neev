@@ -108,6 +108,7 @@ class OAuthApiController extends Controller
                 'auth_state' => 'authenticated',
                 'token' => $token,
                 'expires_in' => $expiryMinutes,
+                'mfa_options' => null,
                 'email_verified' => $user->hasVerifiedEmail(),
             ]);
         } catch (Exception $e) {

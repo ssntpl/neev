@@ -6,9 +6,9 @@ class JwtSecret
 {
     public static function get(): string
     {
-        $secret = (string) config('app.key');
+        $secret = (string) (config('neev.jwt_secret') ?: config('app.key'));
         if ($secret === '') {
-            throw new \RuntimeException('App key is not configured.');
+            throw new \RuntimeException('Neither neev.jwt_secret nor app.key is configured.');
         }
 
         if (str_starts_with($secret, 'base64:')) {

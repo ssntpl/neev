@@ -112,6 +112,7 @@ class UserAuthApiController extends Controller
                 'auth_state' => 'authenticated',
                 'token' => $token,
                 'expires_in' => $expiryMinutes,
+                'mfa_options' => null,
                 'email_verified' => $user->hasVerifiedEmail(),
                 'email_verification_method' => $verificationMethod,
             ]);
@@ -218,7 +219,7 @@ class UserAuthApiController extends Controller
     {
         $now = time();
         $payload = array_merge([
-            'user_id' => (string) $userId,
+            'user_id' => $userId,
             'type' => $type,
             'iat' => $now,
             'exp' => $now + $ttlSeconds,
@@ -500,6 +501,7 @@ class UserAuthApiController extends Controller
             'auth_state' => 'authenticated',
             'token' => $token,
             'expires_in' => $expiryMinutes,
+            'mfa_options' => null,
             'email_verified' => $email->user?->hasVerifiedEmail() ?? false,
         ]);
     }
@@ -556,6 +558,7 @@ class UserAuthApiController extends Controller
             'auth_state' => 'authenticated',
             'token' => $token,
             'expires_in' => $expiryMinutes,
+            'mfa_options' => null,
             'email_verified' => $user->hasVerifiedEmail(),
         ]);
     }

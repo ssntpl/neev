@@ -4,18 +4,18 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
-use Firebase\JWT\JWT;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\User;
-use Ssntpl\Neev\Services\JwtSecret;
 use Ssntpl\Neev\Tests\TestCase;
+use Ssntpl\Neev\Tests\Traits\WithMfaJwtToken;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
 
 class EmailVerificationTest extends TestCase
 {
     use RefreshDatabase;
+    use WithMfaJwtToken;
     use WithNeevConfig;
 
     protected function authenticatedUser(): array
@@ -151,9 +151,8 @@ class EmailVerificationTest extends TestCase
         Mail::fake();
 
         $user = User::factory()->create();
-        $token = $this->createMfaJwtToken($user->id);
 
-        $response = $this->withHeader('Authorization', 'Bearer ' . $token)->postJson('/neev/email/otp/send', [
+        $response = $this->postJson('/neev/email/otp/send', [
             'email' => $user->email->email,
         ]);
 
@@ -163,10 +162,7 @@ class EmailVerificationTest extends TestCase
 
     public function test_send_email_otp_returns_error_for_unknown_email(): void
     {
-        $user = User::factory()->create();
-        $token = $this->createMfaJwtToken($user->id);
-
-        $response = $this->withHeader('Authorization', 'Bearer ' . $token)->postJson('/neev/email/otp/send', [
+        $response = $this->postJson('/neev/email/otp/send', [
             'email' => 'nonexistent@example.com',
         ]);
 
@@ -243,17 +239,4 @@ class EmailVerificationTest extends TestCase
         $response->assertStatus(400);
     }
 
-    private function createMfaJwtToken(int $userId): string
-    {
-        $now = time();
-        $expirySeconds = (int) config('neev.mfa_jwt_expiry_minutes', 30) * 60;
-        $payload = [
-            'user_id' => (string) $userId,
-            'type' => 'mfa',
-            'iat' => $now,
-            'exp' => $now + $expirySeconds,
-        ];
-
-        return JWT::encode($payload, JwtSecret::get(), 'HS256');
-    }
 }
