@@ -25,7 +25,7 @@ class LogoutTest extends TestCase
     private function createAuthenticatedUser(array $userState = []): array
     {
         $user = User::factory()->create($userState);
-        $newToken = $user->createLoginToken(1440);
+        $newToken = $user->createLoginToken(config('neev.login_token_expiry_minutes', 1440));
 
         return [
             'user' => $user,
@@ -47,7 +47,6 @@ class LogoutTest extends TestCase
 
         $response->assertOk();
         $response->assertJson([
-            'status' => 'Success',
             'message' => 'Logged out successfully.',
         ]);
 
@@ -92,7 +91,7 @@ class LogoutTest extends TestCase
         $user = $data['user'];
 
         // Create a second login token
-        $secondToken = $user->createLoginToken(1440);
+        $secondToken = $user->createLoginToken(config('neev.login_token_expiry_minutes', 1440));
 
         // Logout using the first token
         $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
@@ -119,8 +118,8 @@ class LogoutTest extends TestCase
         $user = $data['user'];
 
         // Create additional login tokens
-        $user->createLoginToken(1440);
-        $user->createLoginToken(1440);
+        $user->createLoginToken(config('neev.login_token_expiry_minutes', 1440));
+        $user->createLoginToken(config('neev.login_token_expiry_minutes', 1440));
 
         $loginTokenCount = $user->loginTokens()->count();
         $this->assertEquals(3, $loginTokenCount);
@@ -130,7 +129,6 @@ class LogoutTest extends TestCase
 
         $response->assertOk();
         $response->assertJson([
-            'status' => 'Success',
             'message' => 'Logged out from all other devices successfully.',
         ]);
 

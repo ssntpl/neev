@@ -32,8 +32,11 @@ class RegistrationTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJsonStructure(['status', 'token', 'email_verified']);
-        $response->assertJson(['status' => 'Success']);
+        $response->assertJson([
+            'auth_state' => 'authenticated',
+            'expires_in' => config('neev.login_token_expiry_minutes', 1440),
+            'email_verified' => false,
+        ]);
         $this->assertNotEmpty($response->json('token'));
         $this->assertDatabaseHas('emails', ['email' => 'test@company.com']);
         $this->assertDatabaseHas('users', ['name' => 'Test User']);
@@ -235,8 +238,7 @@ class RegistrationTest extends TestCase
             'hash' => sha1($inviteeEmail),
         ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         // User should be added to the team
         $user = Email::where('email', $inviteeEmail)->first()->user;
@@ -264,8 +266,7 @@ class RegistrationTest extends TestCase
             'hash' => sha1('badinvite@example.com'),
         ]);
 
-        $response->assertStatus(500)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     public function test_register_via_invitation_with_wrong_hash_returns_error(): void
@@ -294,8 +295,7 @@ class RegistrationTest extends TestCase
             'hash' => 'wronghash',
         ]);
 
-        $response->assertStatus(500)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -328,8 +328,7 @@ class RegistrationTest extends TestCase
             'password_confirmation' => 'password123',
         ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         // User should NOT have their own team since they matched a federated domain
         $user = Email::where('email', 'user@domainteam.com')->first()->user;
@@ -349,8 +348,7 @@ class RegistrationTest extends TestCase
             'password_confirmation' => 'password123',
         ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         // User should get their own team
         $user = Email::where('email', 'user@unregistered-domain.com')->first()->user;
@@ -374,8 +372,7 @@ class RegistrationTest extends TestCase
             'username' => 'testuser123',
         ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertDatabaseHas('users', [
             'name' => 'Username User',

@@ -42,8 +42,7 @@ class EmailManagementTest extends TestCase
                 'email' => 'newemail@example.com',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertDatabaseHas('emails', [
             'user_id' => $user->id,
@@ -82,7 +81,7 @@ class EmailManagementTest extends TestCase
             ]);
 
         // The controller returns Success with "Email already exist." message
-        $response->assertOk()
+        $response->assertStatus(400)
             ->assertJsonPath('message', 'Email already exist.');
 
         // Should still only have one record of this email
@@ -104,7 +103,7 @@ class EmailManagementTest extends TestCase
             ]);
 
         // Controller checks if email exists globally and returns early
-        $response->assertOk()
+        $response->assertStatus(400)
             ->assertJsonPath('message', 'Email already exist.');
     }
 
@@ -128,8 +127,7 @@ class EmailManagementTest extends TestCase
                 'email' => 'secondary@example.com',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertDatabaseMissing('emails', [
             'id' => $secondaryEmail->id,
@@ -148,7 +146,6 @@ class EmailManagementTest extends TestCase
             ]);
 
         $response->assertStatus(403)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Cannot delete primary email.');
 
         // Primary email should still exist
@@ -168,8 +165,7 @@ class EmailManagementTest extends TestCase
                 'email' => 'nonexistent@example.com',
             ]);
 
-        $response->assertStatus(403)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(403);
     }
 
     // -----------------------------------------------------------------
@@ -194,8 +190,7 @@ class EmailManagementTest extends TestCase
                 'email' => 'newprimary@example.com',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         // New email should be primary
         $this->assertTrue(
@@ -225,8 +220,7 @@ class EmailManagementTest extends TestCase
             ]);
 
         // Controller returns a "not changed" response (not an error status)
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     public function test_setting_already_primary_email_returns_success(): void
@@ -240,8 +234,7 @@ class EmailManagementTest extends TestCase
                 'email' => $primaryEmail,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
     }
 
     // -----------------------------------------------------------------
@@ -263,7 +256,6 @@ class EmailManagementTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Email has been updated.');
 
         $email->refresh();
@@ -280,8 +272,7 @@ class EmailManagementTest extends TestCase
                 'email' => 'updated@example.com',
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     public function test_email_update_rejects_other_users_email(): void
@@ -296,7 +287,6 @@ class EmailManagementTest extends TestCase
                 'email' => 'hacked@example.com',
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 }

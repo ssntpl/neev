@@ -2,7 +2,7 @@
 
 namespace Ssntpl\Neev\Http\Middleware;
 
-use Auth;
+use Illuminate\Support\Facades\Auth;
 use Closure;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;

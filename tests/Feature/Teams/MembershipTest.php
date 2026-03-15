@@ -61,8 +61,7 @@ class MembershipTest extends TestCase
                 'email' => $memberEmail,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         Mail::assertSent(TeamInvitation::class, function ($mail) use ($memberEmail) {
             return $mail->hasTo($memberEmail);
@@ -84,8 +83,7 @@ class MembershipTest extends TestCase
                 'email' => $newEmail,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         // An invitation record should be created in team_invitations table
         $this->assertDatabaseHas('team_invitations', [
@@ -113,8 +111,7 @@ class MembershipTest extends TestCase
                 'email' => 'someone@example.com',
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
 
         Mail::assertNothingSent();
     }
@@ -135,8 +132,7 @@ class MembershipTest extends TestCase
                 'email' => $member->email->email,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -163,8 +159,7 @@ class MembershipTest extends TestCase
                 'action' => 'accept',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         // Verify user is now a joined member
         $team->refresh();
@@ -190,8 +185,7 @@ class MembershipTest extends TestCase
                 'action' => 'reject',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         // Verify user is detached
         $team->refresh();
@@ -217,8 +211,7 @@ class MembershipTest extends TestCase
                 'team_id' => $team->id,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $team->refresh();
         $this->assertFalse($team->users->contains($member));
@@ -235,8 +228,7 @@ class MembershipTest extends TestCase
                 'team_id' => $team->id,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
 
         // Owner should still be a member
         $team->refresh();
@@ -261,8 +253,7 @@ class MembershipTest extends TestCase
                 'team_id' => $team->id,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         // Verify a join request (non-joined membership) was created
         $this->assertDatabaseHas('team_user', [
@@ -292,8 +283,7 @@ class MembershipTest extends TestCase
                 'team_id' => $team->id,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -320,8 +310,7 @@ class MembershipTest extends TestCase
                 'action' => 'accept',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         // Verify user is now a joined member
         $this->assertDatabaseHas('team_user', [
@@ -350,8 +339,7 @@ class MembershipTest extends TestCase
                 'action' => 'reject',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         // Verify user is detached from team
         $this->assertDatabaseMissing('team_user', [
@@ -375,7 +363,6 @@ class MembershipTest extends TestCase
             ]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Invitation not found');
     }
 
@@ -402,8 +389,7 @@ class MembershipTest extends TestCase
 
         // The emails->contains check compares email string against PKs, so
         // it returns "Invitation not found" even for valid invitations
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -428,7 +414,6 @@ class MembershipTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Invitation Revoked Successfully');
 
         $this->assertDatabaseMissing('team_invitations', ['id' => $invitation->id]);
@@ -445,8 +430,7 @@ class MembershipTest extends TestCase
                 'invitation_id' => 99999,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -472,7 +456,6 @@ class MembershipTest extends TestCase
             ]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Invalid Action.');
     }
 
@@ -499,8 +482,7 @@ class MembershipTest extends TestCase
                 'action' => 'accept',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertDatabaseHas('team_user', [
             'team_id' => $team->id,
@@ -532,7 +514,6 @@ class MembershipTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Accepted Successfully');
 
         $this->assertDatabaseHas('team_user', [
@@ -575,7 +556,6 @@ class MembershipTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'User Deactivated Successfully');
 
         $member->refresh();
@@ -609,7 +589,6 @@ class MembershipTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'User Activated Successfully');
 
         $member->refresh();
@@ -641,7 +620,6 @@ class MembershipTest extends TestCase
             ]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'You cannot invite member in this team.');
     }
 
@@ -671,8 +649,7 @@ class MembershipTest extends TestCase
                 'team_id' => $team->id,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -699,7 +676,6 @@ class MembershipTest extends TestCase
             ]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Invalid Action.');
     }
 }

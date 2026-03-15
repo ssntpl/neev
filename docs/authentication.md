@@ -47,9 +47,12 @@ curl -X POST https://yourapp.com/neev/register \
 
 ```json
 {
-  "status": "Success",
+  "auth_state": "authenticated",
   "token": "1|abc123def456...",
-  "email_verified": false
+  "expires_in": 1440,
+  "mfa_options": null,
+  "email_verified": false,
+  "email_verification_method": "link"
 }
 ```
 
@@ -77,10 +80,11 @@ curl -X POST https://yourapp.com/neev/login \
 
 ```json
 {
-  "status": "Success",
+  "auth_state": "authenticated",
   "token": "1|abc123def456...",
-  "email_verified": true,
-  "preferred_mfa": null
+  "expires_in": 1440,
+  "mfa_options": null,
+  "email_verified": true
 }
 ```
 
@@ -88,24 +92,30 @@ curl -X POST https://yourapp.com/neev/login \
 
 ```json
 {
-  "status": "Success",
-  "token": "1|abc123def456...",
-  "email_verified": true,
-  "preferred_mfa": "authenticator"
+  "auth_state": "mfa_required",
+  "token": "jwt_mfa_token...",
+  "expires_in": 30,
+  "mfa_options": [
+    "authenticator",
+    "email"
+  ],
+  "email_verified": true
 }
 ```
 
-When MFA is required, the returned token is an MFA token. Use it to verify MFA:
+When MFA is required, the returned token is a short-lived JWT (type `mfa`). Use it to verify MFA:
 
 ```bash
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
-  -H "Authorization: Bearer 1|abc123def456..." \
+  -H "Authorization: Bearer jwt_mfa_token..." \
   -H "Content-Type: application/json" \
   -d '{
     "auth_method": "authenticator",
     "otp": "123456"
   }'
 ```
+
+`expires_in` is returned in minutes.
 
 ---
 
@@ -486,7 +496,6 @@ Returns:
 
 ```json
 {
-  "status": "Success",
   "data": [
     {
       "id": 1,

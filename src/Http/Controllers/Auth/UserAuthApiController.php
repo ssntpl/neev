@@ -3,14 +3,15 @@
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
 use Exception;
+use Firebase\JWT\JWT;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
-use Ssntpl\Neev\Events\LoggedInEvent;
 use Ssntpl\Neev\Events\LoggedOutEvent;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Controllers\UserApiController;
@@ -22,7 +23,9 @@ use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\JwtSecret;
 
 class UserAuthApiController extends Controller
 {
@@ -64,9 +67,8 @@ class UserAuthApiController extends Controller
                     if (!$invitation || !hash_equals(sha1($invitation->email), $request->hash)) {
                         DB::rollBack();
                         return response()->json([
-                            'status' => 'Failed',
                             'message' => 'Invalid or expired invitation link.',
-                        ], 500);
+                        ], 400);
                     }
 
                     $email->verified_at = now();
@@ -100,18 +102,20 @@ class UserAuthApiController extends Controller
                 $verificationMethod = null;
             }
 
-            $token = $this->getToken($request, $geoIP, $user, LoginAttempt::Password);
+            $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
+            $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::Password, $expiryMinutes);
             if (!$token) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'Something went wrong.',
                 ], 500);
             }
             return response()->json([
-                'status' => 'Success',
+                'auth_state' => 'authenticated',
                 'token' => $token,
+                'expires_in' => $expiryMinutes,
+                'mfa_options' => null,
                 'email_verified' => $user->hasVerifiedEmail(),
-                'verification_method' => $verificationMethod
+                'email_verification_method' => $verificationMethod,
             ]);
         } catch (ValidationException $e) {
             DB::rollBack();
@@ -120,7 +124,6 @@ class UserAuthApiController extends Controller
             DB::rollBack();
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Unable to register user.',
             ], 500);
         }
@@ -140,7 +143,6 @@ class UserAuthApiController extends Controller
         $user = $email?->user;
         if (!$user) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Credentials are wrong.',
             ], 401);
         }
@@ -161,80 +163,83 @@ class UserAuthApiController extends Controller
                 ]);
             }
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Credentials are wrong.',
             ], 401);
         }
+        if ($mfaMethod) {
+            // Record login attempt (MFA pending)
+            $clientDetails = LoginAttempt::getClientDetails($request);
+            $attempt = $user->loginAttempts()->create([
+                'method' => LoginAttempt::Password,
+                'location' => $geoIP->getLocation($request->ip()),
+                'multi_factor_method' => $mfaMethod,
+                'platform' => $clientDetails['platform'] ?? '',
+                'browser' => $clientDetails['browser'] ?? '',
+                'device' => $clientDetails['device'] ?? '',
+                'ip_address' => $request->ip(),
+                'is_success' => false,
+            ]);
 
-        $token = $this->getToken(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, mfa: $mfaMethod ?? null, attempt: null);
+            if ($mfaMethod === 'email') {
+                UserApiController::sendMailOTP($user->email, true);
+            }
+
+            $expiryMinutes = config('neev.mfa_jwt_expiry_minutes', 30);
+            $expirySeconds = $expiryMinutes * 60;
+            $tempToken = $this->getJwtToken($user->id, "mfa", $expirySeconds, [
+                'attempt_id' => $attempt->id
+            ]);
+
+            return response()->json([
+                'auth_state' => 'mfa_required',
+                'token' => $tempToken,
+                'expires_in' => $expiryMinutes,
+                'mfa_options' => $this->getMfaOptions($user),
+                'email_verified' => $user->hasVerifiedEmail(),
+            ]);
+        }
+        $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
+        $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::Password, $expiryMinutes);
 
         return response()->json([
-            'status' => 'Success',
+            'auth_state' => 'authenticated',
             'token' => $token,
-            'email_verified' => $user->hasVerifiedEmail($email->email),
-            'preferred_mfa' => $mfaMethod,
+            'expires_in' => $expiryMinutes,
+            'mfa_options' => null,
+            'email_verified' => $user->hasVerifiedEmail(),
         ]);
     }
 
-    public function getToken(Request $request, GeoIP $geoIP, $user, $method, $mfa = null, $attempt = null)
+    private function getMfaOptions(User $user): array
     {
-        if (!$user->active) {
-            throw ValidationException::withMessages([
-                'email' => 'Your account is deactivated, please contact your admin to activate your account.',
-            ]);
-        }
-
-        try {
-            if ($attempt) {
-                $attempt->is_success = $mfa ? false : true;
-                $attempt->save();
-            } else {
-                $clientDetails = LoginAttempt::getClientDetails($request);
-                $attempt = $user->loginAttempts()->create([
-                    'method' => $method,
-                    'location' => $geoIP->getLocation($request->ip()),
-                    'multi_factor_method' => $mfa,
-                    'platform' => $clientDetails['platform'] ?? '',
-                    'browser' => $clientDetails['browser'] ?? '',
-                    'device' => $clientDetails['device'] ?? '',
-                    'ip_address' => $request->ip(),
-                    'is_success' => !$mfa,
-                ]);
-            }
-
-            // if mfa is enabled, set token expiry to 60 minutes else 24 hours
-            $token = $user->createLoginToken($mfa ? 60 : 1440);
-            $accessToken = $token->accessToken;
-            if ($mfa) {
-                if ($mfa == 'email') {
-                    UserApiController::sendMailOTP($user->email, true);
-                }
-                $accessToken->token_type = AccessToken::mfa_token;
-            }
-            $accessToken->attempt_id = $attempt->id;
-            $accessToken->save();
-
-            event(new LoggedInEvent($user));
-
-            return $token->plainTextToken;
-        } catch (Exception $e) {
-            Log::error($e);
-            return null;
-        }
+        $user->loadMissing('multiFactorAuths');
+        return $user->multiFactorAuths->pluck('method')->values()->all();
     }
+
+    private function getJwtToken(int $userId, string $type, int $ttlSeconds, array $extraClaims = []): string
+    {
+        $now = time();
+        $payload = array_merge([
+            'jti' => Str::uuid()->toString(),
+            'user_id' => $userId,
+            'type' => $type,
+            'iat' => $now,
+            'exp' => $now + $ttlSeconds,
+        ], $extraClaims);
+        return JWT::encode($payload, JwtSecret::get(), 'HS256');
+    }
+
 
     public function sendMailVerificationLink(Request $request)
     {
         $email = Email::findByEmail($request->email);
         if (!$email) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Email not found.',
             ], 404);
         }
         if ($email->verified_at) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Email already verified.',
             ], 400);
         }
@@ -242,7 +247,6 @@ class UserAuthApiController extends Controller
         UserApiController::sendMailLink($email);
 
         return response()->json([
-            'status' => 'Success',
             'message' => 'Verification link has been sent.',
             'verification_method' => 'link'
         ]);
@@ -253,17 +257,15 @@ class UserAuthApiController extends Controller
         $accessToken = AccessToken::find($request->attributes->get('token_id'));
         if (!$accessToken || $accessToken->user?->id !== $request->user()?->id) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Invalid Token.',
-            ]);
+            ], 401);
         }
 
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Invalid Token.',
-            ]);
+            ], 401);
         }
 
         $accessToken->delete();
@@ -271,7 +273,6 @@ class UserAuthApiController extends Controller
         event(new LoggedOutEvent($user));
 
         return response()->json([
-            'status' => 'Success',
             'message' => 'Logged out successfully.',
         ]);
     }
@@ -281,9 +282,8 @@ class UserAuthApiController extends Controller
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Invalid Token.',
-            ]);
+            ], 401);
         }
 
         $currentTokenId = $request->attributes->get('token_id');
@@ -292,7 +292,6 @@ class UserAuthApiController extends Controller
         event(new LoggedOutEvent($user));
 
         return response()->json([
-            'status' => 'Success',
             'message' => 'Logged out from all other devices successfully.',
         ]);
     }
@@ -302,14 +301,12 @@ class UserAuthApiController extends Controller
         $email = Email::find($request->id);
         if (!$request->hasValidSignature() || !$email || $email->user?->id != $request->user()?->id) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Invalid or expired verification link.'
             ], 403);
         }
 
         if ($email->verified_at) {
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Email verification already done.'
             ]);
         }
@@ -318,7 +315,6 @@ class UserAuthApiController extends Controller
         $email->save();
 
         return response()->json([
-            'status' => 'Success',
             'message' => 'Email verification done.'
         ]);
     }
@@ -328,15 +324,13 @@ class UserAuthApiController extends Controller
         $email = Email::findByEmail($request->email);
         if (!$email) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Email not found.',
-            ]);
+            ], 404);
         }
 
         UserApiController::sendMailOTP($email, $request->mfa ?? false);
 
         return response()->json([
-            'status' => 'Success',
             'message' => 'Verification code has been sent to your email.',
             'verification_method' => 'otp'
         ]);
@@ -350,7 +344,6 @@ class UserAuthApiController extends Controller
 
         if (!$email || !$otp || $otp->expires_at < now() || !Hash::check((string) $request->otp, $otp->otp)) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Code verification failed.'
             ], 400);
         }
@@ -363,7 +356,6 @@ class UserAuthApiController extends Controller
         }
 
         return response()->json([
-            'status' => 'Success',
             'message' => 'Verification code has been verified.',
             'verification_method' => 'otp'
         ]);
@@ -381,32 +373,28 @@ class UserAuthApiController extends Controller
             $email = Email::findByEmail($request->email);
             if (!$email) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'Email not found',
-                ]);
+                ], 404);
             }
 
             $otp = $email->otp;
             if (!$otp || $otp->expires_at < now()) {
                 $email->otp()->delete();
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'Code verification failed.',
-                ]);
+                ], 400);
             }
             if (!Hash::check((string) $request->otp, $otp->otp)) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'Code verification failed.',
-                ]);
+                ], 400);
             }
 
             $user = $email->user;
             if (!$user) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'User not found',
-                ]);
+                ], 404);
             }
             $user->passwords()->create([
                 'password' => Hash::make($request->password),
@@ -415,7 +403,6 @@ class UserAuthApiController extends Controller
             $email->otp()->delete();
 
             return response()->json([
-                'status' => 'Success',
                 'message' => 'Password has been updated.'
             ]);
         } catch (ValidationException $e) {
@@ -423,7 +410,6 @@ class UserAuthApiController extends Controller
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Password reset failed.',
             ], 500);
         }
@@ -434,7 +420,6 @@ class UserAuthApiController extends Controller
         $email = Email::findByEmail($request->email);
         if (!$email) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Credentials are wrong.',
             ], 401);
         }
@@ -453,7 +438,6 @@ class UserAuthApiController extends Controller
         Mail::to($email->email)->send(new LoginUsingLink($url, $expiryMinutes));
 
         return response()->json([
-            'status' => 'Success',
             'message' => 'Login link has been sent.',
         ]);
     }
@@ -462,7 +446,6 @@ class UserAuthApiController extends Controller
     {
         if (! $request->hasValidSignature()) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Invalid or expired verification link.',
             ], 403);
         }
@@ -470,17 +453,19 @@ class UserAuthApiController extends Controller
         $email = Email::find($request->id);
         if (!$email) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Invalid or expired verification link.',
             ], 403);
         }
 
-        $token = $this->getToken(request: $request, geoIP: $geoIP, user: $email->user, method: LoginAttempt::MagicAuth);
+        $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
+        $token = app(AuthService::class)->createApiToken($request, $geoIP, $email->user, LoginAttempt::MagicAuth, $expiryMinutes);
 
         return response()->json([
-            'status' => 'Success',
+            'auth_state' => 'authenticated',
             'token' => $token,
-            'email_verified' => $email->user->hasVerifiedEmail($email->email),
+            'expires_in' => $expiryMinutes,
+            'mfa_options' => null,
+            'email_verified' => $email->user?->hasVerifiedEmail() ?? false,
         ]);
     }
 
@@ -494,36 +479,49 @@ class UserAuthApiController extends Controller
 
     public function verifyMFAOTP(Request $request, GeoIP $geoIP)
     {
+        $request->validate([
+            'otp' => 'required',
+            'auth_method' => 'required|string',
+        ]);
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Credentials are wrong.',
             ], 403);
         }
 
-        $accessToken = AccessToken::find($request->attributes->get('token_id'));
-
-        $attempt = $accessToken->attempt;
-
-        if (!$accessToken || !$user->verifyMFAOTP($request->auth_method, $request->otp)) {
+        $authMethod = $request->auth_method;
+        $availableMethods = $this->getMfaOptions($user);
+        if ($authMethod !== 'recovery' && !in_array($authMethod, $availableMethods, true)) {
             return response()->json([
-                'status' => 'Failed',
+                'message' => 'Invalid auth method.',
+            ], 400);
+        }
+
+        if (!$user->verifyMFAOTP($authMethod, $request->otp)) {
+            return response()->json([
                 'message' => 'Code verification failed.'
             ], 400);
         }
 
-        $accessToken->token_type = AccessToken::login;
-        $accessToken->save();
+        $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
+        $claims = (array) $request->attributes->get('jwt_claims', []);
+        $attemptId = $claims['attempt_id'] ?? null;
+        $attempt = $attemptId ? $user->loginAttempts()->find($attemptId) : null;
         if ($attempt) {
             $attempt->is_success = true;
             $attempt->multi_factor_method = $request->auth_method;
             $attempt->save();
         }
 
+        $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::Password, $expiryMinutes, $attempt);
+
         return response()->json([
-            'status' => 'Success',
-            'token' => $request->bearerToken(),
+            'auth_state' => 'authenticated',
+            'token' => $token,
+            'expires_in' => $expiryMinutes,
+            'mfa_options' => null,
             'email_verified' => $user->hasVerifiedEmail(),
         ]);
     }

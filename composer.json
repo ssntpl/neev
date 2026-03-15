@@ -49,7 +49,8 @@
         "laravel/socialite": "^5.23",
         "spomky-labs/otphp": "^11.3",
         "ssntpl/laravel-acl": "^0.2",
-        "bacon/bacon-qr-code": "^3.0"
+        "bacon/bacon-qr-code": "^3.0",
+        "firebase/php-jwt": "^7.0"
     },
     "require-dev": {
         "phpunit/phpunit": "^10.5|^11.0",

@@ -254,7 +254,6 @@ curl -X GET https://yourapp.com/neev/sessions \
 
 ```json
 {
-  "status": "Success",
   "data": [
     {
       "id": 1,
@@ -316,7 +315,7 @@ php artisan migrate
 |------|-------------|
 | `login` | Session token after login |
 | `api_token` | API access token |
-| `mfa_token` | Temporary MFA verification token |
+| `mfa_jwt` | Short-lived JWT used only for MFA verification (not stored) |
 
 ### Token Storage
 
@@ -341,8 +340,11 @@ Tokens are formatted as `{id}|{token}`:
 ### Token Expiry
 
 ```php
-// Login tokens (default 24 hours, 60 min if MFA pending)
-$token = $user->createLoginToken(1440);
+// Login tokens (configured in neev.login_token_expiry_minutes)
+$token = $user->createLoginToken(config('neev.login_token_expiry_minutes', 1440));
+
+// MFA JWTs (configured in neev.mfa_jwt_expiry_minutes)
+$mfaJwtExpiry = config('neev.mfa_jwt_expiry_minutes', 30);
 
 // API tokens (optional expiry)
 $token = $user->createApiToken('name', ['read'], 43200);  // 30 days

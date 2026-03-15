@@ -194,11 +194,20 @@ class TenantSSOController extends Controller
 
             if ($redirectUri) {
                 // SPA flow: create a token and redirect with it
-                $token = $this->createTokenForUser($request, $geoIP, $user);
+                $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
+
+                $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::SSO, $expiryMinutes);
 
                 // Build redirect URL with token in fragment (not query string)
                 // Fragment (#) is not sent to server in HTTP requests, preventing token leakage via referrer headers/logs
-                return redirect($redirectUri . '#token=' . urlencode($token));
+                $params = [
+                    'token' => $token,
+                    'auth_state' => 'authenticated',
+                    'email_verified' => $user->hasVerifiedEmail() ? 'true' : 'false',
+                    'expires_in' => $expiryMinutes,
+                ];
+
+                return redirect($redirectUri . '#' . http_build_query($params));
             }
 
             // Web flow: use session-based authentication
@@ -216,31 +225,6 @@ class TenantSSOController extends Controller
 
             return $this->handleError($request, 'Authentication failed. Please try again or contact your administrator.');
         }
-    }
-
-    /**
-     * Create an API token for the user (used for SPA flow).
-     */
-    protected function createTokenForUser(Request $request, GeoIP $geoIP, $user): string
-    {
-        $clientDetails = LoginAttempt::getClientDetails($request);
-
-        $attempt = $user->loginAttempts()->create([
-            'method' => LoginAttempt::SSO,
-            'location' => $geoIP->getLocation($request->ip()),
-            'platform' => $clientDetails['platform'] ?? '',
-            'browser' => $clientDetails['browser'] ?? '',
-            'device' => $clientDetails['device'] ?? '',
-            'ip_address' => $request->ip(),
-            'is_success' => true,
-        ]);
-
-        $token = $user->createLoginToken(1440); // 24 hours
-        $accessToken = $token->accessToken;
-        $accessToken->attempt_id = $attempt->id;
-        $accessToken->save();
-
-        return $token->plainTextToken;
     }
 
     /**

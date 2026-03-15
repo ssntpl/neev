@@ -42,9 +42,7 @@ class TeamApiControllerTest extends TestCase
             ->getJson('/neev/teams/invitations');
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonStructure([
-                'status',
                 'data' => [
                     'invitations',
                     'teamRequests',
@@ -75,7 +73,6 @@ class TeamApiControllerTest extends TestCase
             ->putJson('/neev/teams/default', ['team_id' => $team->id]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Default team updated successfully.');
     }
 
@@ -89,7 +86,6 @@ class TeamApiControllerTest extends TestCase
             ->putJson('/neev/teams/default', ['team_id' => $team->id]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Team not found');
     }
 
@@ -104,8 +100,7 @@ class TeamApiControllerTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/teams');
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
     }
 
     // -----------------------------------------------------------------
@@ -121,8 +116,7 @@ class TeamApiControllerTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson("/neev/teams/{$team->id}");
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
     }
 
     public function test_get_team_non_member_returns_error(): void
@@ -135,7 +129,6 @@ class TeamApiControllerTest extends TestCase
             ->getJson("/neev/teams/{$team->id}");
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Team not found');
     }
 
@@ -153,8 +146,7 @@ class TeamApiControllerTest extends TestCase
                 'public' => false
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertDatabaseHas('teams', [
             'name' => 'Test Team',
@@ -180,7 +172,6 @@ class TeamApiControllerTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Team has been updated.');
 
         $this->assertDatabaseHas('teams', [
@@ -201,7 +192,6 @@ class TeamApiControllerTest extends TestCase
             ]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Team not found');
     }
 
@@ -219,7 +209,6 @@ class TeamApiControllerTest extends TestCase
             ->deleteJson('/neev/teams', ['team_id' => $team1->id]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Team has been deleted.');
 
         $this->assertDatabaseMissing('teams', ['id' => $team1->id]);
@@ -234,7 +223,6 @@ class TeamApiControllerTest extends TestCase
             ->deleteJson('/neev/teams', ['team_id' => $team->id]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'You cannot delete this team.');
     }
 
@@ -256,8 +244,7 @@ class TeamApiControllerTest extends TestCase
                 'user_id' => $newOwner->id
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertDatabaseHas('teams', [
             'id' => $team->id,
@@ -279,7 +266,6 @@ class TeamApiControllerTest extends TestCase
             ]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'This user is not the member in this team.');
     }
 
@@ -299,7 +285,6 @@ class TeamApiControllerTest extends TestCase
             ]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'You cannot change owner.');
     }
 
@@ -318,7 +303,6 @@ class TeamApiControllerTest extends TestCase
             ->getJson('/neev/domains?team_id=' . $team->id);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Domains fetched successfully.');
     }
 
@@ -330,7 +314,6 @@ class TeamApiControllerTest extends TestCase
             ->getJson('/neev/domains?team_id=99999');
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Team not found.');
     }
 
@@ -353,7 +336,6 @@ class TeamApiControllerTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Domain federated successfully.');
 
         $this->assertDatabaseHas('domains', [
@@ -378,7 +360,6 @@ class TeamApiControllerTest extends TestCase
             ]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'You do not have the required permissions to federate domain.');
     }
 
@@ -401,7 +382,6 @@ class TeamApiControllerTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Domain verification token has been updated.');
     }
 
@@ -420,7 +400,6 @@ class TeamApiControllerTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Domain has been updated.');
 
         $this->assertDatabaseHas('domains', [
@@ -445,7 +424,6 @@ class TeamApiControllerTest extends TestCase
             ->deleteJson('/neev/domains', ['domain_id' => $domain->id]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Domain has been deleted.');
 
         $this->assertDatabaseMissing('domains', ['id' => $domain->id]);
@@ -464,7 +442,6 @@ class TeamApiControllerTest extends TestCase
             ->deleteJson('/neev/domains', ['domain_id' => $domain->id]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'You do not have the required permissions to delete domain.');
     }
 
@@ -487,7 +464,6 @@ class TeamApiControllerTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Domain Rules have been updated.');
     }
 
@@ -507,8 +483,7 @@ class TeamApiControllerTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/domains/rules?domain_id=' . $domain->id);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
     }
 
     // -----------------------------------------------------------------
@@ -527,8 +502,7 @@ class TeamApiControllerTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/domains/primary', ['domain_id' => $domain->id]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
     }
 
     public function test_set_primary_domain_unverified_returns_error(): void
@@ -544,7 +518,6 @@ class TeamApiControllerTest extends TestCase
             ->putJson('/neev/domains/primary', ['domain_id' => $domain->id]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'You do not have the required permissions to change primary domain.');
     }
 }

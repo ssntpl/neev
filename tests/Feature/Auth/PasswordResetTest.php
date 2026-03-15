@@ -63,7 +63,6 @@ class PasswordResetTest extends TestCase
 
         $response->assertOk();
         $response->assertJson([
-            'status' => 'Success',
             'message' => 'Password has been updated.',
         ]);
 
@@ -84,9 +83,8 @@ class PasswordResetTest extends TestCase
             'otp' => '123456',
         ]);
 
-        $response->assertOk(); // Controller returns 200 with status Failed
+        $response->assertStatus(404);
         $response->assertJson([
-            'status' => 'Failed',
             'message' => 'Email not found',
         ]);
     }
@@ -102,9 +100,8 @@ class PasswordResetTest extends TestCase
             'otp' => '000000', // Wrong OTP
         ]);
 
-        $response->assertOk();
+        $response->assertStatus(400);
         $response->assertJson([
-            'status' => 'Failed',
             'message' => 'Code verification failed.',
         ]);
     }
@@ -120,9 +117,8 @@ class PasswordResetTest extends TestCase
             'otp' => $data['otp'],
         ]);
 
-        $response->assertOk();
+        $response->assertStatus(400);
         $response->assertJson([
-            'status' => 'Failed',
             'message' => 'Code verification failed.',
         ]);
     }

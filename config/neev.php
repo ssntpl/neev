@@ -64,6 +64,15 @@ return [
     |--------------------------------------------------------------------------
     */
 
+    // Minutes before login access tokens expire.
+    'login_token_expiry_minutes' => 1440,
+
+    // Minutes before MFA JWT (temporary) tokens expire.
+    'mfa_jwt_expiry_minutes' => 30,
+
+    // Secret key for signing MFA JWTs. Falls back to APP_KEY if not set.
+    'jwt_secret' => env('NEEV_JWT_SECRET'),
+
     // Minutes before magic links, password reset links expire.
     'url_expiry_time' => 60,
 

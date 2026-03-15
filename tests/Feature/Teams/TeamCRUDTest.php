@@ -55,7 +55,6 @@ class TeamCRUDTest extends TestCase
             ->getJson('/neev/teams');
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonCount(2, 'data');
     }
 
@@ -66,8 +65,7 @@ class TeamCRUDTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/teams');
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
     }
 
     // -----------------------------------------------------------------
@@ -85,7 +83,6 @@ class TeamCRUDTest extends TestCase
             ->getJson('/neev/teams/' . $team->id);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('data.id', $team->id)
             ->assertJsonPath('data.name', $team->name);
     }
@@ -99,8 +96,7 @@ class TeamCRUDTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/teams/' . $otherTeam->id);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     public function test_get_team_returns_error_for_nonexistent_team(): void
@@ -110,8 +106,7 @@ class TeamCRUDTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/teams/99999');
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -128,7 +123,6 @@ class TeamCRUDTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('data.name', 'New Test Team');
 
         $this->assertDatabaseHas('teams', [
@@ -176,7 +170,6 @@ class TeamCRUDTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('data.is_public', true);
     }
 
@@ -197,7 +190,6 @@ class TeamCRUDTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('data.name', 'Updated Name');
 
         $this->assertDatabaseHas('teams', [
@@ -219,7 +211,6 @@ class TeamCRUDTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('data.is_public', true);
     }
 
@@ -233,8 +224,7 @@ class TeamCRUDTest extends TestCase
                 'name' => 'Whatever',
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -254,8 +244,7 @@ class TeamCRUDTest extends TestCase
                 'team_id' => $teamA->id,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $this->assertDatabaseMissing('teams', ['id' => $teamA->id]);
         $this->assertDatabaseHas('teams', ['id' => $teamB->id]);
@@ -272,8 +261,7 @@ class TeamCRUDTest extends TestCase
                 'team_id' => $team->id,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
 
         $this->assertDatabaseHas('teams', ['id' => $team->id]);
     }
@@ -295,8 +283,7 @@ class TeamCRUDTest extends TestCase
                 'team_id' => $team->id,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
 
         $this->assertDatabaseHas('teams', ['id' => $team->id]);
     }
@@ -322,8 +309,7 @@ class TeamCRUDTest extends TestCase
                 'user_id' => $member->id,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $team->refresh();
         $this->assertEquals($member->id, $team->user_id);
@@ -344,8 +330,7 @@ class TeamCRUDTest extends TestCase
                 'user_id' => $nonMember->id,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     public function test_non_owner_cannot_change_team_owner(): void
@@ -365,7 +350,6 @@ class TeamCRUDTest extends TestCase
                 'user_id' => $user->id,
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 }

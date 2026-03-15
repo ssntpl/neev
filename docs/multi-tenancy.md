@@ -256,7 +256,6 @@ curl -X POST https://yourapp.com/neev/tenant-domains \
 
 ```json
 {
-  "status": "Success",
   "data": {
     "id": 1,
     "domain": "app.acme.com",

@@ -60,7 +60,6 @@ class RoleTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Role has been changed.');
     }
 
@@ -76,8 +75,7 @@ class RoleTest extends TestCase
                 'role' => 'admin',
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     public function test_change_invitation_role(): void
@@ -100,8 +98,7 @@ class RoleTest extends TestCase
                 'role' => 'admin',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         $invitation->refresh();
         $this->assertEquals('admin', $invitation->role);

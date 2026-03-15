@@ -46,9 +46,12 @@ POST /neev/register
 
 ```json
 {
-    "status": "Success",
+    "auth_state": "authenticated",
     "token": "1|abc123...",
-    "email_verified": false
+    "expires_in": 1440,
+    "mfa_options": null,
+    "email_verified": false,
+    "email_verification_method": "link"
 }
 ```
 
@@ -75,10 +78,11 @@ POST /neev/login
 
 ```json
 {
-    "status": "Success",
+    "auth_state": "authenticated",
     "token": "1|abc123...",
-    "email_verified": true,
-    "preferred_mfa": null
+    "expires_in": 1440,
+    "mfa_options": null,
+    "email_verified": true
 }
 ```
 
@@ -86,14 +90,19 @@ POST /neev/login
 
 ```json
 {
-    "status": "Success",
-    "token": "1|abc123...",
-    "email_verified": true,
-    "preferred_mfa": "authenticator"
+    "auth_state": "mfa_required",
+    "token": "jwt_mfa_token...",
+    "expires_in": 30,
+    "mfa_options": [
+        "authenticator",
+        "email"
+    ],
+    "email_verified": true
 }
 ```
 
-When `preferred_mfa` is returned, the token is an MFA token that can only be used to verify MFA. Complete MFA verification to get a full access token.
+When `auth_state` is `mfa_required`, the token is a short-lived JWT (type `mfa`) that can only be used to verify MFA. Complete MFA verification to get a full access token.
+`expires_in` is returned in minutes.
 
 ---
 
@@ -117,7 +126,6 @@ POST /neev/sendLoginLink
 
 ```json
 {
-    "status": "Success",
     "message": "Login link has been sent."
 }
 ```
@@ -136,8 +144,9 @@ GET /neev/loginUsingLink?id={email_id}&signature={signature}&expires={timestamp}
 
 ```json
 {
-    "status": "Success",
+    "auth_state": "authenticated",
     "token": "1|abc123...",
+    "expires_in": 1440,
     "email_verified": true
 }
 ```
@@ -161,7 +170,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Logged out successfully."
 }
 ```
@@ -185,7 +193,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Logged out successfully."
 }
 ```
@@ -215,7 +222,6 @@ POST /neev/forgotPassword
 
 ```json
 {
-    "status": "Success",
     "message": "Password has been updated."
 }
 ```
@@ -239,7 +245,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Verification email has been sent."
 }
 ```
@@ -261,7 +266,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Email verification done."
 }
 ```
@@ -292,7 +296,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Email has been updated."
 }
 ```
@@ -320,7 +323,6 @@ POST /neev/email/otp/send
 
 ```json
 {
-    "status": "Success",
     "message": "Verification code has been sent to your email."
 }
 ```
@@ -346,7 +348,6 @@ POST /neev/email/otp/verify
 
 ```json
 {
-    "status": "Success",
     "message": "Verification code has been verified."
 }
 ```
@@ -404,7 +405,7 @@ POST /neev/mfa/otp/verify
 
 **Headers:**
 ```http
-Authorization: Bearer {mfa_token}
+Authorization: Bearer {mfa_jwt_token}
 ```
 
 **Request Body:**
@@ -420,8 +421,9 @@ Authorization: Bearer {mfa_token}
 
 ```json
 {
-    "status": "Success",
+    "auth_state": "authenticated",
     "token": "1|abc123...",
+    "expires_in": 1440,
     "email_verified": true
 }
 ```
@@ -451,7 +453,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Auth has been deleted."
 }
 ```
@@ -473,7 +474,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "New recovery codes are generated.",
     "data": [
         "abc123defg",
@@ -548,7 +548,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Passkey has been registered.",
     "data": {
         "id": 1,
@@ -570,7 +569,6 @@ GET /neev/passkeys/login/options?email=john@example.com
 
 ```json
 {
-    "status": "Success",
     "challenge": "base64_challenge",
     "timeout": 120000,
     "rpId": "yourapp.com",
@@ -600,8 +598,9 @@ POST /neev/passkeys/login
 
 ```json
 {
-    "status": "Success",
+    "auth_state": "authenticated",
     "token": "1|abc123...",
+    "expires_in": 1440,
     "email_verified": true
 }
 ```
@@ -668,7 +667,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "data": {
         "id": 1,
         "name": "John Doe",
@@ -706,7 +704,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Account has been updated.",
     "data": {...}
 }
@@ -737,7 +734,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Account has been deleted."
 }
 ```
@@ -769,7 +765,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Password has been successfully updated."
 }
 ```
@@ -801,7 +796,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Email has been added.",
     "data": {
         "id": 2,
@@ -873,7 +867,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "data": [
         {
             "id": 1,
@@ -907,7 +900,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "data": [
         {
             "id": 1,
@@ -945,7 +937,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "data": [
         {
             "id": 1,
@@ -986,7 +977,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Token has been added.",
     "data": {
         "accessToken": {...},
@@ -1072,7 +1062,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "data": [
         {
             "id": 1,
@@ -1106,7 +1095,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "data": {
         "id": 1,
         "name": "My Team",
@@ -1394,7 +1382,6 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "status": "Success",
     "message": "Domain federated successfully.",
     "token": "abc123verification..."
 }
@@ -1503,7 +1490,6 @@ All endpoints return consistent error responses:
 
 ```json
 {
-    "status": "Failed",
     "message": "Error description here."
 }
 ```

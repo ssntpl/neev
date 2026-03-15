@@ -54,7 +54,6 @@ class PasskeyTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Passkey has been deleted.');
 
         $this->assertDatabaseMissing('passkeys', ['id' => $passkey->id]);
@@ -72,8 +71,8 @@ class PasskeyTest extends TestCase
                 'passkey_id' => $passkey->id,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400)
+            ->assertJsonPath('message', 'Passkey was not deleted.');
 
         // Passkey should still exist
         $this->assertDatabaseHas('passkeys', ['id' => $passkey->id]);
@@ -88,8 +87,8 @@ class PasskeyTest extends TestCase
                 'passkey_id' => 99999,
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400)
+            ->assertJsonPath('message', 'Passkey was not deleted.');
     }
 
     // -----------------------------------------------------------------
@@ -108,7 +107,6 @@ class PasskeyTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('data.name', 'New Name');
 
         $passkey->refresh();
@@ -129,7 +127,7 @@ class PasskeyTest extends TestCase
             ]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+            ->assertJsonPath('message', 'Passkey not found');
     }
 
     public function test_update_passkey_name_rejects_nonexistent(): void
@@ -143,7 +141,7 @@ class PasskeyTest extends TestCase
             ]);
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+            ->assertJsonPath('message', 'Passkey not found');
     }
 
     // -----------------------------------------------------------------
@@ -179,7 +177,6 @@ class PasskeyTest extends TestCase
         $response = $this->getJson('/neev/passkeys/login/options?email=' . urlencode($user->email->email));
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonStructure([
                 'challenge',
                 'timeout',
@@ -192,16 +189,13 @@ class PasskeyTest extends TestCase
     {
         $response = $this->getJson('/neev/passkeys/login/options?email=nobody@example.com');
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     public function test_generate_login_options_requires_email(): void
     {
-        // Validation is inside a try/catch so it returns a Failed response, not 422
         $response = $this->getJson('/neev/passkeys/login/options');
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 }

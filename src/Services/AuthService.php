@@ -2,12 +2,12 @@
 
 namespace Ssntpl\Neev\Services;
 
-use Ssntpl\Neev\Events\LoggedInEvent;
+use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
-use Exception;
+use Ssntpl\Neev\Events\LoggedInEvent;
 use Ssntpl\Neev\Models\LoginAttempt;
 
 class AuthService
@@ -38,8 +38,10 @@ class AuthService
     {
         try {
             if ($attempt) {
-                $attempt->is_success = true;
-                $attempt->save();
+                if (!$attempt->is_success) {
+                    $attempt->is_success = true;
+                    $attempt->save();
+                }
                 return $attempt;
             }
 
@@ -55,6 +57,36 @@ class AuthService
                 'ip_address' => $request->ip(),
                 'is_success' => true,
             ]);
+        } catch (Exception $e) {
+            Log::error($e);
+            return null;
+        }
+    }
+
+    /**
+     * Create an API login token for the user, record the login attempt, and fire the LoggedIn event.
+     *
+     * @return string|null The plain-text token, or null on failure.
+     */
+    public function createApiToken(Request $request, GeoIP $geoIP, $user, string $method, int $expiryMinutes, ?LoginAttempt $attempt = null): ?string
+    {
+        if (!$user->active) {
+            throw ValidationException::withMessages([
+                'email' => 'Your account is deactivated, please contact your admin to activate your account.',
+            ]);
+        }
+
+        try {
+            $attempt = $this->recordLoginAttempt($request, $geoIP, $user, $method, null, $attempt);
+
+            $token = $user->createLoginToken($expiryMinutes);
+            $accessToken = $token->accessToken;
+            $accessToken->attempt_id = $attempt->id;
+            $accessToken->save();
+
+            event(new LoggedInEvent($user));
+
+            return $token->plainTextToken;
         } catch (Exception $e) {
             Log::error($e);
             return null;

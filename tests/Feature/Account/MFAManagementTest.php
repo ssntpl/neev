@@ -97,8 +97,7 @@ class MFAManagementTest extends TestCase
                 'auth_method' => 'sms',
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(400);
     }
 
     // -----------------------------------------------------------------
@@ -121,7 +120,6 @@ class MFAManagementTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonPath('message', 'Auth has been deleted.');
 
         $this->assertNull($user->multiFactorAuth('authenticator'));
@@ -148,8 +146,7 @@ class MFAManagementTest extends TestCase
                 'auth_method' => 'authenticator',
             ]);
 
-        $response->assertOk()
-            ->assertJsonPath('status', 'Success');
+        $response->assertOk();
 
         // Email should now be preferred
         $user->refresh();
@@ -191,8 +188,7 @@ class MFAManagementTest extends TestCase
                 'auth_method' => 'authenticator',
             ]);
 
-        $response->assertStatus(403)
-            ->assertJsonPath('status', 'Failed');
+        $response->assertStatus(403);
     }
 
     // -----------------------------------------------------------------
@@ -212,7 +208,6 @@ class MFAManagementTest extends TestCase
             ->postJson('/neev/recoveryCodes');
 
         $response->assertOk()
-            ->assertJsonPath('status', 'Success')
             ->assertJsonStructure(['data']);
 
         $this->assertNotEmpty($response->json('data'));
@@ -226,7 +221,6 @@ class MFAManagementTest extends TestCase
             ->postJson('/neev/recoveryCodes');
 
         $response->assertStatus(400)
-            ->assertJsonPath('status', 'Failed')
             ->assertJsonPath('message', 'Enable MFA first.');
     }
 }

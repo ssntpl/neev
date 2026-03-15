@@ -13,6 +13,7 @@ use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
 
 class OAuthApiController extends Controller
@@ -21,7 +22,6 @@ class OAuthApiController extends Controller
     {
         if (!in_array($service, config('neev.oauth', []))) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'OAuth provider not supported.',
             ], 404);
         }
@@ -43,7 +43,6 @@ class OAuthApiController extends Controller
             ->getTargetUrl();
 
         return response()->json([
-            'status' => 'Success',
             'url' => $url,
         ]);
     }
@@ -52,14 +51,12 @@ class OAuthApiController extends Controller
     {
         if (!in_array($service, config('neev.oauth', []))) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'OAuth provider not supported.',
             ], 404);
         }
 
         if (!$request->code) {
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'Authorization code is required.',
             ], 400);
         }
@@ -80,7 +77,6 @@ class OAuthApiController extends Controller
                 $user = $email->user;
                 if (!$user || !$email->verified_at) {
                     return response()->json([
-                        'status' => 'Failed',
                         'message' => 'Account not found or email not verified.',
                     ], 401);
                 }
@@ -88,36 +84,30 @@ class OAuthApiController extends Controller
                 $user = $this->register($oauthUser);
                 if (!$user) {
                     return response()->json([
-                        'status' => 'Failed',
                         'message' => 'Unable to register user.',
                     ], 500);
                 }
             }
 
-            $authController = new UserAuthApiController();
-            $token = $authController->getToken(
-                request: $request,
-                geoIP: $geoIP,
-                user: $user,
-                method: $service
-            );
+            $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
+            $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, $service, $expiryMinutes);
 
             if (!$token) {
                 return response()->json([
-                    'status' => 'Failed',
                     'message' => 'Something went wrong.',
                 ], 500);
             }
 
             return response()->json([
-                'status' => 'Success',
+                'auth_state' => 'authenticated',
                 'token' => $token,
+                'expires_in' => $expiryMinutes,
+                'mfa_options' => null,
                 'email_verified' => $user->hasVerifiedEmail(),
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
-                'status' => 'Failed',
                 'message' => 'OAuth authentication failed.',
             ], 500);
         }

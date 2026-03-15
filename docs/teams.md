@@ -137,7 +137,6 @@ curl -X POST https://yourapp.com/neev/teams \
 
 ```json
 {
-  "status": "Success",
   "data": {
     "id": 1,
     "name": "New Team",
@@ -403,7 +402,6 @@ curl -X POST https://yourapp.com/neev/domains \
 
 ```json
 {
-  "status": "Success",
   "message": "Domain federated successfully.",
   "token": "neev-verification=abc123def456..."
 }

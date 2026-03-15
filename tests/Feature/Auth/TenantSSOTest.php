@@ -113,8 +113,7 @@ class TenantSSOTest extends TestCase
 
         $response = $this->getJson('/sso/redirect');
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'error');
+        $response->assertStatus(400);
     }
 
     public function test_redirect_redirects_to_login_when_sso_not_required(): void
@@ -158,8 +157,7 @@ class TenantSSOTest extends TestCase
 
         $response = $this->getJson('/sso/callback');
 
-        $response->assertStatus(400)
-            ->assertJsonPath('status', 'error');
+        $response->assertStatus(400);
     }
 
     public function test_callback_redirects_to_login_when_no_code(): void

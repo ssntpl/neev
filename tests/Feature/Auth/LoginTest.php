@@ -36,8 +36,12 @@ class LoginTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJsonStructure(['status', 'token', 'email_verified']);
-        $response->assertJson(['status' => 'Success']);
+        $response->assertJson([
+            'auth_state' => 'authenticated',
+            'mfa_options' => null,
+            'expires_in' => config('neev.login_token_expiry_minutes', 1440),
+            'email_verified' => true,
+        ]);
         $this->assertNotEmpty($response->json('token'));
     }
 
@@ -55,7 +59,10 @@ class LoginTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJson(['email_verified' => true]);
+        $response->assertJson([
+            'auth_state' => 'authenticated',
+            'email_verified' => true,
+        ]);
     }
 
     public function test_login_returns_email_verified_false_for_unverified_user(): void
@@ -70,7 +77,10 @@ class LoginTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJson(['email_verified' => false]);
+        $response->assertJson([
+            'auth_state' => 'authenticated',
+            'email_verified' => false,
+        ]);
     }
 
     public function test_wrong_password_returns_401(): void
@@ -84,7 +94,6 @@ class LoginTest extends TestCase
 
         $response->assertStatus(401);
         $response->assertJson([
-            'status' => 'Failed',
             'message' => 'Credentials are wrong.',
         ]);
     }
@@ -98,7 +107,6 @@ class LoginTest extends TestCase
 
         $response->assertStatus(401);
         $response->assertJson([
-            'status' => 'Failed',
             'message' => 'Credentials are wrong.',
         ]);
     }
@@ -200,13 +208,13 @@ class LoginTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJson(['preferred_mfa' => 'authenticator']);
-
-        // The token should be stored as mfa_token type
-        $this->assertDatabaseHas('access_tokens', [
-            'user_id' => $user->id,
-            'token_type' => 'mfa_token',
+        $response->assertJson([
+            'auth_state' => 'mfa_required',
+            'mfa_options' => ['authenticator'],
+            'expires_in' => config('neev.mfa_jwt_expiry_minutes', 30),
+            'email_verified' => true,
         ]);
+        $this->assertNotEmpty($response->json('token'));
     }
 
     public function test_non_mfa_user_gets_null_preferred_mfa(): void
@@ -219,7 +227,7 @@ class LoginTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJson(['preferred_mfa' => null]);
+        $response->assertJson(['mfa_options' => null]);
     }
 
     // -----------------------------------------------------------------
@@ -238,7 +246,7 @@ class LoginTest extends TestCase
         ]);
 
         $response->assertOk();
-        $response->assertJson(['status' => 'Success']);
+        $response->assertJson(['auth_state' => 'authenticated']);
         $this->assertNotEmpty($response->json('token'));
     }
 
