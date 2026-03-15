@@ -13,6 +13,7 @@ use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
 
 class OAuthApiController extends Controller
@@ -88,15 +89,8 @@ class OAuthApiController extends Controller
                 }
             }
 
-            $authController = new UserAuthApiController();
             $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
-            $token = $authController->getToken(
-                request: $request,
-                geoIP: $geoIP,
-                user: $user,
-                method: $service,
-                expiryMinutes: $expiryMinutes
-            );
+            $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, $service, $expiryMinutes);
 
             if (!$token) {
                 return response()->json([

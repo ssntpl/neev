@@ -499,9 +499,8 @@ class PasskeyController extends Controller
         try {
             [$user, $attempt] = $this->passkeyLogin($request, $geoIP);
 
-            $authController = new UserAuthApiController();
             $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
-            $token = $authController->getToken(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Passkey, expiryMinutes: $expiryMinutes, attempt: $attempt ?? null);
+            $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::Passkey, $expiryMinutes, $attempt);
 
             return response()->json([
                 'auth_state' => 'authenticated',

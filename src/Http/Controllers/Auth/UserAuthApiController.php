@@ -11,7 +11,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
-use Ssntpl\Neev\Events\LoggedInEvent;
 use Ssntpl\Neev\Events\LoggedOutEvent;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Controllers\UserApiController;
@@ -23,6 +22,7 @@ use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\JwtSecret;
 
@@ -102,7 +102,7 @@ class UserAuthApiController extends Controller
             }
 
             $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
-            $token = $this->getToken($request, $geoIP, $user, LoginAttempt::Password, $expiryMinutes);
+            $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::Password, $expiryMinutes);
             if (!$token) {
                 return response()->json([
                     'message' => 'Something went wrong.',
@@ -198,7 +198,7 @@ class UserAuthApiController extends Controller
             ]);
         }
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
-        $token = $this->getToken(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, expiryMinutes: $expiryMinutes, attempt: null);
+        $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::Password, $expiryMinutes);
 
         return response()->json([
             'auth_state' => 'authenticated',
@@ -227,45 +227,6 @@ class UserAuthApiController extends Controller
         return JWT::encode($payload, JwtSecret::get(), 'HS256');
     }
 
-    public function getToken(Request $request, GeoIP $geoIP, $user, $method, int $expiryMinutes, $attempt = null)
-    {
-        if (!$user->active) {
-            throw ValidationException::withMessages([
-                'email' => 'Your account is deactivated, please contact your admin to activate your account.',
-            ]);
-        }
-
-        try {
-            if ($attempt) {
-                $attempt->is_success = true;
-                $attempt->save();
-            } else {
-                $clientDetails = LoginAttempt::getClientDetails($request);
-                $attempt = $user->loginAttempts()->create([
-                    'method' => $method,
-                    'location' => $geoIP->getLocation($request->ip()),
-                    'multi_factor_method' => null,
-                    'platform' => $clientDetails['platform'] ?? '',
-                    'browser' => $clientDetails['browser'] ?? '',
-                    'device' => $clientDetails['device'] ?? '',
-                    'ip_address' => $request->ip(),
-                    'is_success' => true,
-                ]);
-            }
-
-            $token = $user->createLoginToken($expiryMinutes);
-            $accessToken = $token->accessToken;
-            $accessToken->attempt_id = $attempt->id;
-            $accessToken->save();
-
-            event(new LoggedInEvent($user));
-
-            return $token->plainTextToken;
-        } catch (Exception $e) {
-            Log::error($e);
-            return null;
-        }
-    }
 
     public function sendMailVerificationLink(Request $request)
     {
@@ -495,7 +456,7 @@ class UserAuthApiController extends Controller
         }
 
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
-        $token = $this->getToken(request: $request, geoIP: $geoIP, user: $email->user, method: LoginAttempt::MagicAuth, expiryMinutes: $expiryMinutes);
+        $token = app(AuthService::class)->createApiToken($request, $geoIP, $email->user, LoginAttempt::MagicAuth, $expiryMinutes);
 
         return response()->json([
             'auth_state' => 'authenticated',
@@ -552,7 +513,7 @@ class UserAuthApiController extends Controller
             $attempt->save();
         }
 
-        $token = $this->getToken(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, expiryMinutes: $expiryMinutes, attempt: $attempt);
+        $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::Password, $expiryMinutes, $attempt);
 
         return response()->json([
             'auth_state' => 'authenticated',

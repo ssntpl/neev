@@ -196,8 +196,7 @@ class TenantSSOController extends Controller
                 // SPA flow: create a token and redirect with it
                 $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
 
-                $authController = new UserAuthApiController();
-                $token = $authController->getToken($request, $geoIP, $user, LoginAttempt::SSO, $expiryMinutes);
+                $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::SSO, $expiryMinutes);
 
                 // Build redirect URL with token in fragment (not query string)
                 // Fragment (#) is not sent to server in HTTP requests, preventing token leakage via referrer headers/logs
