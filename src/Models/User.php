@@ -72,7 +72,6 @@ class User extends Authenticatable
         'email',
         'email_verified_at',
         'password',
-        'password_history',
         'password_changed_at',
         'active',
         'tenant_id',

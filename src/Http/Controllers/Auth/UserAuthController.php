@@ -416,8 +416,10 @@ class UserAuthController extends Controller
             return redirect(route('login') . '?redirect=' . urlencode($request->fullUrl()))->withErrors(['message' => __('Please login first to verify your email.')]);
         }
 
-        if (hash_equals(sha1($user->email), $hash) && $request->hasValidSignature()) {
-            $newEmail = $this->auth->verifyEmailSignature($request);
+        $newEmail = $this->auth->verifyEmailSignature($request);
+        $hashToCheck = $newEmail ? sha1($newEmail) : sha1($user->email);
+
+        if (hash_equals($hashToCheck, $hash) && $request->hasValidSignature()) {
             if ($newEmail) {
                 $user->email = $newEmail;
             }

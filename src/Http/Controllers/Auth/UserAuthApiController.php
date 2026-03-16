@@ -349,9 +349,9 @@ class UserAuthApiController extends Controller
 
             $expiryMinutes = config('neev.url_expiry_time', 60);
             $signedUrl = URL::temporarySignedRoute(
-                'mail.verify',
+                'neev.resetPassword',
                 now()->addMinutes($expiryMinutes),
-                ['id' => $user->id, 'purpose' => 'password-reset']
+                ['id' => $user->id]
             );
 
             $query = parse_url($signedUrl, PHP_URL_QUERY);

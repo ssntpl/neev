@@ -50,7 +50,7 @@
                     </span>
                 </x-neev-component::secondary-button>
                 @php
-                    $user = Ssntpl\Neev\Models\Email::where('email', $email)->first()?->user;
+                    $user = Ssntpl\Neev\Models\User::findByEmail($email);
                 @endphp
                 <div x-show="openMethod" x-transition class="flex flex-col gap-4 mt-4">
                     <div class="border-t border border-4 border-gray-200 dark:border-gray-700"></div>
