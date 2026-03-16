@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Rules\PasswordHistory;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
 
@@ -71,32 +72,15 @@ class PasswordResetTest extends TestCase
     {
         $user = User::factory()->create();
 
-        // Build a signed URL for the resetPassword endpoint.
-        // We construct it the same way Laravel's signedRoute does internally.
-        $parameters = [
-            'id' => $user->id,
-            'purpose' => 'password-reset',
-            'expires' => now()->addMinutes(60)->getTimestamp(),
-        ];
-        ksort($parameters);
+        $signedUrl = URL::temporarySignedRoute(
+            'neev.resetPassword',
+            now()->addMinutes(60),
+            ['id' => $user->id]
+        );
 
-        $baseUrl = URL::to('/neev/resetPassword');
-        $urlWithParams = $baseUrl . '?' . http_build_query($parameters);
+        $query = parse_url($signedUrl, PHP_URL_QUERY);
 
-        // Get the signing key via the URL generator's keyResolver
-        $urlGenerator = app(\Illuminate\Routing\UrlGenerator::class);
-        $keyResolverProp = new \ReflectionProperty($urlGenerator, 'keyResolver');
-        $keyResolverProp->setAccessible(true);
-        $keyResolver = $keyResolverProp->getValue($urlGenerator);
-        $key = call_user_func($keyResolver);
-        if (is_array($key)) {
-            $key = $key[0];
-        }
-
-        $signature = hash_hmac('sha256', $urlWithParams, $key);
-        $signedUrl = $urlWithParams . '&signature=' . $signature;
-
-        $response = $this->postJson($signedUrl, [
+        $response = $this->postJson('/neev/resetPassword?' . $query, [
             'password' => 'newpassword123',
             'password_confirmation' => 'newpassword123',
         ]);
@@ -131,9 +115,9 @@ class PasswordResetTest extends TestCase
         $user = User::factory()->create();
 
         $signedUrl = URL::temporarySignedRoute(
-            'mail.verify',
+            'neev.resetPassword',
             now()->addMinutes(60),
-            ['id' => $user->id, 'purpose' => 'password-reset']
+            ['id' => $user->id]
         );
 
         $query = parse_url($signedUrl, PHP_URL_QUERY);
@@ -149,9 +133,9 @@ class PasswordResetTest extends TestCase
         $user = User::factory()->create();
 
         $signedUrl = URL::temporarySignedRoute(
-            'mail.verify',
+            'neev.resetPassword',
             now()->addMinutes(60),
-            ['id' => $user->id, 'purpose' => 'password-reset']
+            ['id' => $user->id]
         );
 
         $query = parse_url($signedUrl, PHP_URL_QUERY);
@@ -159,6 +143,55 @@ class PasswordResetTest extends TestCase
         $response = $this->postJson('/neev/resetPassword?' . $query, [
             'password' => 'newpassword123',
             'password_confirmation' => 'differentpassword',
+        ]);
+
+        $response->assertUnprocessable();
+        $response->assertJsonValidationErrors(['password']);
+    }
+
+    public function test_reset_password_populates_password_history(): void
+    {
+        $user = User::factory()->create(['password' => 'original-password']);
+        $originalHash = $user->getRawOriginal('password');
+
+        $signedUrl = URL::temporarySignedRoute(
+            'neev.resetPassword',
+            now()->addMinutes(60),
+            ['id' => $user->id]
+        );
+
+        $query = parse_url($signedUrl, PHP_URL_QUERY);
+
+        $response = $this->postJson('/neev/resetPassword?' . $query, [
+            'password' => 'new-password-123',
+            'password_confirmation' => 'new-password-123',
+        ]);
+
+        $response->assertOk();
+
+        $user->refresh();
+        $this->assertNotNull($user->password_history);
+        $this->assertCount(1, $user->password_history);
+        $this->assertSame($originalHash, $user->password_history[0]);
+    }
+
+    public function test_reset_password_rejects_reused_password(): void
+    {
+        config(['neev.password' => ['required', 'confirmed', PasswordHistory::notReused(3)]]);
+
+        $user = User::factory()->create(['password' => 'original-password']);
+
+        $signedUrl = URL::temporarySignedRoute(
+            'neev.resetPassword',
+            now()->addMinutes(60),
+            ['id' => $user->id]
+        );
+
+        $query = parse_url($signedUrl, PHP_URL_QUERY);
+
+        $response = $this->postJson('/neev/resetPassword?' . $query, [
+            'password' => 'original-password',
+            'password_confirmation' => 'original-password',
         ]);
 
         $response->assertUnprocessable();

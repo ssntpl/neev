@@ -175,6 +175,8 @@ class UserApiController extends Controller
             return response()->json([
                 'message' => 'Password has been successfully updated.',
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([

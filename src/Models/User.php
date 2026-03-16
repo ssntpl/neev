@@ -70,9 +70,7 @@ class User extends Authenticatable
         'name',
         'username',
         'email',
-        'email_verified_at',
         'password',
-        'password_changed_at',
         'active',
         'tenant_id',
     ];
@@ -105,7 +103,7 @@ class User extends Authenticatable
      * The TenantScope global scope handles tenant filtering automatically.
      */
     /** @return static|null */
-    public static function findByEmail(string $email): ?self
+    public static function findByEmail(string $email): ?static
     {
         return static::model()
             ->where('email', $email)
@@ -142,6 +140,8 @@ class User extends Authenticatable
             $resolver = app(TenantResolver::class);
             if ($resolver->hasTenant()) {
                 $rule->where('tenant_id', $resolver->currentId());
+            } else {
+                $rule->whereNull('tenant_id');
             }
         }
 

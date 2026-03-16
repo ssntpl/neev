@@ -227,7 +227,7 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 | GET | `/neev/loginUsingLink` | Login via magic link | No |
 | POST | `/neev/logout` | Logout current session | Yes |
 | POST | `/neev/logoutAll` | Logout all other sessions | Yes |
-| POST | `/neev/forgotPassword` | Reset password with OTP | No |
+| POST | `/neev/forgotPassword` | Send password reset link | No |
 
 ### Email Endpoints
 
@@ -238,9 +238,6 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 | POST | `/neev/email/update` | Update email address | Yes |
 | POST | `/neev/email/otp/send` | Send email OTP | No |
 | POST | `/neev/email/otp/verify` | Verify email OTP | No |
-| POST | `/neev/emails` | Add email address | Yes |
-| DELETE | `/neev/emails` | Delete email address | Yes |
-| PUT | `/neev/emails` | Set primary email | Yes |
 
 ### MFA Endpoints
 
@@ -366,7 +363,6 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
 | GET | `/account/profile` | `account.profile` | Profile page |
-| GET | `/account/emails` | `account.emails` | Email management |
 | GET | `/account/security` | `account.security` | Security settings |
 | GET | `/account/tokens` | `account.tokens` | API tokens |
 | GET | `/account/teams` | `account.teams` | Teams list |
@@ -624,7 +620,6 @@ php artisan neev:download-geoip
 // config/neev.php
 'team' => true,                    // Team management
 'email_verified' => true,          // Require verification
-'email_verification_method' => 'link', // 'link' or 'otp'
 'require_company_email' => false,  // Waitlist free emails
 'domain_federation' => true,       // Domain-based joining
 'identity_strategy' => 'shared',   // 'shared' or 'isolated'
@@ -682,7 +677,6 @@ php artisan neev:download-geoip       # Download GeoIP database
 
 ```bash
 php artisan neev:clean-login-attempts # Clean old login records
-php artisan neev:clean-passwords      # Clean password history
 ```
 
 ### Scheduled Tasks
@@ -692,7 +686,6 @@ php artisan neev:clean-passwords      # Clean password history
 protected function schedule(Schedule $schedule)
 {
     $schedule->command('neev:clean-login-attempts')->daily();
-    $schedule->command('neev:clean-passwords')->weekly();
     $schedule->command('neev:download-geoip')->monthly();
 }
 ```
@@ -705,9 +698,7 @@ protected function schedule(Schedule $schedule)
 
 | Table | Description |
 |-------|-------------|
-| `users` | User accounts |
-| `emails` | Multiple emails per user |
-| `passwords` | Password history |
+| `users` | User accounts (includes password and password history) |
 | `otps` | One-time passwords |
 | `passkeys` | WebAuthn credentials |
 | `multi_factor_auths` | MFA configurations |

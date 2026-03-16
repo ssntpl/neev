@@ -197,7 +197,7 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
         Route::post('/oauth/{service}/callback', [OAuthApiController::class, 'callback']);
     });
     Route::get('/loginUsingLink', [UserAuthApiController::class, 'loginUsingLink'])->name('loginUsingLink');
-    Route::post('/resetPassword', [UserAuthApiController::class, 'resetPassword'])->name('neev.resetPassword');
+    Route::post('/resetPassword', [UserAuthApiController::class, 'resetPassword'])->middleware('throttle:10,1')->name('neev.resetPassword');
 
     Route::middleware(['neev:login', 'throttle:5,1'])->group(function () {
         Route::post('/mfa/otp/verify', [UserAuthApiController::class, 'verifyMFAOTP']);

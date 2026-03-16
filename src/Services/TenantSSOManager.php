@@ -114,7 +114,7 @@ class TenantSSOManager
         }
 
         // Create a new user (global identity) with SSO-verified email
-        $user = User::model()->create([
+        $user = User::model()->forceCreate([
             'name' => $ssoUser->getName() ?? $this->extractNameFromEmail($email),
             'email' => $email,
             'email_verified_at' => now(),

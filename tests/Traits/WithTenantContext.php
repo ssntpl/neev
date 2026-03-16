@@ -11,7 +11,7 @@ use Ssntpl\Neev\Services\TenantResolver;
  * (User, etc.) can be created and queried without hitting the
  * strict TenantScope "WHERE 1=0" guard.
  *
- * Use this in any test that creates Users or Emails but is NOT specifically
+ * Use this in any test that creates Users but is NOT specifically
  * testing tenant isolation behaviour.
  */
 trait WithTenantContext

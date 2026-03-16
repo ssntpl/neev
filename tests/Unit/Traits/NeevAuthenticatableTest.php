@@ -6,7 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 
-class VerifyEmailTest extends TestCase
+class NeevAuthenticatableTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -34,7 +34,7 @@ class VerifyEmailTest extends TestCase
         $user = User::factory()->create();
 
         // Set to unverified after creation
-        $user->update(['email_verified_at' => null]);
+        $user->forceFill(['email_verified_at' => null])->save();
         $user->refresh();
 
         $this->assertFalse($user->hasVerifiedEmail());

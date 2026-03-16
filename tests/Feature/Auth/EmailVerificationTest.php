@@ -35,7 +35,7 @@ class EmailVerificationTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         // Make the user's email unverified
-        $user->update(['email_verified_at' => null]);
+        $user->forceFill(['email_verified_at' => null])->save();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/email/send', [
@@ -80,7 +80,7 @@ class EmailVerificationTest extends TestCase
     {
         [$user, $token] = $this->authenticatedUser();
 
-        $user->update(['email_verified_at' => null]);
+        $user->forceFill(['email_verified_at' => null])->save();
 
         $signedUrl = URL::temporarySignedRoute(
             'mail.verify',
@@ -105,7 +105,7 @@ class EmailVerificationTest extends TestCase
     {
         [$user, $token] = $this->authenticatedUser();
 
-        $user->update(['email_verified_at' => null]);
+        $user->forceFill(['email_verified_at' => null])->save();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/email/verify?id=' . $user->id . '&signature=invalidsig');

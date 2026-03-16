@@ -55,7 +55,7 @@ class UserAuthApiController extends Controller
                 $userData['username'] = $request->username;
             }
 
-            $user = User::model()->create($userData);
+            $user = User::model()->forceCreate($userData);
             $user = User::model()->find($user->id);
 
             if (config('neev.team')) {
@@ -68,7 +68,7 @@ class UserAuthApiController extends Controller
                         ], 400);
                     }
 
-                    $user->update(['email_verified_at' => now()]);
+                    $user->markEmailAsVerified();
 
                     $team = $invitation->team;
                     $team->users()->attach($user, ['joined' => true]);

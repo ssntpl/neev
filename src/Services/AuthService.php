@@ -113,32 +113,6 @@ class AuthService
     }
 
     /**
-     * Send email change verification link to a new email address.
-     * The signed URL encodes the new email so it can be retrieved on verification.
-     */
-    public function sendEmailChangeVerification(User $user, string $newEmail): void
-    {
-        $expiryMinutes = config('neev.url_expiry_time', 60);
-        $signedUrl = URL::temporarySignedRoute(
-            'verification.verify',
-            now()->addMinutes($expiryMinutes),
-            ['id' => $user->id, 'hash' => sha1($newEmail), 'email' => $newEmail]
-        );
-
-        Mail::to($newEmail)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email', $expiryMinutes));
-    }
-
-    /**
-     * Validate a signed email verification URL.
-     *
-     * @return string|null The new email if this is an email-change verification, null for standard verification.
-     */
-    public function verifyEmailSignature(Request $request): ?string
-    {
-        return $request->query('email');
-    }
-
-    /**
      * Change the user's password and manage password history.
      *
      * @param User $user
@@ -169,10 +143,8 @@ class AuthService
     {
         $passwordRules = config('neev.password', []);
         foreach ($passwordRules as $rule) {
-            if (is_object($rule) && $rule instanceof \Ssntpl\Neev\Rules\PasswordHistory) {
-                $reflection = new \ReflectionClass($rule);
-                $property = $reflection->getProperty('count');
-                return $property->getValue($rule);
+            if ($rule instanceof \Ssntpl\Neev\Rules\PasswordHistory) {
+                return $rule->getCount();
             }
         }
         return 5;

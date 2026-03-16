@@ -24,11 +24,10 @@ Neev supports multiple authentication methods:
 
 1. User submits registration form with name, email, password
 2. System validates password against rules
-3. User account is created
-4. Primary email is created (unverified)
-5. If teams enabled, personal team is created
-6. Verification email is sent (if enabled)
-7. User is logged in and redirected
+3. User account is created with email (unverified)
+4. If teams enabled, personal team is created
+5. Verification email is sent (if enabled)
+6. User is logged in and redirected
 
 **API Example:**
 
@@ -51,8 +50,7 @@ curl -X POST https://yourapp.com/neev/register \
   "token": "1|abc123def456...",
   "expires_in": 1440,
   "mfa_options": null,
-  "email_verified": false,
-  "email_verification_method": "link"
+  "email_verified": false
 }
 ```
 

@@ -96,7 +96,7 @@ class PasswordChangeTest extends TestCase
             ]);
 
         // Validation should fail due to 'confirmed' rule
-        $response->assertStatus(500);
+        $response->assertUnprocessable();
     }
 
     public function test_cannot_change_password_with_mismatched_confirmation(): void
@@ -111,7 +111,7 @@ class PasswordChangeTest extends TestCase
             ]);
 
         // Validation should fail due to 'confirmed' rule mismatch
-        $response->assertStatus(500);
+        $response->assertUnprocessable();
     }
 
     public function test_cannot_change_password_without_current_password(): void
@@ -125,7 +125,7 @@ class PasswordChangeTest extends TestCase
             ]);
 
         // Validation requires current_password
-        $response->assertStatus(500);
+        $response->assertUnprocessable();
     }
 
     public function test_password_change_updates_password_changed_at(): void

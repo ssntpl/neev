@@ -40,14 +40,6 @@ php artisan neev:clean-login-attempts
 
 Retention is controlled by `config('neev.last_login_attempts_in_days')`.
 
-### `neev:clean-passwords`
-
-Remove expired password history records.
-
-```bash
-php artisan neev:clean-passwords
-```
-
 ---
 
 ## Tenant / Team Provisioning
@@ -210,7 +202,7 @@ php artisan neev:member:add user@example.com --team=acme-corp --role=editor
 | `--team=` | Team ID or slug (required) |
 | `--role=` | Role to assign |
 
-Looks up the user via the `emails` table and attaches them with `joined=true`.
+Looks up the user by email and attaches them with `joined=true`.
 
 ### `neev:member:remove`
 

@@ -41,7 +41,7 @@ class ListMembersCommand extends Command
             $members->map(fn ($m) => [
                 $m->id,
                 $m->name,
-                $m->email?->email ?? '-',
+                $m->email ?? '-',
                 $m->getRole($team)?->name ?? '-',
                 $m->membership->joined ? 'Yes' : 'No',
                 $m->membership->created_at?->format('Y-m-d') ?? '-',

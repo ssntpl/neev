@@ -86,7 +86,7 @@ class OAuthController extends Controller
             $userData['username'] = $username;
         }
 
-        $user = User::model()->create($userData);
+        $user = User::model()->forceCreate($userData);
 
         try {
             if (config('neev.team')) {

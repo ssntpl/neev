@@ -50,8 +50,7 @@ POST /neev/register
     "token": "1|abc123...",
     "expires_in": 1440,
     "mfa_options": null,
-    "email_verified": false,
-    "email_verification_method": "link"
+    "email_verified": false
 }
 ```
 
@@ -201,7 +200,7 @@ Authorization: Bearer {token}
 
 ### Forgot Password
 
-Reset password using OTP verification.
+Send a signed URL password reset link to the user's email.
 
 ```http
 POST /neev/forgotPassword
@@ -211,10 +210,7 @@ POST /neev/forgotPassword
 
 ```json
 {
-    "email": "john@example.com",
-    "password": "NewSecurePass123!",
-    "password_confirmation": "NewSecurePass123!",
-    "otp": "123456"
+    "email": "john@example.com"
 }
 ```
 
@@ -222,7 +218,7 @@ POST /neev/forgotPassword
 
 ```json
 {
-    "message": "Password has been updated."
+    "message": "Password reset link has been sent."
 }
 ```
 
@@ -766,85 +762,6 @@ Authorization: Bearer {token}
 ```json
 {
     "message": "Password has been successfully updated."
-}
-```
-
----
-
-## Email Management
-
-### Add Email
-
-```http
-POST /neev/emails
-```
-
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
-
-**Request Body:**
-
-```json
-{
-    "email": "secondary@example.com"
-}
-```
-
-**Response:**
-
-```json
-{
-    "message": "Email has been added.",
-    "data": {
-        "id": 2,
-        "email": "secondary@example.com",
-        "is_primary": false,
-        "verified_at": null
-    }
-}
-```
-
----
-
-### Delete Email
-
-```http
-DELETE /neev/emails
-```
-
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
-
-**Request Body:**
-
-```json
-{
-    "email": "secondary@example.com"
-}
-```
-
----
-
-### Set Primary Email
-
-```http
-PUT /neev/emails
-```
-
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
-
-**Request Body:**
-
-```json
-{
-    "email": "secondary@example.com"
 }
 ```
 

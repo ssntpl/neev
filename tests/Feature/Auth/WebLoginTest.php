@@ -82,7 +82,7 @@ class WebLoginTest extends TestCase
     public function test_web_login_redirects_to_email_verification_when_required(): void
     {
         $user = User::factory()->create();
-        $user->update(['email_verified_at' => null]);
+        $user->forceFill(['email_verified_at' => null])->save();
 
         $response = $this->post('/login', [
             'email' => $user->email,

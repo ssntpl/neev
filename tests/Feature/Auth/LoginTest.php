@@ -66,7 +66,7 @@ class LoginTest extends TestCase
     public function test_login_returns_email_verified_false_for_unverified_user(): void
     {
         $user = $this->createUser();
-        $user->update(['email_verified_at' => null]);
+        $user->forceFill(['email_verified_at' => null])->save();
 
         $response = $this->postJson('/neev/login', [
             'email' => $user->email,

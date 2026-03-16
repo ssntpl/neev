@@ -19,12 +19,24 @@ class PasswordHistory implements ValidationRule
         return new static($count);
     }
 
+    public function getCount(): int
+    {
+        return $this->count;
+    }
+
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         $user = User::model()->find(request()->user()?->id);
         $email = request()->input('email');
         if ($email) {
             $user = User::findByEmail($email);
+        }
+
+        if (!$user) {
+            $id = request()->input('id');
+            if ($id) {
+                $user = User::model()->find($id);
+            }
         }
 
         if (!$user) {

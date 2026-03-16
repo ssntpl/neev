@@ -92,7 +92,7 @@ class UserAuthController extends Controller
                 $userData['username'] = $request->username;
             }
 
-            $user = User::model()->create($userData);
+            $user = User::model()->forceCreate($userData);
             $user = User::model()->find($user->id);
 
             if (config('neev.team')) {
@@ -103,7 +103,7 @@ class UserAuthController extends Controller
                         return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
                     }
 
-                    $user->update(['email_verified_at' => now()]);
+                    $user->markEmailAsVerified();
 
                     $team = $invitation->team;
                     $team->users()->attach($user, ['joined' => true]);
@@ -416,17 +416,12 @@ class UserAuthController extends Controller
             return redirect(route('login') . '?redirect=' . urlencode($request->fullUrl()))->withErrors(['message' => __('Please login first to verify your email.')]);
         }
 
-        $newEmail = $this->auth->verifyEmailSignature($request);
-        $hashToCheck = $newEmail ? sha1($newEmail) : sha1($user->email);
-
-        if (hash_equals($hashToCheck, $hash) && $request->hasValidSignature()) {
-            if ($newEmail) {
-                $user->email = $newEmail;
-            }
+        if (hash_equals(sha1($user->email), $hash) && $request->hasValidSignature()) {
             $user->markEmailAsVerified();
+            return redirect(config('neev.home'));
         }
 
-        return redirect(config('neev.home'));
+        return redirect(config('neev.home'))->withErrors(['message' => __('Invalid or expired verification link.')]);
     }
 
     /**
