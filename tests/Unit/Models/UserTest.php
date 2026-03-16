@@ -48,8 +48,7 @@ class UserTest extends TestCase
 
         $this->assertEquals([
             'name', 'username', 'email',
-            'password',
-            'active', 'tenant_id',
+            'active',
         ], $user->getFillable());
     }
 

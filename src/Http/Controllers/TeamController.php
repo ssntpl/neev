@@ -155,7 +155,10 @@ class TeamController extends Controller
         try {
             /** @var \Ssntpl\Neev\Models\Team|null $team */
             $team = Team::model()->find($request->team_id);
-            if ($user->id != $team->user_id || ($team->domain?->enforce && $team->verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->domain?->domain)))) {
+            if ($user->id != $team->user_id) {
+                return back()->withErrors(['message' => 'You cannot invite member in this team.']);
+            }
+            if ($team->domain?->enforce && $team->domain?->verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->domain->domain))) {
                 return back()->withErrors(['message' => 'You cannot invite member in this team.']);
             }
             $member = User::findByEmail($request->email);
@@ -334,7 +337,11 @@ class TeamController extends Controller
                 $team->allUsers()->detach($member);
                 return back()->with('status', 'Rejected Successfully');
             } elseif ($request->action == 'accept') {
-                $membership = $team->joinRequests->where('id', $member->id)->first()->membership;
+                $joinRequest = $team->joinRequests->where('id', $member->id)->first();
+                if (!$joinRequest) {
+                    return back()->withErrors(['message' => 'Join request not found.']);
+                }
+                $membership = $joinRequest->membership;
                 $membership->joined = true;
                 $membership->save();
                 if ($request->role) {

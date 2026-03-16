@@ -88,9 +88,8 @@ class UserApiController extends Controller
                     return !str_contains($rule, 'unique:');
                 });
                 $usernameRules[] = 'unique:users,username,' . $request->user()->id;
-                $validationRules['username'] = $usernameRules;
 
-                $request->validate($validationRules);
+                $request->validate(['username' => $usernameRules]);
                 $user->username = $request->username;
             }
             $user->save();

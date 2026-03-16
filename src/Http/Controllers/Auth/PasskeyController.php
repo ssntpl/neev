@@ -377,9 +377,14 @@ class PasskeyController extends Controller
         );
 
         $user = User::findByEmail($request->email);
+        if (!$user) {
+            throw new Exception('Wrong Credentials.');
+        }
+
+        $attempt = null;
         if (config('neev.log_failed_logins')) {
             $clientDetails = LoginAttempt::getClientDetails($request);
-            $attempt = $user?->loginAttempts()->create([
+            $attempt = $user->loginAttempts()->create([
                 'method' => LoginAttempt::Passkey,
                 'location' => $geoIP->getLocation($request->ip()),
                 'multi_factor_method' => null,

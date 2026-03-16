@@ -386,7 +386,7 @@ class UserAuthApiController extends Controller
             }
 
             $user = User::model()->find($request->id);
-            if (!$user) {
+            if (!$user || !$user->hasVerifiedEmail()) {
                 return response()->json([
                     'message' => 'User not found.',
                 ], 404);
@@ -443,7 +443,7 @@ class UserAuthApiController extends Controller
         }
 
         $user = User::model()->find($request->id);
-        if (!$user) {
+        if (!$user || !$user->hasVerifiedEmail()) {
             return response()->json([
                 'message' => 'Invalid or expired verification link.',
             ], 403);

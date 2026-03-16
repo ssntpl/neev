@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Services;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
@@ -106,7 +107,7 @@ class AuthService
         $signedUrl = URL::temporarySignedRoute(
             'verification.verify',
             now()->addMinutes($expiryMinutes),
-            ['id' => $user->id, 'hash' => sha1($user->email)]
+            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
         );
 
         Mail::to($user->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email', $expiryMinutes));
@@ -120,20 +121,24 @@ class AuthService
      */
     public function changePassword(User $user, string $newPassword): void
     {
-        $history = $user->password_history ?? [];
+        DB::transaction(function () use ($user, $newPassword) {
+            $user = User::model()->lockForUpdate()->find($user->id);
 
-        // Prepend the current hashed password to history
-        $currentHash = $user->getRawOriginal('password');
-        if ($currentHash) {
-            array_unshift($history, $currentHash);
-        }
+            $history = $user->password_history ?? [];
 
-        // Trim to configured limit
-        $limit = $this->getPasswordHistoryLimit();
-        $user->password_history = array_slice($history, 0, $limit);
-        $user->password = $newPassword;
-        $user->password_changed_at = now();
-        $user->save();
+            // Prepend the current hashed password to history
+            $currentHash = $user->getRawOriginal('password');
+            if ($currentHash) {
+                array_unshift($history, $currentHash);
+            }
+
+            // Trim to configured limit
+            $limit = $this->getPasswordHistoryLimit();
+            $user->password_history = array_slice($history, 0, $limit);
+            $user->password = $newPassword;
+            $user->password_changed_at = now();
+            $user->save();
+        });
     }
 
     /**
@@ -142,6 +147,9 @@ class AuthService
     protected function getPasswordHistoryLimit(): int
     {
         $passwordRules = config('neev.password', []);
+        if (!is_array($passwordRules)) {
+            return 5;
+        }
         foreach ($passwordRules as $rule) {
             if ($rule instanceof \Ssntpl\Neev\Rules\PasswordHistory) {
                 return $rule->getCount();

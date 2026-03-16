@@ -199,8 +199,10 @@ class UserController extends Controller
             return back()->withErrors(['message' => 'preferred auth was not updated.']);
         }
         $preferred = $user->preferredMultiFactorAuth;
-        $preferred->preferred = false;
-        $preferred->save();
+        if ($preferred) {
+            $preferred->preferred = false;
+            $preferred->save();
+        }
         $auth->preferred = true;
         $auth->save();
         return back()->with('status', 'preferred auth has been updated.');

@@ -259,6 +259,7 @@ class UserAuthController extends Controller
             return back()->withErrors(['message' => 'Credentials are wrong.']);
         }
 
+        $attempt = null;
         if (config('neev.log_failed_logins')) {
             $clientDetails = LoginAttempt::getClientDetails($request);
             $attempt = $user->loginAttempts()->create([
@@ -272,7 +273,7 @@ class UserAuthController extends Controller
                 'is_success' => false,
             ]);
         }
-        $this->auth->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, attempt: $attempt ?? null, viaRequestAuth: true);
+        $this->auth->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, attempt: $attempt, viaRequestAuth: true);
 
         if (count($user->multiFactorAuths) > 0) {
             session(['email' => $user->email]);
@@ -320,7 +321,7 @@ class UserAuthController extends Controller
         $signedUrl = URL::temporarySignedRoute(
             'reset.request',
             now()->addMinutes($expiryMinutes),
-            ['id' => $user->id, 'hash' => sha1($user->email)]
+            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
         );
 
         Mail::to($user->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Forgot Password', $expiryMinutes));
@@ -338,12 +339,12 @@ class UserAuthController extends Controller
             return redirect(route('password.request'))->withErrors(['message' => 'Invalid verification link.']);
         }
 
-        if (!hash_equals(sha1($user->email), $hash) || !$user->hasVerifiedEmail()) {
+        if (!hash_equals(hash('sha256', $user->email), $hash) || !$user->hasVerifiedEmail()) {
             return redirect(route('password.request'))->withErrors(['message' => 'Invalid verification link.']);
         }
 
         $resetToken = bin2hex(random_bytes(32));
-        session(['password_reset_token' => $resetToken, 'password_reset_email' => $user->email]);
+        session(['password_reset_token' => hash_hmac('sha256', $resetToken, config('app.key')), 'password_reset_email' => $user->email]);
         return view('neev::auth.reset-password', ['email' => $user->email, 'reset_token' => $resetToken]);
     }
 
@@ -358,7 +359,7 @@ class UserAuthController extends Controller
         // Verify the reset token matches the session
         $sessionToken = session()->pull('password_reset_token');
         $sessionEmail = session()->pull('password_reset_email');
-        if (!$sessionToken || !hash_equals($sessionToken, $request->reset_token) || $sessionEmail !== $request->email) {
+        if (!$sessionToken || !hash_equals($sessionToken, hash_hmac('sha256', $request->reset_token, config('app.key'))) || $sessionEmail !== $request->email) {
             return redirect(route('password.request'))->withErrors(['message' => 'Invalid or expired reset link. Please request a new one.']);
         }
 
@@ -416,7 +417,7 @@ class UserAuthController extends Controller
             return redirect(route('login') . '?redirect=' . urlencode($request->fullUrl()))->withErrors(['message' => __('Please login first to verify your email.')]);
         }
 
-        if (hash_equals(sha1($user->email), $hash) && $request->hasValidSignature()) {
+        if (hash_equals(hash('sha256', $user->email), $hash) && $request->hasValidSignature()) {
             $user->markEmailAsVerified();
             return redirect(config('neev.home'));
         }
