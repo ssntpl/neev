@@ -14,6 +14,10 @@ class UserFactory extends Factory
         return [
             'name' => fake()->name(),
             'username' => fake()->unique()->userName(),
+            'email' => fake()->unique()->safeEmail(),
+            'email_verified_at' => now(),
+            'password' => 'password',
+            'password_changed_at' => now(),
             'active' => true,
         ];
     }
@@ -23,18 +27,8 @@ class UserFactory extends Factory
         return $this->state(['active' => false]);
     }
 
-    public function configure(): static
+    public function unverified(): static
     {
-        return $this->afterCreating(function (User $user) {
-            $user->emails()->create([
-                'email' => fake()->unique()->safeEmail(),
-                'is_primary' => true,
-                'verified_at' => now(),
-            ]);
-
-            $user->passwords()->create([
-                'password' => 'password',
-            ]);
-        });
+        return $this->state(['email_verified_at' => null]);
     }
 }

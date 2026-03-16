@@ -9,7 +9,6 @@ use Illuminate\Support\ServiceProvider;
 use Ssntpl\Neev\Commands\Auth\ConfigureAuthCommand;
 use Ssntpl\Neev\Commands\Auth\ShowAuthCommand;
 use Ssntpl\Neev\Commands\CleanOldLoginAttempts;
-use Ssntpl\Neev\Commands\CleanOldPasswords;
 use Ssntpl\Neev\Commands\Domain\AddDomainCommand;
 use Ssntpl\Neev\Commands\Domain\ListDomainsCommand;
 use Ssntpl\Neev\Commands\Domain\VerifyDomainCommand;
@@ -155,7 +154,6 @@ class NeevServiceProvider extends ServiceProvider
             InstallNeev::class,
             DownloadGeoLiteDb::class,
             CleanOldLoginAttempts::class,
-            CleanOldPasswords::class,
 
             CreateTenantCommand::class,
             ListTenantsCommand::class,

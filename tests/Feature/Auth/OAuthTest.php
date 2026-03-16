@@ -8,7 +8,6 @@ use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\SocialiteServiceProvider;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Mockery;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
@@ -123,9 +122,8 @@ class OAuthTest extends TestCase
     public function test_callback_logs_in_existing_user(): void
     {
         $user = User::factory()->create();
-        $existingEmail = $user->email->email;
 
-        $this->mockSocialiteUser($existingEmail);
+        $this->mockSocialiteUser($user->email);
 
         $response = $this->get('/oauth/google/callback?code=test-auth-code');
 
@@ -143,9 +141,8 @@ class OAuthTest extends TestCase
         // User should be created regardless of login outcome
         $this->assertEquals($countBefore + 1, User::count());
 
-        $email = Email::where('email', 'newuser@example.com')->first();
-        $this->assertNotNull($email);
-        $this->assertTrue($email->is_primary);
+        $user = User::where('email', 'newuser@example.com')->first();
+        $this->assertNotNull($user);
     }
 
     public function test_callback_redirects_to_login_when_no_code(): void
@@ -157,12 +154,9 @@ class OAuthTest extends TestCase
 
     public function test_callback_redirects_to_login_for_unverified_email(): void
     {
-        $user = User::factory()->create();
-        $email = $user->email;
-        $email->verified_at = null;
-        $email->save();
+        $user = User::factory()->unverified()->create();
 
-        $this->mockSocialiteUser($email->email);
+        $this->mockSocialiteUser($user->email);
 
         $response = $this->get('/oauth/google/callback?code=test-auth-code');
 
@@ -177,7 +171,7 @@ class OAuthTest extends TestCase
 
         $this->get('/oauth/google/callback?code=test-auth-code');
 
-        $user = Email::where('email', 'teamuser@example.com')->first()?->user;
+        $user = User::where('email', 'teamuser@example.com')->first();
         $this->assertNotNull($user);
         $this->assertGreaterThan(0, Team::where('user_id', $user->id)->count());
     }
@@ -215,7 +209,7 @@ class OAuthTest extends TestCase
 
         $this->get('/oauth/google/callback?code=test-auth-code');
 
-        $user = Email::where('email', 'newuser@verified-corp.com')->first()?->user;
+        $user = User::where('email', 'newuser@verified-corp.com')->first();
         $this->assertNotNull($user);
 
         // User should NOT have their own team since their domain matches a verified one
@@ -231,7 +225,7 @@ class OAuthTest extends TestCase
 
         $this->get('/oauth/google/callback?code=test-auth-code');
 
-        $user = Email::where('email', 'newuser@unknown-domain.com')->first()?->user;
+        $user = User::where('email', 'newuser@unknown-domain.com')->first();
         $this->assertNotNull($user);
 
         // User should have their own team since their domain is not verified

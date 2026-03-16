@@ -11,7 +11,6 @@ use Illuminate\Support\Str;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Models\Domain;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 
@@ -27,9 +26,8 @@ class TeamApiController extends Controller
             ], 400);
         }
 
-        // Get pending invitations sent to user's emails
-        $emails = $user->emails->pluck('email');
-        $invitations = \Ssntpl\Neev\Models\TeamInvitation::whereIn('email', $emails)
+        // Get pending invitations sent to user's email
+        $invitations = \Ssntpl\Neev\Models\TeamInvitation::where('email', $user->email)
             ->with('team')
             ->get();
 
@@ -66,7 +64,7 @@ class TeamApiController extends Controller
 
         $user->setDefaultTeam($team);
 
-        $team->load('owner.email', 'users.email');
+        $team->load('owner', 'users');
 
         return response()->json([
             'message' => 'Default team updated successfully.',
@@ -101,7 +99,7 @@ class TeamApiController extends Controller
             ], 400);
         }
 
-        $team->load('owner.email', 'users.email', 'joinRequests', 'invitedUsers', 'invitations');
+        $team->load('owner', 'users', 'joinRequests', 'invitedUsers', 'invitations');
 
         return response()->json([
             'data' => $team,
@@ -132,7 +130,7 @@ class TeamApiController extends Controller
             ], 400);
         }
 
-        $team->load('owner.email', 'users.email');
+        $team->load('owner', 'users');
 
         return response()->json([
             'data' => $team,
@@ -245,8 +243,7 @@ class TeamApiController extends Controller
                     'message' => 'You cannot invite member in this team.',
                 ], 400);
             }
-            $email = Email::findByEmail($request->email);
-            $member = $email?->user;
+            $member = User::findByEmail($request->email);
             if (!$member) {
                 $expiry = now()->addDays(7);
 
@@ -286,7 +283,7 @@ class TeamApiController extends Controller
                 $invitation->delete();
             }
 
-            Mail::to($member->email->email)->send(new TeamInvitation($team->name, $member->name));
+            Mail::to($member->email)->send(new TeamInvitation($team->name, $member->name));
 
             return response()->json([
                 'message' => 'Invite link sent successfully.',
@@ -306,7 +303,7 @@ class TeamApiController extends Controller
         try {
             if ($request->invitation_id) {
                 $invitation = \Ssntpl\Neev\Models\TeamInvitation::find($request->invitation_id);
-                if (!$invitation || !$user->emails->where('email', $invitation->email)->first()?->exists()) {
+                if (!$invitation || $user->email !== $invitation->email) {
                     return response()->json([
                         'message' => 'Invitation not found',
                     ], 400);
@@ -371,7 +368,6 @@ class TeamApiController extends Controller
     {
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user_id ?? $request->user()?->id);
-        $user?->loadMissing('email');
         try {
             /** @var \Ssntpl\Neev\Models\Team|null $team */
             $team = Team::model()->find($request->team_id);
@@ -393,7 +389,7 @@ class TeamApiController extends Controller
                 ], 400);
             }
 
-            if ($team->domain?->verified_at && str_ends_with(strtolower($user->email->email), '@' . strtolower($team->domain?->domain))) {
+            if ($team->domain?->verified_at && str_ends_with(strtolower($user->email), '@' . strtolower($team->domain?->domain))) {
                 if ($user->active) {
                     $user->deactivate();
                     return response()->json([
@@ -428,7 +424,7 @@ class TeamApiController extends Controller
         try {
             /** @var \Ssntpl\Neev\Models\Team|null $team */
             $team = Team::model()->find($request->team_id);
-            $team?->loadMissing('owner.email');
+            $team?->loadMissing('owner');
             if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
                 if ($team->users->contains($user)) {
                     return response()->json([
@@ -439,7 +435,7 @@ class TeamApiController extends Controller
                     $team->allUsers()->attach($user, ['action' => 'request_from_user']);
                 }
 
-                Mail::to($team->owner->email->email)->send(new TeamJoinRequest($team->name, $user->name, $team->owner->name, $team->id));
+                Mail::to($team->owner->email)->send(new TeamJoinRequest($team->name, $user->name, $team->owner->name, $team->id));
 
                 return response()->json([
                     'message' => 'Request sent successfully.',
@@ -514,13 +510,13 @@ class TeamApiController extends Controller
         $domains = $team->domains->load('rules');
 
         // Eager load users with their emails to avoid N+1 queries
-        $team->loadMissing('users.email');
+        $team->loadMissing('users');
 
         foreach ($domains as $domain) {
             if ($domain->enforce && $domain->verified_at) {
                 $count = 0;
                 foreach ($team->users as $member) {
-                    if (!str_ends_with(strtolower($member->email->email), '@' . strtolower($domain->domain))) {
+                    if (!str_ends_with(strtolower($member->email), '@' . strtolower($domain->domain))) {
                         $count++;
                     }
                 }
@@ -547,7 +543,7 @@ class TeamApiController extends Controller
         }
 
         if ($team->user_id !== $user->id) {
-            //  || !str_ends_with(strtolower($user->email->email), '@' . strtolower($request->domain))
+            //  || !str_ends_with(strtolower($user->email), '@' . strtolower($request->domain))
             return response()->json([
                 'message' => 'You do not have the required permissions to federate domain.',
             ], 400);

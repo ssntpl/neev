@@ -174,7 +174,7 @@ class PasskeyTest extends TestCase
         $user = User::factory()->create();
         $this->createPasskey($user);
 
-        $response = $this->getJson('/neev/passkeys/login/options?email=' . urlencode($user->email->email));
+        $response = $this->getJson('/neev/passkeys/login/options?email=' . urlencode($user->email));
 
         $response->assertOk()
             ->assertJsonStructure([

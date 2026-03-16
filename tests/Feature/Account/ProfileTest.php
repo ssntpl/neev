@@ -38,10 +38,8 @@ class ProfileTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.id', $user->id)
-            ->assertJsonPath('data.name', $user->name);
-
-        // Emails should be loaded
-        $this->assertArrayHasKey('emails', $response->json('data'));
+            ->assertJsonPath('data.name', $user->name)
+            ->assertJsonPath('data.email', $user->email);
     }
 
     public function test_get_user_includes_teams_relation(): void

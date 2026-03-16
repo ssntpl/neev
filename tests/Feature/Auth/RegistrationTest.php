@@ -3,7 +3,6 @@
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
@@ -38,11 +37,11 @@ class RegistrationTest extends TestCase
             'email_verified' => false,
         ]);
         $this->assertNotEmpty($response->json('token'));
-        $this->assertDatabaseHas('emails', ['email' => 'test@company.com']);
+        $this->assertDatabaseHas('users', ['email' => 'test@company.com']);
         $this->assertDatabaseHas('users', ['name' => 'Test User']);
     }
 
-    public function test_registration_creates_user_email_and_password(): void
+    public function test_registration_creates_user_with_email_and_password(): void
     {
         $this->postJson('/neev/register', [
             'name' => 'Jane Doe',
@@ -53,13 +52,11 @@ class RegistrationTest extends TestCase
 
         $this->assertDatabaseHas('users', ['name' => 'Jane Doe']);
 
-        $email = Email::where('email', 'jane@company.com')->first();
-        $this->assertNotNull($email);
-        $this->assertTrue($email->is_primary);
+        $user = User::where('email', 'jane@company.com')->first();
+        $this->assertNotNull($user);
 
-        // Password record should exist for the user
-        $user = $email->user;
-        $this->assertNotNull($user->password);
+        // Password should be set on the user
+        $this->assertNotNull($user->getRawOriginal('password'));
     }
 
     public function test_returns_validation_error_for_missing_name(): void
@@ -100,7 +97,7 @@ class RegistrationTest extends TestCase
     public function test_returns_validation_error_for_duplicate_email(): void
     {
         $user = User::factory()->create();
-        $existingEmail = $user->email->email;
+        $existingEmail = $user->email;
 
         $response = $this->postJson('/neev/register', [
             'name' => 'Another User',
@@ -159,7 +156,7 @@ class RegistrationTest extends TestCase
 
         $response->assertOk();
 
-        $user = Email::where('email', 'owner@company.com')->first()->user;
+        $user = User::where('email', 'owner@company.com')->first();
         $team = Team::where('user_id', $user->id)->first();
 
         $this->assertNotNull($team);
@@ -241,13 +238,12 @@ class RegistrationTest extends TestCase
         $response->assertOk();
 
         // User should be added to the team
-        $user = Email::where('email', $inviteeEmail)->first()->user;
+        $user = User::where('email', $inviteeEmail)->first();
         $team->refresh();
         $this->assertTrue($team->users->contains($user));
 
         // Email should be auto-verified via invitation
-        $email = Email::where('email', $inviteeEmail)->first();
-        $this->assertNotNull($email->verified_at);
+        $this->assertNotNull($user->email_verified_at);
 
         // Invitation should be deleted
         $this->assertDatabaseMissing('team_invitations', ['id' => $invitation->id]);
@@ -331,7 +327,7 @@ class RegistrationTest extends TestCase
         $response->assertOk();
 
         // User should NOT have their own team since they matched a federated domain
-        $user = Email::where('email', 'user@domainteam.com')->first()->user;
+        $user = User::where('email', 'user@domainteam.com')->first();
         $ownedTeams = Team::where('user_id', $user->id)->count();
         $this->assertEquals(0, $ownedTeams);
     }
@@ -351,7 +347,7 @@ class RegistrationTest extends TestCase
         $response->assertOk();
 
         // User should get their own team
-        $user = Email::where('email', 'user@unregistered-domain.com')->first()->user;
+        $user = User::where('email', 'user@unregistered-domain.com')->first();
         $ownedTeams = Team::where('user_id', $user->id)->count();
         $this->assertEquals(1, $ownedTeams);
     }

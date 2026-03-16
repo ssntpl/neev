@@ -35,9 +35,6 @@ class TenantDomainTest extends TestCase
         // Create user with proper tenant_id
         $user = User::factory()->create(['tenant_id' => $team->id]);
 
-        // Update the user's email to have the same tenant_id
-        $user->emails()->update(['tenant_id' => $team->id]);
-
         // Add the user as a member of the tenant team (required by EnsureTenantMembership)
         $team->allUsers()->attach($user, ['joined' => true]);
 

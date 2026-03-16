@@ -8,7 +8,6 @@ use Laravel\Socialite\Contracts\User as SocialiteUser;
 use Mockery;
 use Ssntpl\Neev\Database\Factories\TeamAuthSettingsFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\TenantSSOManager;
@@ -96,8 +95,6 @@ class TenantSSOManagerTest extends TestCase
         $this->manager->buildSocialiteDriver($team);
     }
 
-    // sso_providers whitelist removed; any configured provider is accepted
-
     // ---------------------------------------------------------------
     // findOrCreateUser()
     // ---------------------------------------------------------------
@@ -108,9 +105,8 @@ class TenantSSOManagerTest extends TestCase
 
         $team = TeamFactory::new()->create();
         $user = User::factory()->create();
-        $email = $user->emails()->first();
 
-        $ssoUser = $this->mockSocialiteUser($email->email, 'SSO Name');
+        $ssoUser = $this->mockSocialiteUser($user->email, 'SSO Name');
 
         $found = $this->manager->findOrCreateUser($team, $ssoUser);
 
@@ -149,21 +145,17 @@ class TenantSSOManagerTest extends TestCase
         $this->assertSame($countBefore + 1, User::count());
         $this->assertSame('New User', $created->name);
 
-        // Verify email record was created
-        $this->assertDatabaseHas('emails', [
-            'user_id' => $created->id,
+        // Verify user record was created with email
+        $this->assertDatabaseHas('users', [
+            'id' => $created->id,
             'email' => 'newuser@company.com',
-            'is_primary' => true,
         ]);
 
         // Verify email is pre-verified (SSO emails)
-        $emailRecord = Email::where('email', 'newuser@company.com')->first();
-        $this->assertNotNull($emailRecord->verified_at);
+        $this->assertNotNull($created->email_verified_at);
 
         // Verify password was created
-        $this->assertDatabaseHas('passwords', [
-            'user_id' => $created->id,
-        ]);
+        $this->assertNotNull($created->getRawOriginal('password'));
     }
 
     public function test_find_or_create_user_uses_extracted_name_when_sso_name_null(): void

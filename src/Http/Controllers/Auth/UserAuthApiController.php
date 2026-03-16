@@ -14,11 +14,10 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOutEvent;
 use Ssntpl\Neev\Http\Controllers\Controller;
-use Ssntpl\Neev\Http\Controllers\UserApiController;
 use Ssntpl\Neev\Mail\LoginUsingLink;
+use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\Models\Domain;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
@@ -33,7 +32,7 @@ class UserAuthApiController extends Controller
     {
         $validationRules = [
             'name' => 'required|string|max:255',
-            'email' => ['required', 'string', 'email', 'max:255', Email::uniqueRule()],
+            'email' => ['required', 'string', 'email', 'max:255', User::uniqueEmailRule()],
             'password' => config('neev.password'),
         ];
 
@@ -44,22 +43,20 @@ class UserAuthApiController extends Controller
         try {
             $request->validate($validationRules);
             DB::beginTransaction();
-            $userData = ['name' => $request->name];
+
+            $userData = [
+                'name' => $request->name,
+                'email' => $request->email,
+                'password' => $request->password,
+                'password_changed_at' => now(),
+            ];
+
             if (config('neev.support_username')) {
                 $userData['username'] = $request->username;
             }
+
             $user = User::model()->create($userData);
-
             $user = User::model()->find($user->id);
-
-            $email = $user->emails()->create([
-                'email' => $request->email,
-                'is_primary' => true
-            ]);
-
-            $user->passwords()->create([
-                'password' => Hash::make($request->password),
-            ]);
 
             if (config('neev.team')) {
                 if ($request->invitation_id) {
@@ -71,8 +68,7 @@ class UserAuthApiController extends Controller
                         ], 400);
                     }
 
-                    $email->verified_at = now();
-                    $email->save();
+                    $user->update(['email_verified_at' => now()]);
 
                     $team = $invitation->team;
                     $team->users()->attach($user, ['joined' => true]);
@@ -95,11 +91,9 @@ class UserAuthApiController extends Controller
                 }
             }
             DB::commit();
-            if (!$email->verified_at) {
-                $result = UserApiController::sendMailVerification($email);
-                $verificationMethod = $result['method'] ?? 'link';
-            } else {
-                $verificationMethod = null;
+
+            if (!$user->hasVerifiedEmail()) {
+                app(AuthService::class)->sendEmailVerification($user);
             }
 
             $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
@@ -115,7 +109,6 @@ class UserAuthApiController extends Controller
                 'expires_in' => $expiryMinutes,
                 'mfa_options' => null,
                 'email_verified' => $user->hasVerifiedEmail(),
-                'email_verification_method' => $verificationMethod,
             ]);
         } catch (ValidationException $e) {
             DB::rollBack();
@@ -135,12 +128,11 @@ class UserAuthApiController extends Controller
             $user = User::findByUsername($request->email);
             if ($user) {
                 $request->merge(['username' => $user->username]);
-                $request->merge(['email' => $user->email?->email]);
+                $request->merge(['email' => $user->email]);
             }
         }
 
-        $email = Email::findByEmail($request->email);
-        $user = $email?->user;
+        $user = User::findByEmail($request->email);
         if (!$user) {
             return response()->json([
                 'message' => 'Credentials are wrong.',
@@ -148,7 +140,7 @@ class UserAuthApiController extends Controller
         }
 
         $mfaMethod = $user->preferredMultiFactorAuth->method ?? $user->multiFactorAuths()->first()?->method;
-        if (!Hash::check($request->password, (string)$user->password?->password)) {
+        if (!Hash::check($request->password, $user->password)) {
             if (config('neev.log_failed_logins')) {
                 $clientDetails = LoginAttempt::getClientDetails($request);
                 $user->loginAttempts()->create([
@@ -181,7 +173,7 @@ class UserAuthApiController extends Controller
             ]);
 
             if ($mfaMethod === 'email') {
-                UserApiController::sendMailOTP($user->email, true);
+                $this->sendMfaEmailOTP($user);
             }
 
             $expiryMinutes = config('neev.mfa_jwt_expiry_minutes', 30);
@@ -229,22 +221,45 @@ class UserAuthApiController extends Controller
         return JWT::encode($payload, JwtSecret::get(), 'HS256');
     }
 
+    private function sendMfaEmailOTP(User $user): void
+    {
+        $auth = $user->multiFactorAuth('email');
+        if (!$auth) {
+            return;
+        }
+        $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
+        $expiryMinutes = config('neev.otp_expiry_time', 15);
+        $auth->otp = $otp;
+        $auth->expires_at = now()->addMinutes($expiryMinutes);
+        $auth->save();
+        Mail::to($user->email)->send(new \Ssntpl\Neev\Mail\EmailOTP($user->name, $otp, $expiryMinutes));
+    }
 
     public function sendMailVerificationLink(Request $request)
     {
-        $email = Email::findByEmail($request->email);
-        if (!$email) {
+        $user = User::findByEmail($request->email);
+        if (!$user) {
             return response()->json([
                 'message' => 'Email not found.',
             ], 404);
         }
-        if ($email->verified_at) {
+        if ($user->hasVerifiedEmail()) {
             return response()->json([
                 'message' => 'Email already verified.',
             ], 400);
         }
 
-        UserApiController::sendMailLink($email);
+        $expiryMinutes = config('neev.url_expiry_time', 60);
+        $signedUrl = URL::temporarySignedRoute(
+            'mail.verify',
+            now()->addMinutes($expiryMinutes),
+            ['id' => $user->id]
+        );
+
+        $query = parse_url($signedUrl, PHP_URL_QUERY);
+        $frontendUrl = config('app.url');
+        $url = "{$frontendUrl}/verify-email?{$query}";
+        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', $expiryMinutes));
 
         return response()->json([
             'message' => 'Verification link has been sent.',
@@ -298,66 +313,23 @@ class UserAuthApiController extends Controller
 
     public function emailVerify(Request $request)
     {
-        $email = Email::find($request->id);
-        if (!$request->hasValidSignature() || !$email || $email->user?->id != $request->user()?->id) {
+        $user = User::model()->find($request->id);
+        if (!$request->hasValidSignature() || !$user || $user->id != $request->user()?->id) {
             return response()->json([
                 'message' => 'Invalid or expired verification link.'
             ], 403);
         }
 
-        if ($email->verified_at) {
+        if ($user->hasVerifiedEmail()) {
             return response()->json([
                 'message' => 'Email verification already done.'
             ]);
         }
 
-        $email->verified_at = now();
-        $email->save();
+        $user->markEmailAsVerified();
 
         return response()->json([
             'message' => 'Email verification done.'
-        ]);
-    }
-
-    public function sendEmailOTP(Request $request)
-    {
-        $email = Email::findByEmail($request->email);
-        if (!$email) {
-            return response()->json([
-                'message' => 'Email not found.',
-            ], 404);
-        }
-
-        UserApiController::sendMailOTP($email, $request->mfa ?? false);
-
-        return response()->json([
-            'message' => 'Verification code has been sent to your email.',
-            'verification_method' => 'otp'
-        ]);
-    }
-
-    public function verifyEmailOTP(Request $request)
-    {
-        $email = Email::findByEmail($request->email);
-
-        $otp = $email?->otp;
-
-        if (!$email || !$otp || $otp->expires_at < now() || !Hash::check((string) $request->otp, $otp->otp)) {
-            return response()->json([
-                'message' => 'Code verification failed.'
-            ], 400);
-        }
-
-        // Mark email as verified if this is for email verification
-        if (!$request->mfa) {
-            $email->verified_at = now();
-            $email->save();
-            $email->otp()->delete();
-        }
-
-        return response()->json([
-            'message' => 'Verification code has been verified.',
-            'verification_method' => 'otp'
         ]);
     }
 
@@ -366,41 +338,61 @@ class UserAuthApiController extends Controller
         try {
             $request->validate([
                 'email' => 'required|string|email|max:255',
-                'password' => config('neev.password'),
-                'otp' => 'required',
             ]);
 
-            $email = Email::findByEmail($request->email);
-            if (!$email) {
+            $user = User::findByEmail($request->email);
+            if (!$user || !$user->hasVerifiedEmail()) {
                 return response()->json([
-                    'message' => 'Email not found',
+                    'message' => 'User not registered or wrong email.',
                 ], 404);
             }
 
-            $otp = $email->otp;
-            if (!$otp || $otp->expires_at < now()) {
-                $email->otp()->delete();
+            $expiryMinutes = config('neev.url_expiry_time', 60);
+            $signedUrl = URL::temporarySignedRoute(
+                'mail.verify',
+                now()->addMinutes($expiryMinutes),
+                ['id' => $user->id, 'purpose' => 'password-reset']
+            );
+
+            $query = parse_url($signedUrl, PHP_URL_QUERY);
+            $frontendUrl = config('app.url');
+            $url = "{$frontendUrl}/reset-password?{$query}";
+            Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Reset Password', $expiryMinutes));
+
+            return response()->json([
+                'message' => 'Password reset link has been sent to your email.'
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (Exception $e) {
+            Log::error($e);
+            return response()->json([
+                'message' => 'Password reset failed.',
+            ], 500);
+        }
+    }
+
+    public function resetPassword(Request $request)
+    {
+        try {
+            $request->validate([
+                'password' => config('neev.password'),
+            ]);
+
+            if (!$request->hasValidSignature()) {
                 return response()->json([
-                    'message' => 'Code verification failed.',
-                ], 400);
-            }
-            if (!Hash::check((string) $request->otp, $otp->otp)) {
-                return response()->json([
-                    'message' => 'Code verification failed.',
-                ], 400);
+                    'message' => 'Invalid or expired reset link.',
+                ], 403);
             }
 
-            $user = $email->user;
+            $user = User::model()->find($request->id);
             if (!$user) {
                 return response()->json([
-                    'message' => 'User not found',
+                    'message' => 'User not found.',
                 ], 404);
             }
-            $user->passwords()->create([
-                'password' => Hash::make($request->password),
-            ]);
 
-            $email->otp()->delete();
+            app(AuthService::class)->changePassword($user, $request->password);
 
             return response()->json([
                 'message' => 'Password has been updated.'
@@ -417,8 +409,8 @@ class UserAuthApiController extends Controller
 
     public function sendLoginLink(Request $request)
     {
-        $email = Email::findByEmail($request->email);
-        if (!$email) {
+        $user = User::findByEmail($request->email);
+        if (!$user) {
             return response()->json([
                 'message' => 'Credentials are wrong.',
             ], 401);
@@ -428,14 +420,14 @@ class UserAuthApiController extends Controller
         $signedUrl = URL::temporarySignedRoute(
             'loginUsingLink',
             now()->addMinutes($expiryMinutes),
-            ['id' => $email->id]
+            ['id' => $user->id]
         );
 
         $query = parse_url($signedUrl, PHP_URL_QUERY);
         $frontendUrl = config('app.url');
         $url = "{$frontendUrl}/login-link?{$query}";
 
-        Mail::to($email->email)->send(new LoginUsingLink($url, $expiryMinutes));
+        Mail::to($user->email)->send(new LoginUsingLink($url, $expiryMinutes));
 
         return response()->json([
             'message' => 'Login link has been sent.',
@@ -450,22 +442,22 @@ class UserAuthApiController extends Controller
             ], 403);
         }
 
-        $email = Email::find($request->id);
-        if (!$email) {
+        $user = User::model()->find($request->id);
+        if (!$user) {
             return response()->json([
                 'message' => 'Invalid or expired verification link.',
             ], 403);
         }
 
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
-        $token = app(AuthService::class)->createApiToken($request, $geoIP, $email->user, LoginAttempt::MagicAuth, $expiryMinutes);
+        $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::MagicAuth, $expiryMinutes);
 
         return response()->json([
             'auth_state' => 'authenticated',
             'token' => $token,
             'expires_in' => $expiryMinutes,
             'mfa_options' => null,
-            'email_verified' => $email->user?->hasVerifiedEmail() ?? false,
+            'email_verified' => $user->hasVerifiedEmail(),
         ]);
     }
 

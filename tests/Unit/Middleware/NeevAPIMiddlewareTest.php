@@ -227,8 +227,6 @@ class NeevAPIMiddlewareTest extends TestCase
         $data = $this->createUserWithApiToken();
 
         // Delete the user but keep the token
-        $data['user']->emails()->delete();
-        $data['user']->passwords()->delete();
         $data['user']->forceDelete();
 
         $request = $this->buildRequest('/api/test', $data['plainTextToken']);

@@ -6,43 +6,15 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\URL;
-use Ssntpl\Neev\Mail\EmailOTP;
-use Ssntpl\Neev\Mail\VerifyUserEmail;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\AuthService;
 
 class UserApiController extends Controller
 {
-    public function emailUpdate(Request $request)
-    {
-        $request->validate([
-            'email' => ['required', 'email', Email::uniqueRule()],
-        ]);
-
-        $email = Email::find($request->email_id);
-        if (!$email || $email->user?->id !== $request->user()?->id) {
-            return response()->json([
-                'message' => 'Email was not updated.'
-            ], 400);
-        }
-
-        $email->email = $request->email;
-        $email->save();
-
-        $result = self::sendMailVerification($email);
-
-        return response()->json([
-            'message' => 'Email has been updated.',
-            'verification_method' => $result['method'] ?? 'link'
-        ]);
-    }
-
     public function getUser(Request $request)
     {
         return response()->json([
-            'data' => $request->user()?->load('emails', 'teams'),
+            'data' => $request->user()?->load('teams'),
         ]);
     }
 
@@ -142,7 +114,7 @@ class UserApiController extends Controller
         ]);
 
         $user = User::model()->find($request->user()?->id);
-        if (!Hash::check($request->password, $user->password?->password)) {
+        if (!Hash::check($request->password, $user->password)) {
             return response()->json([
                 'message' => 'Password is Wrong.',
             ], 403);
@@ -151,152 +123,6 @@ class UserApiController extends Controller
         $user->delete();
         return response()->json([
             'message' => 'Account has been deleted.',
-        ]);
-    }
-
-    public static function sendMailVerification($email)
-    {
-        $user = $email?->user;
-        if (!$user) {
-            return false;
-        }
-
-        $method = config('neev.email_verification_method', 'link');
-
-        if ($method === 'otp') {
-            self::sendMailOTP($email, false);
-            return ['method' => 'otp'];
-        }
-
-        // Default link method
-        self::sendMailLink($email);
-        return ['method' => 'link'];
-    }
-
-    public static function sendMailLink(Email $email)
-    {
-        $user = $email->user;
-        if (!$user) {
-            return false;
-        }
-
-        $signedUrl = URL::temporarySignedRoute(
-            'mail.verify',
-            now()->addMinutes(config('neev.url_expiry_time', 60)),
-            ['id' => $email->id]
-        );
-
-        $query = parse_url($signedUrl, PHP_URL_QUERY);
-        $frontendUrl = config('app.url');
-        $url = "{$frontendUrl}/verify-email?{$query}";
-        Mail::to($email->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', 60));
-    }
-
-    public static function sendMailOTP(Email $email, $mfa = false)
-    {
-        $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
-        $expiryMinutes = config('neev.otp_expiry_time', 15);
-        $expires_at = now()->addMinutes($expiryMinutes);
-        if ($mfa) {
-            $auth = $email->user?->multiFactorAuth('email');
-            if (!$auth) {
-                return response()->json([
-                    'message' => 'Auth type not found.',
-                ], 400);
-            }
-            $auth->otp = $otp;
-            $auth->expires_at = $expires_at;
-            $auth->save();
-        } else {
-            $email->otp()->updateOrCreate([], [
-                'otp' => $otp,
-                'expires_at' => $expires_at,
-            ]);
-        }
-
-        Mail::to($email->email)->send(new EmailOTP($email->user?->name, $otp, $expiryMinutes));
-    }
-
-    public function addEmail(Request $request)
-    {
-        $request->validate([
-            'email' => 'required|string|email|max:255',
-        ]);
-
-        $user = User::model()->find($request->user()?->id);
-        if (!$user) {
-            return response()->json([
-                'message' => 'User not found.',
-            ], 404);
-        }
-        if (Email::findByEmail($request->email)) {
-            return response()->json([
-                'message' => 'Email already exist.',
-            ], 400);
-        }
-
-        $email = $user->emails()->create([
-            'email' => $request->email
-        ]);
-
-        $result = self::sendMailVerification($email);
-
-        return response()->json([
-            'message' => 'Email has been added.',
-            'data' => $email,
-            'verification_method' => $result['method'] ?? 'link'
-        ]);
-    }
-
-    public function deleteEmail(Request $request)
-    {
-        $user = User::model()->find($request->user()?->id);
-
-        $email = $user?->emails?->where('email', $request->email)->first();
-        if (!$email) {
-            return response()->json([
-                'message' => 'Email does not exist.',
-            ], 403);
-        }
-
-        if ($email->is_primary) {
-            return response()->json([
-                'message' => 'Cannot delete primary email.',
-            ], 403);
-        }
-
-        $email->delete();
-
-        return response()->json([
-            'message' => 'Email has been deleted.',
-        ]);
-    }
-
-    public function primaryEmail(Request $request)
-    {
-        $user = User::model()->find($request->user()?->id);
-        $email = $user?->emails?->where('email', $request->email)->first();
-        if (!$email || !$email->verified_at) {
-            return response()->json([
-                'message' => 'Your primary email was not changed.',
-            ], 400);
-        }
-
-        $pemail = $user->email;
-        if ($pemail) {
-            if ($pemail->id == $email->id) {
-                return response()->json([
-                    'message' => 'Your primary email is already set.',
-                ]);
-            }
-            $pemail->is_primary = false;
-            $pemail->save();
-        }
-        $email->is_primary = true;
-        $email->save();
-
-        return response()->json([
-            'message' => 'Your primary email has been changed.'
         ]);
     }
 
@@ -338,15 +164,13 @@ class UserApiController extends Controller
             ]);
 
             $user = User::model()->find($request->user()->id);
-            if (!Hash::check($request->current_password, $user->password->password)) {
+            if (!Hash::check($request->current_password, $user->password)) {
                 return response()->json([
                     'message' => 'Current Password is Wrong.',
                 ], 403);
             }
 
-            $user->passwords()->create([
-                'password' => Hash::make($request->password),
-            ]);
+            app(AuthService::class)->changePassword($user, $request->password);
 
             return response()->json([
                 'message' => 'Password has been successfully updated.',

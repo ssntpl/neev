@@ -2,7 +2,6 @@
 
 namespace Ssntpl\Neev\Commands\Concerns;
 
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Models\User;
@@ -46,13 +45,13 @@ trait ResolvesTenantContext
 
     protected function resolveUserByEmail(string $email): User
     {
-        $emailRecord = Email::findByEmail($email);
+        $user = User::findByEmail($email);
 
-        if (! $emailRecord) {
+        if (! $user) {
             $this->fail("No user found with email: {$email}");
         }
 
-        return $emailRecord->user;
+        return $user;
     }
 
     protected function getStrategyLabel(): string

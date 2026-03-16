@@ -4,7 +4,8 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
-use Ssntpl\Neev\Models\Email;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -22,43 +23,82 @@ class PasswordResetTest extends TestCase
         config(['neev.password' => ['required', 'confirmed']]);
     }
 
-    /**
-     * Create a user and set up an OTP for their primary email.
-     *
-     * The OTP model has a 'hashed' cast on the otp field, so we store
-     * the plaintext and it gets hashed automatically. We return the
-     * plaintext for use in assertions.
-     */
-    private function createUserWithOTP(string $otpPlaintext = '123456', int $expiresInMinutes = 15): array
-    {
-        $user = User::factory()->create();
-        $email = $user->email;
+    // -----------------------------------------------------------------
+    // POST /neev/forgotPassword — send password reset link
+    // -----------------------------------------------------------------
 
-        $email->otp()->create([
-            'otp' => $otpPlaintext,
-            'expires_at' => now()->addMinutes($expiresInMinutes),
+    public function test_forgot_password_sends_reset_link(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create();
+
+        $response = $this->postJson('/neev/forgotPassword', [
+            'email' => $user->email,
         ]);
 
-        return [
-            'user' => $user,
-            'email' => $email,
-            'otp' => $otpPlaintext,
-        ];
+        $response->assertOk();
+        $response->assertJson([
+            'message' => 'Password reset link has been sent to your email.',
+        ]);
+    }
+
+    public function test_forgot_password_returns_error_for_non_existent_email(): void
+    {
+        $response = $this->postJson('/neev/forgotPassword', [
+            'email' => 'nobody@example.com',
+        ]);
+
+        $response->assertStatus(404);
+    }
+
+    public function test_forgot_password_returns_error_for_unverified_user(): void
+    {
+        $user = User::factory()->unverified()->create();
+
+        $response = $this->postJson('/neev/forgotPassword', [
+            'email' => $user->email,
+        ]);
+
+        $response->assertStatus(404);
     }
 
     // -----------------------------------------------------------------
-    // POST /neev/forgotPassword
+    // POST /neev/resetPassword — reset password via signed URL
     // -----------------------------------------------------------------
 
-    public function test_successful_password_reset_with_valid_otp(): void
+    public function test_successful_password_reset_with_valid_signed_url(): void
     {
-        $data = $this->createUserWithOTP();
+        $user = User::factory()->create();
 
-        $response = $this->postJson('/neev/forgotPassword', [
-            'email' => $data['email']->email,
+        // Build a signed URL for the resetPassword endpoint.
+        // We construct it the same way Laravel's signedRoute does internally.
+        $parameters = [
+            'id' => $user->id,
+            'purpose' => 'password-reset',
+            'expires' => now()->addMinutes(60)->getTimestamp(),
+        ];
+        ksort($parameters);
+
+        $baseUrl = URL::to('/neev/resetPassword');
+        $urlWithParams = $baseUrl . '?' . http_build_query($parameters);
+
+        // Get the signing key via the URL generator's keyResolver
+        $urlGenerator = app(\Illuminate\Routing\UrlGenerator::class);
+        $keyResolverProp = new \ReflectionProperty($urlGenerator, 'keyResolver');
+        $keyResolverProp->setAccessible(true);
+        $keyResolver = $keyResolverProp->getValue($urlGenerator);
+        $key = call_user_func($keyResolver);
+        if (is_array($key)) {
+            $key = $key[0];
+        }
+
+        $signature = hash_hmac('sha256', $urlWithParams, $key);
+        $signedUrl = $urlWithParams . '&signature=' . $signature;
+
+        $response = $this->postJson($signedUrl, [
             'password' => 'newpassword123',
             'password_confirmation' => 'newpassword123',
-            'otp' => $data['otp'],
         ]);
 
         $response->assertOk();
@@ -66,134 +106,62 @@ class PasswordResetTest extends TestCase
             'message' => 'Password has been updated.',
         ]);
 
-        // New password record should exist
-        $user = $data['user']->fresh();
-        $this->assertTrue(Hash::check('newpassword123', $user->password->password));
-
-        // OTP should be cleaned up
-        $this->assertNull($data['email']->fresh()->otp);
+        // Verify new password works
+        $user->refresh();
+        $this->assertTrue(Hash::check('newpassword123', $user->getRawOriginal('password')));
     }
 
-    public function test_returns_error_for_non_existent_email(): void
-    {
-        $response = $this->postJson('/neev/forgotPassword', [
-            'email' => 'nobody@example.com',
-            'password' => 'newpassword123',
-            'password_confirmation' => 'newpassword123',
-            'otp' => '123456',
-        ]);
-
-        $response->assertStatus(404);
-        $response->assertJson([
-            'message' => 'Email not found',
-        ]);
-    }
-
-    public function test_returns_error_for_invalid_otp(): void
-    {
-        $data = $this->createUserWithOTP('654321');
-
-        $response = $this->postJson('/neev/forgotPassword', [
-            'email' => $data['email']->email,
-            'password' => 'newpassword123',
-            'password_confirmation' => 'newpassword123',
-            'otp' => '000000', // Wrong OTP
-        ]);
-
-        $response->assertStatus(400);
-        $response->assertJson([
-            'message' => 'Code verification failed.',
-        ]);
-    }
-
-    public function test_returns_error_for_expired_otp(): void
-    {
-        $data = $this->createUserWithOTP('123456', -1); // Already expired
-
-        $response = $this->postJson('/neev/forgotPassword', [
-            'email' => $data['email']->email,
-            'password' => 'newpassword123',
-            'password_confirmation' => 'newpassword123',
-            'otp' => $data['otp'],
-        ]);
-
-        $response->assertStatus(400);
-        $response->assertJson([
-            'message' => 'Code verification failed.',
-        ]);
-    }
-
-    public function test_returns_validation_error_for_missing_otp(): void
+    public function test_reset_password_rejects_invalid_signature(): void
     {
         $user = User::factory()->create();
 
-        $response = $this->postJson('/neev/forgotPassword', [
-            'email' => $user->email->email,
+        $response = $this->postJson('/neev/resetPassword?id=' . $user->id . '&signature=invalidsig', [
             'password' => 'newpassword123',
             'password_confirmation' => 'newpassword123',
         ]);
 
-        $response->assertUnprocessable();
-        $response->assertJsonValidationErrors(['otp']);
+        $response->assertStatus(403);
+        $response->assertJson([
+            'message' => 'Invalid or expired reset link.',
+        ]);
     }
 
-    public function test_returns_validation_error_for_missing_password(): void
+    public function test_reset_password_returns_validation_error_for_missing_password(): void
     {
-        $data = $this->createUserWithOTP();
+        $user = User::factory()->create();
 
-        $response = $this->postJson('/neev/forgotPassword', [
-            'email' => $data['email']->email,
-            'otp' => $data['otp'],
-        ]);
+        $signedUrl = URL::temporarySignedRoute(
+            'mail.verify',
+            now()->addMinutes(60),
+            ['id' => $user->id, 'purpose' => 'password-reset']
+        );
+
+        $query = parse_url($signedUrl, PHP_URL_QUERY);
+
+        $response = $this->postJson('/neev/resetPassword?' . $query, []);
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['password']);
     }
 
-    public function test_returns_validation_error_for_unconfirmed_password(): void
+    public function test_reset_password_returns_validation_error_for_unconfirmed_password(): void
     {
-        $data = $this->createUserWithOTP();
+        $user = User::factory()->create();
 
-        $response = $this->postJson('/neev/forgotPassword', [
-            'email' => $data['email']->email,
+        $signedUrl = URL::temporarySignedRoute(
+            'mail.verify',
+            now()->addMinutes(60),
+            ['id' => $user->id, 'purpose' => 'password-reset']
+        );
+
+        $query = parse_url($signedUrl, PHP_URL_QUERY);
+
+        $response = $this->postJson('/neev/resetPassword?' . $query, [
             'password' => 'newpassword123',
             'password_confirmation' => 'differentpassword',
-            'otp' => $data['otp'],
         ]);
 
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['password']);
-    }
-
-    public function test_password_reset_creates_new_password_record(): void
-    {
-        $data = $this->createUserWithOTP();
-        $initialPasswordCount = $data['user']->passwords()->count();
-
-        $this->postJson('/neev/forgotPassword', [
-            'email' => $data['email']->email,
-            'password' => 'newpassword123',
-            'password_confirmation' => 'newpassword123',
-            'otp' => $data['otp'],
-        ]);
-
-        // A new password record is created (not updated in place)
-        $this->assertEquals($initialPasswordCount + 1, $data['user']->passwords()->count());
-    }
-
-    public function test_otp_is_deleted_after_successful_reset(): void
-    {
-        $data = $this->createUserWithOTP();
-
-        $this->assertNotNull($data['email']->otp);
-
-        $this->postJson('/neev/forgotPassword', [
-            'email' => $data['email']->email,
-            'password' => 'newpassword123',
-            'password_confirmation' => 'newpassword123',
-            'otp' => $data['otp'],
-        ]);
-
-        $this->assertNull($data['email']->fresh()->otp);
     }
 }

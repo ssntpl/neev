@@ -8,7 +8,7 @@ use Ssntpl\Neev\Services\TenantResolver;
 
 /**
  * Sets up a default tenant context so that models with BelongsToTenant
- * (User, Email, etc.) can be created and queried without hitting the
+ * (User, etc.) can be created and queried without hitting the
  * strict TenantScope "WHERE 1=0" guard.
  *
  * Use this in any test that creates Users or Emails but is NOT specifically

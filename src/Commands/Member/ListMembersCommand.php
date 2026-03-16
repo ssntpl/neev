@@ -22,7 +22,7 @@ class ListMembersCommand extends Command
             return self::FAILURE;
         }
 
-        $members = $team->allUsers()->with('email')->get();
+        $members = $team->allUsers()->get();
 
         if ($members->isEmpty()) {
             $this->info("No members found in {$team->name}.");

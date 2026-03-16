@@ -6,12 +6,10 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
-use Ssntpl\Neev\Database\Factories\EmailFactory;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\DomainRule;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\OTP;
@@ -35,87 +33,6 @@ class SimpleModelsTest extends TestCase
     }
 
     // =================================================================
-    // Email Model
-    // =================================================================
-
-    public function test_email_user_relationship(): void
-    {
-        $user = User::factory()->create();
-
-        $email = EmailFactory::new()->create([
-            'user_id' => $user->id,
-            'email' => 'test@example.com',
-        ]);
-
-        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\BelongsTo::class, $email->user());
-        $this->assertInstanceOf(User::class, $email->user);
-        $this->assertSame($user->id, $email->user->id);
-    }
-
-    public function test_email_otp_relationship(): void
-    {
-        $user = User::factory()->create();
-
-        $email = EmailFactory::new()->create([
-            'user_id' => $user->id,
-            'email' => 'otp-test@example.com',
-        ]);
-
-        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\MorphOne::class, $email->otp());
-
-        // Create an OTP for this email
-        OTP::create([
-            'owner_id' => $email->id,
-            'owner_type' => Email::class,
-            'otp' => 123456,
-            'expires_at' => now()->addMinutes(15),
-        ]);
-
-        $email->refresh();
-
-        $this->assertNotNull($email->otp);
-        $this->assertInstanceOf(OTP::class, $email->otp);
-    }
-
-    public function test_email_verified_at_is_cast_to_datetime(): void
-    {
-        $email = EmailFactory::new()->create();
-
-        $email->refresh();
-
-        $this->assertInstanceOf(\Illuminate\Support\Carbon::class, $email->verified_at);
-    }
-
-    public function test_email_verified_at_null_for_unverified(): void
-    {
-        $email = EmailFactory::new()->unverified()->create();
-
-        $email->refresh();
-
-        $this->assertNull($email->verified_at);
-    }
-
-    public function test_email_is_primary_is_cast_to_boolean(): void
-    {
-        $email = EmailFactory::new()->primary()->create();
-
-        $email->refresh();
-
-        $this->assertIsBool($email->is_primary);
-        $this->assertTrue($email->is_primary);
-    }
-
-    public function test_email_is_primary_false_cast(): void
-    {
-        $email = EmailFactory::new()->create(['is_primary' => false]);
-
-        $email->refresh();
-
-        $this->assertIsBool($email->is_primary);
-        $this->assertFalse($email->is_primary);
-    }
-
-    // =================================================================
     // OTP Model
     // =================================================================
 
@@ -129,11 +46,10 @@ class SimpleModelsTest extends TestCase
     public function test_otp_expires_at_is_cast_to_datetime(): void
     {
         $user = User::factory()->create();
-        $email = EmailFactory::new()->create(['user_id' => $user->id]);
 
         $otp = OTP::create([
-            'owner_id' => $email->id,
-            'owner_type' => Email::class,
+            'owner_id' => $user->id,
+            'owner_type' => User::class,
             'otp' => 654321,
             'expires_at' => now()->addMinutes(15),
         ]);
@@ -146,13 +62,12 @@ class SimpleModelsTest extends TestCase
     public function test_otp_value_is_hashed_in_database(): void
     {
         $user = User::factory()->create();
-        $email = EmailFactory::new()->create(['user_id' => $user->id]);
 
         $plainOtp = 123456;
 
         $otp = OTP::create([
-            'owner_id' => $email->id,
-            'owner_type' => Email::class,
+            'owner_id' => $user->id,
+            'owner_type' => User::class,
             'otp' => $plainOtp,
             'expires_at' => now()->addMinutes(15),
         ]);
@@ -169,18 +84,17 @@ class SimpleModelsTest extends TestCase
     public function test_otp_owner_morph_to_relationship(): void
     {
         $user = User::factory()->create();
-        $email = EmailFactory::new()->create(['user_id' => $user->id]);
 
         $otp = OTP::create([
-            'owner_id' => $email->id,
-            'owner_type' => Email::class,
+            'owner_id' => $user->id,
+            'owner_type' => User::class,
             'otp' => 111222,
             'expires_at' => now()->addMinutes(15),
         ]);
 
         $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\MorphTo::class, $otp->owner());
-        $this->assertInstanceOf(Email::class, $otp->owner);
-        $this->assertSame($email->id, $otp->owner->id);
+        $this->assertInstanceOf(User::class, $otp->owner);
+        $this->assertSame($user->id, $otp->owner->id);
     }
 
     // =================================================================

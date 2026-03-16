@@ -214,12 +214,6 @@ class NeevServiceProviderTest extends TestCase
             ->assertSuccessful();
     }
 
-    public function test_clean_passwords_command_is_registered(): void
-    {
-        $this->artisan('neev:clean-passwords')
-            ->assertSuccessful();
-    }
-
     public function test_install_command_is_registered(): void
     {
         // Just verify the command exists (don't run it fully)

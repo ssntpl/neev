@@ -195,7 +195,7 @@ class TenantSSOTest extends TestCase
 
         // Mock the SSO Manager to return a mock user
         $ssoUser = Mockery::mock(SocialiteUser::class);
-        $ssoUser->shouldReceive('getEmail')->andReturn($user->email->email);
+        $ssoUser->shouldReceive('getEmail')->andReturn($user->email);
         $ssoUser->shouldReceive('getName')->andReturn($user->name);
         $ssoUser->shouldReceive('getId')->andReturn('sso-123');
         $ssoUser->shouldReceive('getAvatar')->andReturn(null);
@@ -227,7 +227,7 @@ class TenantSSOTest extends TestCase
 
         // Mock the SSO Manager
         $ssoUser = Mockery::mock(SocialiteUser::class);
-        $ssoUser->shouldReceive('getEmail')->andReturn($user->email->email);
+        $ssoUser->shouldReceive('getEmail')->andReturn($user->email);
         $ssoUser->shouldReceive('getName')->andReturn($user->name);
 
         $manager = Mockery::mock(TenantSSOManager::class);

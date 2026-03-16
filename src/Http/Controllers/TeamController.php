@@ -12,7 +12,6 @@ use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Models\Domain;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 
@@ -54,7 +53,7 @@ class TeamController extends Controller
             $count = 0;
             if ($domain->enforce && $domain->verified_at) {
                 foreach ($team->users as $member) {
-                    if (!str_ends_with(strtolower($member->email->email), '@' . strtolower($domain->domain))) {
+                    if (!str_ends_with(strtolower($member->email), '@' . strtolower($domain->domain))) {
                         $count++;
                     }
                 }
@@ -159,8 +158,7 @@ class TeamController extends Controller
             if ($user->id != $team->user_id || ($team->domain?->enforce && $team->verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->domain?->domain)))) {
                 return back()->withErrors(['message' => 'You cannot invite member in this team.']);
             }
-            $email = Email::findByEmail($request->email);
-            $member = $email?->user;
+            $member = User::findByEmail($request->email);
             if (!$member) {
                 $expiry = now()->addDays(7);
 
@@ -195,7 +193,7 @@ class TeamController extends Controller
                 $invitation->delete();
             }
 
-            Mail::to($member->email->email)->send(new TeamInvitation($team->name, $member->name));
+            Mail::to($member->email)->send(new TeamInvitation($team->name, $member->name));
         } catch (Exception $e) {
             Log::error($e);
             return back()->withErrors(['message' => 'Failed to invite member.']);
@@ -223,7 +221,7 @@ class TeamController extends Controller
                 return back()->withErrors(['message' => 'You cannot leave from this team.']);
             }
 
-            if ($team->domain?->verified_at && str_ends_with(strtolower($user->email->email), '@' . strtolower($team->domain?->domain))) {
+            if ($team->domain?->verified_at && str_ends_with(strtolower($user->email), '@' . strtolower($team->domain?->domain))) {
                 if ($user->active) {
                     $user->deactivate();
                     return back()->with('status', 'User Deactivated Successfully');
@@ -297,8 +295,7 @@ class TeamController extends Controller
         /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
-            $email = Email::findByEmail($request->email);
-            $owner = $email?->user;
+            $owner = User::findByEmail($request->email);
             if ($owner) {
                 /** @var \Ssntpl\Neev\Models\Team|null $team */
                 $team = Team::model()->where(['name' => $request->team, 'user_id' => $owner->id])->first();
@@ -310,7 +307,7 @@ class TeamController extends Controller
                         $team->allUsers()->attach($user, ['action' => 'request_from_user']);
                     }
 
-                    Mail::to($owner->email->email)->send(new TeamJoinRequest($team->name, $user->name, $owner->name, $team->id));
+                    Mail::to($owner->email)->send(new TeamJoinRequest($team->name, $user->name, $owner->name, $team->id));
 
                     return back()->with('status', 'Request has been sent.');
                 }
