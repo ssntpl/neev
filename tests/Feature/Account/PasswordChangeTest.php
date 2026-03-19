@@ -79,10 +79,9 @@ class PasswordChangeTest extends TestCase
                 'password_confirmation' => 'brand-new-password',
             ]);
 
-        // Reload user and check latest password
+        // Reload user and check password
         $user->refresh();
-        $latestPassword = $user->password;
-        $this->assertTrue(Hash::check('brand-new-password', $latestPassword->password));
+        $this->assertTrue(Hash::check('brand-new-password', $user->getRawOriginal('password')));
     }
 
     public function test_cannot_change_password_without_confirmation(): void
@@ -97,7 +96,7 @@ class PasswordChangeTest extends TestCase
             ]);
 
         // Validation should fail due to 'confirmed' rule
-        $response->assertStatus(500);
+        $response->assertUnprocessable();
     }
 
     public function test_cannot_change_password_with_mismatched_confirmation(): void
@@ -112,7 +111,7 @@ class PasswordChangeTest extends TestCase
             ]);
 
         // Validation should fail due to 'confirmed' rule mismatch
-        $response->assertStatus(500);
+        $response->assertUnprocessable();
     }
 
     public function test_cannot_change_password_without_current_password(): void
@@ -126,15 +125,14 @@ class PasswordChangeTest extends TestCase
             ]);
 
         // Validation requires current_password
-        $response->assertStatus(500);
+        $response->assertUnprocessable();
     }
 
-    public function test_password_change_creates_new_password_record(): void
+    public function test_password_change_updates_password_changed_at(): void
     {
         [$user, $token] = $this->authenticatedUser();
 
-        // User factory creates 1 password record
-        $initialCount = $user->passwords()->count();
+        $originalChangedAt = $user->password_changed_at;
 
         $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/changePassword', [
@@ -143,7 +141,7 @@ class PasswordChangeTest extends TestCase
                 'password_confirmation' => 'another-new-password',
             ]);
 
-        // A new password record should be created (not updating the old one)
-        $this->assertEquals($initialCount + 1, $user->passwords()->count());
+        $user->refresh();
+        $this->assertNotNull($user->password_changed_at);
     }
 }

@@ -57,4 +57,4 @@ When using Neev in production:
 7. Configure MFA for sensitive applications
 8. Review and restrict OAuth provider list
 9. Set appropriate password expiry policies
-10. Schedule cleanup commands (`neev:clean-login-attempts`, `neev:clean-passwords`)
+10. Schedule cleanup commands (`neev:clean-login-attempts`)

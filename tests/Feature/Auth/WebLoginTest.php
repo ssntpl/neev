@@ -28,7 +28,7 @@ class WebLoginTest extends TestCase
         $user = User::factory()->create();
 
         $response = $this->put('/login', [
-            'email' => $user->email->email,
+            'email' => $user->email,
         ]);
 
         // Should return the login-password view (200)
@@ -62,7 +62,7 @@ class WebLoginTest extends TestCase
         $user = User::factory()->create();
 
         $response = $this->post('/login', [
-            'email' => $user->email->email,
+            'email' => $user->email,
             'password' => 'password',
         ]);
 
@@ -82,12 +82,10 @@ class WebLoginTest extends TestCase
     public function test_web_login_redirects_to_email_verification_when_required(): void
     {
         $user = User::factory()->create();
-        $email = $user->email;
-        $email->verified_at = null;
-        $email->save();
+        $user->forceFill(['email_verified_at' => null])->save();
 
         $response = $this->post('/login', [
-            'email' => $email->email,
+            'email' => $user->email,
             'password' => 'password',
         ]);
 

@@ -4,11 +4,6 @@
         Profile
     </a>
     
-    <a href="{{ route('account.emails') }}"
-       class="block px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 {{ request()->routeIs('account.emails') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : '' }}">
-        Emails
-    </a>
-
     <a href="{{ route('account.security') }}"
     class="block px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 {{ request()->routeIs('account.security') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : '' }}">
         Security

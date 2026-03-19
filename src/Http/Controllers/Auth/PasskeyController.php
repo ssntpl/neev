@@ -5,7 +5,6 @@ namespace Ssntpl\Neev\Http\Controllers\Auth;
 use Exception;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Passkey;
 use Ssntpl\Neev\Models\User;
@@ -105,7 +104,7 @@ class PasskeyController extends Controller
             ],
             'user' => [
                 'id' => base64_encode($userId),
-                'name' => $user->email->email,
+                'name' => $user->email,
                 'displayName' => $user->name,
             ],
             'challenge' => $base64Challenge,
@@ -172,7 +171,7 @@ class PasskeyController extends Controller
 
         $userEntity = new PublicKeyCredentialUserEntity(
             id: strval($user->id),
-            name: $user->email->email,
+            name: $user->email,
             displayName: $user->name
         );
 
@@ -291,9 +290,8 @@ class PasskeyController extends Controller
     {
         try {
             $request->validate(['email' => 'required|email']);
-            $email = Email::findByEmail($request->email);
-            $user = $email?->user;
-            if (!$email || !$user) {
+            $user = User::findByEmail($request->email);
+            if (!$user) {
                 throw new Exception('User not found.');
             }
             $allowCredentials = [];
@@ -378,11 +376,15 @@ class PasskeyController extends Controller
             timeout: 120000
         );
 
-        $email = Email::findByEmail($request->email);
-        $user = $email?->user;
+        $user = User::findByEmail($request->email);
+        if (!$user) {
+            throw new Exception('Wrong Credentials.');
+        }
+
+        $attempt = null;
         if (config('neev.log_failed_logins')) {
             $clientDetails = LoginAttempt::getClientDetails($request);
-            $attempt = $user?->loginAttempts()->create([
+            $attempt = $user->loginAttempts()->create([
                 'method' => LoginAttempt::Passkey,
                 'location' => $geoIP->getLocation($request->ip()),
                 'multi_factor_method' => null,

@@ -67,7 +67,7 @@ class EnsureEmailIsVerifiedTest extends TestCase
     public function test_redirects_to_verification_notice_when_email_not_verified(): void
     {
         $user = User::factory()->create();
-        $user->email->update(['verified_at' => null]);
+        $user->forceFill(['email_verified_at' => null])->save();
         $user->refresh();
 
         $request = $this->buildRequest('/dashboard', $user);
@@ -81,7 +81,7 @@ class EnsureEmailIsVerifiedTest extends TestCase
     public function test_returns_403_json_when_email_not_verified_and_expects_json(): void
     {
         $user = User::factory()->create();
-        $user->email->update(['verified_at' => null]);
+        $user->forceFill(['email_verified_at' => null])->save();
         $user->refresh();
 
         $request = $this->buildRequest('/api/test', $user, 'json');

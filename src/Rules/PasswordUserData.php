@@ -4,7 +4,6 @@ namespace Ssntpl\Neev\Rules;
 
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\User;
 use Illuminate\Support\Str;
 
@@ -26,8 +25,7 @@ class PasswordUserData implements ValidationRule
         $user = User::model()->find(request()->user()?->id);
         $email = request()->input('email');
         if ($email) {
-            $email = Email::findByEmail($email);
-            $user = $email?->user;
+            $user = User::findByEmail($email);
         }
 
         if (!$user) {
@@ -35,18 +33,10 @@ class PasswordUserData implements ValidationRule
         }
 
         foreach ($this->columns as $column) {
-            if ($column === 'email') {
-                $emailValue = $user->email?->email;
-                if ($emailValue && strlen($emailValue) >= 3 && str_contains(Str::lower($value), Str::lower($emailValue))) {
-                    $fail("Password should not contain your email.");
-                    return;
-                }
-            } else {
-                $columnValue = $user->{$column} ?? null;
-                if ($columnValue && strlen($columnValue) >= 3 && str_contains(Str::lower($value), Str::lower($columnValue))) {
-                    $fail("Password should not contain your {$column}.");
-                    return;
-                }
+            $columnValue = $user->{$column} ?? null;
+            if ($columnValue && strlen($columnValue) >= 3 && str_contains(Str::lower($value), Str::lower($columnValue))) {
+                $fail("Password should not contain your {$column}.");
+                return;
             }
         }
     }

@@ -3,34 +3,39 @@
         <x-slot name="logo">
             <x-neev-component::authentication-card-logo />
         </x-slot>
+
         <x-neev-component::validation-errors class="mb-4" />
-        <x-neev-component::validation-status class="mb-4" />
-        <div class="mb-4 text-sm text-gray-600 dark:text-gray-400">
-            {{ __('Change your email, we will send you verification link on updated email.') }}
-        </div>
 
-        <form method="GET" action="{{ route('verification.notice') }}">
-            @csrf
-            <x-neev-component::secondary-button type="submit">
-                {{ __('Back') }}
-            </x-neev-component::secondary-button>
-        </form>
-        <div class="mt-2">
-            <form method="POST" action="{{ route('email.update') }}" class="inline">
-                @csrf
-                @method('PUT')
-
-                <div class="block">
-                    <x-neev-component::label for="email" value="{{ __('Email') }}" />
-                    <x-neev-component::input id="email" class="block mt-1 w-full" type="email" name="email" :value="$email" required autofocus />
-                </div>
-                <div class="mt-2 flex justify-end">
-                    <x-neev-component::button type="submit">
-                        {{ __('Save') }}
-                    </x-neev-component::button>
-                </div>
+        @if (session('status'))
+            <div class="mb-4 font-medium text-sm text-green-600 dark:text-green-400">
+                {{ __(session('status')) }}
             </div>
-            </form>
+        @endif
+
+        <div class="mb-4 text-sm text-gray-600 dark:text-gray-400">
+            {{ __('Your current email address is:') }}
+            <strong>{{ $email }}</strong>
         </div>
+
+        <form method="POST" action="{{ route('email.update') }}">
+            @csrf
+            @method('PUT')
+
+            <div class="block">
+                <x-neev-component::label for="email" value="{{ __('New Email Address') }}" />
+                <x-neev-component::input id="email" class="block mt-1 w-full" type="email" name="email" :value="old('email')" required autofocus />
+            </div>
+
+            <div class="mt-4">
+                <x-neev-component::label for="password" value="{{ __('Current Password') }}" />
+                <x-neev-component::input id="password" class="block mt-1 w-full" type="password" name="password" required />
+            </div>
+
+            <div class="flex items-center justify-end mt-4">
+                <x-neev-component::button>
+                    {{ __('Send Verification Link') }}
+                </x-neev-component::button>
+            </div>
+        </form>
     </x-neev-component::authentication-card>
 </x-neev-layout::guest>

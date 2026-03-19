@@ -117,7 +117,7 @@ These routes require the `neev:web` middleware.
 | GET | `/email/verify` | `verification.notice` | Show verification pending page |
 | GET | `/email/send` | `email.verification.send` | Resend verification email |
 | GET | `/email/change` | `email.change` | Show change email form |
-| PUT | `/email/change` | `email.update` | Process email change |
+| PUT | `/email/change` | `email.update` | Request email change (sends verification) |
 
 ---
 
@@ -138,7 +138,6 @@ All prefixed with `/account`.
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
 | GET | `/account/profile` | `account.profile` | Show profile page |
-| GET | `/account/emails` | `account.emails` | Show email management |
 | GET | `/account/security` | `account.security` | Show security settings |
 | GET | `/account/tokens` | `account.tokens` | Show API tokens |
 | GET | `/account/teams` | `account.teams` | Show teams list |
@@ -154,16 +153,6 @@ All prefixed with `/account`.
 | PUT | `/account/profileUpdate` | `profile.update` | Update profile |
 | POST | `/account/change-password` | `password.change` | Change password |
 | DELETE | `/account/accountDelete` | `account.delete` | Delete account |
-
----
-
-### Email Management
-
-| Method | Route | Name | Description |
-|--------|-------|------|-------------|
-| POST | `/account/emails` | `emails.add` | Add new email |
-| DELETE | `/account/emails` | `emails.delete` | Delete email |
-| PUT | `/account/emails` | `emails.primary` | Set primary email |
 
 ---
 

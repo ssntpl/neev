@@ -111,7 +111,7 @@ class PasswordUserDataTest extends TestCase
         $user = User::factory()->create();
         $this->setRequestUser($user);
 
-        $emailValue = $user->email->email;
+        $emailValue = $user->email;
 
         $rule = PasswordUserData::notContain(['email']);
 
@@ -176,10 +176,9 @@ class PasswordUserDataTest extends TestCase
     public function test_works_when_user_found_via_email_input(): void
     {
         $user = User::factory()->create(['name' => 'SamuelJackson']);
-        $emailRecord = $user->email;
 
         // Simulate request with email input (no authenticated user)
-        $this->app['request']->merge(['email' => $emailRecord->email]);
+        $this->app['request']->merge(['email' => $user->email]);
 
         $rule = PasswordUserData::notContain(['name']);
 

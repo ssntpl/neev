@@ -30,27 +30,13 @@ return new class () extends Migration {
             $table->unsignedBigInteger('tenant_id')->nullable();
             $table->string('name');
             $table->string('username')->nullable();
+            $table->string('email')->nullable();
+            $table->timestamp('email_verified_at')->nullable();
+            $table->string('password')->nullable();
+            $table->json('password_history')->nullable();
+            $table->timestamp('password_changed_at')->nullable();
             $table->boolean('active')->default(true);
             $table->timestamps();
-            $table->index('tenant_id');
-        });
-
-        Schema::create('passwords', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->string('password');
-            $table->timestamp('created_at')->nullable();
-        });
-
-        Schema::create('emails', function (Blueprint $table) {
-            $table->id();
-            $table->unsignedBigInteger('tenant_id')->nullable();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->string('email');
-            $table->boolean('is_primary')->default(false);
-            $table->timestamp('verified_at')->nullable();
-            $table->timestamps();
-            $table->unique(['user_id', 'email']);
             $table->unique(['tenant_id', 'email']);
             $table->index('email');
             $table->index('tenant_id');
@@ -79,8 +65,6 @@ return new class () extends Migration {
     public function down(): void
     {
         Schema::dropIfExists('users');
-        Schema::dropIfExists('passwords');
-        Schema::dropIfExists('emails');
         Schema::dropIfExists('login_attempts');
     }
 };

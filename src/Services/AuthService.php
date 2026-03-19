@@ -5,10 +5,15 @@ namespace Ssntpl\Neev\Services;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedInEvent;
+use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
+use Ssntpl\Neev\Models\User;
 
 class AuthService
 {
@@ -91,5 +96,105 @@ class AuthService
             Log::error($e);
             return null;
         }
+    }
+
+    /**
+     * Send email verification link to the user's current email.
+     */
+    public function sendEmailVerification(User $user): void
+    {
+        $expiryMinutes = config('neev.url_expiry_time', 60);
+        $signedUrl = URL::temporarySignedRoute(
+            'verification.verify',
+            now()->addMinutes($expiryMinutes),
+            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
+        );
+
+        Mail::to($user->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email', $expiryMinutes));
+    }
+
+    /**
+     * Send email verification link for an email change.
+     * The signed URL binds the user ID and new email so it can't be tampered with.
+     *
+     * @param User $user The user requesting the change
+     * @param string $newEmail The new email address to verify
+     * @param string $routeName The named route for verification (web vs API)
+     */
+    public function sendEmailChangeVerification(User $user, string $newEmail, string $routeName = 'neev.email.change.verify'): void
+    {
+        $expiryMinutes = config('neev.url_expiry_time', 60);
+        $signedUrl = URL::temporarySignedRoute(
+            $routeName,
+            now()->addMinutes($expiryMinutes),
+            ['id' => $user->id, 'email' => $newEmail]
+        );
+
+        Mail::to($newEmail)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email Change', $expiryMinutes));
+    }
+
+    /**
+     * Apply a verified email change.
+     * Checks that the new email is still unique before updating.
+     *
+     * @return bool True if the email was updated, false if the email is already taken.
+     */
+    public function applyEmailChange(User $user, string $newEmail): bool
+    {
+        $existing = User::findByEmail($newEmail);
+        if ($existing && $existing->id !== $user->id) {
+            return false;
+        }
+
+        $user->email = $newEmail;
+        $user->email_verified_at = now();
+        $user->save();
+
+        return true;
+    }
+
+    /**
+     * Change the user's password and manage password history.
+     *
+     * @param User $user
+     * @param string $newPassword Plain-text password (will be hashed by the model's cast)
+     */
+    public function changePassword(User $user, string $newPassword): void
+    {
+        DB::transaction(function () use ($user, $newPassword) {
+            $user = User::model()->lockForUpdate()->find($user->id);
+
+            $history = $user->password_history ?? [];
+
+            // Prepend the current hashed password to history
+            $currentHash = $user->getRawOriginal('password');
+            if ($currentHash) {
+                array_unshift($history, $currentHash);
+            }
+
+            // Trim to configured limit
+            $limit = $this->getPasswordHistoryLimit();
+            $user->password_history = array_slice($history, 0, $limit);
+            $user->password = $newPassword;
+            $user->password_changed_at = now();
+            $user->save();
+        });
+    }
+
+    /**
+     * Get the password history limit from config.
+     */
+    protected function getPasswordHistoryLimit(): int
+    {
+        $passwordRules = config('neev.password', []);
+        if (!is_array($passwordRules)) {
+            return 5;
+        }
+        foreach ($passwordRules as $rule) {
+            if ($rule instanceof \Ssntpl\Neev\Rules\PasswordHistory) {
+                return $rule->getCount();
+            }
+        }
+        return 5;
     }
 }

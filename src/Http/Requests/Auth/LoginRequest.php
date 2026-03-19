@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
-use Ssntpl\Neev\Models\Email;
+use Ssntpl\Neev\Models\User;
 
 class LoginRequest extends FormRequest
 {
@@ -43,9 +43,9 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        $email = Email::findByEmail($this->input('email'));
+        $user = User::findByEmail($this->input('email'));
 
-        if (!$email || !Hash::check($this->input('password'), $email->user->password->password)) {
+        if (!$user || !Hash::check($this->input('password'), $user->password)) {
             $this->handleFailedAttempt();
 
             throw ValidationException::withMessages([
@@ -53,7 +53,7 @@ class LoginRequest extends FormRequest
             ]);
         }
 
-        Auth::login($email->user, $this->boolean('remember'));
+        Auth::login($user, $this->boolean('remember'));
         Cache::forget($this->throttleKey() . ':attempts');
         RateLimiter::clear($this->throttleKey());
     }
@@ -67,8 +67,7 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        $email = Email::findByEmail($this->input('email'));
-        return $email?->user;
+        return User::findByEmail($this->input('email'));
     }
 
     /**

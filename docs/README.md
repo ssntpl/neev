@@ -167,7 +167,6 @@ See [CLI Commands](./cli-commands.md) for full reference with options and exampl
 | `neev:install` | Interactive setup wizard |
 | `neev:download-geoip` | Download MaxMind GeoLite2 database |
 | `neev:clean-login-attempts` | Remove old login attempt records |
-| `neev:clean-passwords` | Remove old password history |
 | `neev:tenant:create` | Create a tenant (isolated) or team (shared) |
 | `neev:tenant:list` | List tenants or teams |
 | `neev:tenant:show` | Show tenant/team details by ID, slug, or domain |

@@ -8,7 +8,6 @@ use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
@@ -53,7 +52,7 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
         $member = User::factory()->create();
-        $memberEmail = $member->email->email;
+        $memberEmail = $member->email;
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/teams/inviteUser', [
@@ -129,7 +128,7 @@ class MembershipTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/teams/inviteUser', [
                 'team_id' => $team->id,
-                'email' => $member->email->email,
+                'email' => $member->email,
             ]);
 
         $response->assertStatus(400);
@@ -542,10 +541,7 @@ class MembershipTest extends TestCase
         ]);
 
         // Create a member with an email matching the domain
-        $member = User::factory()->create(['active' => true]);
-        $memberEmail = $member->email;
-        $memberEmail->email = 'employee@acme.com';
-        $memberEmail->save();
+        $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.com']);
         $team->allUsers()->attach($member, ['joined' => true]);
 
         // Owner triggers leave for the member
@@ -576,10 +572,7 @@ class MembershipTest extends TestCase
         ]);
 
         // Create an inactive member with matching domain email
-        $member = User::factory()->create(['active' => false]);
-        $memberEmail = $member->email;
-        $memberEmail->email = 'inactive@acme.com';
-        $memberEmail->save();
+        $member = User::factory()->create(['active' => false, 'email' => 'inactive@acme.com']);
         $team->allUsers()->attach($member, ['joined' => true]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $ownerToken)

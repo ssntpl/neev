@@ -3,13 +3,11 @@
 namespace Ssntpl\Neev\Services;
 
 use Exception;
-use Illuminate\Support\Facades\Hash;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Contracts\User as SocialiteUser;
 use Laravel\Socialite\Facades\Socialite;
 use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 
@@ -104,10 +102,10 @@ class TenantSSOManager
         }
 
         // Find existing user by email (automatically tenant-scoped via TenantScope)
-        $emailRecord = Email::findByEmail($email);
+        $user = User::findByEmail($email);
 
-        if ($emailRecord) {
-            return $emailRecord->user;
+        if ($user) {
+            return $user;
         }
 
         // User doesn't exist - check if auto-provisioning is enabled
@@ -115,21 +113,13 @@ class TenantSSOManager
             throw new Exception('You are not a member of this organization. Please contact your administrator.');
         }
 
-        // Create a new user (global identity)
-        $user = User::model()->create([
+        // Create a new user (global identity) with SSO-verified email
+        $user = User::model()->forceCreate([
             'name' => $ssoUser->getName() ?? $this->extractNameFromEmail($email),
-        ]);
-
-        // Create the email record
-        $user->emails()->create([
             'email' => $email,
-            'is_primary' => true,
-            'verified_at' => now(), // SSO emails are pre-verified
-        ]);
-
-        // Create a random password (user won't need it for SSO login)
-        $user->passwords()->create([
-            'password' => Hash::make(bin2hex(random_bytes(32))),
+            'email_verified_at' => now(),
+            'password' => bin2hex(random_bytes(32)),
+            'password_changed_at' => now(),
         ]);
 
         return $user;

@@ -31,7 +31,7 @@ class MagicLinkTest extends TestCase
         $user = $this->createUser();
 
         $response = $this->postJson('/neev/sendLoginLink', [
-            'email' => $user->email->email,
+            'email' => $user->email,
         ]);
 
         $response->assertOk();
@@ -40,7 +40,7 @@ class MagicLinkTest extends TestCase
         ]);
 
         Mail::assertSent(LoginUsingLink::class, function (LoginUsingLink $mail) use ($user) {
-            return $mail->hasTo($user->email->email);
+            return $mail->hasTo($user->email);
         });
     }
 
@@ -67,12 +67,11 @@ class MagicLinkTest extends TestCase
     public function test_login_using_link_with_valid_signature_returns_token(): void
     {
         $user = $this->createUser();
-        $email = $user->email;
 
         $signedUrl = URL::temporarySignedRoute(
             'loginUsingLink',
             now()->addMinutes(60),
-            ['id' => $email->id]
+            ['id' => $user->id]
         );
 
         $response = $this->getJson($signedUrl);
@@ -89,13 +88,12 @@ class MagicLinkTest extends TestCase
     public function test_login_using_link_returns_email_verified_status(): void
     {
         $user = $this->createUser();
-        $email = $user->email;
 
         // Email is verified by default from factory
         $signedUrl = URL::temporarySignedRoute(
             'loginUsingLink',
             now()->addMinutes(60),
-            ['id' => $email->id]
+            ['id' => $user->id]
         );
 
         $response = $this->getJson($signedUrl);
@@ -110,10 +108,9 @@ class MagicLinkTest extends TestCase
     public function test_login_using_link_with_invalid_signature_returns_403(): void
     {
         $user = $this->createUser();
-        $email = $user->email;
 
         // Build a URL without a valid signature
-        $url = route('loginUsingLink', ['id' => $email->id]) . '?signature=invalidsignature';
+        $url = route('loginUsingLink', ['id' => $user->id]) . '?signature=invalidsignature';
 
         $response = $this->getJson($url);
 
@@ -126,12 +123,11 @@ class MagicLinkTest extends TestCase
     public function test_login_using_link_with_expired_signature_returns_403(): void
     {
         $user = $this->createUser();
-        $email = $user->email;
 
         $signedUrl = URL::temporarySignedRoute(
             'loginUsingLink',
             now()->subMinutes(1), // Already expired
-            ['id' => $email->id]
+            ['id' => $user->id]
         );
 
         $response = $this->getJson($signedUrl);
@@ -145,12 +141,11 @@ class MagicLinkTest extends TestCase
     public function test_login_using_link_creates_login_attempt(): void
     {
         $user = $this->createUser();
-        $email = $user->email;
 
         $signedUrl = URL::temporarySignedRoute(
             'loginUsingLink',
             now()->addMinutes(60),
-            ['id' => $email->id]
+            ['id' => $user->id]
         );
 
         $this->getJson($signedUrl);
@@ -165,12 +160,11 @@ class MagicLinkTest extends TestCase
     public function test_login_using_link_creates_access_token(): void
     {
         $user = $this->createUser();
-        $email = $user->email;
 
         $signedUrl = URL::temporarySignedRoute(
             'loginUsingLink',
             now()->addMinutes(60),
-            ['id' => $email->id]
+            ['id' => $user->id]
         );
 
         $this->getJson($signedUrl);
@@ -184,12 +178,11 @@ class MagicLinkTest extends TestCase
     public function test_login_using_link_for_inactive_user_returns_validation_error(): void
     {
         $user = $this->createUser(['active' => false]);
-        $email = $user->email;
 
         $signedUrl = URL::temporarySignedRoute(
             'loginUsingLink',
             now()->addMinutes(60),
-            ['id' => $email->id]
+            ['id' => $user->id]
         );
 
         $response = $this->getJson($signedUrl);

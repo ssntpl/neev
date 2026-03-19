@@ -10,7 +10,6 @@ use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\Domain;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
@@ -52,10 +51,9 @@ class OAuthController extends Controller
 
         $oauthUser = Socialite::driver($service)->user();
 
-        $email = Email::findByEmail($oauthUser->email);
-        if ($email) {
-            $user = $email->user;
-            if (!$user || !$email->verified_at) {
+        $user = User::findByEmail($oauthUser->email);
+        if ($user) {
+            if (!$user->hasVerifiedEmail()) {
                 return redirect(route('login'));
             }
         } else {
@@ -73,7 +71,11 @@ class OAuthController extends Controller
     public function register($oauthUser)
     {
         DB::beginTransaction();
-        $userData = ['name' => $oauthUser->name];
+        $userData = [
+            'name' => $oauthUser->name,
+            'email' => $oauthUser->email,
+            'email_verified_at' => now(),
+        ];
 
         if (config('neev.support_username')) {
             $base = explode('@', $oauthUser->email)[0];
@@ -84,15 +86,9 @@ class OAuthController extends Controller
             $userData['username'] = $username;
         }
 
-        $user = User::model()->create($userData);
+        $user = User::model()->forceCreate($userData);
 
         try {
-            $user->emails()->create([
-                'email' => $oauthUser->email,
-                'is_primary' => true,
-                'verified_at' => now(),
-            ]);
-
             if (config('neev.team')) {
                 $shouldCreateTeam = !$this->isDomainVerified($oauthUser->email);
 

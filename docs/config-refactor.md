@@ -55,6 +55,7 @@
 | `tenant_auth_options.auto_provision` | Per-tenant in DB. Hardcode default to false. |
 | `tenant_auth_options.auto_provision_role` | Per-tenant in DB. Hardcode default to null. |
 | `email_verified` | Package provides verification flow + middleware. Doesn't enforce. App applies middleware where needed. |
+| `email_verification_method` | Only signed URL links are supported now. OTP verification removed. |
 | `require_company_email` | Removed from Neev entirely. Separate email reputation package. |
 | `free_email_domains` | Removed with require_company_email. |
 | `domain_federation` | Should be per-domain behavior (enforce flag in DB), not a global toggle. |
@@ -158,7 +159,6 @@ public function getPasswordExpiryDays(): int
 
 NOT per-tenant (always app-wide):
 - `otp_length` — infrastructure, affects templates/UI
-- `email_verification_method` — infrastructure, changes entire flow
 - `oauth` — app-wide Socialite drivers
 - `log_failed_logins` — architectural decision
 - `recovery_codes` — minor, not worth per-tenant complexity
@@ -183,7 +183,6 @@ return [
     'recovery_codes' => 8,
 
     // Verification
-    'email_verification_method' => 'link',   // 'link' or 'otp'
     'otp_length' => 6,
 
     // Expiry

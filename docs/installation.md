@@ -89,9 +89,7 @@ This creates the following tables:
 
 | Table | Description |
 |-------|-------------|
-| `users` | User accounts (includes nullable `tenant_id` for tenant isolation) |
-| `emails` | User email addresses (includes nullable `tenant_id`, unique per tenant) |
-| `passwords` | Password history |
+| `users` | User accounts (includes nullable `tenant_id` for tenant isolation, password, and password history) |
 | `otps` | One-time passwords |
 | `passkeys` | WebAuthn credentials |
 | `multi_factor_auths` | MFA configurations |
@@ -198,7 +196,7 @@ This copies route files to `routes/` for customization.
 
 ## Customizing the User Model
 
-Neev's User model includes the `BelongsToTenant` trait by default, providing automatic tenant scoping via a global scope. The Email model also includes this trait. When you extend the User model, these traits are inherited — no additional setup is needed for tenant isolation.
+Neev's User model includes the `BelongsToTenant` trait by default, providing automatic tenant scoping via a global scope. When you extend the User model, these traits are inherited — no additional setup is needed for tenant isolation.
 
 ### Step 1: Create Custom User Model
 

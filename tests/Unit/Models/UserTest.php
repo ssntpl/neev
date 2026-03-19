@@ -3,10 +3,8 @@
 namespace Ssntpl\Neev\Tests\Unit\Models;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Passkey;
-use Ssntpl\Neev\Models\Password;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 
@@ -48,7 +46,10 @@ class UserTest extends TestCase
     {
         $user = new User();
 
-        $this->assertEquals(['name', 'username', 'active', 'tenant_id'], $user->getFillable());
+        $this->assertEquals([
+            'name', 'username', 'email',
+            'active',
+        ], $user->getFillable());
     }
 
     // -----------------------------------------------------------------
@@ -72,80 +73,82 @@ class UserTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Relationships
+    // Email and password are now direct columns
     // -----------------------------------------------------------------
 
-    public function test_emails_returns_has_many_relationship(): void
+    public function test_email_is_a_string_attribute(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['email' => 'test@example.com']);
 
-        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\HasMany::class, $user->emails());
-        // UserFactory afterCreating creates one primary email
-        $this->assertCount(1, $user->emails);
+        $this->assertIsString($user->email);
+        $this->assertSame('test@example.com', $user->email);
     }
 
-    public function test_emails_returns_all_emails_for_user(): void
+    public function test_email_verified_at_is_cast_to_datetime(): void
     {
         $user = User::factory()->create();
 
-        // Add a secondary email
-        Email::create([
-            'user_id' => $user->id,
-            'email' => 'secondary@example.com',
-            'is_primary' => false,
-            'verified_at' => now(),
-        ]);
+        $this->assertInstanceOf(\Illuminate\Support\Carbon::class, $user->email_verified_at);
+    }
+
+    public function test_email_verified_at_is_null_for_unverified(): void
+    {
+        $user = User::factory()->unverified()->create();
+
+        $this->assertNull($user->email_verified_at);
+    }
+
+    public function test_password_is_hashed_in_database(): void
+    {
+        $user = User::factory()->create(['password' => 'my-secret']);
+
+        $rawValue = \Illuminate\Support\Facades\DB::table('users')
+            ->where('id', $user->id)
+            ->value('password');
+
+        $this->assertNotSame('my-secret', $rawValue);
+        $this->assertTrue(\Illuminate\Support\Facades\Hash::check('my-secret', $rawValue));
+    }
+
+    public function test_password_history_is_cast_to_array(): void
+    {
+        $user = User::factory()->create(['password_history' => ['hash1', 'hash2']]);
 
         $user->refresh();
 
-        $this->assertCount(2, $user->emails);
+        $this->assertIsArray($user->password_history);
+        $this->assertCount(2, $user->password_history);
     }
 
-    public function test_email_returns_primary_email(): void
+    public function test_password_changed_at_is_cast_to_datetime(): void
     {
         $user = User::factory()->create();
 
-        $primaryEmail = $user->email;
-
-        $this->assertNotNull($primaryEmail);
-        $this->assertInstanceOf(Email::class, $primaryEmail);
-        $this->assertTrue($primaryEmail->is_primary);
+        $this->assertInstanceOf(\Illuminate\Support\Carbon::class, $user->password_changed_at);
     }
 
-    public function test_email_returns_has_one_relationship(): void
+    // -----------------------------------------------------------------
+    // findByEmail() / uniqueEmailRule()
+    // -----------------------------------------------------------------
+
+    public function test_find_by_email_returns_user(): void
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['email' => 'findme@example.com']);
 
-        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\HasOne::class, $user->email());
+        $found = User::findByEmail('findme@example.com');
+
+        $this->assertNotNull($found);
+        $this->assertSame($user->id, $found->id);
     }
 
-    public function test_passwords_returns_has_many_relationship(): void
+    public function test_find_by_email_returns_null_for_unknown(): void
     {
-        $user = User::factory()->create();
-
-        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\HasMany::class, $user->passwords());
-        // UserFactory afterCreating creates one password
-        $this->assertCount(1, $user->passwords);
+        $this->assertNull(User::findByEmail('nonexistent@example.com'));
     }
 
-    public function test_password_returns_latest_password(): void
-    {
-        $user = User::factory()->create();
-
-        // Add another password
-        Password::create([
-            'user_id' => $user->id,
-            'password' => 'new-password-123',
-        ]);
-
-        $user->refresh();
-
-        $latestPassword = $user->password;
-
-        $this->assertNotNull($latestPassword);
-        $this->assertInstanceOf(Password::class, $latestPassword);
-        $this->assertCount(2, $user->passwords);
-    }
+    // -----------------------------------------------------------------
+    // Relationships
+    // -----------------------------------------------------------------
 
     public function test_login_attempts_returns_has_many_relationship(): void
     {

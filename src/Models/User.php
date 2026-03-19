@@ -4,8 +4,10 @@ namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Validation\Rule;
 use Ssntpl\LaravelAcl\Traits\HasRoles;
 use Ssntpl\Neev\Database\Factories\UserFactory;
+use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Traits\BelongsToTenant;
 use Ssntpl\Neev\Traits\HasTeams;
 use Ssntpl\Neev\Traits\NeevAuthenticatable;
@@ -16,15 +18,16 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
  * @property int|null $tenant_id
  * @property string $name
  * @property string|null $username
+ * @property string|null $email
+ * @property \Carbon\Carbon|null $email_verified_at
+ * @property string|null $password
+ * @property array|null $password_history
+ * @property \Carbon\Carbon|null $password_changed_at
  * @property bool $active
  * @property int|null $default_team_id
  * @property \Carbon\Carbon|null $created_at
  * @property \Carbon\Carbon|null $updated_at
- * @property-read Email|null $email
- * @property-read Password|null $password
  * @property-read MultiFactorAuth|null $preferredMultiFactorAuth
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Email> $emails
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Password> $passwords
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Passkey> $passkeys
  * @property-read \Illuminate\Database\Eloquent\Collection<int, MultiFactorAuth> $multiFactorAuths
  * @property-read \Illuminate\Database\Eloquent\Collection<int, RecoveryCode> $recoveryCodes
@@ -66,16 +69,22 @@ class User extends Authenticatable
     protected $fillable = [
         'name',
         'username',
+        'email',
         'active',
-        'tenant_id',
     ];
 
     protected $hidden = [
+        'password',
+        'password_history',
         'remember_token',
     ];
 
     protected $casts = [
         'active' => 'boolean',
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+        'password_history' => 'array',
+        'password_changed_at' => 'datetime',
     ];
 
     public function getProfilePhotoUrlAttribute()
@@ -88,6 +97,19 @@ class User extends Authenticatable
     }
 
     /**
+     * Find a user by email, respecting tenant isolation.
+     * The TenantScope global scope handles tenant filtering automatically.
+     *
+     * @return static|null
+     */
+    public static function findByEmail(string $email): ?static
+    {
+        return static::model()
+            ->where('email', $email)
+            ->first();
+    }
+
+    /**
      * Find a user by username, respecting tenant isolation.
      * The TenantScope global scope handles tenant filtering automatically.
      */
@@ -96,6 +118,33 @@ class User extends Authenticatable
         return static::model()
             ->where('username', $username)
             ->first();
+    }
+
+    /**
+     * Get a unique validation rule for email that respects tenant isolation.
+     * Laravel's unique rule bypasses Eloquent global scopes,
+     * so we must add the tenant_id constraint explicitly.
+     *
+     * @param int|null $ignoreId  Row ID to ignore (for updates)
+     */
+    public static function uniqueEmailRule(?int $ignoreId = null): \Illuminate\Contracts\Validation\Rule|string
+    {
+        $rule = Rule::unique('users', 'email');
+
+        if ($ignoreId) {
+            $rule->ignore($ignoreId);
+        }
+
+        if (app()->bound(TenantResolver::class)) {
+            $resolver = app(TenantResolver::class);
+            if ($resolver->hasTenant()) {
+                $rule->where('tenant_id', $resolver->currentId());
+            } else {
+                $rule->whereNull('tenant_id');
+            }
+        }
+
+        return $rule;
     }
 
     public function activate()

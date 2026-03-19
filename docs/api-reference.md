@@ -50,8 +50,7 @@ POST /neev/register
     "token": "1|abc123...",
     "expires_in": 1440,
     "mfa_options": null,
-    "email_verified": false,
-    "email_verification_method": "link"
+    "email_verified": false
 }
 ```
 
@@ -201,7 +200,7 @@ Authorization: Bearer {token}
 
 ### Forgot Password
 
-Reset password using OTP verification.
+Send a signed URL password reset link to the user's email.
 
 ```http
 POST /neev/forgotPassword
@@ -211,10 +210,34 @@ POST /neev/forgotPassword
 
 ```json
 {
-    "email": "john@example.com",
+    "email": "john@example.com"
+}
+```
+
+**Response:**
+
+```json
+{
+    "message": "Password reset link has been sent to your email."
+}
+```
+
+---
+
+### Reset Password
+
+Reset the user's password using a signed URL from the forgot password email. The frontend receives the signed URL parameters and forwards them to this endpoint.
+
+```http
+POST /neev/resetPassword?id={user_id}&hash={email_hash}&signature={signature}&expires={timestamp}
+```
+
+**Request Body:**
+
+```json
+{
     "password": "NewSecurePass123!",
-    "password_confirmation": "NewSecurePass123!",
-    "otp": "123456"
+    "password_confirmation": "NewSecurePass123!"
 }
 ```
 
@@ -232,6 +255,8 @@ POST /neev/forgotPassword
 
 ### Send Verification Email
 
+Resend the verification email to the authenticated user's current email address.
+
 ```http
 POST /neev/email/send
 ```
@@ -245,7 +270,7 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "message": "Verification email has been sent."
+    "message": "Verification link has been sent."
 }
 ```
 
@@ -254,7 +279,7 @@ Authorization: Bearer {token}
 ### Verify Email
 
 ```http
-GET /neev/email/verify?id={email_id}&signature={signature}&expires={timestamp}
+GET /neev/email/verify?id={user_id}&hash={email_hash}&signature={signature}&expires={timestamp}
 ```
 
 **Headers:**
@@ -272,10 +297,14 @@ Authorization: Bearer {token}
 
 ---
 
-### Update Email
+## Email Change
+
+### Request Email Change
+
+Request to change the authenticated user's email address. Sends a verification link to the new email. Requires current password for security.
 
 ```http
-POST /neev/email/update
+POST /neev/email/change
 ```
 
 **Headers:**
@@ -287,8 +316,8 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "email_id": 1,
-    "email": "newemail@example.com"
+    "email": "newemail@example.com",
+    "password": "CurrentPass123!"
 }
 ```
 
@@ -296,59 +325,33 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "message": "Email has been updated."
+    "message": "Verification link has been sent to your new email address."
 }
 ```
 
 ---
 
-## Email OTP
+### Verify Email Change
 
-### Send Email OTP
-
-```http
-POST /neev/email/otp/send
-```
-
-**Request Body:**
-
-```json
-{
-    "email": "john@example.com",
-    "mfa": false  // true for MFA verification
-}
-```
-
-**Response:**
-
-```json
-{
-    "message": "Verification code has been sent to your email."
-}
-```
-
----
-
-### Verify Email OTP
+Verify the email change using the signed URL sent to the new email address. The frontend receives the signed URL parameters and forwards them to this endpoint.
 
 ```http
-POST /neev/email/otp/verify
+POST /neev/email/change/verify?id={user_id}&email={new_email}&signature={signature}&expires={timestamp}
 ```
 
-**Request Body:**
+**Response (success):**
 
 ```json
 {
-    "email": "john@example.com",
-    "otp": "123456"
+    "message": "Email address has been updated and verified."
 }
 ```
 
-**Response:**
+**Response (email already taken):**
 
 ```json
 {
-    "message": "Verification code has been verified."
+    "message": "This email address is already in use."
 }
 ```
 
@@ -766,85 +769,6 @@ Authorization: Bearer {token}
 ```json
 {
     "message": "Password has been successfully updated."
-}
-```
-
----
-
-## Email Management
-
-### Add Email
-
-```http
-POST /neev/emails
-```
-
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
-
-**Request Body:**
-
-```json
-{
-    "email": "secondary@example.com"
-}
-```
-
-**Response:**
-
-```json
-{
-    "message": "Email has been added.",
-    "data": {
-        "id": 2,
-        "email": "secondary@example.com",
-        "is_primary": false,
-        "verified_at": null
-    }
-}
-```
-
----
-
-### Delete Email
-
-```http
-DELETE /neev/emails
-```
-
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
-
-**Request Body:**
-
-```json
-{
-    "email": "secondary@example.com"
-}
-```
-
----
-
-### Set Primary Email
-
-```http
-PUT /neev/emails
-```
-
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
-
-**Request Body:**
-
-```json
-{
-    "email": "secondary@example.com"
 }
 ```
 

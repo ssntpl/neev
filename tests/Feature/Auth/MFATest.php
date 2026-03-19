@@ -273,8 +273,6 @@ class MFATest extends TestCase
         ]);
         $fullToken = $this->createMfaJwtToken($user->id, $attempt->id);
 
-        $user->emails()->delete();
-        $user->passwords()->delete();
         $user->forceDelete();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $fullToken)

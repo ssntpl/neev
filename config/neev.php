@@ -52,10 +52,7 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    // Email verification method: 'link' or 'otp'.
-    'email_verification_method' => 'link',
-
-    // OTP length: 4, 6, or 8 digits.
+    // OTP length: 4, 6, or 8 digits (used for MFA email OTP).
     'otp_length' => 6,
 
     /*

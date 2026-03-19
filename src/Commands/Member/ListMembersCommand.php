@@ -22,7 +22,7 @@ class ListMembersCommand extends Command
             return self::FAILURE;
         }
 
-        $members = $team->allUsers()->with('email')->get();
+        $members = $team->allUsers()->get();
 
         if ($members->isEmpty()) {
             $this->info("No members found in {$team->name}.");
@@ -41,7 +41,7 @@ class ListMembersCommand extends Command
             $members->map(fn ($m) => [
                 $m->id,
                 $m->name,
-                $m->email?->email ?? '-',
+                $m->email ?? '-',
                 $m->getRole($team)?->name ?? '-',
                 $m->membership->joined ? 'Yes' : 'No',
                 $m->membership->created_at?->format('Y-m-d') ?? '-',

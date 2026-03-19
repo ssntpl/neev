@@ -2,36 +2,13 @@
 
 namespace Ssntpl\Neev\Traits;
 
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Passkey;
-use Ssntpl\Neev\Models\Password;
 
 trait NeevAuthenticatable
 {
     use HasMultiAuth;
     use HasAccessToken;
-    use VerifyEmail;
-
-    public function emails()
-    {
-        return $this->hasMany(Email::class);
-    }
-
-    public function email()
-    {
-        return $this->hasOne(Email::class)->where('is_primary', true);
-    }
-
-    public function passwords()
-    {
-        return $this->hasMany(Password::class);
-    }
-
-    public function password()
-    {
-        return $this->hasOne(Password::class)->latestOfMany();
-    }
 
     public function loginAttempts()
     {
@@ -41,6 +18,17 @@ trait NeevAuthenticatable
     public function passkeys()
     {
         return $this->hasMany(Passkey::class);
+    }
+
+    public function hasVerifiedEmail(): bool
+    {
+        return $this->email_verified_at !== null;
+    }
+
+    public function markEmailAsVerified(): bool
+    {
+        $this->email_verified_at = now();
+        return $this->save();
     }
 
     /**
@@ -53,12 +41,11 @@ trait NeevAuthenticatable
             return null;
         }
 
-        $password = $this->password;
-        if (!$password) {
+        if (!$this->password_changed_at) {
             return null;
         }
 
-        return $password->created_at->addDays($days);
+        return $this->password_changed_at->addDays($days);
     }
 
     /**

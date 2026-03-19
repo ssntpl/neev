@@ -49,6 +49,9 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
     Route::get('/email/verify/{id}/{hash}', [UserAuthController::class, 'emailVerifyStore'])
         ->name('verification.verify');
 
+    Route::get('/email/change/verify/{id}', [UserAuthController::class, 'emailChangeVerify'])
+        ->name('email.change.verify');
+
     // Rate-limited auth submission routes
     Route::middleware('throttle:10,1')->group(function () {
         Route::post('/register', [UserAuthController::class, 'registerStore']);
@@ -89,7 +92,6 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
 
         Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
             ->name('email.change');
-
         Route::put('/email/change', [UserAuthController::class, 'emailChangeStore'])
             ->name('email.update');
 
@@ -99,8 +101,6 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
         Route::prefix('account')->group(function () {
             Route::get('/profile', [UserController::class, 'profile'])
                 ->name('account.profile');
-            Route::get('/emails', [UserController::class, 'emails'])
-                ->name('account.emails');
             Route::get('/security', [UserController::class, 'security'])
                 ->name('account.security');
             Route::get('/tokens', [UserController::class, 'tokens'])
@@ -132,12 +132,6 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
                 ->name('profile.update');
             Route::post('/change-password', [UserController::class, 'changePassword'])
                 ->name('password.change');
-            Route::post('/emails', [UserController::class, 'addEmail'])
-                ->name('emails.add');
-            Route::delete('/emails', [UserController::class, 'deleteEmail'])
-                ->name('emails.delete');
-            Route::put('/emails', [UserController::class, 'primaryEmail'])
-                ->name('emails.primary');
             Route::delete('/accountDelete', [UserController::class, 'accountDelete'])
                 ->name('account.delete');
             Route::post('/logoutSessions', [UserAuthController::class, 'destroyAll'])
@@ -203,8 +197,6 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
         Route::post('/register', [UserAuthApiController::class, 'register']);
         Route::post('/login', [UserAuthApiController::class, 'login']);
         Route::post('/sendLoginLink', [UserAuthApiController::class, 'sendLoginLink']);
-        Route::post('/email/otp/send', [UserAuthApiController::class, 'sendEmailOTP']);
-        Route::post('/email/otp/verify', [UserAuthApiController::class, 'verifyEmailOTP']);
         Route::post('/forgotPassword', [UserAuthApiController::class, 'forgotPassword']);
         Route::get('/passkeys/login/options', [PasskeyController::class,'generateLoginOptions']);
         Route::post('/passkeys/login', [PasskeyController::class,'loginViaAPI']);
@@ -213,6 +205,8 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
         Route::post('/oauth/{service}/callback', [OAuthApiController::class, 'callback']);
     });
     Route::get('/loginUsingLink', [UserAuthApiController::class, 'loginUsingLink'])->name('loginUsingLink');
+    Route::post('/resetPassword', [UserAuthApiController::class, 'resetPassword'])->middleware('throttle:10,1')->name('neev.resetPassword');
+    Route::post('/email/change/verify', [UserAuthApiController::class, 'verifyEmailChange'])->middleware('throttle:10,1')->name('neev.email.change.verify');
 
     Route::middleware(['neev:login', 'throttle:5,1'])->group(function () {
         Route::post('/mfa/otp/verify', [UserAuthApiController::class, 'verifyMFAOTP']);
@@ -224,7 +218,7 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
 
         Route::post('/email/send', [UserAuthApiController::class, 'sendMailVerificationLink']);
         Route::get('/email/verify', [UserAuthApiController::class, 'emailVerify'])->name('mail.verify');
-        Route::post('/email/update', [UserApiController::class, 'emailUpdate']);
+        Route::post('/email/change', [UserAuthApiController::class, 'requestEmailChange']);
         Route::get('/mfa', [UserApiController::class, 'getMFAMethods']);
         Route::post('/mfa/add', [UserApiController::class, 'addMultiFactorAuthentication']);
         Route::put('/mfa/preferred', [UserApiController::class, 'setPreferredMFA']);
@@ -234,9 +228,6 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
         Route::get('/users', [UserApiController::class, 'getUser']);
         Route::put('/users', [UserApiController::class, 'updateUser']);
         Route::delete('/users', [UserApiController::class, 'deleteUser']);
-        Route::post('/emails', [UserApiController::class, 'addEmail']);
-        Route::delete('/emails', [UserApiController::class, 'deleteEmail']);
-        Route::put('/emails', [UserApiController::class, 'primaryEmail']);
         Route::get('/sessions', [UserApiController::class, 'sessions']);
         Route::get('/loginAttempts', [UserApiController::class, 'loginAttempts']);
         Route::put('/changePassword', [UserApiController::class, 'changePassword']);

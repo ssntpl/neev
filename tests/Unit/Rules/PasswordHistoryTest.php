@@ -3,10 +3,9 @@
 namespace Ssntpl\Neev\Tests\Unit\Rules;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Ssntpl\Neev\Models\Email;
-use Ssntpl\Neev\Models\Password;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Rules\PasswordHistory;
+use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Tests\TestCase;
 
 class PasswordHistoryTest extends TestCase
@@ -62,29 +61,29 @@ class PasswordHistoryTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Passes when no user is found (rule skips)
+    // Fails when no user is found (rule rejects)
     // -----------------------------------------------------------------
 
-    public function test_passes_when_no_user_found(): void
+    public function test_fails_when_no_user_found(): void
     {
         // No authenticated user, no email input
         $rule = PasswordHistory::notReused(5);
 
         $failed = $this->runRule($rule, 'anything');
 
-        $this->assertFalse($failed);
+        $this->assertTrue($failed);
     }
 
     // -----------------------------------------------------------------
-    // Fails when password matches most recent password
+    // Fails when password matches current password
     // -----------------------------------------------------------------
 
-    public function test_fails_when_password_matches_most_recent_password(): void
+    public function test_fails_when_password_matches_current_password(): void
     {
         $user = User::factory()->create();
         $this->setRequestUser($user);
 
-        // UserFactory afterCreating creates a password with 'password'
+        // UserFactory creates user with 'password' as current password
         $rule = PasswordHistory::notReused(5);
 
         $failed = $this->runRule($rule, 'password');
@@ -109,25 +108,28 @@ class PasswordHistoryTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Fails when password matches any of last N passwords
+    // Fails when password matches any of the password history entries
     // -----------------------------------------------------------------
 
-    public function test_fails_when_password_matches_any_of_last_n_passwords(): void
+    public function test_fails_when_password_matches_password_history(): void
     {
         $user = User::factory()->create();
         $this->setRequestUser($user);
 
-        // Factory creates 'password' as the first password
-        // Add more passwords
-        Password::create(['user_id' => $user->id, 'password' => 'second-password']);
-        Password::create(['user_id' => $user->id, 'password' => 'third-password']);
+        $authService = new AuthService();
+
+        // Change password a few times to build history
+        $authService->changePassword($user, 'second-password');
+        $authService->changePassword($user, 'third-password');
+        $user->refresh();
 
         $rule = PasswordHistory::notReused(5);
 
-        // All three should fail
-        $this->assertTrue($this->runRule($rule, 'password'));
-        $this->assertTrue($this->runRule($rule, 'second-password'));
+        // Current password (third-password) should fail
         $this->assertTrue($this->runRule($rule, 'third-password'));
+        // Historical passwords should also fail
+        $this->assertTrue($this->runRule($rule, 'second-password'));
+        $this->assertTrue($this->runRule($rule, 'password'));
     }
 
     // -----------------------------------------------------------------
@@ -139,13 +141,15 @@ class PasswordHistoryTest extends TestCase
         $user = User::factory()->create();
         $this->setRequestUser($user);
 
-        // Factory already created 'password' as the first one.
-        // Add 3 more passwords so we have 4 total. With count=3, only last 3 are checked.
-        Password::create(['user_id' => $user->id, 'password' => 'second-password']);
-        Password::create(['user_id' => $user->id, 'password' => 'third-password']);
-        Password::create(['user_id' => $user->id, 'password' => 'fourth-password']);
+        $authService = new AuthService();
 
-        // Rule checks only last 3 passwords (fourth, third, second)
+        // Build history: password -> second -> third -> fourth
+        $authService->changePassword($user, 'second-password');
+        $authService->changePassword($user, 'third-password');
+        $authService->changePassword($user, 'fourth-password');
+        $user->refresh();
+
+        // Rule checks current password + last 2 from history = 3 total
         $rule = PasswordHistory::notReused(3);
 
         // 'password' (the first one) is beyond the count limit of 3
@@ -161,16 +165,13 @@ class PasswordHistoryTest extends TestCase
     public function test_works_when_user_found_via_email_input(): void
     {
         $user = User::factory()->create();
-        // Factory afterCreating creates a primary email
-
-        $emailRecord = $user->email;
 
         // Simulate a request with an email input (no authenticated user)
-        $this->app['request']->merge(['email' => $emailRecord->email]);
+        $this->app['request']->merge(['email' => $user->email]);
 
         $rule = PasswordHistory::notReused(5);
 
-        // 'password' was created by the factory
+        // 'password' was set by the factory
         $failed = $this->runRule($rule, 'password');
 
         $this->assertTrue($failed);
@@ -183,9 +184,8 @@ class PasswordHistoryTest extends TestCase
     public function test_passes_via_email_input_when_password_is_new(): void
     {
         $user = User::factory()->create();
-        $emailRecord = $user->email;
 
-        $this->app['request']->merge(['email' => $emailRecord->email]);
+        $this->app['request']->merge(['email' => $user->email]);
 
         $rule = PasswordHistory::notReused(5);
 

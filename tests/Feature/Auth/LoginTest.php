@@ -16,9 +16,9 @@ class LoginTest extends TestCase
     /**
      * Create a user with a known email and plaintext password.
      *
-     * The User factory's afterCreating hook creates an Email (with a random
-     * safeEmail) and a Password record with plaintext 'password'. The
-     * Password model's 'hashed' cast automatically hashes it on storage.
+     * The User factory creates a user with email, email_verified_at,
+     * and password ('password') directly on the users table.
+     * The password 'hashed' cast automatically hashes it on storage.
      */
     private function createUser(array $userState = []): User
     {
@@ -28,10 +28,9 @@ class LoginTest extends TestCase
     public function test_successful_login_returns_token(): void
     {
         $user = $this->createUser();
-        $email = $user->email->email;
 
         $response = $this->postJson('/neev/login', [
-            'email' => $email,
+            'email' => $user->email,
             'password' => 'password',
         ]);
 
@@ -48,13 +47,12 @@ class LoginTest extends TestCase
     public function test_login_returns_email_verified_true_for_verified_user(): void
     {
         $user = $this->createUser();
-        $email = $user->email;
 
-        // Factory creates emails as verified by default
-        $this->assertNotNull($email->verified_at);
+        // Factory creates users as verified by default
+        $this->assertNotNull($user->email_verified_at);
 
         $response = $this->postJson('/neev/login', [
-            'email' => $email->email,
+            'email' => $user->email,
             'password' => 'password',
         ]);
 
@@ -68,11 +66,10 @@ class LoginTest extends TestCase
     public function test_login_returns_email_verified_false_for_unverified_user(): void
     {
         $user = $this->createUser();
-        $email = $user->email;
-        $email->update(['verified_at' => null]);
+        $user->forceFill(['email_verified_at' => null])->save();
 
         $response = $this->postJson('/neev/login', [
-            'email' => $email->email,
+            'email' => $user->email,
             'password' => 'password',
         ]);
 
@@ -88,7 +85,7 @@ class LoginTest extends TestCase
         $user = $this->createUser();
 
         $response = $this->postJson('/neev/login', [
-            'email' => $user->email->email,
+            'email' => $user->email,
             'password' => 'wrong-password',
         ]);
 
@@ -116,7 +113,7 @@ class LoginTest extends TestCase
         $user = $this->createUser(['active' => false]);
 
         $response = $this->postJson('/neev/login', [
-            'email' => $user->email->email,
+            'email' => $user->email,
             'password' => 'password',
         ]);
 
@@ -131,7 +128,7 @@ class LoginTest extends TestCase
         $user = $this->createUser();
 
         $this->postJson('/neev/login', [
-            'email' => $user->email->email,
+            'email' => $user->email,
             'password' => 'wrong-password',
         ]);
 
@@ -149,7 +146,7 @@ class LoginTest extends TestCase
         $user = $this->createUser();
 
         $this->postJson('/neev/login', [
-            'email' => $user->email->email,
+            'email' => $user->email,
             'password' => 'wrong-password',
         ]);
 
@@ -164,7 +161,7 @@ class LoginTest extends TestCase
         $user = $this->createUser();
 
         $this->postJson('/neev/login', [
-            'email' => $user->email->email,
+            'email' => $user->email,
             'password' => 'password',
         ]);
 
@@ -180,7 +177,7 @@ class LoginTest extends TestCase
         $user = $this->createUser();
 
         $response = $this->postJson('/neev/login', [
-            'email' => $user->email->email,
+            'email' => $user->email,
             'password' => 'password',
         ]);
 
@@ -203,7 +200,7 @@ class LoginTest extends TestCase
         ]);
 
         $response = $this->postJson('/neev/login', [
-            'email' => $user->email->email,
+            'email' => $user->email,
             'password' => 'password',
         ]);
 
@@ -222,7 +219,7 @@ class LoginTest extends TestCase
         $user = $this->createUser();
 
         $response = $this->postJson('/neev/login', [
-            'email' => $user->email->email,
+            'email' => $user->email,
             'password' => 'password',
         ]);
 

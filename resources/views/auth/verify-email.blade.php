@@ -20,13 +20,6 @@
         <div class="py-2">
             {{$email}}
         </div>
-        <div>
-            <a
-                href="{{ route('email.change') }}"
-                class="underline text-sm text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 dark:focus:ring-offset-gray-800"
-            >
-                {{ __('Change Email') }}</a>
-        </div>
         <div class="mt-4 flex items-center justify-between">
             <form method="GET" action="{{ route('email.verification.send') }}">
                 @csrf

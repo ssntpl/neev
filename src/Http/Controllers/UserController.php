@@ -6,29 +6,17 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
-use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
-use Ssntpl\Neev\Models\Email;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\LaravelAcl\Models\Permission;
+use Ssntpl\Neev\Services\AuthService;
 
 class UserController extends Controller
 {
     public function profile(Request $request)
     {
         $user = User::model()->find($request->user()->id);
-        $user?->loadMissing('email', 'emails');
         return view('neev::account.profile', ['user' => $user]);
-    }
-
-    public function emails(Request $request)
-    {
-        $user = User::model()->find($request->user()?->id);
-        if (!$user) {
-            return redirect()->route('neev.login');
-        }
-
-        return view('neev::account.emails', ['user' => $user, 'add_email' => true]);
     }
 
     public function security(Request $request)
@@ -37,7 +25,7 @@ class UserController extends Controller
         if (!$user) {
             return redirect()->route('neev.login');
         }
-        $user->loadMissing('email', 'multiFactorAuths', 'passkeys');
+        $user->loadMissing('multiFactorAuths', 'passkeys');
 
         return view('neev::account.security', ['user' => $user, 'delete_account' => true]);
     }
@@ -124,65 +112,6 @@ class UserController extends Controller
         return back()->with(['status' => 'Account has been updated.']);
     }
 
-    public function addEmail(Request $request)
-    {
-        $request->validate([
-            'email' => 'required|string|email|max:255',
-        ]);
-
-        $user = User::model()->find($request->user()?->id);
-        if (!$user) {
-            return back()->withErrors(['message' => 'User not found.']);
-        }
-        if (Email::findByEmail($request->email)) {
-            return back()->withErrors(['message' => 'Email already exist.']);
-        }
-
-        $user->emails()->create([
-            'email' => $request->email
-        ]);
-
-        $auth = app(UserAuthController::class);
-        $auth->emailVerifySend($request);
-
-        return back()->with('status', 'Email has been Added.');
-    }
-
-    public function deleteEmail(Request $request)
-    {
-        $user = User::model()->find($request->user()?->id);
-
-        $email = $user?->emails->find($request->email_id);
-        if (!$email) {
-            return back()->withErrors(['message' => 'Email does not exist.']);
-        }
-
-        if ($email->is_primary) {
-            return back()->withErrors(['message' => 'Cannot delete primary email.']);
-        }
-
-        $email->delete();
-
-        return back()->with('status', 'Email has been Deleted.');
-    }
-
-    public function primaryEmail(Request $request)
-    {
-        $user = User::model()->find($request->user()?->id);
-        $email = $user?->emails?->where('email', $request->email)->first();
-        if (!$user || !$email || !$email->verified_at) {
-            return back()->withErrors(['message' => 'Your primary email was not changed.']);
-        }
-
-        $pemail = $user->email;
-        $pemail->is_primary = false;
-        $pemail->save();
-        $email->is_primary = true;
-        $email->save();
-
-        return back()->with('status', 'Your primary email has been changed.');
-    }
-
     public function changePassword(Request $request)
     {
         $request->validate([
@@ -191,15 +120,13 @@ class UserController extends Controller
         ]);
 
         $user = User::model()->find($request->user()?->id);
-        if (!$user || !Hash::check($request->current_password, $user->password?->password)) {
+        if (!$user || !Hash::check($request->current_password, $user->password)) {
             return back()->withErrors([
                 'message' => 'Current Password is Wrong.'
             ]);
         }
 
-        $user->passwords()->create([
-            'password' => Hash::make($request->password),
-        ]);
+        app(AuthService::class)->changePassword($user, $request->password);
         return back()->with('status', 'Password has been successfully updated.');
     }
 
@@ -209,7 +136,7 @@ class UserController extends Controller
             'password' => ['required'],
         ]);
         $user = User::model()->find($request->user()?->id);
-        if (!$user || !Hash::check($request->password, $user->password?->password)) {
+        if (!$user || !Hash::check($request->password, $user->password)) {
             return back()->withErrors([
                 'message' => 'Password is Wrong.'
             ]);
@@ -272,8 +199,10 @@ class UserController extends Controller
             return back()->withErrors(['message' => 'preferred auth was not updated.']);
         }
         $preferred = $user->preferredMultiFactorAuth;
-        $preferred->preferred = false;
-        $preferred->save();
+        if ($preferred) {
+            $preferred->preferred = false;
+            $preferred->save();
+        }
         $auth->preferred = true;
         $auth->save();
         return back()->with('status', 'preferred auth has been updated.');

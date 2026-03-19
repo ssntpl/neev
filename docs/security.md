@@ -84,7 +84,7 @@ Prevents password reuse:
 PasswordHistory::notReused(5)  // Cannot reuse last 5 passwords
 ```
 
-Passwords are stored hashed in the `passwords` table.
+Passwords are stored hashed on the `users` table, with password history maintained as a JSON column.
 
 ### Personal Data Prevention
 
@@ -496,32 +496,20 @@ All related data is cascade deleted.
 
 ## Secure Email Handling
 
-### Multiple Emails
+### Email Address
 
-Users can have multiple email addresses:
+Each user has a single email address stored directly on the `users` table:
 
 ```php
-$user->emails;        // All emails
-$user->email;         // Primary email
+$user->email;         // User's email address
 ```
 
 ### Email Verification
 
-Each email must be verified separately:
+The email must be verified before full access is granted:
 
 ```php
-$email->verified_at;  // Null if unverified
-```
-
-### Primary Email
-
-Only verified emails can be set as primary:
-
-```php
-if ($email->verified_at) {
-    $email->is_primary = true;
-    $email->save();
-}
+$user->email_verified_at;  // Null if unverified
 ```
 
 ---
@@ -678,9 +666,6 @@ php artisan neev:download-geoip
 # Clean old login attempts
 php artisan neev:clean-login-attempts
 
-# Clean old password history
-php artisan neev:clean-passwords
-
 # Update GeoIP database
 php artisan neev:download-geoip
 ```
@@ -692,7 +677,6 @@ php artisan neev:download-geoip
 protected function schedule(Schedule $schedule)
 {
     $schedule->command('neev:clean-login-attempts')->daily();
-    $schedule->command('neev:clean-passwords')->weekly();
     $schedule->command('neev:download-geoip')->monthly();
 }
 ```

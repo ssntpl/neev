@@ -213,7 +213,7 @@ class NeevMiddlewareTest extends TestCase
         $this->enableEmailVerification();
 
         $user = User::factory()->create();
-        $user->email->update(['verified_at' => null]);
+        $user->forceFill(['email_verified_at' => null])->save();
         $user->refresh();
 
         $request = $this->buildRequest('/email/verify/123', $user);
