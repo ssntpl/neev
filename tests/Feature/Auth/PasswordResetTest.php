@@ -75,7 +75,7 @@ class PasswordResetTest extends TestCase
         $signedUrl = URL::temporarySignedRoute(
             'neev.resetPassword',
             now()->addMinutes(60),
-            ['id' => $user->id]
+            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
         );
 
         $query = parse_url($signedUrl, PHP_URL_QUERY);
@@ -117,7 +117,7 @@ class PasswordResetTest extends TestCase
         $signedUrl = URL::temporarySignedRoute(
             'neev.resetPassword',
             now()->addMinutes(60),
-            ['id' => $user->id]
+            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
         );
 
         $query = parse_url($signedUrl, PHP_URL_QUERY);
@@ -135,7 +135,7 @@ class PasswordResetTest extends TestCase
         $signedUrl = URL::temporarySignedRoute(
             'neev.resetPassword',
             now()->addMinutes(60),
-            ['id' => $user->id]
+            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
         );
 
         $query = parse_url($signedUrl, PHP_URL_QUERY);
@@ -157,7 +157,7 @@ class PasswordResetTest extends TestCase
         $signedUrl = URL::temporarySignedRoute(
             'neev.resetPassword',
             now()->addMinutes(60),
-            ['id' => $user->id]
+            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
         );
 
         $query = parse_url($signedUrl, PHP_URL_QUERY);
@@ -184,7 +184,7 @@ class PasswordResetTest extends TestCase
         $signedUrl = URL::temporarySignedRoute(
             'neev.resetPassword',
             now()->addMinutes(60),
-            ['id' => $user->id]
+            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
         );
 
         $query = parse_url($signedUrl, PHP_URL_QUERY);

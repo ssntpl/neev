@@ -49,6 +49,9 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
     Route::get('/email/verify/{id}/{hash}', [UserAuthController::class, 'emailVerifyStore'])
         ->name('verification.verify');
 
+    Route::get('/email/change/verify/{id}', [UserAuthController::class, 'emailChangeVerify'])
+        ->name('email.change.verify');
+
     // Rate-limited auth submission routes
     Route::middleware('throttle:10,1')->group(function () {
         Route::post('/register', [UserAuthController::class, 'registerStore']);
@@ -86,6 +89,11 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
 
         Route::get('/email/send', [UserAuthController::class, 'emailVerifySend'])
             ->name('email.verification.send');
+
+        Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
+            ->name('email.change');
+        Route::put('/email/change', [UserAuthController::class, 'emailChangeStore'])
+            ->name('email.update');
 
         Route::post('/logout', [UserAuthController::class, 'destroy'])
             ->name('logout');
@@ -198,6 +206,7 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
     });
     Route::get('/loginUsingLink', [UserAuthApiController::class, 'loginUsingLink'])->name('loginUsingLink');
     Route::post('/resetPassword', [UserAuthApiController::class, 'resetPassword'])->middleware('throttle:10,1')->name('neev.resetPassword');
+    Route::post('/email/change/verify', [UserAuthApiController::class, 'verifyEmailChange'])->middleware('throttle:10,1')->name('neev.email.change.verify');
 
     Route::middleware(['neev:login', 'throttle:5,1'])->group(function () {
         Route::post('/mfa/otp/verify', [UserAuthApiController::class, 'verifyMFAOTP']);
@@ -209,6 +218,7 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
 
         Route::post('/email/send', [UserAuthApiController::class, 'sendMailVerificationLink']);
         Route::get('/email/verify', [UserAuthApiController::class, 'emailVerify'])->name('mail.verify');
+        Route::post('/email/change', [UserAuthApiController::class, 'requestEmailChange']);
         Route::get('/mfa', [UserApiController::class, 'getMFAMethods']);
         Route::post('/mfa/add', [UserApiController::class, 'addMultiFactorAuthentication']);
         Route::put('/mfa/preferred', [UserApiController::class, 'setPreferredMFA']);

@@ -237,10 +237,10 @@ class UserAuthApiController extends Controller
 
     public function sendMailVerificationLink(Request $request)
     {
-        $user = User::findByEmail($request->email);
+        $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
-                'message' => 'Email not found.',
+                'message' => 'User not found.',
             ], 404);
         }
         if ($user->hasVerifiedEmail()) {
@@ -253,7 +253,7 @@ class UserAuthApiController extends Controller
         $signedUrl = URL::temporarySignedRoute(
             'mail.verify',
             now()->addMinutes($expiryMinutes),
-            ['id' => $user->id]
+            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
         );
 
         $query = parse_url($signedUrl, PHP_URL_QUERY);
@@ -263,7 +263,6 @@ class UserAuthApiController extends Controller
 
         return response()->json([
             'message' => 'Verification link has been sent.',
-            'verification_method' => 'link'
         ]);
     }
 
@@ -314,7 +313,10 @@ class UserAuthApiController extends Controller
     public function emailVerify(Request $request)
     {
         $user = User::model()->find($request->id);
-        if (!$request->hasValidSignature() || !$user || $user->id != $request->user()?->id) {
+        if (!$request->hasValidSignature()
+            || !$user
+            || $user->id != $request->user()?->id
+            || !hash_equals(hash('sha256', $user->email), (string) $request->hash)) {
             return response()->json([
                 'message' => 'Invalid or expired verification link.'
             ], 403);
@@ -351,7 +353,7 @@ class UserAuthApiController extends Controller
             $signedUrl = URL::temporarySignedRoute(
                 'neev.resetPassword',
                 now()->addMinutes($expiryMinutes),
-                ['id' => $user->id]
+                ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
             );
 
             $query = parse_url($signedUrl, PHP_URL_QUERY);
@@ -375,10 +377,6 @@ class UserAuthApiController extends Controller
     public function resetPassword(Request $request)
     {
         try {
-            $request->validate([
-                'password' => config('neev.password'),
-            ]);
-
             if (!$request->hasValidSignature()) {
                 return response()->json([
                     'message' => 'Invalid or expired reset link.',
@@ -386,11 +384,17 @@ class UserAuthApiController extends Controller
             }
 
             $user = User::model()->find($request->id);
-            if (!$user || !$user->hasVerifiedEmail()) {
+            if (!$user
+                || !$user->hasVerifiedEmail()
+                || !hash_equals(hash('sha256', $user->email), (string) $request->hash)) {
                 return response()->json([
-                    'message' => 'User not found.',
-                ], 404);
+                    'message' => 'Invalid or expired reset link.',
+                ], 403);
             }
+
+            $request->validate([
+                'password' => config('neev.password'),
+            ]);
 
             app(AuthService::class)->changePassword($user, $request->password);
 
@@ -458,6 +462,91 @@ class UserAuthApiController extends Controller
             'expires_in' => $expiryMinutes,
             'mfa_options' => null,
             'email_verified' => $user->hasVerifiedEmail(),
+        ]);
+    }
+
+    public function requestEmailChange(Request $request)
+    {
+        try {
+            $request->validate([
+                'email' => ['required', 'string', 'email', 'max:255', User::uniqueEmailRule()],
+                'password' => ['required'],
+            ]);
+
+            $user = User::model()->find($request->user()?->id);
+            if (!$user) {
+                return response()->json([
+                    'message' => 'User not found.',
+                ], 404);
+            }
+
+            if (!Hash::check($request->password, $user->password)) {
+                return response()->json([
+                    'message' => 'Password is incorrect.',
+                ], 403);
+            }
+
+            if ($request->email === $user->email) {
+                return response()->json([
+                    'message' => 'New email must be different from current email.',
+                ], 400);
+            }
+
+            $expiryMinutes = config('neev.url_expiry_time', 60);
+            $signedUrl = URL::temporarySignedRoute(
+                'neev.email.change.verify',
+                now()->addMinutes($expiryMinutes),
+                ['id' => $user->id, 'email' => $request->email]
+            );
+
+            $query = parse_url($signedUrl, PHP_URL_QUERY);
+            $frontendUrl = config('app.url');
+            $url = "{$frontendUrl}/verify-email-change?{$query}";
+            Mail::to($request->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email Change', $expiryMinutes));
+
+            return response()->json([
+                'message' => 'Verification link has been sent to your new email address.',
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (Exception $e) {
+            Log::error($e);
+            return response()->json([
+                'message' => 'Unable to process email change.',
+            ], 500);
+        }
+    }
+
+    public function verifyEmailChange(Request $request)
+    {
+        if (!$request->hasValidSignature()) {
+            return response()->json([
+                'message' => 'Invalid or expired verification link.',
+            ], 403);
+        }
+
+        $user = User::model()->find($request->id);
+        if (!$user) {
+            return response()->json([
+                'message' => 'Invalid or expired verification link.',
+            ], 403);
+        }
+
+        $newEmail = $request->email;
+        if (!$newEmail) {
+            return response()->json([
+                'message' => 'Invalid or expired verification link.',
+            ], 403);
+        }
+
+        if (!app(AuthService::class)->applyEmailChange($user, $newEmail)) {
+            return response()->json([
+                'message' => 'This email address is already in use.',
+            ], 409);
+        }
+
+        return response()->json([
+            'message' => 'Email address has been updated and verified.',
         ]);
     }
 

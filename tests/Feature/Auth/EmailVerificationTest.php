@@ -45,31 +45,33 @@ class EmailVerificationTest extends TestCase
         $response->assertOk();
     }
 
-    public function test_send_verification_link_returns_error_for_unknown_email(): void
-    {
-        [$user, $token] = $this->authenticatedUser();
-
-        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/email/send', [
-                'email' => 'nonexistent@example.com',
-            ]);
-
-        $response->assertStatus(404)
-            ->assertJsonPath('message', 'Email not found.');
-    }
-
-    public function test_send_verification_link_returns_error_for_already_verified_email(): void
+    public function test_send_verification_link_returns_error_for_already_verified_user(): void
     {
         [$user, $token] = $this->authenticatedUser();
 
         // Factory creates verified emails by default
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/email/send', [
-                'email' => $user->email,
-            ]);
+            ->postJson('/neev/email/send');
 
         $response->assertStatus(400)
             ->assertJsonPath('message', 'Email already verified.');
+    }
+
+    public function test_send_verification_link_ignores_request_email_and_uses_authenticated_user(): void
+    {
+        Mail::fake();
+
+        [$user, $token] = $this->authenticatedUser();
+
+        $user->forceFill(['email_verified_at' => null])->save();
+
+        // Even passing a different email, the endpoint should use the authenticated user's email
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/email/send', [
+                'email' => 'someone-else@example.com',
+            ]);
+
+        $response->assertOk();
     }
 
     // -----------------------------------------------------------------
@@ -85,7 +87,7 @@ class EmailVerificationTest extends TestCase
         $signedUrl = URL::temporarySignedRoute(
             'mail.verify',
             now()->addMinutes(60),
-            ['id' => $user->id]
+            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
         );
 
         // Extract query parameters from the signed URL
@@ -120,7 +122,7 @@ class EmailVerificationTest extends TestCase
         $signedUrl = URL::temporarySignedRoute(
             'mail.verify',
             now()->addMinutes(60),
-            ['id' => $user->id]
+            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
         );
 
         $query = parse_url($signedUrl, PHP_URL_QUERY);

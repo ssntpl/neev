@@ -425,6 +425,65 @@ class UserAuthController extends Controller
         return redirect(config('neev.home'))->withErrors(['message' => __('Invalid or expired verification link.')]);
     }
 
+    public function emailChangeCreate(Request $request)
+    {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return redirect(route('login'));
+        }
+
+        return view('neev::auth.change-email', [
+            'email' => $user->email,
+        ]);
+    }
+
+    public function emailChangeStore(Request $request)
+    {
+        $request->validate([
+            'email' => ['required', 'string', 'email', 'max:255', User::uniqueEmailRule()],
+            'password' => ['required'],
+        ]);
+
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return back()->withErrors(['message' => 'User not found.']);
+        }
+
+        if (!Hash::check($request->password, $user->password)) {
+            return back()->withErrors(['password' => 'Password is incorrect.']);
+        }
+
+        if ($request->email === $user->email) {
+            return back()->withErrors(['email' => 'New email must be different from current email.']);
+        }
+
+        $this->auth->sendEmailChangeVerification($user, $request->email, 'email.change.verify');
+        return back()->with('status', __('A verification link has been sent to your new email address.'));
+    }
+
+    public function emailChangeVerify(Request $request, $id)
+    {
+        if (!$request->hasValidSignature()) {
+            return redirect(route('login'))->withErrors(['message' => 'Invalid or expired verification link.']);
+        }
+
+        $user = User::model()->find($id);
+        if (!$user) {
+            return redirect(route('login'))->withErrors(['message' => 'Invalid or expired verification link.']);
+        }
+
+        $newEmail = $request->email;
+        if (!$newEmail) {
+            return redirect(route('login'))->withErrors(['message' => 'Invalid or expired verification link.']);
+        }
+
+        if (!$this->auth->applyEmailChange($user, $newEmail)) {
+            return redirect(config('neev.home'))->withErrors(['message' => 'This email address is already in use.']);
+        }
+
+        return redirect(config('neev.home'))->with('status', __('Email address has been updated and verified.'));
+    }
+
     /**
      * Show the logout.
     */

@@ -229,15 +229,16 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 | POST | `/neev/logoutAll` | Logout all other sessions | Yes |
 | POST | `/neev/forgotPassword` | Send password reset link | No |
 
+| POST | `/neev/resetPassword` | Reset password (signed URL) | No |
+
 ### Email Endpoints
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| POST | `/neev/email/send` | Send verification email | Yes |
+| POST | `/neev/email/send` | Resend verification email | Yes |
 | GET | `/neev/email/verify` | Verify email address | Yes |
-| POST | `/neev/email/update` | Update email address | Yes |
-| POST | `/neev/email/otp/send` | Send email OTP | No |
-| POST | `/neev/email/otp/verify` | Verify email OTP | No |
+| POST | `/neev/email/change` | Request email change | Yes |
+| POST | `/neev/email/change/verify` | Verify email change (signed URL) | No |
 
 ### MFA Endpoints
 
@@ -354,8 +355,8 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 |--------|-------|------|-------------|
 | GET | `/email/verify` | `verification.notice` | Verification pending |
 | GET | `/email/send` | `email.verification.send` | Resend verification |
-| GET | `/email/change` | `email.change` | Change email form |
-| PUT | `/email/change` | `email.update` | Process email change |
+| GET | `/email/change` | `email.change` | Show change email form |
+| PUT | `/email/change` | `email.update` | Request email change |
 | POST | `/logout` | `logout` | Logout |
 
 ### Account Routes (/account prefix)

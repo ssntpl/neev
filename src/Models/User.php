@@ -99,8 +99,9 @@ class User extends Authenticatable
     /**
      * Find a user by email, respecting tenant isolation.
      * The TenantScope global scope handles tenant filtering automatically.
+     *
+     * @return static|null
      */
-    /** @return static|null */
     public static function findByEmail(string $email): ?static
     {
         return static::model()

@@ -117,7 +117,7 @@ These routes require the `neev:web` middleware.
 | GET | `/email/verify` | `verification.notice` | Show verification pending page |
 | GET | `/email/send` | `email.verification.send` | Resend verification email |
 | GET | `/email/change` | `email.change` | Show change email form |
-| PUT | `/email/change` | `email.update` | Process email change |
+| PUT | `/email/change` | `email.update` | Request email change (sends verification) |
 
 ---
 

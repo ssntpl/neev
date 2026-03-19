@@ -114,6 +114,46 @@ class AuthService
     }
 
     /**
+     * Send email verification link for an email change.
+     * The signed URL binds the user ID and new email so it can't be tampered with.
+     *
+     * @param User $user The user requesting the change
+     * @param string $newEmail The new email address to verify
+     * @param string $routeName The named route for verification (web vs API)
+     */
+    public function sendEmailChangeVerification(User $user, string $newEmail, string $routeName = 'neev.email.change.verify'): void
+    {
+        $expiryMinutes = config('neev.url_expiry_time', 60);
+        $signedUrl = URL::temporarySignedRoute(
+            $routeName,
+            now()->addMinutes($expiryMinutes),
+            ['id' => $user->id, 'email' => $newEmail]
+        );
+
+        Mail::to($newEmail)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email Change', $expiryMinutes));
+    }
+
+    /**
+     * Apply a verified email change.
+     * Checks that the new email is still unique before updating.
+     *
+     * @return bool True if the email was updated, false if the email is already taken.
+     */
+    public function applyEmailChange(User $user, string $newEmail): bool
+    {
+        $existing = User::findByEmail($newEmail);
+        if ($existing && $existing->id !== $user->id) {
+            return false;
+        }
+
+        $user->email = $newEmail;
+        $user->email_verified_at = now();
+        $user->save();
+
+        return true;
+    }
+
+    /**
      * Change the user's password and manage password history.
      *
      * @param User $user
