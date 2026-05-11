@@ -2,13 +2,7 @@
 
 namespace Ssntpl\Neev\Traits;
 
-use BaconQrCode\Renderer\Image\SvgImageBackEnd;
-use BaconQrCode\Renderer\ImageRenderer;
-use BaconQrCode\Renderer\RendererStyle\RendererStyle;
-use BaconQrCode\Writer;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
-use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
 use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\RecoveryCode;
@@ -17,7 +11,8 @@ trait HasMultiAuth
 {
     public function multiFactorAuths()
     {
-        return $this->hasMany(MultiFactorAuth::class);
+        return $this->hasMany(MultiFactorAuth::class)
+            ->where('status', MultiFactorAuth::STATUS_ACTIVE);
     }
 
     public function multiFactorAuth($method)
@@ -25,9 +20,19 @@ trait HasMultiAuth
         return $this->multiFactorAuths->where('method', $method)->first();
     }
 
+    public function pendingMultiFactorAuth($method)
+    {
+        return MultiFactorAuth::where('user_id', $this->id)
+            ->where('method', $method)
+            ->where('status', MultiFactorAuth::STATUS_PENDING)
+            ->first();
+    }
+
     public function preferredMultiFactorAuth()
     {
-        return $this->hasOne(MultiFactorAuth::class)->where('preferred', true);
+        return $this->hasOne(MultiFactorAuth::class)
+            ->where('status', MultiFactorAuth::STATUS_ACTIVE)
+            ->where('preferred', true);
     }
 
     public function recoveryCodes()
@@ -39,97 +44,56 @@ trait HasMultiAuth
     {
         switch ($method) {
             case 'authenticator':
-                $auth = $this->multiFactorAuth($method);
-                $secret = $auth?->secret ?? Base32::encodeUpper(random_bytes(32));
-                $totp = TOTP::create($secret);
-                $totp->setLabel($this->email);
-                $totp->setIssuer(config('app.name', 'Neev'));
-                if (!$auth) {
-                    $this->multiFactorAuths()->create([
-                        'method' => $method,
-                        'preferred' => !$this->preferredMultiFactorAuth?->preferred,
-                        'secret' => $totp->getSecret(),
-                    ]);
+                if ($this->multiFactorAuth('authenticator')) {
+                    return [
+                        'status' => 'Error',
+                        'method' => 'authenticator',
+                        'message' => 'Authenticator already configured.',
+                    ];
                 }
 
-                $renderer = new ImageRenderer(
-                    new RendererStyle(200),
-                    new SvgImageBackEnd()
+                $secret = Base32::encodeUpper(random_bytes(32));
+
+                MultiFactorAuth::updateOrCreate(
+                    ['user_id' => $this->id, 'method' => 'authenticator'],
+                    [
+                        'secret' => $secret,
+                        'status' => MultiFactorAuth::STATUS_PENDING,
+                        'preferred' => !$this->preferredMultiFactorAuth?->preferred,
+                    ]
                 );
-                $writer = new Writer($renderer);
-                $qrCodeSvg = $writer->writeString($totp->getProvisioningUri());
 
                 return [
                     'status' => 'Success',
-                    'qr_code' => $qrCodeSvg,
-                    'secret' => $totp->getSecret(),
-                    'method' => $method,
+                    'qr_code' => MultiFactorAuth::getQrCodeForAuthenticatorSetup($secret, $this->email),
+                    'secret' => $secret,
+                    'method' => 'authenticator',
                 ];
 
             case 'email':
-                $auth = $this->multiFactorAuth($method);
-                if ($auth) {
+                if ($this->multiFactorAuth('email')) {
                     return [
                         'status' => 'Error',
-                        'method' => $method,
-                        'message' => 'Email already Configured.'
+                        'method' => 'email',
+                        'message' => 'Email already Configured.',
                     ];
                 }
 
                 $this->multiFactorAuths()->create([
-                    'method' => $method,
+                    'method' => 'email',
                     'preferred' => !$this->preferredMultiFactorAuth?->preferred,
+                    'status' => MultiFactorAuth::STATUS_ACTIVE,
                 ]);
 
                 return [
                     'status' => 'Success',
-                    'method' => $method,
-                    'message' => 'Email Configured.'
+                    'method' => 'email',
+                    'message' => 'Email Configured.',
                 ];
 
             default:
                 return null;
         }
-    }
-
-    public function verifyMFAOTP($method, $otp): bool
-    {
-        $auth = $this->multiFactorAuth($method ?? $this->preferredMultiFactorAuth?->method);
-        if (!$auth && $method !== 'recovery') {
-            return false;
-        }
-
-        switch ($auth?->method ?? $method) {
-            case 'authenticator':
-                $totp = TOTP::create(secret: $auth->secret);
-                if ($totp->verify(otp: $otp, timestamp: null, leeway: 29)) {
-                    $auth->last_used = now();
-                    $auth->save();
-                    return true;
-                }
-                return false;
-
-            case 'email':
-                if (Hash::check((string) $otp, $auth->otp) && now()->lt($auth->expires_at)) {
-                    $auth->otp = null;
-                    $auth->expires_at = null;
-                    $auth->last_used = now();
-                    $auth->save();
-                    return true;
-                }
-                break;
-
-            case 'recovery':
-                $code = $this->recoveryCodes->first(function ($recoveryCode) use ($otp) {
-                    return Hash::check($otp, $recoveryCode->code);
-                });
-                if ($code) {
-                    $code->delete();
-                    return true;
-                }
-                break;
-        }
-        return false;
     }
 
     public function generateRecoveryCodes()

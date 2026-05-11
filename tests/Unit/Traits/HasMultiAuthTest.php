@@ -14,23 +14,39 @@ class HasMultiAuthTest extends TestCase
     use RefreshDatabase;
 
     // -----------------------------------------------------------------
-    // multiFactorAuths()
+    // multiFactorAuths() — relation filters to active only
     // -----------------------------------------------------------------
 
-    public function test_multi_factor_auths_returns_all_mfa_records(): void
+    public function test_multi_factor_auths_returns_only_active_records(): void
     {
         $user = User::factory()->create();
 
         $user->multiFactorAuths()->create([
             'method' => 'authenticator',
             'preferred' => true,
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
         $user->multiFactorAuths()->create([
             'method' => 'email',
             'preferred' => false,
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
 
         $this->assertCount(2, $user->multiFactorAuths);
+    }
+
+    public function test_multi_factor_auths_excludes_pending_records(): void
+    {
+        $user = User::factory()->create();
+
+        // Pending row should not appear in the relation.
+        MultiFactorAuth::create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+
+        $this->assertCount(0, $user->multiFactorAuths);
     }
 
     public function test_multi_factor_auths_returns_empty_when_none_configured(): void
@@ -44,20 +60,16 @@ class HasMultiAuthTest extends TestCase
     // multiFactorAuth($method)
     // -----------------------------------------------------------------
 
-    public function test_multi_factor_auth_finds_by_method(): void
+    public function test_multi_factor_auth_finds_active_by_method(): void
     {
         $user = User::factory()->create();
 
         $user->multiFactorAuths()->create([
             'method' => 'authenticator',
             'preferred' => true,
-        ]);
-        $user->multiFactorAuths()->create([
-            'method' => 'email',
-            'preferred' => false,
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
 
-        // Load the relation so the method can filter from the collection
         $user->load('multiFactorAuths');
 
         $auth = $user->multiFactorAuth('authenticator');
@@ -70,57 +82,99 @@ class HasMultiAuthTest extends TestCase
     {
         $user = User::factory()->create();
 
-        $user->multiFactorAuths()->create([
-            'method' => 'authenticator',
-            'preferred' => true,
-        ]);
-
-        $user->load('multiFactorAuths');
-
         $this->assertNull($user->multiFactorAuth('sms'));
     }
 
+    public function test_multi_factor_auth_does_not_return_pending(): void
+    {
+        $user = User::factory()->create();
+
+        MultiFactorAuth::create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+
+        $this->assertNull($user->multiFactorAuth('authenticator'));
+    }
+
     // -----------------------------------------------------------------
-    // preferredMultiFactorAuth()
+    // pendingMultiFactorAuth($method)
     // -----------------------------------------------------------------
 
-    public function test_preferred_multi_factor_auth_returns_preferred_one(): void
+    public function test_pending_multi_factor_auth_finds_pending_row(): void
+    {
+        $user = User::factory()->create();
+
+        MultiFactorAuth::create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+
+        $pending = $user->pendingMultiFactorAuth('authenticator');
+
+        $this->assertNotNull($pending);
+        $this->assertEquals('authenticator', $pending->method);
+        $this->assertEquals('pending', $pending->status);
+    }
+
+    public function test_pending_multi_factor_auth_does_not_return_active(): void
+    {
+        $user = User::factory()->create();
+
+        $user->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
+        ]);
+
+        $this->assertNull($user->pendingMultiFactorAuth('authenticator'));
+    }
+
+    // -----------------------------------------------------------------
+    // preferredMultiFactorAuth() — limited to active rows
+    // -----------------------------------------------------------------
+
+    public function test_preferred_multi_factor_auth_returns_preferred_active(): void
     {
         $user = User::factory()->create();
 
         $user->multiFactorAuths()->create([
             'method' => 'authenticator',
             'preferred' => false,
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
         $user->multiFactorAuths()->create([
             'method' => 'email',
             'preferred' => true,
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
 
         $preferred = $user->preferredMultiFactorAuth;
 
         $this->assertNotNull($preferred);
         $this->assertEquals('email', $preferred->method);
-        $this->assertTrue($preferred->preferred);
     }
 
-    public function test_preferred_multi_factor_auth_returns_null_when_none_preferred(): void
+    public function test_preferred_multi_factor_auth_returns_null_when_only_pending(): void
     {
         $user = User::factory()->create();
 
-        $user->multiFactorAuths()->create([
+        MultiFactorAuth::create([
+            'user_id' => $user->id,
             'method' => 'authenticator',
-            'preferred' => false,
+            'preferred' => true,
+            'status' => MultiFactorAuth::STATUS_PENDING,
         ]);
 
         $this->assertNull($user->preferredMultiFactorAuth);
     }
 
     // -----------------------------------------------------------------
-    // addMultiFactorAuth('authenticator')
+    // addMultiFactorAuth('authenticator') — creates a pending row
     // -----------------------------------------------------------------
 
-    public function test_add_multi_factor_auth_authenticator_creates_record_and_returns_qr_code(): void
+    public function test_add_authenticator_creates_pending_row_and_returns_qr_code(): void
     {
         $user = User::factory()->create();
         $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
@@ -128,295 +182,232 @@ class HasMultiAuthTest extends TestCase
         $result = $user->addMultiFactorAuth('authenticator');
 
         $this->assertIsArray($result);
+        $this->assertEquals('Success', $result['status']);
         $this->assertArrayHasKey('qr_code', $result);
         $this->assertArrayHasKey('secret', $result);
-        $this->assertArrayHasKey('method', $result);
         $this->assertEquals('authenticator', $result['method']);
         $this->assertNotEmpty($result['qr_code']);
         $this->assertNotEmpty($result['secret']);
 
-        // Verify record was created in the database
+        // Row exists in pending state, not visible to active relation
         $this->assertDatabaseHas('multi_factor_auths', [
             'user_id' => $user->id,
             'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
         ]);
+        $this->assertNull($user->multiFactorAuth('authenticator'));
+        $this->assertNotNull($user->pendingMultiFactorAuth('authenticator'));
     }
 
-    public function test_add_multi_factor_auth_authenticator_reuses_existing_secret(): void
+    public function test_add_authenticator_replaces_existing_pending_row_with_fresh_secret(): void
+    {
+        $user = User::factory()->create();
+        $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
+
+        $first = $user->addMultiFactorAuth('authenticator');
+        $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
+        $second = $user->addMultiFactorAuth('authenticator');
+
+        // Each call generates a new secret — re-clicking restarts setup.
+        $this->assertNotEquals($first['secret'], $second['secret']);
+        // Still only one row (updateOrCreate keyed on user_id+method).
+        $this->assertEquals(1, MultiFactorAuth::where('user_id', $user->id)
+            ->where('method', 'authenticator')
+            ->count());
+    }
+
+    public function test_add_authenticator_rejects_when_already_active(): void
     {
         $user = User::factory()->create();
 
-        // Create the first authenticator MFA
+        $user->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
+        ]);
         $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
-        $firstResult = $user->addMultiFactorAuth('authenticator');
-        $firstSecret = $firstResult['secret'];
 
-        // Reload relations and call again
-        $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
-        $secondResult = $user->addMultiFactorAuth('authenticator');
+        $result = $user->addMultiFactorAuth('authenticator');
 
-        // Should reuse the same secret
-        $this->assertEquals($firstSecret, $secondResult['secret']);
-
-        // Should not create a duplicate record
-        $this->assertEquals(1, $user->multiFactorAuths()->where('method', 'authenticator')->count());
+        $this->assertEquals('Error', $result['status']);
+        $this->assertEquals('Authenticator already configured.', $result['message']);
     }
 
     // -----------------------------------------------------------------
-    // addMultiFactorAuth('email')
+    // addMultiFactorAuth('email') — creates an active row directly
     // -----------------------------------------------------------------
 
-    public function test_add_multi_factor_auth_email_creates_record(): void
+    public function test_add_email_creates_active_record(): void
     {
         $user = User::factory()->create();
         $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
 
         $result = $user->addMultiFactorAuth('email');
 
-        $this->assertIsArray($result);
+        $this->assertEquals('Success', $result['status']);
         $this->assertEquals('Email Configured.', $result['message']);
 
         $this->assertDatabaseHas('multi_factor_auths', [
             'user_id' => $user->id,
             'method' => 'email',
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
     }
 
-    public function test_add_multi_factor_auth_email_returns_already_configured_if_exists(): void
+    public function test_add_email_returns_already_configured_if_exists(): void
     {
         $user = User::factory()->create();
 
         $user->multiFactorAuths()->create([
             'method' => 'email',
             'preferred' => true,
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
-
         $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
+
         $result = $user->addMultiFactorAuth('email');
 
-        $this->assertIsArray($result);
         $this->assertEquals('Email already Configured.', $result['message']);
-
-        // Should not create a duplicate record
         $this->assertEquals(1, $user->multiFactorAuths()->where('method', 'email')->count());
     }
 
-    // -----------------------------------------------------------------
-    // addMultiFactorAuth() with unknown method
-    // -----------------------------------------------------------------
-
-    public function test_add_multi_factor_auth_with_unknown_method_returns_null(): void
+    public function test_add_with_unknown_method_returns_null(): void
     {
         $user = User::factory()->create();
         $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
 
-        $result = $user->addMultiFactorAuth('sms');
-
-        $this->assertNull($result);
+        $this->assertNull($user->addMultiFactorAuth('sms'));
     }
 
     // -----------------------------------------------------------------
-    // verifyMFAOTP() - authenticator
+    // MultiFactorAuth::verifyOTP() — instance method, dispatches by method
     // -----------------------------------------------------------------
 
-    public function test_verify_mfa_otp_authenticator_returns_true_for_valid_otp(): void
+    public function test_verify_authenticator_otp_returns_true_for_valid_otp(): void
     {
         $user = User::factory()->create();
         $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
 
         $result = $user->addMultiFactorAuth('authenticator');
         $secret = $result['secret'];
+        $validOtp = TOTP::create($secret)->now();
 
-        // Generate a valid OTP from the secret
-        $totp = TOTP::create($secret);
-        $validOtp = $totp->now();
+        $pending = $user->pendingMultiFactorAuth('authenticator');
+        $this->assertNotNull($pending);
 
-        // Reload the relation so multiFactorAuth() can find it
-        $user->load('multiFactorAuths');
+        $this->assertTrue($pending->verifyOTP($validOtp));
 
-        $verified = $user->verifyMFAOTP('authenticator', $validOtp);
-
-        $this->assertTrue($verified);
+        // After verify, row becomes active and last_used is set
+        $pending->refresh();
+        $this->assertEquals(MultiFactorAuth::STATUS_ACTIVE, $pending->status);
+        $this->assertNotNull($pending->last_used);
     }
 
-    public function test_verify_mfa_otp_authenticator_returns_false_for_wrong_otp(): void
+    public function test_verify_authenticator_otp_returns_false_for_wrong_otp(): void
     {
         $user = User::factory()->create();
         $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
 
         $user->addMultiFactorAuth('authenticator');
-        $user->load('multiFactorAuths');
+        $pending = $user->pendingMultiFactorAuth('authenticator');
 
-        $verified = $user->verifyMFAOTP('authenticator', '000000');
-
-        $this->assertFalse($verified);
+        $this->assertFalse($pending->verifyOTP('000000'));
+        $pending->refresh();
+        $this->assertEquals(MultiFactorAuth::STATUS_PENDING, $pending->status);
     }
 
-    public function test_verify_mfa_otp_authenticator_updates_last_used_on_success(): void
-    {
-        $user = User::factory()->create();
-        $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
-
-        $result = $user->addMultiFactorAuth('authenticator');
-        $secret = $result['secret'];
-
-        $totp = TOTP::create($secret);
-        $validOtp = $totp->now();
-
-        $user->load('multiFactorAuths');
-        $user->verifyMFAOTP('authenticator', $validOtp);
-
-        $auth = $user->multiFactorAuths()->where('method', 'authenticator')->first();
-        $this->assertNotNull($auth->last_used);
-    }
-
-    // -----------------------------------------------------------------
-    // verifyMFAOTP() - email
-    // -----------------------------------------------------------------
-
-    public function test_verify_mfa_otp_email_returns_true_for_valid_otp(): void
+    public function test_verify_email_otp_returns_true_for_valid_otp_and_consumes_it(): void
     {
         $user = User::factory()->create();
 
-        $plainOtp = '123456';
-
-        $user->multiFactorAuths()->create([
+        $auth = $user->multiFactorAuths()->create([
             'method' => 'email',
             'preferred' => true,
-            'otp' => $plainOtp,
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
+            'otp' => '654321',
             'expires_at' => now()->addMinutes(10),
         ]);
 
-        $user->load('multiFactorAuths');
-
-        $verified = $user->verifyMFAOTP('email', $plainOtp);
-
-        $this->assertTrue($verified);
-    }
-
-    public function test_verify_mfa_otp_email_returns_false_for_wrong_otp(): void
-    {
-        $user = User::factory()->create();
-
-        $user->multiFactorAuths()->create([
-            'method' => 'email',
-            'preferred' => true,
-            'otp' => '123456',
-            'expires_at' => now()->addMinutes(10),
-        ]);
-
-        $user->load('multiFactorAuths');
-
-        $verified = $user->verifyMFAOTP('email', '999999');
-
-        $this->assertFalse($verified);
-    }
-
-    public function test_verify_mfa_otp_email_returns_false_when_expired(): void
-    {
-        $user = User::factory()->create();
-
-        $plainOtp = '123456';
-
-        $user->multiFactorAuths()->create([
-            'method' => 'email',
-            'preferred' => true,
-            'otp' => $plainOtp,
-            'expires_at' => now()->subMinutes(1),
-        ]);
-
-        $user->load('multiFactorAuths');
-
-        $verified = $user->verifyMFAOTP('email', $plainOtp);
-
-        $this->assertFalse($verified);
-    }
-
-    public function test_verify_mfa_otp_email_clears_otp_on_success(): void
-    {
-        $user = User::factory()->create();
-
-        $plainOtp = '654321';
-
-        $user->multiFactorAuths()->create([
-            'method' => 'email',
-            'preferred' => true,
-            'otp' => $plainOtp,
-            'expires_at' => now()->addMinutes(10),
-        ]);
-
-        $user->load('multiFactorAuths');
-        $user->verifyMFAOTP('email', $plainOtp);
-
-        $auth = $user->multiFactorAuths()->where('method', 'email')->first();
+        $this->assertTrue($auth->verifyOTP('654321'));
+        $auth->refresh();
         $this->assertNull($auth->getAttributes()['otp']);
         $this->assertNull($auth->expires_at);
         $this->assertNotNull($auth->last_used);
     }
 
-    // -----------------------------------------------------------------
-    // verifyMFAOTP() - recovery
-    // -----------------------------------------------------------------
-
-    public function test_verify_mfa_otp_recovery_returns_true_for_valid_code(): void
+    public function test_verify_email_otp_returns_false_when_expired(): void
     {
         $user = User::factory()->create();
 
-        config(['neev.recovery_codes' => 8]);
-        $codes = $user->generateRecoveryCodes();
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
+            'otp' => '123456',
+            'expires_at' => now()->subMinutes(1),
+        ]);
 
-        // Load recovery codes into the relation
-        $user->load('recoveryCodes');
-
-        $verified = $user->verifyMFAOTP('recovery', $codes[0]);
-
-        $this->assertTrue($verified);
+        $this->assertFalse($auth->verifyOTP('123456'));
     }
 
-    public function test_verify_mfa_otp_recovery_returns_false_for_invalid_code(): void
+    public function test_verify_email_otp_returns_false_for_wrong_otp(): void
     {
         $user = User::factory()->create();
 
-        config(['neev.recovery_codes' => 8]);
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
+            'otp' => '123456',
+            'expires_at' => now()->addMinutes(10),
+        ]);
+
+        $this->assertFalse($auth->verifyOTP('999999'));
+    }
+
+    // -----------------------------------------------------------------
+    // MultiFactorAuth::verifyAuthenticatorOTP() — pure static helper
+    // -----------------------------------------------------------------
+
+    public function test_static_authenticator_verify_returns_true_for_valid_otp(): void
+    {
+        $totp = TOTP::create();
+        $secret = $totp->getSecret();
+        $validOtp = $totp->now();
+
+        $this->assertTrue(MultiFactorAuth::verifyAuthenticatorOTP($secret, $validOtp));
+    }
+
+    public function test_static_authenticator_verify_returns_false_for_wrong_otp(): void
+    {
+        $totp = TOTP::create();
+
+        $this->assertFalse(MultiFactorAuth::verifyAuthenticatorOTP($totp->getSecret(), '000000'));
+    }
+
+    // -----------------------------------------------------------------
+    // RecoveryCode::verify() — instance method
+    // -----------------------------------------------------------------
+
+    public function test_recovery_code_verify_returns_true_for_correct_code(): void
+    {
+        $user = User::factory()->create();
+
+        config(['neev.recovery_codes' => 4]);
+        $codes = $user->generateRecoveryCodes();
+
+        $stored = $user->recoveryCodes()->first();
+        $this->assertTrue($stored->verify($codes[0]));
+    }
+
+    public function test_recovery_code_verify_returns_false_for_wrong_code(): void
+    {
+        $user = User::factory()->create();
+
+        config(['neev.recovery_codes' => 4]);
         $user->generateRecoveryCodes();
 
-        $user->load('recoveryCodes');
-
-        $verified = $user->verifyMFAOTP('recovery', 'invalidcode');
-
-        $this->assertFalse($verified);
-    }
-
-    public function test_verify_mfa_otp_recovery_replaces_used_code(): void
-    {
-        $user = User::factory()->create();
-
-        config(['neev.recovery_codes' => 8]);
-        $codes = $user->generateRecoveryCodes();
-        $usedCode = $codes[0];
-
-        $user->load('recoveryCodes');
-        $user->verifyMFAOTP('recovery', $usedCode);
-
-        // The old code should no longer work
-        $user->load('recoveryCodes');
-        $verified = $user->verifyMFAOTP('recovery', $usedCode);
-
-        $this->assertFalse($verified);
-    }
-
-    // -----------------------------------------------------------------
-    // verifyMFAOTP() - no auth record
-    // -----------------------------------------------------------------
-
-    public function test_verify_mfa_otp_returns_false_for_unknown_method_with_no_auth_record(): void
-    {
-        $user = User::factory()->create();
-        $user->load('multiFactorAuths');
-
-        $verified = $user->verifyMFAOTP('authenticator', '123456');
-
-        $this->assertFalse($verified);
+        $stored = $user->recoveryCodes()->first();
+        $this->assertFalse($stored->verify('not-the-code'));
     }
 
     // -----------------------------------------------------------------
@@ -461,7 +452,6 @@ class HasMultiAuthTest extends TestCase
         $secondCodes = $user->generateRecoveryCodes();
         $this->assertEquals(5, $user->recoveryCodes()->count());
 
-        // New codes should be different from old codes
         $this->assertNotEquals($firstCodes, $secondCodes);
     }
 
@@ -473,19 +463,12 @@ class HasMultiAuthTest extends TestCase
 
         $codes = $user->generateRecoveryCodes();
 
-        // The stored codes should be hashed (not plain text)
         $storedCodes = $user->recoveryCodes()->pluck('code')->toArray();
         foreach ($storedCodes as $index => $storedCode) {
-            // Hashed values should not match plain text
             $this->assertNotEquals($codes[$index], $storedCode);
-            // But Hash::check should verify them
             $this->assertTrue(Hash::check($codes[$index], $storedCode));
         }
     }
-
-    // -----------------------------------------------------------------
-    // recoveryCodes()
-    // -----------------------------------------------------------------
 
     public function test_recovery_codes_relationship_works(): void
     {

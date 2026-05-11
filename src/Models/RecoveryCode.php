@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Hash;
 
 /**
  * @property int $id
@@ -29,5 +30,10 @@ class RecoveryCode extends Model
     public function user()
     {
         return $this->belongsTo(User::getClass(), 'user_id');
+    }
+
+    public function verify(string $otp): bool
+    {
+        return Hash::check($otp, $this->code);
     }
 }

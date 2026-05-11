@@ -197,6 +197,7 @@ class LoginTest extends TestCase
             'method' => 'authenticator',
             'preferred' => true,
             'secret' => 'testsecret',
+            'status' => 'active',
         ]);
 
         $response = $this->postJson('/neev/login', [

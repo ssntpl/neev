@@ -46,6 +46,10 @@ return [
     // Number of single-use recovery codes per user.
     'recovery_codes' => 8,
 
+    // Days to keep pending authenticator MFA setup rows that were never verified.
+    // Schedule `neev:clean-pending-mfa-setups` to delete rows past this window.
+    'mfa_pending_retention_days' => 2,
+
     /*
     |--------------------------------------------------------------------------
     | Verification

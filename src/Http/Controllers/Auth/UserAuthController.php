@@ -601,7 +601,20 @@ class UserAuthController extends Controller
             $attempt->multi_factor_method = $request->auth_method;
             $attempt->save();
         }
-        if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
+
+        $verified = false;
+        if ($request->auth_method === 'recovery') {
+            $matched = $user->recoveryCodes->first(fn ($c) => $c->verify($request->otp));
+            if ($matched) {
+                $matched->delete();
+                $verified = true;
+            }
+        } else {
+            $auth = $user->multiFactorAuth($request->auth_method);
+            $verified = (bool) $auth?->verifyOTP($request->otp);
+        }
+
+        if ($verified) {
             if ($request->action === 'verify') {
                 return back()->with('status', 'Code verified.');
             }
@@ -611,6 +624,30 @@ class UserAuthController extends Controller
         }
 
         return back()->withErrors(['message' => 'Code is invalid']);
+    }
+
+    public function verifyMFASetupOTPStore(Request $request)
+    {
+        $request->validate([
+            'otp' => ['required'],
+            'auth_method' => ['required', 'string'],
+        ]);
+
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return back()->withErrors(['message' => 'User not found.']);
+        }
+
+        $pending = $user->pendingMultiFactorAuth($request->auth_method);
+        if (!$pending) {
+            return back()->withErrors(['message' => 'No pending setup found. Please start setup again.']);
+        }
+
+        if (!$pending->verifyOTP($request->otp)) {
+            return back()->withErrors(['message' => 'Code verification failed.']);
+        }
+
+        return back()->with('status', 'MFA enabled successfully.');
     }
 
     private function isDomainVerified(string $email): bool

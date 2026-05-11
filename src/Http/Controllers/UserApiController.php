@@ -38,6 +38,7 @@ class UserApiController extends Controller
         $res = $user?->addMultiFactorAuth($request->auth_method);
         if (!$res) {
             return response()->json([
+                'status' => 'Failed',
                 'message' => 'Auth was not added.',
             ], 400);
         }

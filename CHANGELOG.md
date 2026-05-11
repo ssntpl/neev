@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Two-step authenticator MFA setup with `status` column** — `multi_factor_auths` rows are created as `status=pending` for authenticator and only become `status=active` after the user verifies an OTP, preventing abandoned setups from enforcing MFA on next login. The `multiFactorAuths` relation is now scoped to active rows; pending rows are reachable via the new `pendingMultiFactorAuth($method)` accessor on `HasMultiAuth`. Email MFA is unchanged — rows are created as active immediately
+- **New setup-verify endpoints** — `POST /neev/mfa/otp/verify/setup` (`UserAuthApiController::verifyMFASetupOTP`, `neev:api`) and `POST /account/otp/mfa/setup` (`UserAuthController::verifyMFASetupOTPStore`, web account context) finalize a pending authenticator setup by verifying the OTP and promoting the row to active. Existing `/mfa/otp/verify` (login) endpoints are untouched
+- **`MultiFactorAuth` model gained domain methods** — `static getQrCodeForAuthenticatorSetup($secret, $email)` (pure SVG renderer), `static verifyAuthenticatorOTP($secret, $otp)` (pure TOTP math), instance `verifyOTP($otp)` (dispatches by method, auto-promotes pending → active and updates `last_used`)
+- **`RecoveryCode::verify($otp)` instance method** — replaces the inline `Hash::check` previously in `HasMultiAuth::verifyMFAOTP`
+- **`neev:clean-pending-mfa-setups` artisan command** — deletes pending authenticator rows older than `neev.mfa_pending_retention_days` (default `2`). Schedule it alongside `neev:clean-login-attempts` for periodic cleanup
+- **`mfa_pending_retention_days` config key** (default `2`) — retention window for pending MFA setup rows before pruning
+
+### Removed
+- **`HasMultiAuth::verifyMFAOTP($method, $otp)` dispatcher** — verification now happens directly on the relevant model (`MultiFactorAuth::verifyOTP` for authenticator/email, `RecoveryCode::verify` for recovery codes). Controllers call the model methods explicitly
+
 ## [0.4.4] - 2026-03-11
 
 ### Fixed

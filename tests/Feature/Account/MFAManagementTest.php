@@ -4,7 +4,9 @@ namespace Ssntpl\Neev\Tests\Feature\Account;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use OTPHP\TOTP;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
+use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -32,7 +34,7 @@ class MFAManagementTest extends TestCase
     // POST /neev/mfa/add — add MFA method
     // -----------------------------------------------------------------
 
-    public function test_add_authenticator_mfa(): void
+    public function test_add_authenticator_mfa_creates_pending_row_and_returns_qr(): void
     {
         [$user, $token] = $this->authenticatedUser();
 
@@ -42,10 +44,97 @@ class MFAManagementTest extends TestCase
             ]);
 
         $response->assertOk();
-
-        // Should return QR code and secret for authenticator method
         $this->assertNotNull($response->json('qr_code'));
         $this->assertNotNull($response->json('secret'));
+
+        // Row exists in pending state, hidden from the active relation.
+        $this->assertDatabaseHas('multi_factor_auths', [
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+        $this->assertNull($user->multiFactorAuth('authenticator'));
+    }
+
+    // -----------------------------------------------------------------
+    // POST /neev/mfa/otp/verify/setup — finalize authenticator setup
+    // -----------------------------------------------------------------
+
+    public function test_setup_verify_marks_pending_authenticator_active(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $setup = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'authenticator'])
+            ->assertOk();
+
+        $secret = $setup->json('secret');
+        $validOtp = TOTP::create($secret)->now();
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/otp/verify/setup', [
+                'auth_method' => 'authenticator',
+                'otp' => $validOtp,
+            ]);
+
+        $response->assertOk()
+            ->assertJsonPath('status', 'Success')
+            ->assertJsonPath('method', 'authenticator');
+
+        $this->assertDatabaseHas('multi_factor_auths', [
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
+        ]);
+    }
+
+    public function test_setup_verify_rejects_wrong_otp_and_keeps_row_pending(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'authenticator'])
+            ->assertOk();
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/otp/verify/setup', [
+                'auth_method' => 'authenticator',
+                'otp' => '000000',
+            ]);
+
+        $response->assertStatus(400)
+            ->assertJsonPath('message', 'Code verification failed.');
+
+        $this->assertDatabaseHas('multi_factor_auths', [
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+    }
+
+    public function test_setup_verify_returns_400_when_no_pending_row(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/otp/verify/setup', [
+                'auth_method' => 'authenticator',
+                'otp' => '123456',
+            ]);
+
+        $response->assertStatus(400)
+            ->assertJsonPath('message', 'No pending setup found. Please start setup again.');
+    }
+
+    public function test_setup_verify_requires_otp_and_auth_method(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/otp/verify/setup', []);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['otp', 'auth_method']);
     }
 
     public function test_add_email_mfa(): void

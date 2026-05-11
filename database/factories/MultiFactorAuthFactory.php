@@ -15,11 +15,17 @@ class MultiFactorAuthFactory extends Factory
             'user_id' => UserFactory::new(),
             'method' => 'authenticator',
             'preferred' => true,
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ];
     }
 
     public function email(): static
     {
         return $this->state(['method' => 'email']);
+    }
+
+    public function pending(): static
+    {
+        return $this->state(['status' => MultiFactorAuth::STATUS_PENDING]);
     }
 }

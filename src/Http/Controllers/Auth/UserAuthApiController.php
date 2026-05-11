@@ -568,6 +568,7 @@ class UserAuthApiController extends Controller
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
+                'status' => 'Failed',
                 'message' => 'Credentials are wrong.',
             ], 403);
         }
@@ -576,12 +577,26 @@ class UserAuthApiController extends Controller
         $availableMethods = $this->getMfaOptions($user);
         if ($authMethod !== 'recovery' && !in_array($authMethod, $availableMethods, true)) {
             return response()->json([
+                'status' => 'Failed',
                 'message' => 'Invalid auth method.',
             ], 400);
         }
 
-        if (!$user->verifyMFAOTP($authMethod, $request->otp)) {
+        $verified = false;
+        if ($authMethod === 'recovery') {
+            $matched = $user->recoveryCodes->first(fn ($c) => $c->verify($request->otp));
+            if ($matched) {
+                $matched->delete();
+                $verified = true;
+            }
+        } else {
+            $auth = $user->multiFactorAuth($authMethod);
+            $verified = (bool) $auth?->verifyOTP($request->otp);
+        }
+
+        if (!$verified) {
             return response()->json([
+                'status' => 'Failed',
                 'message' => 'Code verification failed.'
             ], 400);
         }
@@ -604,6 +619,43 @@ class UserAuthApiController extends Controller
             'expires_in' => $expiryMinutes,
             'mfa_options' => null,
             'email_verified' => $user->hasVerifiedEmail(),
+        ]);
+    }
+
+    public function verifyMFASetupOTP(Request $request)
+    {
+        $request->validate([
+            'otp' => 'required',
+            'auth_method' => 'required|string',
+        ]);
+
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'User not found.',
+            ], 403);
+        }
+
+        $pending = $user->pendingMultiFactorAuth($request->auth_method);
+        if (!$pending) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'No pending setup found. Please start setup again.',
+            ], 400);
+        }
+
+        if (!$pending->verifyOTP($request->otp)) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'Code verification failed.',
+            ], 400);
+        }
+
+        return response()->json([
+            'status' => 'Success',
+            'method' => $request->auth_method,
+            'message' => 'MFA enabled successfully.',
         ]);
     }
 }

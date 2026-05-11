@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
 use Ssntpl\Neev\Models\LoginAttempt;
+use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithMfaJwtToken;
@@ -30,6 +31,7 @@ class MFATest extends TestCase
             'method' => $mfaMethod,
             'preferred' => true,
             'secret' => $secret,
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
 
         $attempt = $user->loginAttempts()->create([
@@ -120,6 +122,7 @@ class MFATest extends TestCase
             'preferred' => true,
             'otp' => $otpPlaintext,
             'expires_at' => now()->addMinutes(15),
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
 
         $attempt = $user->loginAttempts()->create([
@@ -160,6 +163,7 @@ class MFATest extends TestCase
             'preferred' => true,
             'otp' => $otpPlaintext,
             'expires_at' => now()->subMinutes(5),
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
 
         $attempt = $user->loginAttempts()->create([
@@ -192,6 +196,7 @@ class MFATest extends TestCase
             'method' => 'authenticator',
             'preferred' => true,
             'secret' => Base32::encodeUpper(random_bytes(32)),
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
 
         config(['neev.recovery_codes' => 8]);
@@ -234,6 +239,7 @@ class MFATest extends TestCase
             'method' => 'authenticator',
             'preferred' => true,
             'secret' => Base32::encodeUpper(random_bytes(32)),
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
 
         config(['neev.recovery_codes' => 8]);
