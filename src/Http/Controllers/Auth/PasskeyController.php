@@ -427,7 +427,7 @@ class PasskeyController extends Controller
         );
 
         $validator->check(
-            publicKeyCredentialSource: $credentialSource,
+            credentialRecord: $credentialSource,
             authenticatorAssertionResponse: $credential->response,
             publicKeyCredentialRequestOptions: $options,
             host: $rpId,
