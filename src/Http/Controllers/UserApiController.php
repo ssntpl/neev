@@ -23,7 +23,7 @@ class UserApiController extends Controller
         $user = User::model()->find($request->user()?->id);
 
         return response()->json([
-            'data' => $user?->multiFactorAuths,
+            'data' => $user?->activeMultiFactorAuths,
         ]);
     }
 
@@ -59,14 +59,14 @@ class UserApiController extends Controller
             ], 403);
         }
 
-        if ($auth->preferred && count($user->multiFactorAuths) > 1) {
-            $method = $user->multiFactorAuths()->whereNot('method', $auth->method)->first();
+        if ($auth->preferred && count($user->activeMultiFactorAuths) > 1) {
+            $method = $user->activeMultiFactorAuths()->whereNot('method', $auth->method)->first();
             $method->preferred = true;
             $method->save();
         }
         $auth->delete();
 
-        if (count($user->multiFactorAuths) <= 1) {
+        if (count($user->activeMultiFactorAuths) <= 1) {
             $user->recoveryCodes()->delete();
         }
 
@@ -288,7 +288,7 @@ class UserApiController extends Controller
                 'message' => 'User not found.',
             ], 404);
         }
-        if (count($user->multiFactorAuths) === 0) {
+        if (count($user->activeMultiFactorAuths) === 0) {
             return response()->json([
                 'message' => 'Enable MFA first.',
             ], 400);
@@ -316,8 +316,8 @@ class UserApiController extends Controller
             ], 400);
         }
 
-        // Remove preferred from all other methods
-        $user->multiFactorAuths()->update(['preferred' => false]);
+        // Remove preferred from all other active methods
+        $user->activeMultiFactorAuths()->update(['preferred' => false]);
 
         // Set this method as preferred
         $auth->preferred = true;

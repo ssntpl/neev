@@ -44,21 +44,34 @@ Neev supports multiple MFA methods that provide an extra layer of security beyon
 'otp_max' => 999999,      // Maximum OTP value (6 digits)
 ```
 
+### Pending Setup Retention
+
+```php
+// config/neev.php
+'mfa_pending_retention_days' => 2,  // Days a pending setup row lives before pruning
+```
+
+Used by the `neev:clean-pending-mfa-setups` artisan command (see [Maintenance](#maintenance)).
+
 ---
 
 ## Authenticator Apps (TOTP)
 
 Time-based One-Time Password using apps like Google Authenticator, Authy, 1Password.
 
-### Setup Flow
+### Setup Flow (two-step)
 
-1. User navigates to Security settings
-2. Clicks "Enable Authenticator"
-3. Scans QR code with authenticator app
-4. Enters verification code
-5. MFA is enabled
+Authenticator setup is a two-step process so that a `multi_factor_auths` row is only marked `active` after the user proves they scanned the QR code. Half-finished setups stay in `pending` state and are pruned by a scheduled command — they do not enforce MFA at login.
 
-### API: Enable Authenticator
+1. User navigates to Security settings and clicks "Enable Authenticator"
+2. Server creates a `multi_factor_auths` row with `status = pending` and returns the QR code + TOTP secret
+3. User scans the QR code with their authenticator app
+4. User enters the current TOTP code from the app
+5. Server verifies the OTP against the pending row, promotes `status` to `active`, and the method becomes usable for login
+
+If the user never completes step 4, the pending row stays inactive (no MFA challenge at login) and is eventually deleted by the cron command.
+
+### Step 1 — Start Setup
 
 ```bash
 curl -X POST https://yourapp.com/neev/mfa/add \
@@ -71,16 +84,59 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 
 ```json
 {
+  "status": "Success",
   "qr_code": "<svg xmlns=\"http://www.w3.org/2000/svg\">...</svg>",
   "secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
   "method": "authenticator"
 }
 ```
 
+A row is created with `status = pending`. Re-calling `/mfa/add` for the same user replaces the existing pending row with a fresh secret (each Add click restarts setup). Returns `Error` if an `active` authenticator row already exists.
+
+### Step 2 — Verify OTP and Activate
+
+```bash
+curl -X POST https://yourapp.com/neev/mfa/setup/otp/verify \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "auth_method": "authenticator",
+    "otp": "123456"
+  }'
+```
+
+**Response (success):**
+
+```json
+{
+  "status": "Success",
+  "method": "authenticator",
+  "message": "MFA enabled successfully."
+}
+```
+
+**Response (wrong OTP, 400):**
+
+```json
+{
+  "message": "Code verification failed."
+}
+```
+
+**Response (no pending row, 400):**
+
+```json
+{
+  "message": "No pending setup found. Please start setup again."
+}
+```
+
+On success, the row's status transitions to `active` and the method enforces MFA at next login.
+
 ### Display QR Code
 
 ```html
-<!-- In your view -->
+<!-- In your view (after Step 1) -->
 <div class="qr-code">
     {!! $response['qr_code'] !!}
 </div>
@@ -89,7 +145,7 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 
 ### Verify OTP During Login
 
-Verify the OTP after an MFA-required login:
+After an MFA-required login, verify the OTP against an active row (this endpoint is for login only, not setup):
 
 ```bash
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
@@ -254,12 +310,13 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 ### Web Flow
 
 ```php
-// After successful password verification
-if (count($user->multiFactorAuths) > 0) {
+// After successful password verification — only active rows trigger MFA challenge.
+// Pending rows from an abandoned setup do NOT enforce MFA.
+if (count($user->activeMultiFactorAuths) > 0) {
     session(['email' => $email]);
     return redirect(route('otp.mfa.create',
         $user->preferredMultiFactorAuth?->method ??
-        $user->multiFactorAuths()->first()?->method
+        $user->activeMultiFactorAuths()->first()?->method
     ));
 }
 ```
@@ -366,26 +423,61 @@ class User extends Authenticatable
 ### Available Methods
 
 ```php
-// Get all MFA configurations
-$user->multiFactorAuths();
+// Get all MFA rows for the user (any status — pending or active)
+$user->multiFactorAuths;
 
-// Get specific MFA method
+// Get only active MFA rows (filter applied at the relation level)
+$user->activeMultiFactorAuths;
+
+// Get a specific MFA method (returns the ACTIVE row for that method, or null)
 $user->multiFactorAuth('authenticator');
 
-// Get preferred MFA method
-$user->preferredMultiFactorAuth();
+// Get the pending row for a method (used by setup-verify path only)
+$user->pendingMultiFactorAuth('authenticator');
 
-// Add MFA method (returns QR code for authenticator)
+// Get preferred MFA method (active rows only)
+$user->preferredMultiFactorAuth;
+
+// Add MFA method
+// - 'authenticator': creates a pending row and returns QR code + secret
+// - 'email': creates an active row directly (email is already trusted)
 $user->addMultiFactorAuth('authenticator');
 
-// Verify OTP code
-$user->verifyMFAOTP('authenticator', '123456');
-
-// Get recovery codes
-$user->recoveryCodes();
-
-// Generate new recovery codes
+// Generate new recovery codes (replaces any existing)
 $user->generateRecoveryCodes();
+```
+
+### MultiFactorAuth Model Methods
+
+```php
+use Ssntpl\Neev\Models\MultiFactorAuth;
+
+// Static helpers — pure functions, useful in tests and outside the auth flow.
+
+// Render the SVG QR code for a given secret + user email
+$svg = MultiFactorAuth::getQrCodeForAuthenticatorSetup($secret, $user->email);
+
+// Pure TOTP verification (no DB side effects)
+$ok = MultiFactorAuth::verifyAuthenticatorOTP($secret, '123456');
+
+// Instance methods on a MultiFactorAuth row.
+
+// Dispatches by row method (authenticator or email). On success,
+// promotes pending → active and updates last_used.
+$auth->verifyOTP('123456');
+```
+
+### RecoveryCode Model Method
+
+```php
+use Ssntpl\Neev\Models\RecoveryCode;
+
+// Instance method — verifies a single recovery code by Hash::check.
+// Callers should iterate the user's recoveryCodes collection.
+$matched = $user->recoveryCodes->first(fn ($c) => $c->verify($input));
+if ($matched) {
+    $matched->delete();
+}
 ```
 
 ---
@@ -398,14 +490,17 @@ $user->generateRecoveryCodes();
 |--------|------|-------------|
 | id | bigint | Primary key |
 | user_id | bigint | Foreign key to users |
-| method | string | MFA method name |
-| secret | string | TOTP secret (encrypted) |
+| method | string | MFA method name (`authenticator`, `email`) |
+| secret | string | TOTP secret (encrypted at rest) |
 | preferred | boolean | Is this the preferred method |
-| otp | string | Current email OTP (if applicable) |
-| expires_at | timestamp | OTP expiry time |
+| status | string | `pending` (setup not verified) or `active` (usable) — defaults to `pending` |
+| otp | string | Current email OTP (if applicable, hashed) |
+| expires_at | timestamp | Email OTP expiry time |
 | last_used | timestamp | Last successful verification |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
+
+Unique constraint on `(user_id, method)` — at most one row per user per method. Re-clicking "Add" on a half-finished authenticator setup updates the existing pending row with a fresh secret.
 
 ### recovery_codes Table
 
@@ -447,12 +542,12 @@ $user->generateRecoveryCodes();
 ### Require MFA for All Users
 
 ```php
-// In a middleware or event listener
+// In a middleware or event listener — only ACTIVE rows count as "MFA enabled"
 public function handle($request, $next)
 {
     $user = $request->user();
 
-    if (count($user->multiFactorAuths) === 0) {
+    if (count($user->activeMultiFactorAuths) === 0) {
         return redirect()->route('account.security')
             ->with('warning', 'Please enable MFA for your account.');
     }
@@ -493,6 +588,27 @@ $domain->rules()->where('name', 'mfa')->first();
 1. Check for typos (case-insensitive)
 2. Ensure code hasn't been used
 3. Codes might have been regenerated
+
+---
+
+## Maintenance
+
+### Pruning Abandoned Setups
+
+Pending authenticator setups (rows with `status = pending`) that the user never completed accumulate over time. Neev provides an artisan command to delete them:
+
+```bash
+php artisan neev:clean-pending-mfa-setups
+```
+
+Deletes pending rows older than `neev.mfa_pending_retention_days` (default: 2 days). Schedule it alongside `neev:clean-login-attempts`:
+
+```php
+// In your app's scheduler
+$schedule->command('neev:clean-pending-mfa-setups')->daily();
+```
+
+Pending rows do not enforce MFA at login (they're invisible to the active relation), so missing the schedule does not lock users out — it only lets the table grow.
 
 ---
 

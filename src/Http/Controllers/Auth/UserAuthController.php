@@ -275,9 +275,9 @@ class UserAuthController extends Controller
         }
         $this->auth->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, attempt: $attempt, viaRequestAuth: true);
 
-        if (count($user->multiFactorAuths) > 0) {
+        if (count($user->activeMultiFactorAuths) > 0) {
             session(['email' => $user->email]);
-            return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->multiFactorAuths()->first()?->method));
+            return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method));
         }
 
         if ($request->redirect && $request->redirect != '/' && str_starts_with($request->redirect, '/')) {
@@ -626,7 +626,7 @@ class UserAuthController extends Controller
         return back()->withErrors(['message' => 'Code is invalid']);
     }
 
-    public function verifyMFASetupOTPStore(Request $request)
+    public function verifyMfaSetupOtp(Request $request)
     {
         $request->validate([
             'otp' => ['required'],

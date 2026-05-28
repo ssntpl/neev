@@ -244,9 +244,10 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| POST | `/neev/mfa/add` | Enable MFA method | Yes |
+| POST | `/neev/mfa/add` | Start MFA setup (authenticator → pending row + QR; email → active row) | Yes |
+| POST | `/neev/mfa/setup/otp/verify` | Finalize authenticator setup (verify OTP, activate pending row) | Yes |
 | DELETE | `/neev/mfa/delete` | Disable MFA method | Yes |
-| POST | `/neev/mfa/otp/verify` | Verify MFA code | MFA JWT |
+| POST | `/neev/mfa/otp/verify` | Verify MFA code during login | MFA JWT |
 | POST | `/neev/recoveryCodes` | Generate recovery codes | Yes |
 
 ### Passkey Endpoints
@@ -371,7 +372,8 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 | GET | `/account/loginAttempts` | `account.loginAttempts` | Login history |
 | PUT | `/account/profileUpdate` | `profile.update` | Update profile |
 | POST | `/account/change-password` | `password.change` | Change password |
-| POST | `/account/multiFactorAuth` | `multi.auth` | Add MFA |
+| POST | `/account/multiFactorAuth` | `multi.auth` | Add MFA (authenticator → pending + QR; email → active) |
+| POST | `/account/mfa/setup/otp/verify` | `mfa.setup.otp.verify` | Finalize authenticator setup |
 | PUT | `/account/multiFactorAuth` | `multi.preferred` | Set preferred MFA |
 | GET | `/account/recovery/codes` | `recovery.codes` | View recovery codes |
 | POST | `/account/recovery/codes` | `recovery.generate` | Generate new codes |
@@ -407,14 +409,26 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 
 ### Enable Authenticator App
 
+Authenticator setup is a two-step flow — the row is only marked `active` after the user verifies an OTP.
+
 ```php
-// Returns QR code and secret
+// Step 1: creates a pending multi_factor_auths row, returns QR code + secret
 $result = $user->addMultiFactorAuth('authenticator');
-// $result['qr_code'] - SVG QR code
+// $result['qr_code'] - SVG QR code (show to user)
 // $result['secret'] - TOTP secret
+
+// Step 2: user enters the OTP from their authenticator app, then:
+$pending = $user->pendingMultiFactorAuth('authenticator');
+if ($pending && $pending->verifyOTP($userSubmittedOtp)) {
+    // Row promoted to active; MFA is now enabled for next login
+}
 ```
 
+If the user never completes step 2, the pending row stays inactive (no MFA challenge at login) and is pruned by the `neev:clean-pending-mfa-setups` artisan command.
+
 ### Enable Email OTP
+
+Email MFA is single-step — the row is created as `active` immediately (email is already verified separately).
 
 ```php
 $user->addMultiFactorAuth('email');
@@ -423,8 +437,24 @@ $user->addMultiFactorAuth('email');
 ### Verify MFA
 
 ```php
-if ($user->verifyMFAOTP('authenticator', '123456')) {
-    // MFA verified
+// Login verify — operates on active rows
+if ($auth = $user->multiFactorAuth('authenticator')) {
+    if ($auth->verifyOTP('123456')) {
+        // MFA verified — last_used updated; row stays active
+    }
+}
+
+// Setup verify — operates on the pending row from addMultiFactorAuth('authenticator')
+if ($pending = $user->pendingMultiFactorAuth('authenticator')) {
+    if ($pending->verifyOTP('123456')) {
+        // Pending row promoted to active; MFA enabled
+    }
+}
+
+// Recovery code verify — iterate user's codes and consume the matching one
+$matched = $user->recoveryCodes->first(fn ($c) => $c->verify('abc123defg'));
+if ($matched) {
+    $matched->delete();
 }
 ```
 
@@ -439,12 +469,22 @@ $codes = $user->generateRecoveryCodes();
 ### API Usage
 
 ```bash
-# Enable MFA
+# Step 1: Start authenticator setup (creates a pending row, returns QR + secret)
 curl -X POST https://yourapp.com/neev/mfa/add \
   -H "Authorization: Bearer {token}" \
   -d '{"auth_method": "authenticator"}'
 
-# Verify MFA during login
+# Step 2: Finalize setup (verifies OTP, promotes pending → active)
+curl -X POST https://yourapp.com/neev/mfa/setup/otp/verify \
+  -H "Authorization: Bearer {token}" \
+  -d '{"auth_method": "authenticator", "otp": "123456"}'
+
+# Email MFA (single-step — row is created as active immediately)
+curl -X POST https://yourapp.com/neev/mfa/add \
+  -H "Authorization: Bearer {token}" \
+  -d '{"auth_method": "email"}'
+
+# Verify MFA during login (uses MFA JWT from login response)
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
   -H "Authorization: Bearer {mfa_jwt_token}" \
   -d '{"auth_method": "authenticator", "otp": "123456"}'

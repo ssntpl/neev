@@ -14,17 +14,17 @@ class HasMultiAuthTest extends TestCase
     use RefreshDatabase;
 
     // -----------------------------------------------------------------
-    // multiFactorAuths() — relation filters to active only
+    // multiFactorAuths() — unfiltered, returns all statuses
     // -----------------------------------------------------------------
 
-    public function test_multi_factor_auths_returns_only_active_records(): void
+    public function test_multi_factor_auths_returns_all_records_including_pending(): void
     {
         $user = User::factory()->create();
 
         $user->multiFactorAuths()->create([
             'method' => 'authenticator',
             'preferred' => true,
-            'status' => MultiFactorAuth::STATUS_ACTIVE,
+            'status' => MultiFactorAuth::STATUS_PENDING,
         ]);
         $user->multiFactorAuths()->create([
             'method' => 'email',
@@ -35,20 +35,6 @@ class HasMultiAuthTest extends TestCase
         $this->assertCount(2, $user->multiFactorAuths);
     }
 
-    public function test_multi_factor_auths_excludes_pending_records(): void
-    {
-        $user = User::factory()->create();
-
-        // Pending row should not appear in the relation.
-        MultiFactorAuth::create([
-            'user_id' => $user->id,
-            'method' => 'authenticator',
-            'status' => MultiFactorAuth::STATUS_PENDING,
-        ]);
-
-        $this->assertCount(0, $user->multiFactorAuths);
-    }
-
     public function test_multi_factor_auths_returns_empty_when_none_configured(): void
     {
         $user = User::factory()->create();
@@ -57,7 +43,39 @@ class HasMultiAuthTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // multiFactorAuth($method)
+    // activeMultiFactorAuths() — relation filters to active only
+    // -----------------------------------------------------------------
+
+    public function test_active_multi_factor_auths_returns_only_active(): void
+    {
+        $user = User::factory()->create();
+
+        $user->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
+        ]);
+        $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
+        ]);
+
+        $this->assertCount(2, $user->activeMultiFactorAuths);
+    }
+
+    public function test_active_multi_factor_auths_excludes_pending(): void
+    {
+        $user = User::factory()->create();
+
+        $user->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+
+        $this->assertCount(0, $user->activeMultiFactorAuths);
+    }
+
+    // -----------------------------------------------------------------
+    // multiFactorAuth($method) — returns active row only
     // -----------------------------------------------------------------
 
     public function test_multi_factor_auth_finds_active_by_method(): void
@@ -70,7 +88,7 @@ class HasMultiAuthTest extends TestCase
             'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
 
-        $user->load('multiFactorAuths');
+        $user->load('activeMultiFactorAuths');
 
         $auth = $user->multiFactorAuth('authenticator');
 
@@ -89,11 +107,12 @@ class HasMultiAuthTest extends TestCase
     {
         $user = User::factory()->create();
 
-        MultiFactorAuth::create([
-            'user_id' => $user->id,
+        $user->multiFactorAuths()->create([
             'method' => 'authenticator',
             'status' => MultiFactorAuth::STATUS_PENDING,
         ]);
+
+        $user->load('activeMultiFactorAuths');
 
         $this->assertNull($user->multiFactorAuth('authenticator'));
     }
@@ -189,13 +208,13 @@ class HasMultiAuthTest extends TestCase
         $this->assertNotEmpty($result['qr_code']);
         $this->assertNotEmpty($result['secret']);
 
-        // Row exists in pending state, not visible to active relation
+        // Row exists in pending state; active relation excludes it
         $this->assertDatabaseHas('multi_factor_auths', [
             'user_id' => $user->id,
             'method' => 'authenticator',
             'status' => MultiFactorAuth::STATUS_PENDING,
         ]);
-        $this->assertNull($user->multiFactorAuth('authenticator'));
+        $this->assertEquals(0, $user->activeMultiFactorAuths()->where('method', 'authenticator')->count());
         $this->assertNotNull($user->pendingMultiFactorAuth('authenticator'));
     }
 

@@ -160,10 +160,13 @@ All prefixed with `/account`.
 
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| POST | `/account/multiFactorAuth` | `multi.auth` | Add MFA method |
+| POST | `/account/multiFactorAuth` | `multi.auth` | Add MFA method (authenticator creates a `pending` row + returns QR; email creates an `active` row) |
+| POST | `/account/mfa/setup/otp/verify` | `mfa.setup.otp.verify` | Finalize authenticator setup — verifies the OTP against the pending row and promotes it to `active` |
 | PUT | `/account/multiFactorAuth` | `multi.preferred` | Set preferred MFA |
 | GET | `/account/recovery/codes` | `recovery.codes` | Show recovery codes |
 | POST | `/account/recovery/codes` | `recovery.generate` | Generate new codes |
+
+Authenticator setup is a two-step flow: `POST /account/multiFactorAuth` with `auth_method=authenticator` creates a pending row and returns the QR code; the user then submits `POST /account/mfa/setup/otp/verify` with `auth_method=authenticator` and `otp=<code>` to activate it. Half-finished setups stay pending and do not enforce MFA at login. See [docs/mfa.md](./mfa.md) for the full flow.
 
 ---
 

@@ -361,6 +361,8 @@ POST /neev/email/change/verify?id={user_id}&email={new_email}&signature={signatu
 
 ### Add MFA Method
 
+Authenticator setup is a **two-step flow**: this endpoint creates a `pending` row and returns the QR code. The user then calls `/neev/mfa/setup/otp/verify` to activate. Email setup is single-step — the row is created as `active` immediately.
+
 ```http
 POST /neev/mfa/add
 ```
@@ -374,33 +376,88 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "auth_method": "authenticator"  // or "email"
+    "auth_method": "authenticator"
 }
 ```
 
-**Response (authenticator):**
+**Response (authenticator — pending row created):**
 
 ```json
 {
+    "status": "Success",
     "qr_code": "<svg>...</svg>",
     "secret": "JBSWY3DPEHPK3PXP",
     "method": "authenticator"
 }
 ```
 
-**Response (email):**
+Re-calling `/mfa/add` for the same user replaces the existing pending row with a fresh secret. Returns an `Error` status with `message: "Authenticator already configured."` if an `active` authenticator row already exists.
+
+**Response (email — active row created):**
 
 ```json
 {
+    "status": "Success",
+    "method": "email",
     "message": "Email Configured."
 }
 ```
 
 ---
 
-### Verify MFA OTP
+### Verify MFA Setup OTP
 
-Complete MFA verification after login.
+Finalize an authenticator setup started via `/neev/mfa/add`. Verifies the OTP against the pending row and promotes it to `active`. Returns 400 if no pending row exists or the OTP is wrong.
+
+```http
+POST /neev/mfa/setup/otp/verify
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Request Body:**
+
+```json
+{
+    "auth_method": "authenticator",
+    "otp": "123456"
+}
+```
+
+**Response (success):**
+
+```json
+{
+    "status": "Success",
+    "method": "authenticator",
+    "message": "MFA enabled successfully."
+}
+```
+
+**Response (no pending row, 400):**
+
+```json
+{
+    "message": "No pending setup found. Please start setup again."
+}
+```
+
+**Response (wrong OTP, 400):**
+
+```json
+{
+    "message": "Code verification failed."
+}
+```
+
+---
+
+### Verify MFA OTP (Login)
+
+Complete MFA verification after login. This endpoint operates against `active` rows only — used during the login challenge flow with an MFA JWT.
 
 ```http
 POST /neev/mfa/otp/verify

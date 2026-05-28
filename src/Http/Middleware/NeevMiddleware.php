@@ -23,6 +23,7 @@ class NeevMiddleware
         }
 
         // Re-query only if the app uses a custom user model
+        /** @var \Ssntpl\Neev\Models\User|null $user */
         $user = $authUser instanceof (User::getClass())
             ? $authUser
             : User::model()->find($authUser->id);
@@ -40,21 +41,21 @@ class NeevMiddleware
         }
 
         // Eager load MFA relationships to avoid N+1 queries
-        $user->loadMissing('multiFactorAuths', 'preferredMultiFactorAuth');
+        $user->loadMissing('activeMultiFactorAuths', 'preferredMultiFactorAuth');
 
         $attemptID = session('attempt_id');
         $attempt = $user->loginAttempts()->where('id', $attemptID)->first();
-        if ($attempt && count($user->multiFactorAuths ?? []) > 0) {
+        if ($attempt && count($user->activeMultiFactorAuths ?? []) > 0) {
             if (!$attempt->multi_factor_method) {
                 if ($request->expectsJson()) {
                     return response()->json([
                         'message' => 'MFA verification required.',
-                        'mfa_method' => $user->preferredMultiFactorAuth?->method ?? $user->multiFactorAuths()->first()?->method,
+                        'mfa_method' => $user->preferredMultiFactorAuth?->method ?? $user->activeMultiFactorAuths()->first()?->method,
                     ], 403);
                 }
-                return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth?->method ?? $user->multiFactorAuths()->first()?->method));
+                return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth?->method ?? $user->activeMultiFactorAuths()->first()?->method));
             }
-        } elseif (!$attempt && count($user->multiFactorAuths ?? []) > 0) {
+        } elseif (!$attempt && count($user->activeMultiFactorAuths ?? []) > 0) {
             return $this->unauthenticated($request, 'Unauthenticated.');
         }
 

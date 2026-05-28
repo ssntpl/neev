@@ -90,9 +90,10 @@ Table multi_factor_auths {
   user_id bigint [ref: > users.id]
   method varchar
   secret text [null, note: 'encrypted']
-  otp text [null]
+  otp text [null, note: 'hashed (email OTP)']
   preferred boolean [default: false]
-  expires_at timestamp [null]
+  status varchar [default: 'pending', note: 'pending until setup verified, then active']
+  expires_at timestamp [null, note: 'email OTP expiry']
   last_used timestamp [null]
   created_at timestamp
   updated_at timestamp

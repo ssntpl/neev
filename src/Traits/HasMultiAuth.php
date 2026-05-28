@@ -11,13 +11,18 @@ trait HasMultiAuth
 {
     public function multiFactorAuths()
     {
+        return $this->hasMany(MultiFactorAuth::class);
+    }
+
+    public function activeMultiFactorAuths()
+    {
         return $this->hasMany(MultiFactorAuth::class)
             ->where('status', MultiFactorAuth::STATUS_ACTIVE);
     }
 
     public function multiFactorAuth($method)
     {
-        return $this->multiFactorAuths->where('method', $method)->first();
+        return $this->activeMultiFactorAuths->where('method', $method)->first();
     }
 
     public function pendingMultiFactorAuth($method)

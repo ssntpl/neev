@@ -216,6 +216,14 @@ Specify custom model classes that extend Neev's default models.
 
 Number of single-use recovery codes generated per user.
 
+### Pending Setup Retention
+
+```php
+'mfa_pending_retention_days' => 2,
+```
+
+Days a pending authenticator setup row (`status = pending`) lives in `multi_factor_auths` before being deleted by the `neev:clean-pending-mfa-setups` artisan command. Pending rows do not enforce MFA at login, so this is purely a DB hygiene knob — missing the schedule does not lock users out.
+
 ---
 
 ## OAuth Providers
@@ -470,6 +478,7 @@ return [
     // MFA
     'multi_factor_auth' => ['authenticator', 'email'],
     'recovery_codes' => 8,
+    'mfa_pending_retention_days' => 2,
 
     // OAuth
     'oauth' => [

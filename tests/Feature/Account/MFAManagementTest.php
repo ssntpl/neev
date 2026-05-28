@@ -47,17 +47,17 @@ class MFAManagementTest extends TestCase
         $this->assertNotNull($response->json('qr_code'));
         $this->assertNotNull($response->json('secret'));
 
-        // Row exists in pending state, hidden from the active relation.
+        // Row exists in pending state, excluded from active relation.
         $this->assertDatabaseHas('multi_factor_auths', [
             'user_id' => $user->id,
             'method' => 'authenticator',
             'status' => MultiFactorAuth::STATUS_PENDING,
         ]);
-        $this->assertNull($user->multiFactorAuth('authenticator'));
+        $this->assertEquals(0, $user->activeMultiFactorAuths()->where('method', 'authenticator')->count());
     }
 
     // -----------------------------------------------------------------
-    // POST /neev/mfa/otp/verify/setup — finalize authenticator setup
+    // POST /neev/mfa/setup/otp/verify — finalize authenticator setup
     // -----------------------------------------------------------------
 
     public function test_setup_verify_marks_pending_authenticator_active(): void
@@ -72,7 +72,7 @@ class MFAManagementTest extends TestCase
         $validOtp = TOTP::create($secret)->now();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/mfa/otp/verify/setup', [
+            ->postJson('/neev/mfa/setup/otp/verify', [
                 'auth_method' => 'authenticator',
                 'otp' => $validOtp,
             ]);
@@ -97,7 +97,7 @@ class MFAManagementTest extends TestCase
             ->assertOk();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/mfa/otp/verify/setup', [
+            ->postJson('/neev/mfa/setup/otp/verify', [
                 'auth_method' => 'authenticator',
                 'otp' => '000000',
             ]);
@@ -117,7 +117,7 @@ class MFAManagementTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/mfa/otp/verify/setup', [
+            ->postJson('/neev/mfa/setup/otp/verify', [
                 'auth_method' => 'authenticator',
                 'otp' => '123456',
             ]);
@@ -131,7 +131,7 @@ class MFAManagementTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/mfa/otp/verify/setup', []);
+            ->postJson('/neev/mfa/setup/otp/verify', []);
 
         $response->assertStatus(422)
             ->assertJsonValidationErrors(['otp', 'auth_method']);

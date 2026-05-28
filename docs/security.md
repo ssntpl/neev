@@ -411,23 +411,15 @@ $this->recoveryCodes()->create([
 
 ### Usage
 
-Each code is single-use:
+Each code is single-use — verify it via `RecoveryCode::verify()` (instance method) and delete the matching row to invalidate it:
 
 ```php
-public function verifyMFAOTP($method, $otp): bool
-{
-    if ($method === 'recovery') {
-        $code = $this->recoveryCodes->first(function ($rc) use ($otp) {
-            return Hash::check($otp, $rc->code);
-        });
+// Iterate the user's recovery codes and consume the matching one.
+$matched = $user->recoveryCodes->first(fn ($rc) => $rc->verify($otp));
 
-        if ($code) {
-            $code->code = Str::random(10);  // Invalidate
-            $code->save();
-            return true;
-        }
-    }
-    // ...
+if ($matched) {
+    $matched->delete();
+    // Recovery code accepted; proceed with login.
 }
 ```
 

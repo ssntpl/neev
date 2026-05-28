@@ -25,7 +25,7 @@ class UserController extends Controller
         if (!$user) {
             return redirect()->route('neev.login');
         }
-        $user->loadMissing('multiFactorAuths', 'passkeys');
+        $user->loadMissing('activeMultiFactorAuths', 'passkeys');
 
         return view('neev::account.security', ['user' => $user, 'delete_account' => true]);
     }
@@ -161,14 +161,14 @@ class UserController extends Controller
                 return back()->withErrors(['message' => 'Auth was not deleted.']);
             }
 
-            if ($auth->preferred && count($user->multiFactorAuths) > 1) {
-                $method = $user->multiFactorAuths()->whereNot('method', $auth->method)->first();
+            if ($auth->preferred && count($user->activeMultiFactorAuths) > 1) {
+                $method = $user->activeMultiFactorAuths()->whereNot('method', $auth->method)->first();
                 $method->preferred = true;
                 $method->save();
             }
             $auth->delete();
 
-            if (count($user->multiFactorAuths) <= 1) {
+            if (count($user->activeMultiFactorAuths) <= 1) {
                 $user->recoveryCodes()->delete();
             }
 
@@ -211,7 +211,7 @@ class UserController extends Controller
     public function recoveryCodes(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
-        if (count($user?->multiFactorAuths) === 0) {
+        if (count($user?->activeMultiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
 
@@ -225,7 +225,7 @@ class UserController extends Controller
     public function generateRecoveryCodes(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
-        if (count($user?->multiFactorAuths) === 0) {
+        if (count($user?->activeMultiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
         $user->recoveryCodes()->delete();

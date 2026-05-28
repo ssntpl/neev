@@ -114,8 +114,8 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
 
             Route::post('/multiFactorAuth', [UserController::class, 'addMultiFactorAuth'])
                 ->name('multi.auth');
-            Route::post('/otp/mfa/setup', [UserAuthController::class, 'verifyMFASetupOTPStore'])
-                ->name('otp.mfa.setup.store');
+            Route::post('/mfa/setup/otp/verify', [UserAuthController::class, 'verifyMfaSetupOtp'])
+                ->name('mfa.setup.otp.verify');
             Route::put('/multiFactorAuth', [UserController::class, 'preferredMultiFactorAuth'])
                 ->name('multi.preferred');
             Route::get('/recovery/codes', [UserController::class, 'recoveryCodes'])
@@ -215,7 +215,7 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
     });
 
     Route::middleware('neev:api')->group(function () {
-        Route::post('/mfa/otp/verify/setup', [UserAuthApiController::class, 'verifyMFASetupOTP']);
+        Route::post('/mfa/setup/otp/verify', [UserAuthApiController::class, 'verifyMfaSetupOtp']);
 
         Route::post('/logout', [UserAuthApiController::class, 'logout']);
         Route::post('/logoutAll', [UserAuthApiController::class, 'logoutAll']);

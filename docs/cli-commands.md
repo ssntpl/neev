@@ -40,6 +40,22 @@ php artisan neev:clean-login-attempts
 
 Retention is controlled by `config('neev.last_login_attempts_in_days')`.
 
+### `neev:clean-pending-mfa-setups`
+
+Delete authenticator MFA rows that are still in `pending` state past the configured retention window — typically abandoned setups the user never completed.
+
+```bash
+php artisan neev:clean-pending-mfa-setups
+```
+
+Retention is controlled by `config('neev.mfa_pending_retention_days')` (default `2`). Pending rows don't enforce MFA at login, so this is purely a DB hygiene job — skipping it doesn't break auth, it only lets the table grow.
+
+Schedule it alongside `neev:clean-login-attempts`, e.g.:
+
+```php
+$schedule->command('neev:clean-pending-mfa-setups')->daily();
+```
+
 ---
 
 ## Tenant / Team Provisioning
