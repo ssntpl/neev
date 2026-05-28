@@ -211,6 +211,32 @@ Configure in `config/neev.php`:
 
 Biometric authentication using fingerprints, face recognition, or hardware security keys.
 
+### Configuration
+
+Configured in `config/neev.php`:
+
+```php
+// Relying Party ID — the domain passkeys are bound to. Defaults to the
+// host parsed from APP_URL (e.g. "example.com").
+'relying_party_id' => parse_url(config('app.url'), PHP_URL_HOST),
+
+// Origins permitted to complete WebAuthn ceremonies. Add every origin
+// (including subdomains/alternate hosts) the browser may report. The
+// origin must be reachable on the relying party ID above.
+'allowed_origins' => [
+    config('app.url'),
+],
+```
+
+For multi-origin setups (e.g. apex domain plus subdomains, or staging plus production), list every allowed origin explicitly:
+
+```php
+'allowed_origins' => [
+    'https://app.example.com',
+    'https://admin.example.com',
+],
+```
+
 ### Registration Flow
 
 1. User authenticates with password
