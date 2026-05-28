@@ -338,7 +338,6 @@ class PasskeyController extends Controller
     {
         $input = json_decode($request->assertion, true);
         $rawId = $input['rawId'];
-        $type = $input['type'];
         $authData = $input['response']['authenticatorData'];
         $signature = Base64UrlSafe::decode($input['response']['signature']);
 
@@ -353,8 +352,6 @@ class PasskeyController extends Controller
             $signature,
             $input['response']['userHandle'] ?? null
         );
-
-        $credential = new PublicKeyCredential($type, $rawId, $response);
 
         $rpId = config('neev.relying_party_id');
 
@@ -425,11 +422,11 @@ class PasskeyController extends Controller
         );
 
         $validator->check(
-            publicKeyCredentialSource: $credentialSource,
-            authenticatorAssertionResponse: $credential->response,
-            publicKeyCredentialRequestOptions: $options,
-            host: $rpId,
-            userHandle: $input['response']['userHandle'] ?? null
+            $credentialSource,
+            $response,
+            $options,
+            $rpId,
+            $input['response']['userHandle'] ?? null
         );
 
         $passkey->last_used = now();
