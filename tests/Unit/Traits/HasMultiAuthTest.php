@@ -75,7 +75,8 @@ class HasMultiAuthTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // multiFactorAuth($method) — returns active row only
+    // multiFactorAuth($method, $status = null) — returns one row;
+    // pass a status to restrict, or omit for any-status.
     // -----------------------------------------------------------------
 
     public function test_multi_factor_auth_finds_active_by_method(): void
@@ -88,9 +89,9 @@ class HasMultiAuthTest extends TestCase
             'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
 
-        $user->load('activeMultiFactorAuths');
+        $user->load('multiFactorAuths');
 
-        $auth = $user->multiFactorAuth('authenticator');
+        $auth = $user->multiFactorAuth('authenticator', MultiFactorAuth::STATUS_ACTIVE);
 
         $this->assertNotNull($auth);
         $this->assertEquals('authenticator', $auth->method);
@@ -103,7 +104,7 @@ class HasMultiAuthTest extends TestCase
         $this->assertNull($user->multiFactorAuth('sms'));
     }
 
-    public function test_multi_factor_auth_does_not_return_pending(): void
+    public function test_multi_factor_auth_with_active_status_filter_skips_pending(): void
     {
         $user = User::factory()->create();
 
@@ -112,42 +113,79 @@ class HasMultiAuthTest extends TestCase
             'status' => MultiFactorAuth::STATUS_PENDING,
         ]);
 
-        $user->load('activeMultiFactorAuths');
+        $user->load('multiFactorAuths');
 
-        $this->assertNull($user->multiFactorAuth('authenticator'));
+        $this->assertNull($user->multiFactorAuth('authenticator', MultiFactorAuth::STATUS_ACTIVE));
     }
 
-    // -----------------------------------------------------------------
-    // pendingMultiFactorAuth($method)
-    // -----------------------------------------------------------------
-
-    public function test_pending_multi_factor_auth_finds_pending_row(): void
-    {
-        $user = User::factory()->create();
-
-        MultiFactorAuth::create([
-            'user_id' => $user->id,
-            'method' => 'authenticator',
-            'status' => MultiFactorAuth::STATUS_PENDING,
-        ]);
-
-        $pending = $user->pendingMultiFactorAuth('authenticator');
-
-        $this->assertNotNull($pending);
-        $this->assertEquals('authenticator', $pending->method);
-        $this->assertEquals('pending', $pending->status);
-    }
-
-    public function test_pending_multi_factor_auth_does_not_return_active(): void
+    public function test_multi_factor_auth_with_pending_status_filter_finds_pending(): void
     {
         $user = User::factory()->create();
 
         $user->multiFactorAuths()->create([
             'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+
+        $user->load('multiFactorAuths');
+
+        $auth = $user->multiFactorAuth('authenticator', MultiFactorAuth::STATUS_PENDING);
+        $this->assertNotNull($auth);
+        $this->assertEquals('pending', $auth->status);
+    }
+
+    public function test_multi_factor_auth_without_status_returns_any_row(): void
+    {
+        $user = User::factory()->create();
+
+        $user->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+
+        $user->load('multiFactorAuths');
+
+        // No status arg → returns row regardless of status
+        $auth = $user->multiFactorAuth('authenticator');
+        $this->assertNotNull($auth);
+        $this->assertEquals('pending', $auth->status);
+    }
+
+    // -----------------------------------------------------------------
+    // pendingMultiFactorAuths() — relation returns only pending rows
+    // -----------------------------------------------------------------
+
+    public function test_pending_multi_factor_auths_returns_only_pending(): void
+    {
+        $user = User::factory()->create();
+
+        $user->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+        $user->multiFactorAuths()->create([
+            'method' => 'email',
             'status' => MultiFactorAuth::STATUS_ACTIVE,
         ]);
 
-        $this->assertNull($user->pendingMultiFactorAuth('authenticator'));
+        $this->assertCount(1, $user->pendingMultiFactorAuths);
+        $this->assertEquals('authenticator', $user->pendingMultiFactorAuths->first()->method);
+    }
+
+    public function test_pending_multi_factor_auths_filter_by_method(): void
+    {
+        $user = User::factory()->create();
+
+        $user->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+
+        $pending = $user->pendingMultiFactorAuths->where('method', 'authenticator')->first();
+        $this->assertNotNull($pending);
+        $this->assertEquals('pending', $pending->status);
+
+        $this->assertNull($user->pendingMultiFactorAuths->where('method', 'email')->first());
     }
 
     // -----------------------------------------------------------------
@@ -215,7 +253,7 @@ class HasMultiAuthTest extends TestCase
             'status' => MultiFactorAuth::STATUS_PENDING,
         ]);
         $this->assertEquals(0, $user->activeMultiFactorAuths()->where('method', 'authenticator')->count());
-        $this->assertNotNull($user->pendingMultiFactorAuth('authenticator'));
+        $this->assertNotNull($user->pendingMultiFactorAuths->where('method', 'authenticator')->first());
     }
 
     public function test_add_authenticator_replaces_existing_pending_row_with_fresh_secret(): void
@@ -310,7 +348,7 @@ class HasMultiAuthTest extends TestCase
         $secret = $result['secret'];
         $validOtp = TOTP::create($secret)->now();
 
-        $pending = $user->pendingMultiFactorAuth('authenticator');
+        $pending = $user->pendingMultiFactorAuths->where('method', 'authenticator')->first();
         $this->assertNotNull($pending);
 
         $this->assertTrue($pending->verifyOTP($validOtp));
@@ -327,7 +365,7 @@ class HasMultiAuthTest extends TestCase
         $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
 
         $user->addMultiFactorAuth('authenticator');
-        $pending = $user->pendingMultiFactorAuth('authenticator');
+        $pending = $user->pendingMultiFactorAuths->where('method', 'authenticator')->first();
 
         $this->assertFalse($pending->verifyOTP('000000'));
         $pending->refresh();

@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Models\LoginAttempt;
+use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\LaravelAcl\Models\Permission;
 use Ssntpl\Neev\Services\AuthService;
@@ -156,7 +157,7 @@ class UserController extends Controller
             return back()->withErrors(['message' => 'User not found.']);
         }
         if ($request->action === 'delete') {
-            $auth = $user->multiFactorAuth($request->auth_method);
+            $auth = $user->multiFactorAuth($request->auth_method, MultiFactorAuth::STATUS_ACTIVE);
             if (!$auth) {
                 return back()->withErrors(['message' => 'Auth was not deleted.']);
             }
@@ -194,7 +195,7 @@ class UserController extends Controller
         ]);
 
         $user = User::model()->find($request->user()?->id);
-        $auth = $user?->multiFactorAuth($request->auth_method);
+        $auth = $user?->multiFactorAuth($request->auth_method, MultiFactorAuth::STATUS_ACTIVE);
         if (!$user || !$auth) {
             return back()->withErrors(['message' => 'preferred auth was not updated.']);
         }

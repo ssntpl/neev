@@ -6,6 +6,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 
@@ -52,7 +53,7 @@ class UserApiController extends Controller
         ]);
 
         $user = User::model()->find($request->user()?->id);
-        $auth = $user?->multiFactorAuth($request->auth_method);
+        $auth = $user?->multiFactorAuth($request->auth_method, MultiFactorAuth::STATUS_ACTIVE);
         if (!$auth) {
             return response()->json([
                 'message' => 'Auth was not deleted.',
@@ -308,7 +309,7 @@ class UserApiController extends Controller
         ]);
 
         $user = User::model()->find($request->user()?->id);
-        $auth = $user?->multiFactorAuth($request->auth_method);
+        $auth = $user?->multiFactorAuth($request->auth_method, MultiFactorAuth::STATUS_ACTIVE);
 
         if (!$auth) {
             return response()->json([

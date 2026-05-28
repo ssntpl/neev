@@ -16,21 +16,23 @@ trait HasMultiAuth
 
     public function activeMultiFactorAuths()
     {
-        return $this->hasMany(MultiFactorAuth::class)
-            ->where('status', MultiFactorAuth::STATUS_ACTIVE);
+        return $this->multiFactorAuths()->active();
     }
 
-    public function multiFactorAuth($method)
+    public function pendingMultiFactorAuths()
     {
-        return $this->activeMultiFactorAuths->where('method', $method)->first();
+        return $this->multiFactorAuths()->pending();
     }
 
-    public function pendingMultiFactorAuth($method)
+    public function multiFactorAuth($method, $status = null)
     {
-        return MultiFactorAuth::where('user_id', $this->id)
-            ->where('method', $method)
-            ->where('status', MultiFactorAuth::STATUS_PENDING)
-            ->first();
+        $query = $this->multiFactorAuths()->where('method', $method);
+        if ($status === MultiFactorAuth::STATUS_ACTIVE) {
+            $query->active();
+        } elseif ($status === MultiFactorAuth::STATUS_PENDING) {
+            $query->pending();
+        }
+        return $query->first();
     }
 
     public function preferredMultiFactorAuth()
@@ -49,7 +51,7 @@ trait HasMultiAuth
     {
         switch ($method) {
             case 'authenticator':
-                if ($this->multiFactorAuth('authenticator')) {
+                if ($this->multiFactorAuth('authenticator', MultiFactorAuth::STATUS_ACTIVE)) {
                     return [
                         'status' => 'Error',
                         'method' => 'authenticator',
@@ -76,7 +78,7 @@ trait HasMultiAuth
                 ];
 
             case 'email':
-                if ($this->multiFactorAuth('email')) {
+                if ($this->multiFactorAuth('email', MultiFactorAuth::STATUS_ACTIVE)) {
                     return [
                         'status' => 'Error',
                         'method' => 'email',

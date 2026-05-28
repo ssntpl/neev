@@ -19,6 +19,7 @@ use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\LoginAttempt;
+use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
@@ -223,7 +224,7 @@ class UserAuthApiController extends Controller
 
     private function sendMfaEmailOTP(User $user): void
     {
-        $auth = $user->multiFactorAuth('email');
+        $auth = $user->multiFactorAuth('email', MultiFactorAuth::STATUS_ACTIVE);
         if (!$auth) {
             return;
         }
@@ -590,7 +591,7 @@ class UserAuthApiController extends Controller
                 $verified = true;
             }
         } else {
-            $auth = $user->multiFactorAuth($authMethod);
+            $auth = $user->multiFactorAuth($authMethod, MultiFactorAuth::STATUS_ACTIVE);
             $verified = (bool) $auth?->verifyOTP($request->otp);
         }
 
@@ -637,7 +638,7 @@ class UserAuthApiController extends Controller
             ], 403);
         }
 
-        $pending = $user->pendingMultiFactorAuth($request->auth_method);
+        $pending = $user->pendingMultiFactorAuths->where('method', $request->auth_method)->first();
         if (!$pending) {
             return response()->json([
                 'status' => 'Failed',

@@ -19,6 +19,7 @@ use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\LoginAttempt;
+use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
@@ -547,7 +548,7 @@ class UserAuthController extends Controller
 
         if ($method === 'email') {
             $user = User::findByEmail($email);
-            $auth = $user?->multiFactorAuth($method);
+            $auth = $user?->multiFactorAuth($method, MultiFactorAuth::STATUS_ACTIVE);
             if (!$auth) {
                 return back()->withErrors(['message' => 'Invalid Email.']);
             }
@@ -575,7 +576,7 @@ class UserAuthController extends Controller
     {
         $email = session('email');
         $user = User::findByEmail($email);
-        $auth = $user?->multiFactorAuth('email');
+        $auth = $user?->multiFactorAuth('email', MultiFactorAuth::STATUS_ACTIVE);
         if (!$auth) {
             return back()->withErrors(['message' => 'Invalid Email.']);
         }
@@ -610,7 +611,7 @@ class UserAuthController extends Controller
                 $verified = true;
             }
         } else {
-            $auth = $user->multiFactorAuth($request->auth_method);
+            $auth = $user->multiFactorAuth($request->auth_method, MultiFactorAuth::STATUS_ACTIVE);
             $verified = (bool) $auth?->verifyOTP($request->otp);
         }
 
@@ -638,7 +639,7 @@ class UserAuthController extends Controller
             return back()->withErrors(['message' => 'User not found.']);
         }
 
-        $pending = $user->pendingMultiFactorAuth($request->auth_method);
+        $pending = $user->pendingMultiFactorAuths->where('method', $request->auth_method)->first();
         if (!$pending) {
             return back()->withErrors(['message' => 'No pending setup found. Please start setup again.']);
         }

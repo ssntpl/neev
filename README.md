@@ -418,7 +418,7 @@ $result = $user->addMultiFactorAuth('authenticator');
 // $result['secret'] - TOTP secret
 
 // Step 2: user enters the OTP from their authenticator app, then:
-$pending = $user->pendingMultiFactorAuth('authenticator');
+$pending = $user->pendingMultiFactorAuths->where('method', 'authenticator')->first();
 if ($pending && $pending->verifyOTP($userSubmittedOtp)) {
     // Row promoted to active; MFA is now enabled for next login
 }
@@ -437,18 +437,19 @@ $user->addMultiFactorAuth('email');
 ### Verify MFA
 
 ```php
-// Login verify — operates on active rows
-if ($auth = $user->multiFactorAuth('authenticator')) {
+use Ssntpl\Neev\Models\MultiFactorAuth;
+
+// Login verify — restrict to active rows via the second argument
+if ($auth = $user->multiFactorAuth('authenticator', MultiFactorAuth::STATUS_ACTIVE)) {
     if ($auth->verifyOTP('123456')) {
         // MFA verified — last_used updated; row stays active
     }
 }
 
-// Setup verify — operates on the pending row from addMultiFactorAuth('authenticator')
-if ($pending = $user->pendingMultiFactorAuth('authenticator')) {
-    if ($pending->verifyOTP('123456')) {
-        // Pending row promoted to active; MFA enabled
-    }
+// Setup verify — fetch the pending row from the dedicated relation
+$pending = $user->pendingMultiFactorAuths->where('method', 'authenticator')->first();
+if ($pending && $pending->verifyOTP('123456')) {
+    // Pending row promoted to active; MFA enabled
 }
 
 // Recovery code verify — iterate user's codes and consume the matching one

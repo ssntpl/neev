@@ -423,17 +423,24 @@ class User extends Authenticatable
 ### Available Methods
 
 ```php
+use Ssntpl\Neev\Models\MultiFactorAuth;
+
 // Get all MFA rows for the user (any status — pending or active)
 $user->multiFactorAuths;
 
 // Get only active MFA rows (filter applied at the relation level)
 $user->activeMultiFactorAuths;
 
-// Get a specific MFA method (returns the ACTIVE row for that method, or null)
-$user->multiFactorAuth('authenticator');
+// Get only pending MFA rows (filter applied at the relation level)
+$user->pendingMultiFactorAuths;
 
-// Get the pending row for a method (used by setup-verify path only)
-$user->pendingMultiFactorAuth('authenticator');
+// Get a specific MFA method by method name.
+// Without a status arg, returns any row matching the method (active or pending).
+// Pass MultiFactorAuth::STATUS_ACTIVE to restrict to active rows (common case).
+$user->multiFactorAuth('authenticator', MultiFactorAuth::STATUS_ACTIVE);
+
+// For the setup-verify path, fetch the pending row via the relation + filter:
+$pending = $user->pendingMultiFactorAuths->where('method', 'authenticator')->first();
 
 // Get preferred MFA method (active rows only)
 $user->preferredMultiFactorAuth;
