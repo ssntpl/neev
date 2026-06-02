@@ -8,15 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Two-step authenticator MFA setup with `status` column** — `multi_factor_auths` rows are created as `status=pending` for authenticator and only become `status=active` after the user verifies an OTP, preventing abandoned setups from enforcing MFA on next login. On the `HasMultiAuth` trait, `multiFactorAuths()` returns all rows; new `activeMultiFactorAuths()` and `pendingMultiFactorAuths()` relations filter by status (defined via the model's `active` / `pending` scopes); `multiFactorAuth($method, $status = null)` accessor takes an optional status arg to restrict the lookup. Email MFA is unchanged — rows are created as active immediately
-- **New setup-verify endpoints** — `POST /neev/mfa/setup/otp/verify` (`UserAuthApiController::verifyMfaSetupOtp`, `neev:api`) and `POST /account/mfa/setup/otp/verify` (`UserAuthController::verifyMfaSetupOtp`, web account context) finalize a pending authenticator setup by verifying the OTP and promoting the row to active. Existing `/mfa/otp/verify` (login) endpoints are untouched
-- **`MultiFactorAuth` model gained domain methods** — `static getQrCodeForAuthenticatorSetup($secret, $email)` (pure SVG renderer), `static verifyAuthenticatorOTP($secret, $otp)` (pure TOTP math), instance `verifyOTP($otp)` (dispatches by method, auto-promotes pending → active and updates `last_used`)
-- **`RecoveryCode::verify($otp)` instance method** — replaces the inline `Hash::check` previously in `HasMultiAuth::verifyMFAOTP`
-- **`neev:clean-pending-mfa-setups` artisan command** — deletes pending authenticator rows older than `neev.mfa_pending_retention_days` (default `2`). Schedule it alongside `neev:clean-login-attempts` for periodic cleanup
-- **`mfa_pending_retention_days` config key** (default `2`) — retention window for pending MFA setup rows before pruning
-
-### Removed
-- **`HasMultiAuth::verifyMFAOTP($method, $otp)` dispatcher** — verification now happens directly on the relevant model (`MultiFactorAuth::verifyOTP` for authenticator/email, `RecoveryCode::verify` for recovery codes). Controllers call the model methods explicitly
+- **Passkey multi-origin support** — new `neev.relying_party_id` and `neev.allowed_origins` config keys let `PasskeyController` verify WebAuthn ceremonies against multiple origins (apex + subdomains, staging + production) bound to a single relying party ID. `CheckOrigin` replaced with `CheckAllowedOrigins`; RP ID and origin list are no longer hardcoded to `APP_URL`
 
 ## [0.4.4] - 2026-03-11
 

@@ -34,6 +34,14 @@ return [
         // 'apple',
     ],
 
+    // WebAuthn relying party ID — the domain passkeys are bound to (e.g. "example.com").
+    'relying_party_id' => parse_url(config('app.url'), PHP_URL_HOST),
+
+    // Origins permitted to complete WebAuthn ceremonies. List every allowed origin for multi-origin setups.
+    'allowed_origins' => [
+        config('app.url'),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Multi-Factor Authentication

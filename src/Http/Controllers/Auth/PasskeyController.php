@@ -22,11 +22,11 @@ use Webauthn\AuthenticatorDataLoader;
 use Webauthn\AuthenticatorSelectionCriteria;
 use Webauthn\CeremonyStep\CeremonyStepManager;
 use Webauthn\CeremonyStep\CheckAlgorithm;
+use Webauthn\CeremonyStep\CheckAllowedOrigins;
 use Webauthn\CeremonyStep\CheckAttestationFormatIsKnownAndValid;
 use Webauthn\CeremonyStep\CheckChallenge;
 use Webauthn\CeremonyStep\CheckCredentialId;
 use Webauthn\CeremonyStep\CheckHasAttestedCredentialData;
-use Webauthn\CeremonyStep\CheckOrigin;
 use Webauthn\CeremonyStep\CheckSignature;
 use Webauthn\CeremonyStep\CheckUserVerification;
 use Webauthn\CeremonyStep\CheckUserWasPresent;
@@ -76,9 +76,7 @@ class PasskeyController extends Controller
                 'message' => 'User not found',
             ], 400);
         }
-        $rpName = config('app.name', 'Neev');
-        $rpId = parse_url(config('app.url'), PHP_URL_HOST);
-
+        $rpId = config('neev.relying_party_id');
         $userId = strval($user->id);
 
         $challenge = random_bytes(32);
@@ -99,7 +97,7 @@ class PasskeyController extends Controller
 
         return response()->json([
             'rp' => [
-                'name' => $rpName,
+                'name' => $rpId,
                 'id'   => $rpId,
             ],
             'user' => [
@@ -130,7 +128,7 @@ class PasskeyController extends Controller
         }
         $input = json_decode($request->attestation, true);
 
-        $rpId = parse_url(config('app.url'), PHP_URL_HOST);
+        $rpId = config('neev.relying_party_id');
 
         // Retrieve challenge from server-side storage (not from client)
         $storedChallenge = Cache::pull("passkey_reg_challenge:{$user->id}");
@@ -165,7 +163,7 @@ class PasskeyController extends Controller
 
         // Rebuild PublicKeyCredentialCreationOptions
         $rp = new PublicKeyCredentialRpEntity(
-            name: config('app.name', 'Neev'),
+            name: $rpId,
             id: $rpId
         );
 
@@ -198,7 +196,7 @@ class PasskeyController extends Controller
         try {
             $ceremonySteps = new CeremonyStepManager([
                 new CheckChallenge(),
-                new CheckOrigin([$rpId]),
+                new CheckAllowedOrigins(config('neev.allowed_origins')),
                 new CheckAlgorithm(),
                 new CheckSignature(),
                 new CheckCredentialId(),
@@ -303,7 +301,7 @@ class PasskeyController extends Controller
                 );
             }
 
-            $rpId = parse_url(config('app.url'), PHP_URL_HOST);
+            $rpId = config('neev.relying_party_id');
             $challenge = random_bytes(32);
             $base64Challenge = Base64UrlSafe::encode($challenge);
 
@@ -340,7 +338,6 @@ class PasskeyController extends Controller
     {
         $input = json_decode($request->assertion, true);
         $rawId = $input['rawId'];
-        $type = $input['type'];
         $authData = $input['response']['authenticatorData'];
         $signature = Base64UrlSafe::decode($input['response']['signature']);
 
@@ -356,9 +353,7 @@ class PasskeyController extends Controller
             $input['response']['userHandle'] ?? null
         );
 
-        $credential = new PublicKeyCredential($type, $rawId, $response);
-
-        $rpId = parse_url(config('app.url'), PHP_URL_HOST);
+        $rpId = config('neev.relying_party_id');
 
         // Retrieve challenge from server-side storage (not from client)
         $cacheKey = 'passkey_login_challenge:' . hash('sha256', $request->email);
@@ -417,7 +412,7 @@ class PasskeyController extends Controller
         $validator = new AuthenticatorAssertionResponseValidator(
             new CeremonyStepManager([
                 new CheckChallenge(),
-                new CheckOrigin([$rpId]),
+                new CheckAllowedOrigins(config('neev.allowed_origins')),
                 new CheckAlgorithm(),
                 new CheckSignature(),
                 new CheckCredentialId(),
@@ -427,11 +422,11 @@ class PasskeyController extends Controller
         );
 
         $validator->check(
-            credentialRecord: $credentialSource,
-            authenticatorAssertionResponse: $credential->response,
-            publicKeyCredentialRequestOptions: $options,
-            host: $rpId,
-            userHandle: $input['response']['userHandle'] ?? null
+            $credentialSource,
+            $response,
+            $options,
+            $rpId,
+            $input['response']['userHandle'] ?? null
         );
 
         $passkey->last_used = now();

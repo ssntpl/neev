@@ -16,7 +16,11 @@ class PasskeyTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['app.url' => 'http://localhost']);
+        config([
+            'app.url' => 'http://localhost',
+            'neev.relying_party_id' => 'localhost',
+            'neev.allowed_origins' => ['http://localhost'],
+        ]);
     }
 
     protected function authenticatedUser(): array
@@ -165,6 +169,18 @@ class PasskeyTest extends TestCase
             ]);
     }
 
+    public function test_registration_options_use_configured_relying_party_id(): void
+    {
+        config(['neev.relying_party_id' => 'passkeys.example.com']);
+        [$user, $token] = $this->authenticatedUser();
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/passkeys/register/options');
+
+        $response->assertOk()
+            ->assertJsonPath('rp.id', 'passkeys.example.com');
+    }
+
     // -----------------------------------------------------------------
     // POST /passkeys/login/options (public endpoint) — login options
     // -----------------------------------------------------------------
@@ -183,6 +199,18 @@ class PasskeyTest extends TestCase
                 'rpId',
                 'allowCredentials',
             ]);
+    }
+
+    public function test_login_options_use_configured_relying_party_id(): void
+    {
+        config(['neev.relying_party_id' => 'passkeys.example.com']);
+        $user = User::factory()->create();
+        $this->createPasskey($user);
+
+        $response = $this->getJson('/neev/passkeys/login/options?email=' . urlencode($user->email));
+
+        $response->assertOk()
+            ->assertJsonPath('rpId', 'passkeys.example.com');
     }
 
     public function test_generate_login_options_fails_for_unknown_email(): void
