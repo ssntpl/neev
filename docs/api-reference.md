@@ -93,12 +93,15 @@ POST /neev/login
     "token": "jwt_mfa_token...",
     "expires_in": 30,
     "mfa_options": [
-        "authenticator",
-        "email"
+        { "id": 4, "name": "Work phone", "method": "authenticator" },
+        { "id": 7, "name": "Personal phone", "method": "authenticator" },
+        { "id": 9, "name": null, "method": "email" }
     ],
     "email_verified": true
 }
 ```
+
+`mfa_options` lists every active MFA instance as an object (`id`, `name`, `method`) — one entry per registered device, so a user with two authenticator apps gets two entries. Pass the chosen instance's `method` (and optionally its `id`) to [Verify MFA OTP](#verify-mfa-otp-login).
 
 When `auth_state` is `mfa_required`, the token is a short-lived JWT (type `mfa`) that can only be used to verify MFA. Complete MFA verification to get a full access token.
 `expires_in` is returned in minutes.
@@ -361,7 +364,7 @@ POST /neev/email/change/verify?id={user_id}&email={new_email}&signature={signatu
 
 ### Add MFA Method
 
-Authenticator setup is a **two-step flow**: this endpoint creates a `pending` row and returns the QR code. The user then calls `/neev/mfa/setup/otp/verify` to activate. Email setup is single-step — the row is created as `active` immediately.
+Authenticator setup is a **two-step flow**: this endpoint creates a `pending` row and returns the QR code. The user then calls `/neev/mfa/setup/otp/verify` to activate. The account email is created `active` immediately; a **different** email address is created `pending` and emailed a verification code (also activated via `/neev/mfa/setup/otp/verify`).
 
 ```http
 POST /neev/mfa/add
@@ -374,40 +377,75 @@ Authorization: Bearer {token}
 
 **Request Body:**
 
+| Field | Required | Notes |
+|-------|----------|-------|
+| `auth_method` | yes | `authenticator` or `email` |
+| `name` | optional | label for this instance |
+| `email` | optional | email method only — a destination other than the account email. Each address must be **unique per user**; re-adding an existing address returns `status: "Error"` |
+
 ```json
 {
     "auth_method": "authenticator"
 }
 ```
 
+`status` is never read from the request body — setup state is decided server-side.
+
 **Response (authenticator — pending row created):**
 
 ```json
 {
     "status": "Success",
+    "id": 5,
+    "name": null,
     "qr_code": "<svg>...</svg>",
     "secret": "JBSWY3DPEHPK3PXP",
     "method": "authenticator"
 }
 ```
 
-Re-calling `/mfa/add` for the same user replaces the existing pending row with a fresh secret. Returns an `Error` status with `message: "Authenticator already configured."` if an `active` authenticator row already exists.
+Re-calling `/mfa/add` with the same `name` while pending restarts that setup with a fresh secret; a different `name` registers an additional instance.
 
-**Response (email — active row created):**
+**Response (account email — active immediately):**
 
 ```json
-{
-    "status": "Success",
-    "method": "email",
-    "message": "Email Configured."
-}
+{ "status": "Success", "id": 6, "name": null, "email": "john@example.com", "method": "email", "message": "Email Configured." }
 ```
+
+**Response (other email — pending, code emailed):**
+
+```json
+{ "status": "Success", "id": 7, "name": "Backup", "email": "backup@example.com", "method": "email", "message": "Verification code sent. Enter it to enable this email." }
+```
+
+---
+
+### Send / Resend MFA Email OTP (Login)
+
+(Re)send an email OTP during the login challenge. Targets a specific active email instance when `id` is given, otherwise the first active one — useful when a user has more than one email factor.
+
+```http
+POST /neev/mfa/otp/send
+```
+
+**Headers:**
+```http
+Authorization: Bearer {mfa_jwt_token}
+```
+
+**Request Body:**
+
+```json
+{ "id": 7 }
+```
+
+`id` is optional. Returns `400` if the user has no active email method.
 
 ---
 
 ### Verify MFA Setup OTP
 
-Finalize an authenticator setup started via `/neev/mfa/add`. Verifies the OTP against the pending row and promotes it to `active`. Returns 400 if no pending row exists or the OTP is wrong.
+Finalize a pending setup started via `/neev/mfa/add` — an authenticator (TOTP code) or a non-account email (code emailed to that address). Verifies the OTP against the pending row and promotes it to `active`. Returns 400 if no pending row exists or the OTP is wrong.
 
 ```http
 POST /neev/mfa/setup/otp/verify
@@ -423,9 +461,12 @@ Authorization: Bearer {token}
 ```json
 {
     "auth_method": "authenticator",
-    "otp": "123456"
+    "otp": "123456",
+    "id": 12
 }
 ```
+
+`id` is optional — pass it to target one specific pending instance; otherwise the OTP is matched against all pending rows of that method.
 
 **Response (success):**
 
@@ -473,9 +514,12 @@ Authorization: Bearer {mfa_jwt_token}
 ```json
 {
     "auth_method": "authenticator",
-    "otp": "123456"
+    "otp": "123456",
+    "id": 12
 }
 ```
+
+The code is checked against every active instance of `auth_method`, so any of the user's authenticator apps works. `id` is optional — pass it to pin verification to one specific instance. Use `auth_method: "recovery"` with `otp` set to a recovery code to verify via recovery codes.
 
 **Response:**
 
@@ -492,6 +536,8 @@ Authorization: Bearer {mfa_jwt_token}
 
 ### Delete MFA Method
 
+Deletes a single MFA instance by its `id` (from the add response or `GET /neev/mfa`).
+
 ```http
 DELETE /neev/mfa/delete
 ```
@@ -505,9 +551,11 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "auth_method": "authenticator"
+    "id": 12
 }
 ```
+
+`id` is required (`422` if omitted, `403` if it does not belong to the user).
 
 **Response:**
 

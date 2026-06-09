@@ -35,11 +35,33 @@ trait HasMultiAuth
         return $query->first();
     }
 
+    /**
+     * Verify an OTP against active instances of the given method. A user may
+     * have several (e.g. multiple authenticator apps); by default the code is
+     * tried against all of them and succeeds if any one matches. Pass $id to
+     * pin verification to one specific instance.
+     */
+    public function verifyMultiFactorOtp(string $method, string $otp, ?int $id = null): bool
+    {
+        $query = $this->activeMultiFactorAuths()->where('method', $method);
+        if ($id) {
+            $query->where('id', $id);
+        }
+        foreach ($query->get() as $auth) {
+            if ($auth->verifyOTP($otp)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public function preferredMultiFactorAuth()
     {
-        return $this->hasOne(MultiFactorAuth::class)
-            ->where('status', MultiFactorAuth::STATUS_ACTIVE)
-            ->where('preferred', true);
+        // The preferred method is simply the most recently used active method.
+        return $this->hasOne(MultiFactorAuth::class)->ofMany(
+            ['last_used' => 'max', 'id' => 'max'],
+            fn ($query) => $query->active()
+        );
     }
 
     public function recoveryCodes()
@@ -47,55 +69,78 @@ trait HasMultiAuth
         return $this->hasMany(RecoveryCode::class);
     }
 
-    public function addMultiFactorAuth($method)
+    public function addMultiFactorAuth($method, $name = null, $status = null, $email = null)
     {
         switch ($method) {
             case 'authenticator':
-                if ($this->multiFactorAuth('authenticator', MultiFactorAuth::STATUS_ACTIVE)) {
-                    return [
-                        'status' => 'Error',
-                        'method' => 'authenticator',
-                        'message' => 'Authenticator already configured.',
-                    ];
-                }
-
                 $secret = Base32::encodeUpper(random_bytes(32));
 
-                MultiFactorAuth::updateOrCreate(
-                    ['user_id' => $this->id, 'method' => 'authenticator'],
-                    [
+                $auth = $this->multiFactorAuths()
+                    ->pending()
+                    ->where('method', 'authenticator')
+                    ->where('name', $name)
+                    ->first();
+
+                if ($auth) {
+                    $auth->secret = $secret;
+                    if ($status !== null) {
+                        $auth->status = $status;
+                    }
+                    $auth->save();
+                } else {
+                    $auth = $this->multiFactorAuths()->create([
+                        'method' => 'authenticator',
+                        'name' => $name,
                         'secret' => $secret,
-                        'status' => MultiFactorAuth::STATUS_PENDING,
-                        'preferred' => !$this->preferredMultiFactorAuth?->preferred,
-                    ]
-                );
+                        'status' => $status ?? MultiFactorAuth::STATUS_PENDING,
+                    ]);
+                }
 
                 return [
                     'status' => 'Success',
+                    'id' => $auth->id,
+                    'name' => $auth->name,
                     'qr_code' => MultiFactorAuth::getQrCodeForAuthenticatorSetup($secret, $this->email),
                     'secret' => $secret,
                     'method' => 'authenticator',
                 ];
 
             case 'email':
-                if ($this->multiFactorAuth('email', MultiFactorAuth::STATUS_ACTIVE)) {
+                $target = $email ?? $this->email;
+
+                $exists = $this->multiFactorAuths()
+                    ->where('method', 'email')
+                    ->get()
+                    ->contains(fn ($auth) => $auth->email === $target);
+
+                if ($exists) {
                     return [
                         'status' => 'Error',
                         'method' => 'email',
-                        'message' => 'Email already Configured.',
+                        'message' => 'This email is already configured.',
                     ];
                 }
 
-                $this->multiFactorAuths()->create([
+                $defaultStatus = $target === $this->email
+                    ? MultiFactorAuth::STATUS_ACTIVE
+                    : MultiFactorAuth::STATUS_PENDING;
+
+                $auth = $this->multiFactorAuths()->create([
                     'method' => 'email',
-                    'preferred' => !$this->preferredMultiFactorAuth?->preferred,
-                    'status' => MultiFactorAuth::STATUS_ACTIVE,
+                    'name' => $name,
+                    'email' => $target,
+                    'status' => $status ?? $defaultStatus,
                 ]);
 
                 return [
                     'status' => 'Success',
+                    'id' => $auth->id,
+                    'name' => $auth->name,
+                    'email' => $auth->email,
                     'method' => 'email',
-                    'message' => 'Email Configured.',
+                    'message' => $auth->status === MultiFactorAuth::STATUS_PENDING
+                        ? 'Verification code sent. Enter it to enable this email.'
+                        : 'Email Configured.',
                 ];
 
             default:

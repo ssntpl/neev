@@ -59,6 +59,26 @@ class RegistrationTest extends TestCase
         $this->assertNotNull($user->getRawOriginal('password'));
     }
 
+    public function test_registration_succeeds_with_password_history_rule(): void
+    {
+        config(['neev.password' => [
+            'required',
+            'confirmed',
+            \Ssntpl\Neev\Rules\PasswordHistory::notReused(5),
+        ]]);
+
+        $response = $this->postJson('/neev/register', [
+            'name' => 'New User',
+            'email' => 'newuser@company.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('auth_state', 'authenticated');
+        $this->assertDatabaseHas('users', ['email' => 'newuser@company.com']);
+    }
+
     public function test_returns_validation_error_for_missing_name(): void
     {
         $response = $this->postJson('/neev/register', [

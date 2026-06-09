@@ -65,56 +65,43 @@
                     {{ __('Multi Factor Authentication') }}
                 </x-slot>
                 <x-slot name="content">
-                    <p class="text-sm">Multi-factor authentication adds an additional layer of security to your account by requiring more than just a password to log in</p>
-                    @if (count($user->multiFactorAuths))
-                        <div class="flex justify-between gap-2 items-center border shadow px-4 py-2 rounded-lg">
-                            <div>
-                                <h1 class="font-bold">Preferred MFA method</h1>
-                                <p class="text-sm">Set your preferred method to use for multi-factor authentication when login.</p>
-                            </div>
-                            <form method="POST" action="{{route('multi.preferred')}}">
-                                @csrf
-                                @method('PUT')
-                                <select name="auth_method" class="border rounded-md px-2 py-1" onchange="this.form.submit()">
-                                    @foreach ($user->multiFactorAuths as $method)
-                                        <option value="{{$method->method}}" {{ $method->id === $user->preferredMultiFactorAuth?->id ? 'selected' : '' }}>{{$method->method}}</option>
-                                    @endforeach
-                                </select>
-                            </form>
-                        </div>
-                    @endif
+                    <p class="text-sm">Multi-factor authentication adds an additional layer of security to your account by requiring more than just a password to log in. You can register more than one of each method (for example, several authenticator apps) and name each one.</p>
 
                     <ul class="overflow-x-auto rounded-lg shadow border border-gray-200 dark:border-gray-700">
-                        @foreach (config('neev.multi_factor_auth') as $method)
+                        {{-- Configured / pending instances — each row is one method instance --}}
+                        @foreach ($user->multiFactorAuths as $auth)
                             <li class="border odd:bg-white even:bg-gray-50">
                                 <div class="flex gap-2 py-2 px-4 items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition">
-                                    <div class="flex gap-2 items-center w-1/4">
-                                        <p>{{$method}}</p>
-                                        @if ($user->multiFactorAuth($method))
-                                            <span class="border border-green-700 rounded-full text-xs font-medium leading-[18px] px-2 tracking-tight text-green-700">{{ 'Configured' }}</span>
+                                    <div class="flex gap-2 items-center w-1/3">
+                                        <p class="capitalize">{{ $auth->method }}</p>
+                                        @if ($auth->name)
+                                            <span class="text-sm text-gray-500">({{ $auth->name }})</span>
+                                        @endif
+                                        @if ($auth->method === 'email' && $auth->email)
+                                            <span class="text-sm text-gray-500">{{ $auth->email }}</span>
+                                        @endif
+                                        @if ($auth->status === 'active')
+                                            <span class="border border-green-700 rounded-full text-xs font-medium leading-[18px] px-2 tracking-tight text-green-700">{{ __('Active') }}</span>
+                                        @else
+                                            <span class="border border-yellow-600 rounded-full text-xs font-medium leading-[18px] px-2 tracking-tight text-yellow-600">{{ __('Pending') }}</span>
                                         @endif
                                     </div>
                                     <div class="flex gap-2 items-center">
-                                        @if ($user->multiFactorAuth($method))
-                                            <p>{{$user->multiFactorAuth($method)?->last_used?->diffForHumans()}}</p>
-                                        @endif
+                                        <p class="text-sm">{{ $auth->last_used?->diffForHumans() ?? __('Never used') }}</p>
                                     </div>
                                     <div x-data class="text-end">
-                                        <form method="POST" action="{{route('multi.auth')}}" class="flex gap-4">
+                                        <form method="POST" action="{{route('multi.auth')}}" class="flex gap-4 justify-end">
                                             @csrf
 
-                                            <input type="hidden" name="auth_method" value="{{$method}}">
-                                            <input type="hidden" name="action" x-ref="action">
-                                            @if ($user->multiFactorAuth($method))
-                                                <x-neev-component::secondary-button type="submit">{{ __('Edit') }}</x-neev-component::secondary-button>
-                                                <x-neev-component::danger-button type="submit" name="action" @click.prevent="if (confirm('{{__('Are you sure you want to delete?')}}')) {$refs.action.value = 'delete'; $el.closest('form').submit();}">{{ __('Delete') }}</x-neev-component::danger-button>
-                                            @else
-                                                <x-neev-component::button>{{ __('Add') }}</x-neev-component::button>
-                                            @endif
+                                            <input type="hidden" name="action" value="delete">
+                                            <input type="hidden" name="id" value="{{ $auth->id }}">
+                                            <x-neev-component::danger-button type="submit" @click.prevent="if (confirm('{{__('Are you sure you want to delete?')}}')) $el.closest('form').submit();">{{ __('Delete') }}</x-neev-component::danger-button>
                                         </form>
                                     </div>
                                 </div>
-                                @if (session("qr_code") && $method === session("method"))
+
+                                {{-- Setup (QR + verify) shown only for the authenticator instance just added --}}
+                                @if (session('qr_code') && session('method') === 'authenticator' && (int) session('id') === $auth->id)
                                     <div class="text-center items-center py-4">
                                         <div class="mt-2">
                                             <p class="mb-2">Scan this QR code with your authenticator app:</p>
@@ -125,17 +112,38 @@
                                             </p>
                                             <code class="bg-gray-100 px-2 py-1 rounded select-all">{{ session('secret') }}</code>
                                         </div>
-                                        <form method="POST" action="{{route('otp.mfa.store')}}" class="flex gap-2 justify-between mt-2 w-1/2 justify-self-center items-center p-4">
+                                        <form method="POST" action="{{route('mfa.setup.otp.verify')}}" class="flex gap-2 justify-between mt-2 w-1/2 justify-self-center items-center p-4">
                                             @csrf
 
-                                            <input type="hidden" name="auth_method" value="{{$method}}">
-                                            <input type="hidden" name="email" value="{{$user->email}}">
+                                            <input type="hidden" name="auth_method" value="authenticator">
+                                            <input type="hidden" name="id" value="{{ $auth->id }}">
                                             <div class="flex gap-2 items-center text-start w-2/3">
-                                                <x-neev-component::label class="text-start" for="otp" value="{{ __('OTP') }}" class="w-1/4" />
-                                                <x-neev-component::input id="otp" class="block w-3/4" type="text" name="otp" required />
+                                                <x-neev-component::label class="text-start" for="otp-{{ $auth->id }}" value="{{ __('OTP') }}" class="w-1/4" />
+                                                <x-neev-component::input id="otp-{{ $auth->id }}" class="block w-3/4" type="text" name="otp" required />
                                             </div>
 
-                                            <x-neev-component::button name="action" value="verify">
+                                            <x-neev-component::button>
+                                                {{ __('Verify') }}
+                                            </x-neev-component::button>
+                                        </form>
+                                    </div>
+                                @endif
+
+                                {{-- A pending email instance: enter the code we emailed to that address --}}
+                                @if ($auth->status !== 'active' && $auth->method === 'email')
+                                    <div class="text-center items-center py-4">
+                                        <p class="mb-2 text-sm">{{ __('We emailed a verification code to') }} <span class="font-medium">{{ $auth->email }}</span>. {{ __('Enter it to enable this email.') }}</p>
+                                        <form method="POST" action="{{route('mfa.setup.otp.verify')}}" class="flex gap-2 justify-between mt-2 w-1/2 justify-self-center items-center p-4">
+                                            @csrf
+
+                                            <input type="hidden" name="auth_method" value="email">
+                                            <input type="hidden" name="id" value="{{ $auth->id }}">
+                                            <div class="flex gap-2 items-center text-start w-2/3">
+                                                <x-neev-component::label class="text-start" for="email-otp-{{ $auth->id }}" value="{{ __('OTP') }}" class="w-1/4" />
+                                                <x-neev-component::input id="email-otp-{{ $auth->id }}" class="block w-3/4" type="text" name="otp" required />
+                                            </div>
+
+                                            <x-neev-component::button>
                                                 {{ __('Verify') }}
                                             </x-neev-component::button>
                                         </form>
@@ -143,6 +151,31 @@
                                 @endif
                             </li>
                         @endforeach
+
+                        {{-- Add a method. Each method can be added repeatedly;
+                             email addresses must be unique per user. --}}
+                        @foreach (config('neev.multi_factor_auth') as $method)
+                            <li class="border odd:bg-white even:bg-gray-50">
+                                <form method="POST" action="{{route('multi.auth')}}" class="flex gap-2 py-2 px-4 items-center justify-between">
+                                    @csrf
+
+                                    <input type="hidden" name="auth_method" value="{{ $method }}">
+                                    <div class="flex gap-2 items-center w-1/4">
+                                        <p class="capitalize">{{ $method }}</p>
+                                    </div>
+                                    <div class="flex flex-1 gap-2 items-center">
+                                        <x-neev-component::input class="block w-1/2" type="text" name="name" placeholder="{{ __('Name (optional)') }}" />
+                                        @if ($method === 'email')
+                                            <x-neev-component::input class="block w-1/2" type="email" name="email" placeholder="{{ __('Email (optional — defaults to account email)') }}" />
+                                        @endif
+                                    </div>
+                                    <div class="text-end">
+                                        <x-neev-component::button>{{ __('Add') }}</x-neev-component::button>
+                                    </div>
+                                </form>
+                            </li>
+                        @endforeach
+
                         @if (count($user->multiFactorAuths) > 0)
                             <li class="border odd:bg-white even:bg-gray-50">
                                 <div class="flex gap-2 py-2 px-4 items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition">

@@ -84,6 +84,13 @@ Prevents password reuse:
 PasswordHistory::notReused(5)  // Cannot reuse last 5 passwords
 ```
 
+The rule resolves the target user from the authenticated session, the `email`
+input, or an `id` input (in that order). When no user can be resolved — for
+example during **registration**, where the account does not exist yet — there is
+no history to enforce, so the rule **passes**. This is intentional: the same
+default rule set validates registration, and failing closed here would block all
+sign-ups.
+
 Passwords are stored hashed on the `users` table, with password history maintained as a JSON column.
 
 ### Personal Data Prevention

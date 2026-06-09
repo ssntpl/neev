@@ -40,7 +40,6 @@ class PasswordHistory implements ValidationRule
         }
 
         if (!$user) {
-            $fail('Unable to verify password history.');
             return;
         }
 

@@ -61,17 +61,19 @@ class PasswordHistoryTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Fails when no user is found (rule rejects)
+    // Passes when no user is found (no history to enforce)
     // -----------------------------------------------------------------
 
-    public function test_fails_when_no_user_found(): void
+    public function test_passes_when_no_user_found(): void
     {
-        // No authenticated user, no email input
+        // No authenticated user, no email input — e.g. during registration,
+        // where there is no existing account and thus no password history to
+        // check. The rule must pass; failing here would block registration.
         $rule = PasswordHistory::notReused(5);
 
         $failed = $this->runRule($rule, 'anything');
 
-        $this->assertTrue($failed);
+        $this->assertFalse($failed);
     }
 
     // -----------------------------------------------------------------

@@ -13,6 +13,11 @@ class GeoIP
     public function __construct()
     {
         $dbPath = storage_path(config('neev.maxmind.db_path', 'app/geoip/GeoLite2-City.mmdb'));
+
+        if (!is_readable($dbPath)) {
+            return;
+        }
+
         try {
             $this->reader = new Reader($dbPath);
         } catch (Exception $e) {
@@ -22,8 +27,12 @@ class GeoIP
 
     public function getLocation(string $ip): ?array
     {
+        if (!$this->reader) {
+            return null;
+        }
+
         try {
-            $record = $this->reader?->city($ip);
+            $record = $this->reader->city($ip);
             return [
                 'city' => $record->city->name,
                 'state' => $record->subdivisions[0]->name ?? null,

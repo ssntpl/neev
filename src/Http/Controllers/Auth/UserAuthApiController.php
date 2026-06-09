@@ -206,7 +206,14 @@ class UserAuthApiController extends Controller
     private function getMfaOptions(User $user): array
     {
         $user->loadMissing('activeMultiFactorAuths');
-        return $user->activeMultiFactorAuths->pluck('method')->values()->all();
+        return $user->activeMultiFactorAuths
+            ->map(fn ($auth) => [
+                'id' => $auth->id,
+                'name' => $auth->name,
+                'method' => $auth->method,
+            ])
+            ->values()
+            ->all();
     }
 
     private function getJwtToken(int $userId, string $type, int $ttlSeconds, array $extraClaims = []): string
@@ -225,15 +232,7 @@ class UserAuthApiController extends Controller
     private function sendMfaEmailOTP(User $user): void
     {
         $auth = $user->multiFactorAuth('email', MultiFactorAuth::STATUS_ACTIVE);
-        if (!$auth) {
-            return;
-        }
-        $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
-        $expiryMinutes = config('neev.otp_expiry_time', 15);
-        $auth->otp = $otp;
-        $auth->expires_at = now()->addMinutes($expiryMinutes);
-        $auth->save();
-        Mail::to($user->email)->send(new \Ssntpl\Neev\Mail\EmailOTP($user->name, $otp, $expiryMinutes));
+        $auth?->sendEmailOtp($user);
     }
 
     public function sendMailVerificationLink(Request $request)
@@ -559,6 +558,36 @@ class UserAuthApiController extends Controller
         return $domain?->verified_at !== null;
     }
 
+    public function sendMFAOTP(Request $request)
+    {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'Credentials are wrong.',
+            ], 403);
+        }
+
+        $auth = $user->activeMultiFactorAuths()
+            ->where('method', 'email')
+            ->when($request->id, fn ($query) => $query->where('id', $request->id))
+            ->first();
+
+        if (!$auth) {
+            return response()->json([
+                'status' => 'Failed',
+                'message' => 'No email method found.',
+            ], 400);
+        }
+
+        $auth->sendEmailOtp($user);
+
+        return response()->json([
+            'status' => 'Success',
+            'message' => 'Verification code sent.',
+        ]);
+    }
+
     public function verifyMFAOTP(Request $request, GeoIP $geoIP)
     {
         $request->validate([
@@ -575,7 +604,7 @@ class UserAuthApiController extends Controller
         }
 
         $authMethod = $request->auth_method;
-        $availableMethods = $this->getMfaOptions($user);
+        $availableMethods = array_column($this->getMfaOptions($user), 'method');
         if ($authMethod !== 'recovery' && !in_array($authMethod, $availableMethods, true)) {
             return response()->json([
                 'status' => 'Failed',
@@ -591,8 +620,8 @@ class UserAuthApiController extends Controller
                 $verified = true;
             }
         } else {
-            $auth = $user->multiFactorAuth($authMethod, MultiFactorAuth::STATUS_ACTIVE);
-            $verified = (bool) $auth?->verifyOTP($request->otp);
+            $id = $request->filled('id') ? (int) $request->id : null;
+            $verified = $user->verifyMultiFactorOtp($authMethod, $request->otp, $id);
         }
 
         if (!$verified) {
@@ -638,15 +667,21 @@ class UserAuthApiController extends Controller
             ], 403);
         }
 
-        $pending = $user->pendingMultiFactorAuths->where('method', $request->auth_method)->first();
-        if (!$pending) {
+        $pendingQuery = $user->pendingMultiFactorAuths()->where('method', $request->auth_method);
+        if ($request->id) {
+            $pendingQuery->where('id', $request->id);
+        }
+        $pendingRows = $pendingQuery->get();
+        if ($pendingRows->isEmpty()) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'No pending setup found. Please start setup again.',
             ], 400);
         }
 
-        if (!$pending->verifyOTP($request->otp)) {
+        // Activate whichever pending instance the code matches.
+        $verified = $pendingRows->contains(fn ($pending) => $pending->verifyOTP($request->otp));
+        if (!$verified) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Code verification failed.',

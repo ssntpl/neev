@@ -26,7 +26,7 @@ class UserController extends Controller
         if (!$user) {
             return redirect()->route('neev.login');
         }
-        $user->loadMissing('activeMultiFactorAuths', 'passkeys');
+        $user->loadMissing('multiFactorAuths', 'passkeys');
 
         return view('neev::account.security', ['user' => $user, 'delete_account' => true]);
     }
@@ -148,65 +148,52 @@ class UserController extends Controller
 
     public function addMultiFactorAuth(Request $request)
     {
-        $request->validate([
-            'auth_method' => ['required'],
-        ]);
-
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return back()->withErrors(['message' => 'User not found.']);
         }
         if ($request->action === 'delete') {
-            $auth = $user->multiFactorAuth($request->auth_method, MultiFactorAuth::STATUS_ACTIVE);
+            $request->validate([
+                'id' => ['required'],
+            ]);
+            $auth = $user->multiFactorAuths()->find($request->id);
             if (!$auth) {
                 return back()->withErrors(['message' => 'Auth was not deleted.']);
             }
 
-            if ($auth->preferred && count($user->activeMultiFactorAuths) > 1) {
-                $method = $user->activeMultiFactorAuths()->whereNot('method', $auth->method)->first();
-                $method->preferred = true;
-                $method->save();
-            }
             $auth->delete();
 
-            if (count($user->activeMultiFactorAuths) <= 1) {
+            if ($user->activeMultiFactorAuths()->count() <= 1) {
                 $user->recoveryCodes()->delete();
             }
 
             return back()->with('status', 'Auth has been deleted.');
         }
+        $request->validate([
+            'auth_method' => ['required'],
+            'name' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email'],
+        ]);
         $attemptID = session('attempt_id');
         $attempt = $user->loginAttempts()->where('id', $attemptID)->first();
         if ($attempt) {
             $attempt->multi_factor_method = $request->auth_method;
             $attempt->save();
         }
-        $res = $user->addMultiFactorAuth($request->auth_method);
+        $res = $user->addMultiFactorAuth($request->auth_method, $request->name, null, $request->email);
         if (!$res) {
             return back()->withErrors(['message' => 'Auth was not added.']);
         }
+
+        // A non-account email starts pending — mail it a code to verify control.
+        if (($res['method'] ?? null) === 'email' && !empty($res['id'])) {
+            $auth = $user->multiFactorAuths()->find($res['id']);
+            if ($auth && $auth->status === MultiFactorAuth::STATUS_PENDING) {
+                $auth->sendEmailOtp($user);
+            }
+        }
+
         return back()->with($res);
-    }
-
-    public function preferredMultiFactorAuth(Request $request)
-    {
-        $request->validate([
-            'auth_method' => ['required'],
-        ]);
-
-        $user = User::model()->find($request->user()?->id);
-        $auth = $user?->multiFactorAuth($request->auth_method, MultiFactorAuth::STATUS_ACTIVE);
-        if (!$user || !$auth) {
-            return back()->withErrors(['message' => 'preferred auth was not updated.']);
-        }
-        $preferred = $user->preferredMultiFactorAuth;
-        if ($preferred) {
-            $preferred->preferred = false;
-            $preferred->save();
-        }
-        $auth->preferred = true;
-        $auth->save();
-        return back()->with('status', 'preferred auth has been updated.');
     }
 
     public function recoveryCodes(Request $request)

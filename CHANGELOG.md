@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - **Passkey multi-origin support** — new `neev.relying_party_id` and `neev.allowed_origins` config keys let `PasskeyController` verify WebAuthn ceremonies against multiple origins (apex + subdomains, staging + production) bound to a single relying party ID. `CheckOrigin` replaced with `CheckAllowedOrigins`; RP ID and origin list are no longer hardcoded to `APP_URL`
+- **Multiple MFA instances per method** — users can register several authenticator apps and several email addresses, each with an optional user-supplied `name`. Email addresses must be unique per user; re-adding a configured address is rejected
+- **MFA setup lifecycle** — new `status` column (`pending`/`active`) on `multi_factor_auths`. Authenticators and non-account emails start `pending` and activate on first successful verification; the account email activates immediately. Pending rows never enforce MFA at login. `neev:clean-pending-mfa-setups` command deletes abandoned pending setups older than `neev.mfa_pending_retention_days`
+- **Instance selection at login (web)** — the challenge screen's *More Options* panel lists every active instance (each authenticator by name, each email by address) plus recovery codes; selecting one pins the challenge via `/otp/mfa/{method}?id={id}` and, for email, sends the code to that exact address
+- **Optional instance `id` on MFA verify/resend** — `/neev/mfa/otp/verify`, `/neev/mfa/otp/send`, and the web equivalents accept an optional `id` to target one record; omitting it checks the code against every active instance of the method
+- Account security page now displays the email address for each email MFA instance
+
+### Changed
+- **`multi_factor_auths` table redesigned** — method-specific data moved into an `auth_config` JSON column (encrypted secret, hashed OTP, email, expiry) alongside new `name`, `status`, and `last_used` columns
+- **Preferred MFA method derived from `last_used`** — the most recently used active instance; the `preferred` column and the set-preferred endpoints were removed
+- Login `mfa_options` now returns objects (`{ id, name, method }`) instead of bare method strings
+- MFA deletion is addressed solely by instance `id`
+
+### Fixed
+- **MFA verify `TypeError` on empty `id`** — a blank `id` (e.g. an unselected hidden form field on hosts without `ConvertEmptyStringsToNull`) is now coerced to a nullable int instead of crashing the typed verify call
+- **`PasswordHistory` no longer blocks registration** — the rule passes when no user can be resolved (e.g. during sign-up, where no account exists yet) instead of failing closed, since the same default rule set validates registration
 
 ## [0.4.4] - 2026-03-11
 

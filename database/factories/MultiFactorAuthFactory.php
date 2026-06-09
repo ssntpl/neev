@@ -14,7 +14,6 @@ class MultiFactorAuthFactory extends Factory
         return [
             'user_id' => UserFactory::new(),
             'method' => 'authenticator',
-            'preferred' => true,
             'status' => MultiFactorAuth::STATUS_ACTIVE,
         ];
     }

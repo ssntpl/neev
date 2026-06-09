@@ -116,8 +116,6 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
                 ->name('multi.auth');
             Route::post('/mfa/setup/otp/verify', [UserAuthController::class, 'verifyMfaSetupOtp'])
                 ->name('mfa.setup.otp.verify');
-            Route::put('/multiFactorAuth', [UserController::class, 'preferredMultiFactorAuth'])
-                ->name('multi.preferred');
             Route::get('/recovery/codes', [UserController::class, 'recoveryCodes'])
                 ->name('recovery.codes');
             Route::post('/recovery/codes', [UserController::class, 'generateRecoveryCodes'])
@@ -212,6 +210,7 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
 
     Route::middleware(['neev:login', 'throttle:5,1'])->group(function () {
         Route::post('/mfa/otp/verify', [UserAuthApiController::class, 'verifyMFAOTP']);
+        Route::post('/mfa/otp/send', [UserAuthApiController::class, 'sendMFAOTP']);
     });
 
     Route::middleware('neev:api')->group(function () {
@@ -225,7 +224,6 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
         Route::post('/email/change', [UserAuthApiController::class, 'requestEmailChange']);
         Route::get('/mfa', [UserApiController::class, 'getMFAMethods']);
         Route::post('/mfa/add', [UserApiController::class, 'addMultiFactorAuthentication']);
-        Route::put('/mfa/preferred', [UserApiController::class, 'setPreferredMFA']);
         Route::delete('/mfa/delete', [UserApiController::class, 'deleteMultiFactorAuthentication']);
         Route::post('/recoveryCodes', [UserApiController::class, 'generateRecoveryCodes']);
 

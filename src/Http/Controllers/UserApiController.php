@@ -32,42 +32,56 @@ class UserApiController extends Controller
     {
         $request->validate([
             'auth_method' => ['required'],
+            'name' => ['nullable', 'string', 'max:255'],
+            'email' => ['nullable', 'email'],
         ]);
 
         $user = User::model()->find($request->user()?->id);
 
-        $res = $user?->addMultiFactorAuth($request->auth_method);
+        $res = $user?->addMultiFactorAuth($request->auth_method, $request->name, null, $request->email);
         if (!$res) {
             return response()->json([
                 'status' => 'Failed',
                 'message' => 'Auth was not added.',
             ], 400);
         }
+
+        $this->sendPendingEmailSetupOtp($user, $res);
+
         return response()->json($res);
+    }
+
+    /**
+     * If add created a pending email instance, send a verification OTP to it.
+     */
+    private function sendPendingEmailSetupOtp(User $user, array $res): void
+    {
+        if (($res['method'] ?? null) !== 'email' || empty($res['id'])) {
+            return;
+        }
+        $auth = $user->multiFactorAuths()->find($res['id']);
+        if ($auth && $auth->status === MultiFactorAuth::STATUS_PENDING) {
+            $auth->sendEmailOtp($user);
+        }
     }
 
     public function deleteMultiFactorAuthentication(Request $request)
     {
         $request->validate([
-            'auth_method' => ['required'],
+            'id' => ['required'],
         ]);
 
         $user = User::model()->find($request->user()?->id);
-        $auth = $user?->multiFactorAuth($request->auth_method, MultiFactorAuth::STATUS_ACTIVE);
+        $auth = $user?->multiFactorAuths()->find($request->id);
         if (!$auth) {
             return response()->json([
                 'message' => 'Auth was not deleted.',
             ], 403);
         }
 
-        if ($auth->preferred && count($user->activeMultiFactorAuths) > 1) {
-            $method = $user->activeMultiFactorAuths()->whereNot('method', $auth->method)->first();
-            $method->preferred = true;
-            $method->save();
-        }
         $auth->delete();
 
-        if (count($user->activeMultiFactorAuths) <= 1) {
+        if ($user->activeMultiFactorAuths()->count() <= 1) {
             $user->recoveryCodes()->delete();
         }
 
@@ -299,33 +313,6 @@ class UserApiController extends Controller
         return response()->json([
             'message' => 'New recovery codes are generated.',
             'data' => $codes,
-        ]);
-    }
-
-    public function setPreferredMFA(Request $request)
-    {
-        $request->validate([
-            'auth_method' => ['required'],
-        ]);
-
-        $user = User::model()->find($request->user()?->id);
-        $auth = $user?->multiFactorAuth($request->auth_method, MultiFactorAuth::STATUS_ACTIVE);
-
-        if (!$auth) {
-            return response()->json([
-                'message' => 'MFA method not found.',
-            ], 400);
-        }
-
-        // Remove preferred from all other active methods
-        $user->activeMultiFactorAuths()->update(['preferred' => false]);
-
-        // Set this method as preferred
-        $auth->preferred = true;
-        $auth->save();
-
-        return response()->json([
-            'message' => 'Preferred MFA method updated.',
         ]);
     }
 }

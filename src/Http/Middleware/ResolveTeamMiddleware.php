@@ -23,11 +23,15 @@ class ResolveTeamMiddleware
             return $next($request);
         }
 
-        $teamClass = Team::getClass();
+        if ($teamParam instanceof \Illuminate\Database\Eloquent\Model) {
+            $team = $teamParam;
+        } else {
+            $teamClass = Team::getClass();
 
-        $team = ctype_digit((string) $teamParam)
-            ? $teamClass::find((int) $teamParam)
-            : $teamClass::resolveBySlug((string) $teamParam);
+            $team = ctype_digit((string) $teamParam)
+                ? $teamClass::find((int) $teamParam)
+                : $teamClass::resolveBySlug((string) $teamParam);
+        }
 
         if (!$team) {
             return response()->json(['message' => 'Team not found.'], 404);

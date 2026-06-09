@@ -101,7 +101,6 @@ class NeevMiddlewareTest extends TestCase
         MultiFactorAuthFactory::new()->create([
             'user_id' => $user->id,
             'method' => 'authenticator',
-            'preferred' => true,
         ]);
 
         $attempt = LoginAttemptFactory::new()->create([

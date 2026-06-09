@@ -77,21 +77,25 @@ If the user never completes step 4, the pending row stays inactive (no MFA chall
 curl -X POST https://yourapp.com/neev/mfa/add \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
-  -d '{"auth_method": "authenticator"}'
+  -d '{"auth_method": "authenticator", "name": "Work phone"}'
 ```
+
+`name` is an optional, user-supplied label that distinguishes this instance from any others (see [Multiple Instances](#multiple-instances-per-method)).
 
 **Response:**
 
 ```json
 {
   "status": "Success",
+  "id": 12,
+  "name": "Work phone",
   "qr_code": "<svg xmlns=\"http://www.w3.org/2000/svg\">...</svg>",
   "secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
   "method": "authenticator"
 }
 ```
 
-A row is created with `status = pending`. Re-calling `/mfa/add` for the same user replaces the existing pending row with a fresh secret (each Add click restarts setup). Returns `Error` if an `active` authenticator row already exists.
+A row is created with `status = pending`. Re-calling `/mfa/add` with the **same name** while setup is still pending replaces that pending row with a fresh secret (each Add click restarts setup). Calling it with a **different name** registers an additional authenticator — adding a second method no longer returns an error. Use the returned `id` to target this instance when verifying setup or deleting.
 
 ### Step 2 — Verify OTP and Activate
 
@@ -176,16 +180,13 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 
 ## Email OTP
 
-6-digit codes sent to the user's verified email.
+6-digit codes sent to an email address. A user may register **several** email
+addresses, but each must be **unique** for that user. By default a new email
+factor points to the account email; pass a different `email` to register another
+address. Re-adding an address that is already configured (pending or active) is
+rejected with `status: "Error"`, `message: "This email is already configured."`.
 
-### Setup Flow
-
-1. User navigates to Security settings
-2. Clicks "Enable Email OTP"
-3. Receives confirmation email with code
-4. MFA is enabled
-
-### API: Enable Email OTP
+### API: Enable Email OTP (account email)
 
 ```bash
 curl -X POST https://yourapp.com/neev/mfa/add \
@@ -194,36 +195,63 @@ curl -X POST https://yourapp.com/neev/mfa/add \
   -d '{"auth_method": "email"}'
 ```
 
-**Response:**
+The account email is already verified, so this instance is **active** immediately:
 
 ```json
-{
-  "message": "Email Configured."
-}
+{ "status": "Success", "id": 5, "name": null, "email": "john@example.com", "method": "email", "message": "Email Configured." }
 ```
 
-### Send OTP
+### API: Use a different email address
+
+Pass an `email` (optionally a `name` to label it). A non-account address is
+created **pending** and a verification code is mailed to it; the user must
+confirm control before it can be used. This only works when no email method
+exists yet (otherwise delete the current one first).
 
 ```bash
-curl -X POST https://yourapp.com/neev/email/otp/send \
+curl -X POST https://yourapp.com/neev/mfa/add \
+  -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
-  -d '{
-    "email": "john@example.com",
-    "mfa": true
-  }'
+  -d '{"auth_method": "email", "name": "Backup", "email": "backup@example.com"}'
 ```
 
-### Verify OTP
+```json
+{ "status": "Success", "id": 6, "name": "Backup", "email": "backup@example.com", "method": "email", "message": "Verification code sent. Enter it to enable this email." }
+```
+
+Activate it by submitting the emailed code to the setup-verify endpoint (the
+`id` targets this specific instance):
+
+```bash
+curl -X POST https://yourapp.com/neev/mfa/setup/otp/verify \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"auth_method": "email", "id": 6, "otp": "123456"}'
+```
+
+### Send / resend the login OTP
+
+During the login challenge, an email OTP is sent automatically to the first
+active email instance. To (re)send it — or to deliver it to a **specific** email
+instance — call:
+
+```bash
+curl -X POST https://yourapp.com/neev/mfa/otp/send \
+  -H "Authorization: Bearer {mfa_jwt_token}" \
+  -H "Content-Type: application/json" \
+  -d '{"id": 6}'    # id optional; omit to use the first active email
+```
+
+### Verify OTP (login)
 
 ```bash
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
   -H "Authorization: Bearer {mfa_jwt_token}" \
   -H "Content-Type: application/json" \
-  -d '{
-    "auth_method": "email",
-    "otp": "123456"
-  }'
+  -d '{"auth_method": "email", "otp": "123456", "id": 6}'
 ```
+
+`id` is optional — omit it to check the code against every active email instance.
 
 ---
 
@@ -321,6 +349,15 @@ if (count($user->activeMultiFactorAuths) > 0) {
 }
 ```
 
+**Choosing a specific instance.** The challenge screen lands on the preferred
+method, but its **More Options** panel lists *every* active instance — each
+authenticator app by `name` and each email by address — plus the recovery-code
+option. Selecting one links to `/otp/mfa/{method}?id={id}`, which pins the
+challenge to that instance: for email it sends the code to that exact address,
+and the verify/resend forms carry the `id` through so verification targets that
+record. When no instance is chosen the code is checked against every active
+instance of the method (any match passes).
+
 ### API Flow
 
 **Step 1: Login**
@@ -330,7 +367,8 @@ curl -X POST https://yourapp.com/neev/login \
   -d '{"email": "john@example.com", "password": "password"}'
 ```
 
-Response includes `auth_state` and `mfa_options`:
+Response includes `auth_state` and `mfa_options`. Each option is an object
+describing one active MFA instance (`id`, `name`, `method`):
 
 ```json
 {
@@ -338,8 +376,8 @@ Response includes `auth_state` and `mfa_options`:
   "token": "jwt_mfa_token...",
   "expires_in": 30,
   "mfa_options": [
-    "authenticator",
-    "email"
+    { "id": 4, "name": "Work phone", "method": "authenticator" },
+    { "id": 9, "name": null, "method": "email" }
   ],
   "email_verified": true
 }
@@ -352,6 +390,10 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
   -H "Authorization: Bearer jwt_mfa_token..." \
   -d '{"auth_method": "authenticator", "otp": "123456"}'
 ```
+
+`id` is optional — include it (from `mfa_options`) to pin verification to one
+specific instance; omit it to check the code against every active instance of
+the method.
 
 Response with full token:
 
@@ -368,40 +410,58 @@ Response with full token:
 
 ## Preferred MFA Method
 
-Users with multiple MFA methods can set a preferred one.
-
-### Set Preferred Method
-
-```bash
-# Via API (not directly exposed, use web route)
-PUT /account/multiFactorAuth
-Content-Type: application/json
-
-{"method": "authenticator"}
-```
+The preferred method is derived automatically — there is no endpoint to set it.
 
 ### How It Works
 
-- When logging in, the preferred method is used first
-- Other methods are available as fallbacks
-- If preferred method is deleted, another becomes preferred
+- The preferred method is the active method with the most recent `last_used`
+- When logging in, the preferred method is challenged first; other active methods are available as fallbacks
+- Every successful verification updates `last_used`, so the method a user actually uses naturally becomes their preferred one
+- If the preferred method is deleted, the next most recently used method becomes preferred automatically
 
 ---
+
+## Multiple Instances Per Method
+
+A user may register **several instances of any method** — for example two
+authenticator apps, or several email addresses. Each instance is its own
+`multi_factor_auths` row, distinguished by a user-supplied `name`. Email
+addresses must additionally be **unique per user**.
+
+- **Adding**: pass `name` to `/mfa/add`. For authenticators, a new name creates
+  a new pending instance; reusing a name restarts that pending setup. For email,
+  pass `email` to register an address other than the account email — that
+  address starts **pending** and is emailed a code to verify control before use.
+  Re-adding an address already configured for that user is rejected.
+- **Login**: `mfa_options` lists every active instance as an object
+  (`id`, `name`, `method`), so a user with two authenticator apps sees both. An
+  entered code is checked against *every* active instance of the chosen method;
+  any match passes. Optionally pass an instance `id` to pin verification to one
+  specific record.
+- **Verifying setup**: optionally pass the instance `id` to target one specific
+  pending row; otherwise the code is matched against all pending rows of that
+  method.
+- **Deleting**: pass the instance `id` — deletion always targets one specific
+  row (`id` is required; there is no delete-by-method).
 
 ## Removing MFA
 
 ### Delete MFA Method
 
+Delete always targets a single instance by its `id` (from `/mfa/add` or
+`GET /neev/mfa`). `id` is required.
+
 ```bash
 curl -X DELETE https://yourapp.com/neev/mfa/delete \
   -H "Authorization: Bearer {token}" \
   -H "Content-Type: application/json" \
-  -d '{"auth_method": "authenticator"}'
+  -d '{"id": 12}'
 ```
 
 ### Behavior
 
-- If deleting the preferred method, another method becomes preferred
+- `id` is required (`422` if omitted); the row must belong to the authenticated user (`403` otherwise)
+- If deleting the preferred method, the next most recently used method becomes preferred automatically
 - If deleting the last MFA method, recovery codes are also deleted
 - Users can re-enable MFA at any time
 
@@ -439,16 +499,22 @@ $user->pendingMultiFactorAuths;
 // Pass MultiFactorAuth::STATUS_ACTIVE to restrict to active rows (common case).
 $user->multiFactorAuth('authenticator', MultiFactorAuth::STATUS_ACTIVE);
 
-// For the setup-verify path, fetch the pending row via the relation + filter:
-$pending = $user->pendingMultiFactorAuths->where('method', 'authenticator')->first();
+// For the setup-verify path, fetch pending rows via the relation + filter:
+$user->pendingMultiFactorAuths()->where('method', 'authenticator')->get();
 
-// Get preferred MFA method (active rows only)
+// Get preferred MFA method (most recently used active row)
 $user->preferredMultiFactorAuth;
 
-// Add MFA method
+// Resolve instances by id (single) or method (all), optionally by status
+$user->resolveMultiFactorAuths($id, $method, MultiFactorAuth::STATUS_ACTIVE);
+
+// Verify an OTP against every active instance of a method (any match passes)
+$user->verifyMultiFactorOtp('authenticator', $otp);
+
+// Add an MFA method, optionally naming the instance
 // - 'authenticator': creates a pending row and returns QR code + secret
 // - 'email': creates an active row directly (email is already trusted)
-$user->addMultiFactorAuth('authenticator');
+$user->addMultiFactorAuth('authenticator', 'Work phone');
 
 // Generate new recovery codes (replaces any existing)
 $user->generateRecoveryCodes();
@@ -498,16 +564,24 @@ if ($matched) {
 | id | bigint | Primary key |
 | user_id | bigint | Foreign key to users |
 | method | string | MFA method name (`authenticator`, `email`) |
-| secret | string | TOTP secret (encrypted at rest) |
-| preferred | boolean | Is this the preferred method |
+| name | string | Optional user-supplied label distinguishing instances of the same method |
 | status | string | `pending` (setup not verified) or `active` (usable) — defaults to `pending` |
-| otp | string | Current email OTP (if applicable, hashed) |
-| expires_at | timestamp | Email OTP expiry time |
-| last_used | timestamp | Last successful verification |
+| auth_config | json | Method-specific configuration (see below) |
+| last_used | timestamp | Last successful verification; also the preference signal |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 
-Unique constraint on `(user_id, method)` — at most one row per user per method. Re-clicking "Add" on a half-finished authenticator setup updates the existing pending row with a fresh secret.
+A user may have **multiple rows per method** (e.g. several authenticator apps), each identified by `name` — see [Multiple Instances](#multiple-instances-per-method). There is an index on `(user_id, method)`; rows are addressed by `id` when a method has more than one instance.
+
+**`auth_config` keys** — secret/OTP state lives in this JSON column, exposed via virtual model attributes (`$mfa->secret`, `$mfa->otp`, `$mfa->expires_at`):
+
+| Key | Used by | Description |
+|-----|---------|-------------|
+| `secret` | authenticator | TOTP secret, encrypted at rest |
+| `otp` | email | Current email OTP, one-way hashed |
+| `expires_at` | email | Email OTP expiry time |
+
+There is no longer a `preferred` column: the preferred method is simply the active method with the most recent `last_used` timestamp. Setting a method as "preferred" touches its `last_used`.
 
 ### recovery_codes Table
 

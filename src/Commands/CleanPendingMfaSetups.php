@@ -17,7 +17,7 @@ class CleanPendingMfaSetups extends Command
             return;
         }
 
-        $count = MultiFactorAuth::where('status', MultiFactorAuth::STATUS_PENDING)
+        $count = MultiFactorAuth::pending()
             ->where('created_at', '<', now()->subDays($days))
             ->delete();
 

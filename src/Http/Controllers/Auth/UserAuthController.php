@@ -14,7 +14,6 @@ use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOutEvent;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
-use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\Domain;
@@ -541,14 +540,22 @@ class UserAuthController extends Controller
         return back()->with('logoutStatus', __('Logged out from other sessions.'));
     }
 
-    public function verifyMFAOTPCreate($method)
+    public function verifyMFAOTPCreate(Request $request, $method)
     {
         $email = session('email');
         $attemptID = session('attempt_id');
+        $user = User::findByEmail($email);
+
+        $selected = null;
+        if ($request->id) {
+            $selected = $user?->activeMultiFactorAuths()
+                ->where('method', $method)
+                ->where('id', $request->id)
+                ->first();
+        }
 
         if ($method === 'email') {
-            $user = User::findByEmail($email);
-            $auth = $user?->multiFactorAuth($method, MultiFactorAuth::STATUS_ACTIVE);
+            $auth = $selected ?? $user?->multiFactorAuth($method, MultiFactorAuth::STATUS_ACTIVE);
             if (!$auth) {
                 return back()->withErrors(['message' => 'Invalid Email.']);
             }
@@ -557,35 +564,32 @@ class UserAuthController extends Controller
                 $auth->expires_at = now()->addMinutes($expiryMinutes);
                 $auth->save();
             } else {
-                $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
-                $auth->otp = $otp;
-                $auth->expires_at = now()->addMinutes($expiryMinutes);
-                $auth->save();
-                Mail::to($email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
+                $auth->sendEmailOtp($user);
             }
+            $selected = $auth;
         }
 
         return view('neev::auth.otp-mfa', [
             'email' => $email,
             'method' => $method,
-            'attempt_id' => $attemptID
+            'attempt_id' => $attemptID,
+            'id' => $selected?->id,
+            'selected' => $selected,
         ]);
     }
 
-    public function emailOTPSend()
+    public function emailOTPSend(Request $request)
     {
         $email = session('email');
         $user = User::findByEmail($email);
-        $auth = $user?->multiFactorAuth('email', MultiFactorAuth::STATUS_ACTIVE);
+        $auth = $user?->activeMultiFactorAuths()
+            ->where('method', 'email')
+            ->when($request->id, fn ($query) => $query->where('id', $request->id))
+            ->first();
         if (!$auth) {
             return back()->withErrors(['message' => 'Invalid Email.']);
         }
-        $expiryMinutes = config('neev.otp_expiry_time', 15);
-        $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
-        $auth->otp = $otp;
-        $auth->expires_at = now()->addMinutes($expiryMinutes);
-        $auth->save();
-        Mail::to($email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
+        $auth->sendEmailOtp($user);
         return back()->with('status', 'Verification code has been sent.');
     }
 
@@ -611,8 +615,8 @@ class UserAuthController extends Controller
                 $verified = true;
             }
         } else {
-            $auth = $user->multiFactorAuth($request->auth_method, MultiFactorAuth::STATUS_ACTIVE);
-            $verified = (bool) $auth?->verifyOTP($request->otp);
+            $id = $request->filled('id') ? (int) $request->id : null;
+            $verified = $user->verifyMultiFactorOtp($request->auth_method, $request->otp, $id);
         }
 
         if ($verified) {
@@ -639,12 +643,17 @@ class UserAuthController extends Controller
             return back()->withErrors(['message' => 'User not found.']);
         }
 
-        $pending = $user->pendingMultiFactorAuths->where('method', $request->auth_method)->first();
-        if (!$pending) {
+        $pendingQuery = $user->pendingMultiFactorAuths()->where('method', $request->auth_method);
+        if ($request->id) {
+            $pendingQuery->where('id', $request->id);
+        }
+        $pendingRows = $pendingQuery->get();
+        if ($pendingRows->isEmpty()) {
             return back()->withErrors(['message' => 'No pending setup found. Please start setup again.']);
         }
 
-        if (!$pending->verifyOTP($request->otp)) {
+        // Activate whichever pending instance the code matches.
+        if (!$pendingRows->contains(fn ($pending) => $pending->verifyOTP($request->otp))) {
             return back()->withErrors(['message' => 'Code verification failed.']);
         }
 

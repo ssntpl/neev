@@ -11,8 +11,14 @@
             <p>
                 @if ($method === 'authenticator')
                     {{ __('Enter the code from your multi-factor authentication app or browser extension below.') }}
+                    @if (($selected ?? null) && $selected->name)
+                        <span class="block mt-1 font-medium">{{ $selected->name }}</span>
+                    @endif
                 @elseif ($method === 'email')
                     {{ __('We’ve sent a code to your email address. Enter it below.') }}
+                    @if (($selected ?? null) && $selected->email)
+                        <span class="block mt-1 font-medium">{{ $selected->email }}</span>
+                    @endif
                 @endif
             </p>
 
@@ -21,10 +27,13 @@
 
             <form method="POST" action="{{ route('otp.mfa.store') }}">
                 @csrf
-    
+
                 <input type="hidden" name="email" value="{{$email}}">
                 <input type="hidden" name="auth_method" value="{{$method}}">
                 <input type="hidden" name="attempt_id" value="{{$attempt_id}}">
+                @if ($id ?? null)
+                    <input type="hidden" name="id" value="{{ $id }}">
+                @endif
                 <div class="block">
                     <x-input id="otp" class="block mt-1 w-full text-center" placeholder="XXXXXX" type="text" name="otp" required autofocus />
                 </div>
@@ -58,6 +67,9 @@
                         <form method="POST" action="{{ route('otp.mfa.send') }}">
                             @csrf
 
+                            @if ($id ?? null)
+                                <input type="hidden" name="id" value="{{ $id }}">
+                            @endif
                             <div>
                                 <x-neev-component::secondary-button class="w-full flex justify-center" type="submit">
                                     {{ __('Resend Email') }}
@@ -65,9 +77,18 @@
                             </div>
                         </form>
                     @endif
-                    @foreach ($user?->multiFactorAuths()->whereNot('method', $method)->get() as $auth)
-                        <a href="{{route('otp.mfa.create', $auth->method)}}">
-                            <x-neev-component::secondary-button class="w-full flex justify-center">{{$auth->method}}</x-neev-component::secondary-button>
+                    {{-- Every other active instance — pick a specific authenticator app or email address. --}}
+                    @foreach (($user?->activeMultiFactorAuths) ?? [] as $auth)
+                        @continue (($id ?? null) && $auth->id === $id)
+                        <a href="{{ route('otp.mfa.create', ['method' => $auth->method, 'id' => $auth->id]) }}">
+                            <x-neev-component::secondary-button class="w-full flex justify-center capitalize">
+                                <span>
+                                    {{ $auth->method }}{{ $auth->name ? ' ('.$auth->name.')' : '' }}
+                                    @if ($auth->method === 'email' && $auth->email)
+                                        <span class="lowercase">{{ $auth->email }}</span>
+                                    @endif
+                                </span>
+                            </x-neev-component::secondary-button>
                         </a>
                     @endforeach
                     <a href="{{route('otp.mfa.create', 'recovery')}}">

@@ -14,15 +14,13 @@ return new class () extends Migration {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('method');
-            $table->text('secret')->nullable();
-            $table->text('otp')->nullable();
-            $table->boolean('preferred')->default(false);
+            $table->string('name')->nullable();
             $table->string('status')->default('pending');
-            $table->timestamp('expires_at')->nullable();
+            $table->json('auth_config')->nullable();
             $table->timestamp('last_used')->nullable();
             $table->timestamps();
-            $table->unique(['user_id', 'method']);
-            $table->index('user_id');
+
+            $table->index(['user_id', 'method']);
         });
     }
 

@@ -162,7 +162,6 @@ All prefixed with `/account`.
 |--------|-------|------|-------------|
 | POST | `/account/multiFactorAuth` | `multi.auth` | Add MFA method (authenticator creates a `pending` row + returns QR; email creates an `active` row) |
 | POST | `/account/mfa/setup/otp/verify` | `mfa.setup.otp.verify` | Finalize authenticator setup — verifies the OTP against the pending row and promotes it to `active` |
-| PUT | `/account/multiFactorAuth` | `multi.preferred` | Set preferred MFA |
 | GET | `/account/recovery/codes` | `recovery.codes` | Show recovery codes |
 | POST | `/account/recovery/codes` | `recovery.generate` | Generate new codes |
 

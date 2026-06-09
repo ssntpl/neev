@@ -101,7 +101,7 @@ class SimpleModelsTest extends TestCase
     // MultiFactorAuth Model
     // =================================================================
 
-    public function test_mfa_secret_is_encrypted_cast(): void
+    public function test_mfa_secret_is_encrypted_in_auth_config(): void
     {
         $plainSecret = 'JBSWY3DPEHPK3PXP';
 
@@ -109,17 +109,18 @@ class SimpleModelsTest extends TestCase
             'secret' => $plainSecret,
         ]);
 
-        $rawValue = DB::table('multi_factor_auths')
+        $rawConfig = DB::table('multi_factor_auths')
             ->where('id', $mfa->id)
-            ->value('secret');
+            ->value('auth_config');
 
-        $this->assertNotSame($plainSecret, $rawValue);
+        // The plaintext secret must not appear in the stored JSON blob.
+        $this->assertStringNotContainsString($plainSecret, (string) $rawConfig);
 
         $mfa->refresh();
         $this->assertSame($plainSecret, $mfa->secret);
     }
 
-    public function test_mfa_otp_is_hashed_cast(): void
+    public function test_mfa_otp_is_hashed_in_auth_config(): void
     {
         $plainOtp = 123456;
 
@@ -127,22 +128,13 @@ class SimpleModelsTest extends TestCase
             'otp' => $plainOtp,
         ]);
 
-        $rawValue = DB::table('multi_factor_auths')
-            ->where('id', $mfa->id)
-            ->value('otp');
+        $rawConfig = json_decode(
+            DB::table('multi_factor_auths')->where('id', $mfa->id)->value('auth_config'),
+            true
+        );
 
-        $this->assertNotSame((string) $plainOtp, (string) $rawValue);
-        $this->assertTrue(Hash::check($plainOtp, $rawValue));
-    }
-
-    public function test_mfa_preferred_is_cast_to_boolean(): void
-    {
-        $mfa = MultiFactorAuthFactory::new()->create(['preferred' => true]);
-
-        $mfa->refresh();
-
-        $this->assertIsBool($mfa->preferred);
-        $this->assertTrue($mfa->preferred);
+        $this->assertNotSame((string) $plainOtp, (string) $rawConfig['otp']);
+        $this->assertTrue(Hash::check($plainOtp, $rawConfig['otp']));
     }
 
     public function test_mfa_expires_at_is_cast_to_datetime(): void

@@ -161,20 +161,165 @@ class MFAManagementTest extends TestCase
         $response->assertStatus(422);
     }
 
-    public function test_add_duplicate_email_mfa_returns_already_configured(): void
+    public function test_add_authenticator_ignores_status_in_request_body(): void
     {
         [$user, $token] = $this->authenticatedUser();
 
-        // Add email MFA first
-        MultiFactorAuthFactory::new()->email()->create(['user_id' => $user->id]);
+        // A malicious client tries to skip verification by forcing status=active.
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', [
+                'auth_method' => 'authenticator',
+                'status' => MultiFactorAuth::STATUS_ACTIVE,
+            ]);
+
+        $response->assertOk();
+
+        // The row is still pending — the body-provided status was ignored.
+        $auth = $user->multiFactorAuths()->where('method', 'authenticator')->first();
+        $this->assertEquals(MultiFactorAuth::STATUS_PENDING, $auth->status);
+    }
+
+    public function test_add_custom_email_creates_pending_and_sends_otp(): void
+    {
+        Mail::fake();
+
+        [$user, $token] = $this->authenticatedUser();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/mfa/add', [
                 'auth_method' => 'email',
+                'name' => 'Backup',
+                'email' => 'backup@example.com',
             ]);
 
         $response->assertOk()
-            ->assertJsonPath('message', 'Email already Configured.');
+            ->assertJsonPath('email', 'backup@example.com');
+
+        // Stored, pending, and a code was emailed to the new address.
+        $auth = $user->multiFactorAuths()->where('method', 'email')->first();
+        $this->assertEquals('backup@example.com', $auth->email);
+        $this->assertEquals(MultiFactorAuth::STATUS_PENDING, $auth->status);
+
+        Mail::assertSent(\Ssntpl\Neev\Mail\EmailOTP::class, fn ($mail) => $mail->hasTo('backup@example.com'));
+    }
+
+    public function test_add_duplicate_email_is_rejected(): void
+    {
+        Mail::fake();
+
+        [$user, $token] = $this->authenticatedUser();
+
+        // An email instance already registered for backup@example.com.
+        $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'email' => 'backup@example.com',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', [
+                'auth_method' => 'email',
+                'name' => 'Backup again',
+                'email' => 'backup@example.com',
+            ])
+            ->assertOk()
+            ->assertJsonPath('status', 'Error')
+            ->assertJsonPath('message', 'This email is already configured.');
+
+        // The duplicate address was not added.
+        $this->assertEquals(1, $user->multiFactorAuths()->where('method', 'email')->count());
+    }
+
+    public function test_add_multiple_distinct_emails_is_allowed(): void
+    {
+        Mail::fake();
+
+        [$user, $token] = $this->authenticatedUser();
+
+        // An existing distinct email instance.
+        $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'email' => 'work@example.com',
+            'status' => MultiFactorAuth::STATUS_ACTIVE,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', [
+                'auth_method' => 'email',
+                'name' => 'Backup',
+                'email' => 'backup@example.com',
+            ])
+            ->assertOk()
+            ->assertJsonPath('status', 'Success')
+            ->assertJsonPath('email', 'backup@example.com');
+
+        $this->assertEquals(2, $user->multiFactorAuths()->where('method', 'email')->count());
+    }
+
+    public function test_setup_verify_activates_pending_custom_email(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'name' => 'Backup',
+            'email' => 'backup@example.com',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+            'otp' => '135790',
+            'expires_at' => now()->addMinutes(10),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/setup/otp/verify', [
+                'auth_method' => 'email',
+                'id' => $auth->id,
+                'otp' => '135790',
+            ])
+            ->assertOk()
+            ->assertJsonPath('status', 'Success');
+
+        $auth->refresh();
+        $this->assertEquals(MultiFactorAuth::STATUS_ACTIVE, $auth->status);
+    }
+
+    public function test_add_named_authenticators_creates_multiple_instances(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'authenticator', 'name' => 'Work phone'])
+            ->assertOk()
+            ->assertJsonPath('name', 'Work phone');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'authenticator', 'name' => 'Personal phone'])
+            ->assertOk()
+            ->assertJsonPath('name', 'Personal phone');
+
+        $this->assertEquals(2, $user->multiFactorAuths()->where('method', 'authenticator')->count());
+    }
+
+    public function test_delete_specific_instance_by_id(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $keep = MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'name' => 'Keep',
+        ]);
+        $remove = MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'name' => 'Remove',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/mfa/delete', ['id' => $remove->id])
+            ->assertOk();
+
+        $this->assertNull(MultiFactorAuth::find($remove->id));
+        $this->assertNotNull(MultiFactorAuth::find($keep->id));
     }
 
     public function test_add_unsupported_mfa_method_returns_error(): void
@@ -197,15 +342,14 @@ class MFAManagementTest extends TestCase
     {
         [$user, $token] = $this->authenticatedUser();
 
-        MultiFactorAuthFactory::new()->create([
+        $auth = MultiFactorAuthFactory::new()->create([
             'user_id' => $user->id,
             'method' => 'authenticator',
-            'preferred' => true,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/mfa/delete', [
-                'auth_method' => 'authenticator',
+                'id' => $auth->id,
             ]);
 
         $response->assertOk()
@@ -214,43 +358,42 @@ class MFAManagementTest extends TestCase
         $this->assertNull($user->multiFactorAuth('authenticator'));
     }
 
-    public function test_delete_preferred_mfa_reassigns_preferred(): void
+    public function test_delete_preferred_mfa_falls_back_to_remaining_method(): void
     {
         [$user, $token] = $this->authenticatedUser();
 
-        // Add two MFA methods, authenticator is preferred
-        MultiFactorAuthFactory::new()->create([
+        // Two active methods; authenticator was used most recently, so it is
+        // the preferred one.
+        $authenticator = MultiFactorAuthFactory::new()->create([
             'user_id' => $user->id,
             'method' => 'authenticator',
-            'preferred' => true,
+            'last_used' => now(),
         ]);
         MultiFactorAuthFactory::new()->create([
             'user_id' => $user->id,
             'method' => 'email',
-            'preferred' => false,
+            'last_used' => now()->subDay(),
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/mfa/delete', [
-                'auth_method' => 'authenticator',
+                'id' => $authenticator->id,
             ]);
 
         $response->assertOk();
 
-        // Email should now be preferred
+        // With the preferred method gone, email becomes the preferred one.
         $user->refresh();
-        $emailAuth = $user->multiFactorAuth('email');
-        $this->assertTrue($emailAuth->preferred);
+        $this->assertEquals('email', $user->preferredMultiFactorAuth?->method);
     }
 
     public function test_delete_last_mfa_cleans_up_recovery_codes(): void
     {
         [$user, $token] = $this->authenticatedUser();
 
-        MultiFactorAuthFactory::new()->create([
+        $auth = MultiFactorAuthFactory::new()->create([
             'user_id' => $user->id,
             'method' => 'authenticator',
-            'preferred' => true,
         ]);
 
         // Generate recovery codes
@@ -259,7 +402,7 @@ class MFAManagementTest extends TestCase
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/mfa/delete', [
-                'auth_method' => 'authenticator',
+                'id' => $auth->id,
             ]);
 
         $response->assertOk();
@@ -274,10 +417,38 @@ class MFAManagementTest extends TestCase
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/mfa/delete', [
-                'auth_method' => 'authenticator',
+                'id' => 999999,
             ]);
 
         $response->assertStatus(403);
+    }
+
+    public function test_delete_requires_id(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/mfa/delete', []);
+
+        $response->assertStatus(422)
+            ->assertJsonValidationErrors(['id']);
+    }
+
+    public function test_cannot_delete_another_users_mfa(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $other = User::factory()->create();
+        $otherAuth = MultiFactorAuthFactory::new()->create([
+            'user_id' => $other->id,
+            'method' => 'authenticator',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/mfa/delete', ['id' => $otherAuth->id])
+            ->assertStatus(403);
+
+        $this->assertNotNull(MultiFactorAuth::find($otherAuth->id));
     }
 
     // -----------------------------------------------------------------

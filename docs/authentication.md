@@ -94,12 +94,14 @@ curl -X POST https://yourapp.com/neev/login \
   "token": "jwt_mfa_token...",
   "expires_in": 30,
   "mfa_options": [
-    "authenticator",
-    "email"
+    { "id": 4, "name": "Work phone", "method": "authenticator" },
+    { "id": 9, "name": null, "method": "email" }
   ],
   "email_verified": true
 }
 ```
+
+Each entry in `mfa_options` is one active MFA instance (`id`, `name`, `method`).
 
 When MFA is required, the returned token is a short-lived JWT (type `mfa`). Use it to verify MFA:
 

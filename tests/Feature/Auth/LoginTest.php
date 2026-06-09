@@ -193,9 +193,9 @@ class LoginTest extends TestCase
         $this->enableMFA();
 
         $user = $this->createUser();
-        $user->multiFactorAuths()->create([
+        $auth = $user->multiFactorAuths()->create([
             'method' => 'authenticator',
-            'preferred' => true,
+            'name' => 'Work phone',
             'secret' => 'testsecret',
             'status' => 'active',
         ]);
@@ -208,11 +208,44 @@ class LoginTest extends TestCase
         $response->assertOk();
         $response->assertJson([
             'auth_state' => 'mfa_required',
-            'mfa_options' => ['authenticator'],
             'expires_in' => config('neev.mfa_jwt_expiry_minutes', 30),
             'email_verified' => true,
         ]);
+        // mfa_options is a list of {id, name, method} objects — one per instance.
+        $response->assertJsonPath('mfa_options', [
+            ['id' => $auth->id, 'name' => 'Work phone', 'method' => 'authenticator'],
+        ]);
         $this->assertNotEmpty($response->json('token'));
+    }
+
+    public function test_mfa_options_lists_each_active_instance_as_an_object(): void
+    {
+        $this->enableMFA();
+
+        $user = $this->createUser();
+        $work = $user->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'name' => 'Work phone',
+            'secret' => 'secret-a',
+            'status' => 'active',
+        ]);
+        $personal = $user->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'name' => 'Personal phone',
+            'secret' => 'secret-b',
+            'status' => 'active',
+        ]);
+
+        $response = $this->postJson('/neev/login', [
+            'email' => $user->email,
+            'password' => 'password',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('mfa_options', [
+            ['id' => $work->id, 'name' => 'Work phone', 'method' => 'authenticator'],
+            ['id' => $personal->id, 'name' => 'Personal phone', 'method' => 'authenticator'],
+        ]);
     }
 
     public function test_non_mfa_user_gets_null_preferred_mfa(): void
