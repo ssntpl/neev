@@ -146,7 +146,12 @@ class MultiFactorAuth extends Model
      */
     protected function mergeAuthConfig(array $values): array
     {
-        return ['auth_config' => json_encode(array_merge($this->auth_config ?? [], $values))];
+        $current = $this->attributes['auth_config'] ?? [];
+        if (is_string($current)) {
+            $current = json_decode($current, true) ?: [];
+        }
+
+        return ['auth_config' => json_encode(array_merge($current, $values))];
     }
 
     public static function getQrCodeForAuthenticatorSetup(string $secret, string $email): string
