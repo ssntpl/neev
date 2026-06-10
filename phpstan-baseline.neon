@@ -427,7 +427,7 @@ parameters:
 			path: src/Rules/PasswordUserData.php
 
 		-
-			message: '#^Call to an undefined method TModel of Illuminate\\Database\\Eloquent\\Model\:\:getQualifiedTeamIdColumn\(\)\.$#'
+			message: '#^Call to an undefined method Illuminate\\Database\\Eloquent\\Model\:\:getQualifiedTeamIdColumn\(\)\.$#'
 			identifier: method.notFound
 			count: 1
 			path: src/Scopes/TeamScope.php

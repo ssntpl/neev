@@ -106,8 +106,8 @@ class TenantMiddlewareTest extends TestCase
 
         // Mock the TenantResolver to simulate resolved but unverified domain
         $resolver = $this->createPartialMock(TenantResolver::class, ['resolve', 'isResolvedDomainVerified']);
-        $resolver->method('resolve')->willReturn($team);
-        $resolver->method('isResolvedDomainVerified')->willReturn(false);
+        $resolver->expects($this->once())->method('resolve')->willReturn($team);
+        $resolver->expects($this->once())->method('isResolvedDomainVerified')->willReturn(false);
 
         $middleware = new TenantMiddleware($resolver);
 
