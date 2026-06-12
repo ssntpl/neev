@@ -37,6 +37,14 @@ Design decisions and internal patterns — useful when extending Neev or contrib
 | [Architecture](./architecture.md) | Identity strategy (shared vs isolated), tenant/team concepts, context lifecycle |
 | [Architecture Internals](./architecture-internals.md) | Interfaces, traits, services, coding standards, anti-patterns |
 
+## Proposals
+
+Design proposals under review, not yet implemented.
+
+| Document | Status | Description |
+|----------|--------|-------------|
+| [SPA Cookie Mode](./spa-cookie-mode.md) | Proposed (2026-06-12), target v0.4.5 | HttpOnly-cookie auth + double-submit CSRF for same-origin SPAs. Additive to the existing bearer-token API. Driven by the TAILLOG web rebuild and otper. |
+
 ---
 
 ## Package Structure
