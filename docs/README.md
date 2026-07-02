@@ -34,6 +34,7 @@ Design decisions and internal patterns — useful when extending Neev or contrib
 
 | Document | Description |
 |----------|-------------|
+| [Design Principles](./design-principles.md) | What is enforced vs configurable vs left to the app — the four-layer boundary every PR is judged against |
 | [Architecture](./architecture.md) | Identity strategy (shared vs isolated), tenant/team concepts, context lifecycle |
 | [Architecture Internals](./architecture-internals.md) | Interfaces, traits, services, coding standards, anti-patterns |
 
