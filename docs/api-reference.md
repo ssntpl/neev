@@ -14,9 +14,23 @@ Authorization: Bearer {token_id}|{token}
 
 The header is the only accepted transport — query-string and request-body tokens were removed in v0.4.4 (tokens in URLs leak via logs, referrers, and browser history).
 
+**SPA cookie mode:** same-origin SPAs whose host is listed in `config('neev.spa.stateful')` may instead carry the token in an HttpOnly cookie — the `EnsureSpaRequestsAreStateful` middleware promotes it to the Authorization header. State-changing requests (POST/PUT/PATCH/DELETE) from stateful origins must echo the CSRF cookie in the `X-XSRF-TOKEN` header or they are rejected with **419**. See [SPA Cookie Mode](./spa-cookie-mode.md).
+
 ---
 
 ## Authentication Endpoints
+
+### CSRF Cookie (SPA cookie mode)
+
+Issues the signed double-submit CSRF cookie. SPAs call this once on app load (and again after a 419).
+
+```http
+GET /neev/csrf-cookie
+```
+
+**Response:** `204 No Content` with an `XSRF-TOKEN` cookie (not HttpOnly — the SPA reads it and echoes the value in `X-XSRF-TOKEN`). Throttled to 60 requests/minute.
+
+---
 
 ### Register
 
