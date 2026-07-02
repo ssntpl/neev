@@ -305,11 +305,22 @@ GET /neev/csrf-cookie
 
 Returns `204 No Content` and sets:
 
-- `XSRF-TOKEN` cookie — random 40-byte token, **not** HttpOnly
-  (JS needs to read it to echo into the header), Secure (in
-  production), SameSite=Lax, expires in 2 hours by default.
+- `XSRF-TOKEN` cookie — an **HMAC-signed** token (random value plus a
+  signature keyed to `APP_KEY`), **not** HttpOnly (JS needs to read
+  it to echo into the header), Secure (in production), SameSite=Lax,
+  expires in 2 hours by default.
 - The cookie name is configurable
   (`config('neev.spa.csrf_cookie_name')`).
+
+> **Do not use a bare `Str::random(40)` compared with
+> `hash_equals()`.** An unsigned token is the naive double-submit
+> variant and is defeated by subdomain cookie injection (see §10). Sign
+> the token to `APP_KEY` (as Laravel/Sanctum do) so a value an attacker
+> writes into the cookie from a sibling subdomain fails verification.
+> `csrfValid()` in §5.3 must verify the signature, not just compare
+> cookie-value against header-value. The illustrative code in §5.3
+> shows the plain-compare form for brevity; the signed form is
+> normative.
 
 The SPA hits this once on app load (and on 419 retry). On
 state-changing requests it reads the `XSRF-TOKEN` cookie value
@@ -432,24 +443,67 @@ to deleting all the user's tokens).
 
 ### 5.7 MFA flow
 
-The existing MFA flow returns a short-lived JWT
-(`AccessToken::mfa_token` type, `mfa_jwt_expiry_minutes` config)
-that the client uses to call `/neev/mfa/otp/verify`.
+> **Important:** the MFA step-up token is **not** an `AccessToken`.
+> `UserAuthApiController::login()` issues a short-lived **JWT**
+> (`getJwtToken($user->id, "mfa", …)`,
+> `src/Http/Controllers/Auth/UserAuthApiController.php`), and
+> `POST /neev/mfa/otp/verify` is protected by the **`neev:login`**
+> group (`JwtLoginMiddleware`), **not** `neev:api`
+> (`routes/neev.php`). The `AccessToken::mfa_token` type referenced
+> in `NeevAPIMiddleware.php:34` is a separate, legacy concept and is
+> **not** what the password-login MFA path produces. Any spec that
+> assumes MFA runs through `NeevAPIMiddleware` is wrong for this
+> flow. This section is corrected accordingly.
 
-For SPA mode, the same flow applies — but the **MFA JWT also
-lives in the cookie**, set on the password-step response and
-replaced by the real session cookie on successful MFA
-verification:
+The MFA flow has two response shapes to cover:
 
 ```text
-POST /neev/login           → 200, mfa_options: [...], sets neev_session = mfa_jwt
-POST /neev/mfa/otp/verify  → 200, sets neev_session = api_token (replaces)
+POST /neev/login           → 200, auth_state: "mfa_required", carries mfa JWT
+POST /neev/mfa/otp/verify  → 200, auth_state: "authenticated", carries api_token
 ```
 
-`NeevAPIMiddleware` already routes MFA tokens correctly: they can
-only access `/neev/mfa/otp/verify` and `/neev/mfa`
-(`src/Http/Middleware/NeevAPIMiddleware.php:34`). That logic
-applies unchanged to cookie-borne MFA tokens.
+For SPA mode:
+
+1. On the `mfa_required` response, `SpaCookieResponder` sets
+   `neev_session` = the **MFA JWT** (short-lived) and, as with the
+   authenticated response, **strips `token` from the body**. Note
+   the login response carries `token` in *both* the `mfa_required`
+   and `authenticated` shapes today
+   (`UserAuthApiController.php:181-200`) — the responder must handle
+   both, not just the authenticated one.
+2. `POST /neev/mfa/otp/verify` must read that cookie and present the
+   JWT to `JwtLoginMiddleware`. **This route is in `neev:login`, so
+   the `neev:api`-only placement of
+   `EnsureSpaRequestsAreStateful` (§5.2) does not cover it.** The
+   cookie→credential bridging for the verify step must therefore be
+   added to the `neev:login` group as well (or the middleware placed
+   in a shared position both groups include). See §5.7.1.
+3. On successful verify, `SpaCookieResponder` replaces `neev_session`
+   with the real `api_token` and strips `token` from the body.
+
+### 5.7.1 Middleware coverage of auth-issuing routes
+
+`EnsureSpaRequestsAreStateful` in §5.2 is added to `neev:api` only.
+That group covers routes that *consume* a token, but the routes that
+*issue* or *step up* a token live in other groups and are **not**
+covered:
+
+| Route | Group today | Needs SPA handling for |
+|---|---|---|
+| `POST /neev/login` | `throttle` + `TenantMiddleware` | set cookie (via responder) |
+| `POST /neev/mfa/otp/verify` | `neev:login` | **read** cookie → JWT, then set cookie |
+| `GET /neev/loginUsingLink` | `TenantMiddleware` | set cookie |
+| OAuth / SSO callback | (web) | set cookie |
+
+The cookie-*setting* side is handled independently by
+`SpaCookieResponder` (§5.5), which calls `fromStatefulOrigin()`
+directly and does not depend on middleware placement. The
+cookie-*reading* side (synthesising a credential from the cookie)
+currently only runs for `neev:api`. The MFA verify step is the one
+issuing route that must *read* a cookie, so §8's PR4 must extend the
+reading path to `neev:login`. This is called out here so the
+"`NeevAPIMiddleware` unchanged, one middleware in one group" framing
+of §5.1 is not mistaken for full coverage.
 
 ### 5.8 OAuth / SSO callbacks
 
@@ -695,6 +749,25 @@ Known limitations:
   This is the standard double-submit limitation; binding would
   require server-side state and defeats the stateless goal. The
   HttpOnly auth cookie + SameSite=Lax compensates.
+- **Subdomain cookie injection.** Plain double-submit is defeated
+  if any host under the cookie domain is attacker-influenced: a
+  sibling subdomain (or one vulnerable to response/header
+  injection) can set an `XSRF-TOKEN` cookie on the parent domain
+  that the victim's browser then echoes into `X-XSRF-TOKEN`,
+  producing a matching pair the server accepts. This is the more
+  practically exploitable weakness of the two and is **why §5.4
+  signs the token to `APP_KEY`** — an injected value that the
+  attacker cannot sign fails verification. Without signing, this
+  design is not safe on any deployment that shares a cookie domain
+  with untrusted subdomains.
+- **Cookie encryption must be consistent between set and read.**
+  Laravel's `EncryptCookies` middleware transparently encrypts
+  cookies. If it runs for the auth cookie on the way out but not on
+  the way in (or vice versa), the synthesised bearer will be
+  garbage; if it encrypts `XSRF-TOKEN`, JS reads the encrypted
+  value but the server compares the decrypted one and CSRF breaks.
+  Sanctum resolves this by adding `XSRF-TOKEN` to
+  `EncryptCookies::$except`. See open question §13.5.
 - **No automatic CSRF rotation.** The token lives 2 hours then
   expires; SPA hits `/neev/csrf-cookie` again. Sufficient for
   most threat models. Per-request rotation is possible but adds
@@ -837,7 +910,42 @@ These remain for resolution before / during implementation:
    out. The trait keeps the auth controllers thin; the
    middleware is more out-of-the-way. Implementer's call;
    default to whichever fits neev's existing service patterns
-   best.
+   best. Related: §5.5's `isSpaRequest()` instantiates the
+   middleware as a service to reuse `fromStatefulOrigin()`. Prefer
+   extracting a `Ssntpl\Neev\Services\StatefulOriginResolver`
+   that both the middleware and the responder consume, rather than
+   `app(EnsureSpaRequestsAreStateful::class)`.
+
+5. **Cookie encryption and the required middleware stack.** The
+   `neev:api` group (`NeevServiceProvider.php`) does not include
+   `EncryptCookies` or `AddQueuedCookiesToResponse`, so whether
+   cookies are decrypted on read / attached on write depends on the
+   consuming app's outer group (`web` vs `api`). This must be
+   pinned down before implementation:
+   - Does `EnsureSpaRequestsAreStateful` read a **decrypted** or
+     **raw** `neev_session`? (i.e. is `EncryptCookies` guaranteed
+     upstream?)
+   - Does `Cookie::queue()` from `SpaCookieResponder` /
+     `CsrfCookieController` reliably reach the response, and is the
+     auth cookie encrypted symmetrically on read?
+   - `XSRF-TOKEN` almost certainly needs to go in
+     `EncryptCookies::$except` (Sanctum does this) so JS-read and
+     server-compared values match.
+   - What middleware group should `/neev/csrf-cookie` (§5.9) use?
+     As written it sits under `TenantMiddleware` only, which won't
+     run the cookie/queue middleware needed to emit the cookie.
+   Recommendation: document the required cookie-middleware stack
+   explicitly and, if neev cannot guarantee it via its own groups,
+   add it to `neev:api` (before `NeevAPIMiddleware`) so behaviour
+   is deterministic regardless of the consumer's outer group.
+
+6. **`localhost:3000`-style origins with ports.** §12.1's example
+   stateful list includes `localhost:3000`, but
+   `fromStatefulOrigin()` matches against `parse_url(…, PHP_URL_HOST)`,
+   which strips the port — so `localhost:3000` would be compared
+   against host `localhost` and never match. Sanctum stores and
+   matches host+port. Decide whether to strip ports from both sides
+   or match host:port explicitly, and document it.
 
 ## 14. References
 
