@@ -52,16 +52,35 @@ Best for: white-label SaaS, regulated industries.
 
 ### Choosing Your Mode
 
-| If you need... | Config |
-|----------------|--------|
-| Users joining multiple orgs (GitHub/Slack model) | `tenant: false`, `team: true` |
-| Simple app with no org concept | `tenant: false`, `team: false` |
-| Same email in different orgs (white-label) | `tenant: true` |
-| Per-org SSO with separate identity providers | `tenant: true` (or `team: true`) + auth settings in DB |
-| Subdomain/custom-domain org access (acme.app.com) | `tenant: true` + verified `domains` records |
-| Regulatory data isolation between orgs | `tenant: true` |
+The two booleans are orthogonal, giving four modes:
+
+| Mode | `tenant` | `team` | Who shares an email | What `TenantResolver` resolves | Typical product shape |
+|------|----------|--------|---------------------|--------------------------------|-----------------------|
+| **Single-app** | `false` | `false` | One account per email, application-wide | Nothing — resolver is inactive | Personal apps, internal tools, products with no organization concept |
+| **B2B teams** | `false` | `true` | One account per email, application-wide; that account joins many teams | Nothing — resolver is inactive | GitHub/Slack-style collaboration SaaS |
+| **Isolated tenants** | `true` | `false` | Unique per `(tenant_id, email)` — the same email can be a separate account in each tenant | A `Tenant` (X-Tenant header → subdomain → custom domain) | White-label SaaS, reseller platforms, regulated industries |
+| **Tenant + teams** | `true` | `true` | Unique per `(tenant_id, email)` | A `Tenant`; teams are resolved within it | Enterprise SaaS: each customer is an isolated tenant with internal teams/workspaces |
+
+Email uniqueness comes from the composite unique index on `users (tenant_id, email)` (see `2025_01_01_000001_create_users_table.php`). With `tenant => false` every user has a `NULL` `tenant_id`, so all accounts live in one identity namespace. With `tenant => true` each tenant is its own namespace: the same email can hold a distinct account — with a distinct password, MFA setup, and memberships — in every tenant.
+
+**Single-app** (`tenant: false`, `team: false`) — Neev is a drop-in auth layer: password/passkey/OAuth login, MFA, sessions, tokens. No organization modeling at all. Choose this when users only ever act as themselves.
+
+**B2B teams** (`tenant: false`, `team: true`) — users are global and log in once; teams are collaboration containers a user can create, join, and switch between. Per-team SSO and roles are available, but identity stays global — a user is the same account in every team. Choose this for the GitHub/Jira/Trello shape.
+
+**Isolated tenants** (`tenant: true`, `team: false`) — the tenant is an identity boundary resolved *before* authentication (so Neev knows which identity provider and user namespace to use). Users belong to exactly one tenant and never interact across tenants. Choose this when each customer must be invisible to every other customer.
+
+**Tenant + teams** (`tenant: true`, `team: true`) — isolation between customers plus collaboration structure inside each customer. Teams exist *within* a tenant; the tenant still owns identity. Choose this for large enterprise accounts that need departments, projects, or workspaces under one isolated umbrella.
+
+#### Four Questions to Decide
+
+1. **Can the same email need two separate accounts in two different customer organizations** (white-label, reseller, strict data isolation)? Yes → `tenant: true`. No → `tenant: false`.
+2. **Should one user belong to multiple organizations with a single login** (GitHub/Slack model)? Yes → `tenant: false` + `team: true` (this is impossible with `tenant: true`, where a user belongs to exactly one tenant).
+3. **Do users collaborate in named groups** — invites, roles, shared resources, group switching? Yes → `team: true` (in either tenant mode). No → `team: false`.
+4. **Must each customer control *how* its users log in** (own SSO/IdP, subdomain or custom-domain access)? Per-org SSO works in both modes via database-driven auth settings, but if the org must also own the *user namespace*, you need `tenant: true`.
 
 Per-tenant and per-team authentication (password vs SSO) is **not** a config toggle — it lives in the `tenant_auth_settings` and `team_auth_settings` database tables. See [Tenant-Driven Authentication](#tenant-driven-authentication).
+
+> The conceptual model behind these modes (identity strategy, tenant vs team separation) is covered in [Architecture](./architecture.md#identity-strategy-primary-concept).
 
 ---
 
@@ -332,35 +351,58 @@ $resolver->setCurrentTenant($team);
 $projects = Project::all(); // Scoped to $team
 ```
 
-**In queue jobs:**
+**In queue jobs (recommended pattern):**
 
-Serialize the tenant/team ID in the job payload and restore context in the `handle()` method:
+Queue workers never run the HTTP middleware stack, so `ContextManager` and `TenantResolver` start empty in every job. The recommended pattern has two halves:
+
+1. **At dispatch time**, serialize the tenant (or team) **ID** — a plain integer — into the job payload. Don't serialize the model into a context-holding property; the ID is unambiguous and survives queue serialization cleanly.
+2. **In `handle()`**, re-fetch the model and wrap all work in `TenantResolver::runInContext()`.
+
+`runInContext(ContextContainerInterface $context, Closure $callback): mixed` accepts either a `Tenant` (isolated mode) or a `Team` (shared mode) — both implement `ContextContainerInterface`. It sets the context, runs the callback, returns the callback's return value, and restores the previous context in a `finally` block — even if the callback throws.
 
 ```php
+// Dispatching (e.g. from a controller, where middleware already resolved the context)
+ProcessTenantReport::dispatch(app(TenantResolver::class)->currentId());
+```
+
+```php
+use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Foundation\Queue\Queueable;
+use Ssntpl\Neev\Models\Tenant;
+use Ssntpl\Neev\Services\TenantResolver;
+
 class ProcessTenantReport implements ShouldQueue
 {
+    use Queueable;
+
     public function __construct(
-        private int $teamId,
-    ) {}
+        private int $tenantId,
+    ) {
+    }
 
-    public function handle(): void
+    public function handle(TenantResolver $resolver): void
     {
-        $team = Team::find($this->teamId);
-        $resolver = app(TenantResolver::class);
+        $tenant = Tenant::getClass()::findOrFail($this->tenantId);
 
-        $resolver->runInContext($team, function () {
-            // All scoped queries now work
-            $projects = Project::all(); // Scoped to $team
+        $resolver->runInContext($tenant, function () {
+            // Scoped queries and tenant_id auto-assignment work here
+            $projects = Project::all();          // scoped to $tenant
+            $report = Report::create([...]);     // tenant_id auto-set
         });
+        // Context restored (empty again) here — nothing leaks to the next job
     }
 }
 ```
 
-> **Important:** Do not rely on the `ContextManager` being populated in queue workers. Always pass tenant/team IDs explicitly in job payloads and restore context at the start of `handle()`. The `ContextManager` singleton is shared across jobs in a long-running worker, so failing to set context could leak data between tenants.
+In shared mode (`tenant => false`, `team => true`), pass a team ID instead and fetch it with `Team::getClass()::findOrFail(...)` — `runInContext()` works identically with a `Team`.
+
+> **Important:** Never rely on the `ContextManager` being populated in queue workers — the HTTP middleware that populates it never runs there. Always pass tenant/team IDs explicitly in job payloads and set context at the start of `handle()`. Prefer `runInContext()` over `setCurrentTenant()` in jobs: its `finally`-based restore guarantees the context is cleaned up even when the job throws, so no tenant context can bleed into later work in the same process.
 
 ---
 
 ## Tenant Middleware
+
+This section summarizes the middleware from a tenancy perspective. The authoritative usage and ordering guide — exact group compositions, alias placement, and how custom application middleware should interact with the bound context — is in [Architecture Internals](./architecture-internals.md#middleware-usage--ordering).
 
 ### Available Middleware Groups
 
@@ -406,6 +448,8 @@ The middleware groups run in this order:
 **`neev:api`**: TenantMiddleware (resolve tenant) → ResolveTeamMiddleware (resolve team) → NeevAPIMiddleware (authenticate user) → EnsureTenantMembership (check membership) → BindContextMiddleware (lock context)
 
 When `tenant` is disabled, the tenant-specific middleware are no-ops. Authentication always runs before the membership check. This ensures `$request->user()` is available when `EnsureTenantMembership` validates that the user belongs to the current tenant.
+
+Always list the group **before** any `neev:*` alias or custom middleware — everything after the group sees the bound (immutable) context. See the [full ordering rules](./architecture-internals.md#middleware-usage--ordering).
 
 ### TenantMiddleware Behavior
 

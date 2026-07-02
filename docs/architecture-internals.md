@@ -181,6 +181,68 @@ Rules:
 
 ---
 
+## Middleware Usage & Ordering
+
+This is the authoritative reference for Neev's middleware groups and aliases. Compositions below mirror `NeevServiceProvider::boot()` exactly.
+
+### Middleware Groups
+
+Every group ends with `BindContextMiddleware`. Its `handle()` calls `ContextManager::bind()`, which flips the immutability flag — any later attempt to mutate the context (`setTenant()`, `setTeam()`, `setUser()`, `setContext()`) throws a `LogicException`. It also clears the context after the response, so nothing leaks into the next request on long-running runtimes.
+
+| Group | Composition (in order) | Use for |
+|-------|------------------------|---------|
+| `neev:web` | `TenantMiddleware` → `ResolveTeamMiddleware` → `NeevMiddleware` → `EnsureTenantMembership` → `BindContextMiddleware` | Session-authenticated web (Blade) routes |
+| `neev:api` | `TenantMiddleware` → `ResolveTeamMiddleware` → `EnsureSpaRequestsAreStateful` → `NeevAPIMiddleware` → `EnsureTenantMembership` → `BindContextMiddleware` | Bearer-token API routes; `EnsureSpaRequestsAreStateful` also lets same-origin SPAs authenticate via the HttpOnly cookie |
+| `neev:login` | `TenantMiddleware` → `ResolveTeamMiddleware` → `EnsureSpaRequestsAreStateful` → `JwtLoginMiddleware` → `EnsureTenantMembership` → `BindContextMiddleware` | Routes authenticated by the temporary MFA JWT — the step between password login and MFA verification (e.g. the OTP verify endpoint) |
+| `neev:tenant` | `TenantMiddleware:required` → `ResolveTeamMiddleware` → `BindContextMiddleware` | Tenant resolution **without** user authentication (public tenant pages, pre-login tenant discovery). The `required` parameter makes it return 404 when no tenant resolves |
+
+The internal ordering inside each group is deliberate and must not be re-created differently by hand:
+
+1. `TenantMiddleware` — resolves the tenant from the request (X-Tenant header, then host). Must run first so everything downstream sees the tenant.
+2. `ResolveTeamMiddleware` — resolves the team (route parameter / context).
+3. Authentication (`NeevMiddleware`, `NeevAPIMiddleware`, or `JwtLoginMiddleware`) — authenticates the user *after* tenant resolution, because in isolated mode the tenant determines the user namespace.
+4. `EnsureTenantMembership` — needs both the resolved tenant and the authenticated user.
+5. `BindContextMiddleware` — always last; locks the fully populated context.
+
+### Middleware Aliases
+
+Aliases are single-purpose checks you attach **in addition to** a group:
+
+| Alias | Class | Purpose |
+|-------|-------|---------|
+| `neev:active-team` | `EnsureTeamIsActive` | Reject requests when the current team is deactivated |
+| `neev:active-tenant` | `EnsureTenantIsActive` | Reject requests when the current tenant is deactivated |
+| `neev:tenant-member` | `EnsureTenantMembership` | Standalone membership check (already inside the auth groups; use on custom stacks) |
+| `neev:resolve-team` | `ResolveTeamMiddleware` | Standalone team resolution (already inside the groups; use on custom stacks) |
+| `neev:ensure-sso` | `EnsureContextSSO` | When the resolved tenant/team requires SSO, reject (API) or redirect (web) sessions that were not established via SSO |
+| `neev:password-not-expired` | `EnsurePasswordNotExpired` | Block access once the user's password has expired |
+| `neev:verified-email` | `EnsureEmailIsVerified` | Block access until the user's email is verified |
+
+### Ordering Rules
+
+* **Group first, aliases after.** Aliases like `neev:ensure-sso`, `neev:active-team`, and `neev:password-not-expired` need the authenticated user and resolved context, which only the group provides:
+
+```php
+Route::middleware(['neev:api', 'neev:active-team', 'neev:ensure-sso'])->group(function () {
+    // ...
+});
+```
+
+* **Custom application middleware runs after the Neev group** if it needs the resolved context. Placed after the group, it can safely read `ContextManager` (`currentTenant()`, `currentTeam()`, `currentUser()`) and `$request->user()`:
+
+```php
+Route::middleware(['neev:api', EnforceSubscriptionLimits::class])->group(function () {
+    // EnforceSubscriptionLimits sees the bound, immutable context
+});
+```
+
+* **Custom middleware must not mutate the context.** By the time it runs, `BindContextMiddleware` has locked it — mutation throws a `LogicException`. If you need code to run *before* binding (rare), compose the individual middleware classes yourself instead of using the group, keeping the internal order above and `BindContextMiddleware` last.
+* **Never apply two Neev groups to the same route** — each group is a complete stack.
+
+When `tenant => false`, the tenant-specific steps are no-ops and the groups behave as plain session/token authentication stacks.
+
+---
+
 ## Identity Provider Ownership
 
 Identity providers are implemented generically.

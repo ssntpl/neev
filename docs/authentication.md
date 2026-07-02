@@ -366,9 +366,21 @@ GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI="${APP_URL}/neev/oauth/google/callback"
 ```
 
-### Security Note
+### Security Warning: OAuth Bypasses MFA and Password Policies
 
-OAuth and Social login bypasses Neev's MFA requirements and password policies. Users authenticated via OAuth skip the MFA verification step and are not subject to password expiry or complexity rules. If your application requires MFA for all users, consider implementing a post-OAuth MFA check in your application logic, or restrict OAuth to low-sensitivity accounts.
+> **Warning — OAuth is a complete authentication path that skips the MFA gate.**
+>
+> Password login checks the user's enrolled MFA methods and, when any are active, withholds the session/token until a second factor is verified (`mfa_required` state with a temporary JWT on the API; redirect to the OTP page on the web). The OAuth callback does **not** perform this check: once the provider returns a verified email that matches an account, the user is logged in (web) or issued a full access token (API) immediately — even if that user has TOTP or email MFA enabled. A compromised Google/GitHub/Microsoft/Apple account therefore grants access without the second factor.
+>
+> Password policies are also inapplicable to OAuth-created accounts: they are created **without a password**, so complexity rules, password history, and password expiry never apply to them, and their email is marked verified automatically (it was verified by the provider).
+
+**What this means for enterprise policy:** if your compliance posture requires MFA for all users (or organization-controlled credentials), enabling app-wide OAuth providers undermines that guarantee — every enabled provider is an alternate front door that skips your MFA and password controls.
+
+**Mitigations:**
+
+- **Limit or empty the `oauth` providers list** in `config/neev.php`. Providers not in the list 404 on both redirect and callback, so this fully disables the path.
+- **Use tenant SSO instead for organizations that need enforced IdP login.** Tenant/team SSO is database-configured per organization, and the `neev:ensure-sso` middleware rejects (API) or redirects (web) any authenticated session that was not established via SSO — including sessions created through app-wide OAuth. See [Multi-Tenancy → Enterprise SSO](./multi-tenancy.md#enterprise-sso).
+- **Add an application-level step-up check** after login if MFA must be universal regardless of login method (Neev does not provide this out of the box).
 
 ### Flow
 
@@ -667,7 +679,7 @@ class LogSuccessfulLogout
 5. **Monitor login attempts** for suspicious activity
 6. **Use session database** driver for logout-all-devices functionality
 7. **Keep GeoIP database** updated for accurate location tracking
-8. **Be aware that OAuth bypasses MFA** — consider additional checks for OAuth users if MFA is a compliance requirement
+8. **Be aware that OAuth bypasses MFA and password policies** — see [the OAuth security warning](#security-warning-oauth-bypasses-mfa-and-password-policies) for mitigations
 
 ---
 

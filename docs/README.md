@@ -13,6 +13,7 @@ Start here to set up and use Neev in your application.
 | [Installation](./installation.md) | Step-by-step setup: Composer, migrations, environment, publishing assets |
 | [Configuration](./configuration.md) | All `config/neev.php` options with explanations |
 | [Authentication](./authentication.md) | Password, magic link, passkey, OAuth, and SSO login flows |
+| [SPA Authentication](./spa-authentication.md) | Wiring a same-origin React/Vue SPA to neev: cookie mode, CSRF, CORS, SSO hand-off, troubleshooting |
 | [MFA](./mfa.md) | Authenticator apps (TOTP), email OTP, and recovery codes |
 | [Teams](./teams.md) | Team creation, invitations, roles, domain federation |
 | [Multi-Tenancy](./multi-tenancy.md) | Identity strategy, tenant isolation, subdomain/custom domain, enterprise SSO |
@@ -44,7 +45,7 @@ Design proposals and their implementation status.
 
 | Document | Status | Description |
 |----------|--------|-------------|
-| [SPA Cookie Mode](./spa-cookie-mode.md) | Phases 1–3 implemented; phase 4 (consumer guide) pending | HttpOnly-cookie auth + signed double-submit CSRF for same-origin SPAs. Additive to the existing bearer-token API. Driven by the TAILLOG web rebuild and otper. |
+| [SPA Cookie Mode](./spa-cookie-mode.md) | Fully implemented (phases 1–4; consumer guide: [SPA Authentication](./spa-authentication.md)) | HttpOnly-cookie auth + signed double-submit CSRF for same-origin SPAs. Additive to the existing bearer-token API. Driven by the TAILLOG web rebuild and otper. |
 | [RFC 002 — Headless Core + Starter Kits](./rfcs/002-starter-kits.md) | Phase A implemented | Package is fully headless (Fortify-style); Blade UI ejects into the app as a starter kit at install; email templates app-owned with a documented variable contract; React kit reserved as a future kit. |
 
 ---

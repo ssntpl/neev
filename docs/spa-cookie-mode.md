@@ -1,6 +1,6 @@
 # SPA Cookie Mode
 
-> **Status:** Phases 1–3 implemented (config, `EnsureSpaRequestsAreStateful`, signed CSRF, `/neev/csrf-cookie`; cookie issuance on login/register/magic-link/MFA-verify/passkey/OAuth-API with `token` stripped from SPA responses, logout cookie clearing via `SpaCookieResponder`; web-redirect OAuth callbacks issue the cookie on stateful hosts and tenant-SSO callbacks deliver the token via cookie instead of the URL fragment for stateful redirect targets); phase 4 (consumer migration docs) pending per §8
+> **Status:** Phases 1–4 implemented (config, `EnsureSpaRequestsAreStateful`, signed CSRF, `/neev/csrf-cookie`; cookie issuance on login/register/magic-link/MFA-verify/passkey/OAuth-API with `token` stripped from SPA responses, logout cookie clearing via `SpaCookieResponder`; web-redirect OAuth callbacks issue the cookie on stateful hosts and tenant-SSO callbacks deliver the token via cookie instead of the URL fragment for stateful redirect targets; consumer docs shipped — see the [SPA Authentication guide](./spa-authentication.md), the how-to companion to this spec)
 > **Date:** 2026-06-12 (spec), 2026-07-02 (phase 1)
 > **Target version:** next minor (additive, no breaking changes)
 > **Authors:** TAILLOG team (driving), neev maintainers (review)

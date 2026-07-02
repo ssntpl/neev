@@ -187,7 +187,7 @@ Authorization: Bearer {token}
 
 ### Logout All Sessions
 
-Logout from all devices.
+Logout from all other devices — the current session survives.
 
 ```http
 POST /neev/logoutAll
@@ -202,7 +202,7 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "message": "Logged out successfully."
+    "message": "Logged out from all other devices successfully."
 }
 ```
 

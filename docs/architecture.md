@@ -52,6 +52,8 @@ Identity strategy defines how user identities exist in the system.
 
 Selected at install time via the `tenant` boolean in `config/neev.php` — `false` selects shared identity, `true` selects isolated identity.
 
+> For a practical decision matrix covering all four `tenant` × `team` combinations (email uniqueness, resolver behaviour, typical product shapes, and a four-question checklist), see [Choosing Your Mode](./multi-tenancy.md#choosing-your-mode).
+
 ---
 
 ### 1. Shared Identity Strategy

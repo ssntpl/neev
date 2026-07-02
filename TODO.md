@@ -129,18 +129,18 @@
 
 ### Documentation Gaps
 - [x] **Events system expansion** — Laravel-native events (`Registered`, `PasswordReset`, `Lockout`) plus Neev events for MFA changes, password changes, team/tenant lifecycle, membership, SSO provisioning, email verification, and domain verification. Documented in `docs/README.md`.
-- [ ] **Identity mode decision matrix** — Document the four `tenant` × `team` flag combinations with a clear "choose this if you need X" guide / decision flowchart.
-- [ ] **SSO SPA flow documentation** — No docs on how a SPA initiates SSO login, receives the token after callback, or security considerations for the redirect flow. (Will be closed by implementing `docs/spa-cookie-mode.md`.)
-- [ ] **Middleware usage and ordering documentation** — The middleware groups (`neev:web`, `neev:api`, `neev:login`, `neev:tenant`) and aliases lack docs on when to use each, ordering requirements (e.g., `BindContextMiddleware` must be last), and interaction with custom middleware.
-- [ ] **Queue/background job tenant context** — `TenantResolver::runInContext()` (v0.4.3) supports running code inside a tenant/team context outside requests, but the pattern is undocumented. Document usage for queue jobs (serialize tenant ID in payload + `runInContext()` in `handle()`).
-- [ ] **OAuth security bypass documentation** — OAuth bypasses MFA and password policies. This is noted in a config comment but should be prominently documented since enterprise customers will care.
-- [ ] **CORS/SPA guidance** — Add a section to API docs covering CORS configuration for SPA consumers. (Will be closed by implementing `docs/spa-cookie-mode.md`.)
+- [x] **Identity mode decision matrix** — four-mode matrix + "Four Questions to Decide" in `docs/multi-tenancy.md`, cross-linked from architecture.md.
+- [x] **SSO SPA flow documentation** — covered in `docs/spa-authentication.md` (SSO → SPA section: discovery, redirect, cookie vs fragment callback).
+- [x] **Middleware usage and ordering documentation** — authoritative "Middleware Usage & Ordering" section in `docs/architecture-internals.md`.
+- [x] **Queue/background job tenant context** — documented in `docs/multi-tenancy.md` (Console & Queue Context) with a complete job example.
+- [x] **OAuth security bypass documentation** — verified against the callback flows and prominently documented in `docs/authentication.md` + `docs/security.md`, with mitigations (provider allowlist, `neev:ensure-sso`).
+- [x] **CORS/SPA guidance** — covered in `docs/spa-authentication.md` (backend setup: cors.php example, credentials, encryption caveats).
 
 ### Code Cleanup
 - [ ] **Remove unused `MembershipService`** — `src/Services/MembershipService.php` is defined but never injected or referenced. Either implement it as the central membership operations service or remove it.
 - [ ] **Extract `isDomainVerified()` to shared service** — Currently duplicated as a private method in `UserAuthController`, `UserAuthApiController`, and `OAuthController`. Move to `EmailDomainValidator` service.
 - [ ] **Web/API registration feature parity** — Web and API registration controllers have diverged in feature coverage. Consider extracting a `RegistrationService` to centralize: company email enforcement, tenant isolation handling, username support, team creation with activation.
-- [ ] **Lint violations in demo/ directory** — 4 Pint/PSR-12 violations in demo files. Run `composer lint-fix` to clean up.
+- [x] ~~Lint violations in demo/ directory~~ — obsolete: `demo/` is gitignored (local-only, not shipped).
 
 ---
 

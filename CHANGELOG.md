@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **SPA consumer guide** (`docs/spa-authentication.md`) — completes SPA cookie mode phase 4: backend/CORS/axios setup, all auth flows with exact response shapes, the SSO → SPA hand-off, and troubleshooting
+- Documentation: identity-mode decision matrix (multi-tenancy.md), authoritative middleware usage & ordering guide (architecture-internals.md), queue/tenant-context job pattern (multi-tenancy.md), and a verified, prominent warning that OAuth login bypasses MFA and password policies with mitigations (authentication.md, security.md)
 - **Headless core + Blade starter kit (RFC 002, phase A)** — the package is now fully headless by default, Fortify-style:
   - New `ui` config value (`NEEV_UI`: `'blade'` | `null`). `null` (default) registers no Blade page routes — API, OAuth/SSO, and email flows work standalone. `'blade'` registers the page routes, rendered from **app-owned** views
   - The Blade page templates moved from package-loaded views to `stubs/blade/views/`; `php artisan neev:ui blade` ejects them to `resources/views/vendor/neev` where they belong to the app (existing published views keep working — same path)

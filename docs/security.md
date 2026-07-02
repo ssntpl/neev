@@ -135,6 +135,25 @@ Unauthenticated requests pass through unchanged. Set `password_expiry_days` to `
 
 ---
 
+## OAuth / Social Login Bypass
+
+> **Warning:** everything in the sections above — and the MFA gate — applies only to password-based login. OAuth/social login (the `oauth` providers list in `config/neev.php`) is a separate, complete authentication path:
+>
+> - The OAuth callback logs the user in (web) or issues a full access token (API) **without checking the user's enrolled MFA methods**. A user with active TOTP or email MFA is never prompted for a second factor when signing in via OAuth.
+> - Accounts created via OAuth have **no password**, so strength rules, password history, and password expiry never apply to them. Their email is marked verified automatically.
+>
+> The effective security of an OAuth-enabled account is therefore the security of the linked Google/GitHub/Microsoft/Apple account — your MFA and password policies do not add to it.
+
+If MFA or organization-controlled credentials are a compliance requirement:
+
+- **Keep the `oauth` list empty or minimal.** Providers not in the list return 404 on both the redirect and callback routes, which fully disables the path.
+- **For per-organization enforcement, use tenant/team SSO with the `neev:ensure-sso` middleware.** It rejects (API) or redirects (web) any authenticated session that was not established via SSO, closing the OAuth side door for that organization.
+- **If MFA must be universal across all login methods**, implement an application-level step-up check after login — Neev does not provide one for OAuth sessions.
+
+See [Authentication → OAuth / Social Login](./authentication.md#security-warning-oauth-bypasses-mfa-and-password-policies) for details.
+
+---
+
 ## Login Tracking
 
 ### Tracked Information
