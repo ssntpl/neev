@@ -1,6 +1,6 @@
 # Neev - Enterprise User Management for Laravel
 
-Neev is a comprehensive Laravel package that provides enterprise-grade user authentication, team management, and security features. It's designed as a complete starter kit for SaaS applications, eliminating the need to build complex user management systems from scratch.
+Neev is a comprehensive Laravel package that provides enterprise-grade user authentication, team management, and security features for SaaS applications, eliminating the need to build complex user management systems from scratch. The package is headless by default — the API, OAuth/SSO, and email flows work standalone for SPA/API frontends — with an optional Blade starter kit whose pages are ejected into your app at install and are yours to edit.
 
 [![Latest Version](https://img.shields.io/packagist/v/ssntpl/neev.svg?style=flat-square)](https://packagist.org/packages/ssntpl/neev)
 [![License](https://img.shields.io/packagist/l/ssntpl/neev.svg?style=flat-square)](https://packagist.org/packages/ssntpl/neev)
@@ -81,6 +81,8 @@ composer require ssntpl/neev
 ```bash
 php artisan neev:install
 ```
+
+The wizard asks three questions: multi-tenant isolation (yes/no), team support (yes/no), and which frontend starter kit you want — `blade` ejects ready-made pages into `resources/views/vendor/neev/` (app-owned), `none` keeps the package headless. Email templates are ejected to your app either way. You can eject a kit later with `php artisan neev:ui blade`.
 
 ### 3. Configure Environment
 
@@ -331,6 +333,8 @@ All API routes are prefixed with `/neev` — the prefix is configurable via `rou
 ---
 
 ## Web Routes
+
+The Blade page routes below (everything except the OAuth/SSO endpoints) register only when the Blade starter kit is installed (`'ui' => 'blade'` in `config/neev.php`) — headless installs use the API instead.
 
 ### Public Routes
 
@@ -676,7 +680,8 @@ Email verification is enforced by applying the opt-in `neev:verified-email` midd
 ### Setup
 
 ```bash
-php artisan neev:install              # Interactive setup (asks: tenants? teams?)
+php artisan neev:install              # Interactive setup (asks: tenants? teams? starter kit?)
+php artisan neev:ui blade             # Eject the Blade starter kit (or `none` for headless)
 php artisan neev:download-geoip       # Download GeoIP database
 ```
 

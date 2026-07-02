@@ -1,6 +1,7 @@
 # RFC 002 — Headless Core + Starter Kits
 
-> **Status:** Proposed (design agreed with maintainer 2026-07-02; Phase A pending implementation)
+> **Status:** Phase A implemented (headless core, `ui` config, Blade kit in `stubs/`, `neev:ui` command, mail ejection); Phase B (React kit) future; Phase C (docs polish) pending
+> **§8 resolutions:** one Blade kit including the app-shell views (Q1, Q2); kit ejection on existing apps via the dedicated `neev:ui` command, keeping the installer's fresh-install guard (Q3). Kit ejection sources email templates from the package's own `resources/views/emails` rather than a duplicate `stubs/mail/` copy.
 > **Drivers:** neev as a Fortify-class drop-in for fresh Laravel installs; TAILLOG/otper React rebuilds
 > **Depends on:** SPA cookie mode (`docs/spa-cookie-mode.md`), configurable `route_prefix`
 

@@ -16,6 +16,7 @@ use Ssntpl\Neev\Commands\Domain\ListDomainsCommand;
 use Ssntpl\Neev\Commands\Domain\VerifyDomainCommand;
 use Ssntpl\Neev\Commands\DownloadGeoLiteDb;
 use Ssntpl\Neev\Commands\InstallNeev;
+use Ssntpl\Neev\Commands\InstallUi;
 use Ssntpl\Neev\Commands\Member\AddMemberCommand;
 use Ssntpl\Neev\Commands\Member\ListMembersCommand;
 use Ssntpl\Neev\Commands\Member\RemoveMemberCommand;
@@ -123,9 +124,16 @@ class NeevServiceProvider extends ServiceProvider
             __DIR__.'/../database/migrations/2025_01_01_000012_create_tenant_auth_settings_table.php' => database_path('migrations/2025_01_01_000012_create_tenant_auth_settings_table.php'),
         ], 'neev-migrations');
 
+        // Blade starter kit: ejected into the app (app-owned from then on).
         $this->publishes([
-            __DIR__.'/../resources/views' => resource_path('views/vendor/neev'),
-        ], 'neev-views');
+            __DIR__.'/../stubs/blade/views' => resource_path('views/vendor/neev'),
+        ], 'neev-blade-kit');
+
+        // Email templates: ejected by the installer so the app owns them;
+        // the package copies below remain as the headless fallback.
+        $this->publishes([
+            __DIR__.'/../resources/views/emails' => resource_path('views/vendor/neev/emails'),
+        ], 'neev-mail');
 
         $this->publishes([
             __DIR__.'/../routes/neev.php' => base_path('/routes/neev.php'),
@@ -141,23 +149,22 @@ class NeevServiceProvider extends ServiceProvider
 
         $this->loadRoutesFrom(__DIR__ . '/../routes/sso.php');
 
+        // The package view namespace holds only the email fallbacks; page
+        // views live exclusively in the app once a kit is ejected
+        // (resources/views/vendor/neev, which Laravel resolves first).
         $this->loadViewsFrom(__DIR__.'/../resources/views', 'neev');
 
         $this->loadTranslationsFrom(__DIR__.'/../resources/lang', 'neev');
 
-        Blade::anonymousComponentPath(
-            file_exists(resource_path('views/vendor/neev/components'))
-                ? resource_path('views/vendor/neev/components')
-                : __DIR__.'/../resources/views/components',
-            'neev-component'
-        );
+        // Kit components/layouts are app-owned; only register the paths
+        // when the kit has been ejected.
+        if (is_dir(resource_path('views/vendor/neev/components'))) {
+            Blade::anonymousComponentPath(resource_path('views/vendor/neev/components'), 'neev-component');
+        }
 
-        Blade::anonymousComponentPath(
-            file_exists(resource_path('views/vendor/neev/layouts'))
-                ? resource_path('views/vendor/neev/layouts')
-                : __DIR__.'/../resources/views/layouts',
-            'neev-layout'
-        );
+        if (is_dir(resource_path('views/vendor/neev/layouts'))) {
+            Blade::anonymousComponentPath(resource_path('views/vendor/neev/layouts'), 'neev-layout');
+        }
     }
 
     public function register(): void
@@ -170,6 +177,7 @@ class NeevServiceProvider extends ServiceProvider
 
         $this->commands([
             InstallNeev::class,
+            InstallUi::class,
             DownloadGeoLiteDb::class,
             CleanOldLoginAttempts::class,
             CleanPendingMfaSetups::class,

@@ -2,6 +2,8 @@
 
 Complete reference for all Neev web routes. These routes render Blade views for browser-based authentication.
 
+> **Blade kit required:** all Blade page routes in this document register only when `'ui' => 'blade'` in `config/neev.php` — i.e. after the Blade starter kit is ejected (`php artisan neev:ui blade` or the installer's kit prompt). On a headless install (`ui` = `null`, the default) none of these page routes exist. The [OAuth / Social Login](#oauth--social-login) and [Tenant SSO](#tenant-sso) routes below, and everything in the [API Reference](./api-reference.md), are always registered regardless.
+
 ---
 
 ## Public Routes
@@ -79,7 +81,7 @@ These routes are accessible without authentication.
 
 ### OAuth / Social Login
 
-These routes live under the configurable route prefix (`route_prefix` in `config/neev.php`, env `NEEV_ROUTE_PREFIX`, default `neev`). The paths below use the default prefix.
+These routes live under the configurable route prefix (`route_prefix` in `config/neev.php`, env `NEEV_ROUTE_PREFIX`, default `neev`). The paths below use the default prefix. Unlike the Blade page routes, they are **always registered** — headless installs use them too.
 
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
@@ -93,7 +95,7 @@ These routes live under the configurable route prefix (`route_prefix` in `config
 
 ### Tenant SSO
 
-These routes also live under the configurable route prefix.
+These routes also live under the configurable route prefix and are always registered.
 
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
@@ -297,10 +299,10 @@ For multi-tenant routes. Requires a tenant to be resolved (from the X-Tenant hea
 
 ## View Files
 
-Views are stored in `resources/views/` and can be published:
+The page views are part of the Blade starter kit — they live in your application at `resources/views/vendor/neev/` (app-owned) once the kit is ejected:
 
 ```bash
-php artisan vendor:publish --tag=neev-views
+php artisan neev:ui blade
 ```
 
 | View | Description |

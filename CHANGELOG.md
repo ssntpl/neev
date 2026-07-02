@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Headless core + Blade starter kit (RFC 002, phase A)** — the package is now fully headless by default, Fortify-style:
+  - New `ui` config value (`NEEV_UI`: `'blade'` | `null`). `null` (default) registers no Blade page routes — API, OAuth/SSO, and email flows work standalone. `'blade'` registers the page routes, rendered from **app-owned** views
+  - The Blade page templates moved from package-loaded views to `stubs/blade/views/`; `php artisan neev:ui blade` ejects them to `resources/views/vendor/neev` where they belong to the app (existing published views keep working — same path)
+  - **Email templates are ejected to the app by the installer** (always, regardless of kit) so they're editable from day one; the package keeps fallback copies so headless installs still send mail. The per-template variable contract is documented in `docs/rfcs/002-starter-kits.md` §5.5 and treated as API
+  - `neev:install` gains a starter-kit prompt (`blade`/`none`) and third argument; new `neev:ui {kit} [--force]` command for kit ejection on existing apps (never overwrites app files without `--force`)
+  - Headless email links point at the app's frontend (`{app.url}/verify-email?...`, `/register?invitation_id=...`) instead of the unregistered Blade routes
+  - New publish tags: `neev-blade-kit`, `neev-mail` (replacing `neev-views`)
 - **Configurable route prefix** — new `route_prefix` config key (`NEEV_ROUTE_PREFIX`, default `neev`) namespaces every machine-facing route the package registers: the API namespace, OAuth redirect/callback, tenant SSO, and `/csrf-cookie`. Blade UI pages (`/login`, `/account/...`) stay at the root. Route names are unchanged. The MFA-token route gate in `NeevAPIMiddleware` now follows the prefix (previously hardcoded — customised route files silently broke MFA step-up)
 
 ### Changed
