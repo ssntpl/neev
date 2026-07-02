@@ -363,7 +363,7 @@ Authenticate via third-party providers.
 ```env
 GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
-GOOGLE_REDIRECT_URI="${APP_URL}/oauth/google/callback"
+GOOGLE_REDIRECT_URI="${APP_URL}/neev/oauth/google/callback"
 ```
 
 ### Security Note
@@ -382,8 +382,10 @@ OAuth and Social login bypasses Neev's MFA requirements and password policies. U
 
 ### URLs
 
-- **Redirect:** `GET /oauth/{provider}`
-- **Callback:** `GET /oauth/{provider}/callback`
+- **Redirect:** `GET /neev/oauth/{provider}`
+- **Callback:** `GET /neev/oauth/{provider}/callback`
+
+The `/neev` prefix is configurable via `route_prefix` in `config/neev.php` (env `NEEV_ROUTE_PREFIX`). Changing it also changes the callback URLs registered with your OAuth providers.
 
 ---
 
@@ -433,7 +435,7 @@ $tenant->authSettings()->create([
 ### API Endpoint
 
 ```http
-GET /api/tenant/auth
+GET /neev/tenant/auth
 ```
 
 Returns tenant auth configuration:
@@ -443,7 +445,7 @@ Returns tenant auth configuration:
   "auth_method": "sso",
   "sso_enabled": true,
   "sso_provider": "entra",
-  "sso_redirect_url": "https://acme.yourapp.com/sso/redirect"
+  "sso_redirect_url": "https://acme.yourapp.com/neev/sso/redirect"
 }
 ```
 

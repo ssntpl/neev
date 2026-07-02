@@ -209,14 +209,14 @@ Enable in configuration:
 ```
 
 Redirect URLs:
-- `GET /oauth/{service}` - Redirect to provider
-- `GET /oauth/{service}/callback` - Handle callback
+- `GET /neev/oauth/{service}` - Redirect to provider
+- `GET /neev/oauth/{service}/callback` - Handle callback
 
 ---
 
 ## API Reference
 
-All API routes are prefixed with `/neev`. Include the Bearer token for authenticated endpoints.
+All API routes are prefixed with `/neev` — the prefix is configurable via `route_prefix` in `config/neev.php` (env `NEEV_ROUTE_PREFIX`). Include the Bearer token for authenticated endpoints.
 
 ### Authentication Endpoints
 
@@ -349,10 +349,10 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 | POST | `/update-password` | `user-password.update` | Process reset |
 | GET | `/otp/mfa/{method}` | `otp.mfa.create` | MFA verification |
 | POST | `/otp/mfa` | `otp.mfa.store` | Verify MFA code |
-| GET | `/oauth/{service}` | `oauth.redirect` | OAuth redirect |
-| GET | `/oauth/{service}/callback` | `oauth.callback` | OAuth callback |
-| GET | `/sso/redirect` | `sso.redirect` | Tenant SSO redirect |
-| GET | `/sso/callback` | `sso.callback` | Tenant SSO callback |
+| GET | `/neev/oauth/{service}` | `oauth.redirect` | OAuth redirect |
+| GET | `/neev/oauth/{service}/callback` | `oauth.callback` | OAuth callback |
+| GET | `/neev/sso/redirect` | `sso.redirect` | Tenant SSO redirect |
+| GET | `/neev/sso/callback` | `sso.callback` | Tenant SSO callback |
 
 ### Authenticated Routes (neev:web middleware)
 
@@ -533,7 +533,7 @@ php artisan neev:auth:show        # Show current auth settings
 ### Get Tenant Auth Config
 
 ```bash
-curl -X GET https://acme.yourapp.com/api/tenant/auth
+curl -X GET https://acme.yourapp.com/neev/tenant/auth
 ```
 
 Response:
@@ -542,7 +542,7 @@ Response:
   "auth_method": "sso",
   "sso_enabled": true,
   "sso_provider": "entra",
-  "sso_redirect_url": "https://acme.yourapp.com/sso/redirect"
+  "sso_redirect_url": "https://acme.yourapp.com/neev/sso/redirect"
 }
 ```
 

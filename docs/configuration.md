@@ -44,6 +44,22 @@ The `neev:install` wizard asks exactly these two questions and sets the flags fo
 
 ---
 
+## Routes
+
+### Route Prefix
+
+```php
+'route_prefix' => env('NEEV_ROUTE_PREFIX', 'neev'),
+```
+
+URL prefix for every machine-facing route the package registers: the API namespace (including `/csrf-cookie`), the OAuth redirect/callback routes, and the tenant SSO endpoints. For example, setting it to `auth` gives `/auth/login`, `/auth/oauth/{service}/callback`, and `/auth/sso/callback`.
+
+Blade UI pages (`/login`, `/register`, `/account/...`) stay at the root — they are end-user URLs, not part of the API namespace.
+
+> **Warning:** Changing the prefix also changes the OAuth/SSO callback URLs registered with your identity providers — update those app registrations too. Route names are unaffected.
+
+---
+
 ## Authentication
 
 ### Username Support
@@ -352,6 +368,9 @@ return [
     'tenant' => false,
     'team' => true,
 
+    // Routes
+    'route_prefix' => env('NEEV_ROUTE_PREFIX', 'neev'),
+
     // Authentication
     'support_username' => false,
     'oauth' => [
@@ -436,6 +455,7 @@ return [
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `NEEV_ROUTE_PREFIX` | Prefix for machine-facing routes (API, OAuth, SSO, csrf-cookie) | `neev` |
 | `NEEV_JWT_SECRET` | Secret for signing MFA JWTs | Falls back to `APP_KEY` |
 | `MAXMIND_EDITION` | GeoIP database edition | `GeoLite2-City` |
 | `MAXMIND_LICENSE_KEY` | MaxMind license key | - |

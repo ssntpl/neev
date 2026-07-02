@@ -497,7 +497,7 @@ $tenant->authSettings()->create([
 Azure App Registration:
 1. Go to Azure Portal > App Registrations
 2. Create new registration
-3. Add redirect URI: `https://tenant.yourapp.com/sso/callback`
+3. Add redirect URI: `https://tenant.yourapp.com/neev/sso/callback`
 4. Generate client secret
 5. Note the Application (client) ID and Directory (tenant) ID
 
@@ -532,7 +532,7 @@ $tenant->authSettings()->create([
 ### 1. Get Tenant Auth Config
 
 ```bash
-curl -X GET https://acme.yourapp.com/api/tenant/auth
+curl -X GET https://acme.yourapp.com/neev/tenant/auth
 ```
 
 **Response:**
@@ -542,14 +542,14 @@ curl -X GET https://acme.yourapp.com/api/tenant/auth
   "auth_method": "sso",
   "sso_enabled": true,
   "sso_provider": "entra",
-  "sso_redirect_url": "https://acme.yourapp.com/sso/redirect"
+  "sso_redirect_url": "https://acme.yourapp.com/neev/sso/redirect"
 }
 ```
 
 ### 2. Redirect to SSO
 
 ```http
-GET /sso/redirect?email=user@acme.com
+GET /neev/sso/redirect?email=user@acme.com
 ```
 
 User is redirected to the identity provider.
@@ -559,7 +559,7 @@ User is redirected to the identity provider.
 After authentication, the user is redirected to:
 
 ```http
-GET /sso/callback?code=auth-code&state=...
+GET /neev/sso/callback?code=auth-code&state=...
 ```
 
 Neev:
@@ -573,7 +573,7 @@ Neev:
 For single-page applications, pass a `redirect_uri`:
 
 ```http
-GET /sso/redirect?redirect_uri=https://acme.yourapp.com/app
+GET /neev/sso/redirect?redirect_uri=https://acme.yourapp.com/app
 ```
 
 After SSO, user is redirected with the token in the URL fragment (not query parameter) to prevent server-side logging:
@@ -680,14 +680,16 @@ $ssoManager->ensureMembership($user, $tenant);
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/tenant/auth` | Get tenant auth config |
+| GET | `/neev/tenant/auth` | Get tenant auth config |
 
 ### SSO
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/sso/redirect` | Initiate SSO flow |
-| GET | `/sso/callback` | Handle SSO callback |
+| GET | `/neev/sso/redirect` | Initiate SSO flow |
+| GET | `/neev/sso/callback` | Handle SSO callback |
+
+> The `/neev` prefix on these endpoints is configurable via `route_prefix` in `config/neev.php` (env `NEEV_ROUTE_PREFIX`).
 
 ---
 

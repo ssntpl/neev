@@ -120,6 +120,7 @@ Worked examples of the layers in action, for calibration:
 |---|---|---|
 | MFA pending → active requires OTP proof in shipped flows; no config toggle | 1 | A toggle would be a footgun; the flow is what neev is responsible for |
 | `MultiFactorAuth::activate()` exists for programmatic activation | 4 | Legitimate bypass, explicit in app code, keeps event + preferred invariants |
+| Route prefix is a config value (`route_prefix`, default `neev`), not hardcoded to `auth` | 2 | User-visible string real apps differ on (Sanctum/Fortify precedent); defaulting to `auth` would be collision-prone and breaking, and "publish the routes file" was a trap — the MFA route gate hardcoded the old prefix |
 | `login_throttle` delays are configurable numbers | 2 | Apps differ on tolerance; it's a value, not a branch |
 | Email verification enforcement is a middleware alias, not automatic | 3 | Which routes require it is product policy; the mechanism is fully shipped |
 | Push notifications rejected from the package (PR #25) | — | Fails the litmus test; events give the app everything it needs |

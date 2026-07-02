@@ -41,11 +41,14 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
     Route::get('/update-password/{id}/{hash}', [UserAuthController::class, 'updatePasswordCreate'])
         ->name('reset.request');
 
-    //OAuth
-    Route::get('/oauth/{service}', [OAuthController::class, 'redirect'])
-        ->name('oauth.redirect');
-    Route::get('/oauth/{service}/callback', [OAuthController::class, 'callback'])
-        ->name('oauth.callback');
+    //OAuth (web) — under the machine-facing route prefix; these URLs are
+    // registered as redirect URIs at the identity providers.
+    Route::prefix(config('neev.route_prefix', 'neev'))->group(function () {
+        Route::get('/oauth/{service}', [OAuthController::class, 'redirect'])
+            ->name('oauth.redirect');
+        Route::get('/oauth/{service}/callback', [OAuthController::class, 'callback'])
+            ->name('oauth.callback');
+    });
 
     Route::get('/email/verify/{id}/{hash}', [UserAuthController::class, 'emailVerifyStore'])
         ->name('verification.verify');
@@ -193,7 +196,7 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
 });
 
 //APIs
-Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
+Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware::class)->group(function () {
     Route::get('/csrf-cookie', [CsrfCookieController::class, 'show'])
         ->middleware('throttle:60,1')
         ->name('neev.csrf-cookie');
