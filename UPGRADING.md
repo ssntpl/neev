@@ -11,6 +11,14 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
+## 0.4.5 → Unreleased
+
+**Laravel 11 support dropped.**
+`laravel/framework` requirement is now `^12.0`. Laravel 11 is past
+security-EOL with permanently-unpatched advisories (Composer ≥2.9
+refuses to install it by default). Apps still on Laravel 11 should pin
+neev to `<=0.4.5` and plan a framework upgrade.
+
 ## 0.4.4 → 0.4.5
 
 **Users table consolidation (schema change).**

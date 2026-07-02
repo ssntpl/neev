@@ -5,7 +5,7 @@ This guide will walk you through installing and configuring Neev for your Larave
 ## Prerequisites
 
 - PHP 8.3 or higher
-- Laravel 11.x or 12.x
+- Laravel 12.x
 - Composer
 - Database (MySQL, PostgreSQL, or SQLite)
 
