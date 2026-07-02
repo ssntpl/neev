@@ -5,97 +5,39 @@ namespace Ssntpl\Neev\Http\Controllers\Auth;
 use Exception;
 use Firebase\JWT\JWT;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Auth\Events\PasswordReset;
-use Illuminate\Auth\Events\Registered;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOut;
+use Ssntpl\Neev\Exceptions\InvalidInvitationException;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\AccessToken;
-use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\LoginAttempt;
-use Ssntpl\Neev\Models\Team;
-use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\JwtSecret;
+use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\SpaCookieResponder;
 
 class UserAuthApiController extends Controller
 {
     public function register(Request $request, GeoIP $geoIP)
     {
-        $validationRules = [
-            'name' => 'required|string|max:255',
-            'email' => ['required', 'string', 'email', 'max:255', User::uniqueEmailRule()],
-            'password' => config('neev.password'),
-        ];
-
-        if (config('neev.support_username')) {
-            $validationRules['username'] = config('neev.username');
-        }
-
         try {
-            $request->validate($validationRules);
-            DB::beginTransaction();
+            $request->validate(app(RegistrationService::class)->rules());
 
-            $userData = [
-                'name' => $request->name,
-                'email' => $request->email,
-                'password' => $request->password,
-                'password_changed_at' => now(),
-            ];
-
-            if (config('neev.support_username')) {
-                $userData['username'] = $request->username;
-            }
-
-            $user = User::model()->forceCreate($userData);
-            $user = User::model()->find($user->id);
-
-            if (config('neev.team')) {
-                if ($request->invitation_id) {
-                    $invitation = TeamInvitation::find($request->invitation_id);
-                    if (!$invitation || !hash_equals(sha1($invitation->email), $request->hash)) {
-                        DB::rollBack();
-                        return response()->json([
-                            'message' => 'Invalid or expired invitation link.',
-                        ], 400);
-                    }
-
-                    $user->markEmailAsVerified();
-
-                    $team = $invitation->team;
-                    $team->users()->attach($user, ['joined' => true]);
-                    if ($invitation->role) {
-                        $user->assignRole($invitation->role, $team);
-                    }
-                    $invitation->delete();
-                } else {
-                    $shouldCreateTeam = !$this->isDomainVerified($request->email);
-
-                    if ($shouldCreateTeam) {
-                        $team = Team::model()->forceCreate([
-                            'name' => explode(' ', $user->name, 2)[0] . "'s Team",
-                            'user_id' => $user->id,
-                            'is_public' => false,
-                            'activated_at' => now(),
-                        ]);
-                        $team->addMember($user);
-                    }
-                }
-            }
-            DB::commit();
-
-            event(new Registered($user));
+            $user = app(RegistrationService::class)->register(
+                $request->only(['name', 'email', 'password', 'username']),
+                $request->invitation_id,
+                $request->hash,
+            );
 
             if (!$user->hasVerifiedEmail()) {
                 app(AuthService::class)->sendEmailVerification($user);
@@ -116,10 +58,12 @@ class UserAuthApiController extends Controller
                 'email_verified' => $user->hasVerifiedEmail(),
             ]), $expiryMinutes);
         } catch (ValidationException $e) {
-            DB::rollBack();
             throw $e;
+        } catch (InvalidInvitationException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 400);
         } catch (Exception $e) {
-            DB::rollBack();
             Log::error($e);
             return response()->json([
                 'message' => 'Unable to register user.',
@@ -557,14 +501,6 @@ class UserAuthApiController extends Controller
         return response()->json([
             'message' => 'Email address has been updated and verified.',
         ]);
-    }
-
-    private function isDomainVerified(string $email): bool
-    {
-        $emailDomain = substr(strrchr($email, "@"), 1);
-        $domain = Domain::where('domain', $emailDomain)->first();
-
-        return $domain?->verified_at !== null;
     }
 
     public function verifyMFAOTP(Request $request, GeoIP $geoIP)

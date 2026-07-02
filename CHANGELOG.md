@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`RegistrationService`** — central registration logic (validation rules, user creation, invitation acceptance with `InvalidInvitationException`, federated-domain team rules, OAuth registration, transaction ownership, `Registered` event); previously duplicated with drift across four controllers. `Domain::isVerifiedForEmail()` replaces five copies of the domain-verification check; unused `MembershipService` removed
 - **SPA consumer guide** (`docs/spa-authentication.md`) — completes SPA cookie mode phase 4: backend/CORS/axios setup, all auth flows with exact response shapes, the SSO → SPA hand-off, and troubleshooting
 - Documentation: identity-mode decision matrix (multi-tenancy.md), authoritative middleware usage & ordering guide (architecture-internals.md), queue/tenant-context job pattern (multi-tenancy.md), and a verified, prominent warning that OAuth login bypasses MFA and password policies with mitigations (authentication.md, security.md)
 - **Headless core + Blade starter kit (RFC 002, phase A)** — the package is now fully headless by default, Fortify-style:

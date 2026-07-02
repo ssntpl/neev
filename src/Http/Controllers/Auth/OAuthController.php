@@ -3,18 +3,14 @@
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
 use Exception;
-use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
 use Ssntpl\Neev\Http\Controllers\Controller;
-use Ssntpl\Neev\Models\Domain;
-use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\SpaCookieResponder;
 use Ssntpl\Neev\Services\StatefulOriginResolver;
 
@@ -60,8 +56,11 @@ class OAuthController extends Controller
                 return redirect(route('login'));
             }
         } else {
-            $user = $this->register($oauthUser);
-            if (!$user) {
+            try {
+                $user = app(RegistrationService::class)
+                    ->registerViaOAuth($oauthUser->name, $oauthUser->email);
+            } catch (Exception $e) {
+                Log::error($e);
                 return redirect(route('register'));
             }
         }
@@ -87,57 +86,4 @@ class OAuthController extends Controller
         return $response;
     }
 
-    public function register($oauthUser)
-    {
-        DB::beginTransaction();
-        $userData = [
-            'name' => $oauthUser->name,
-            'email' => $oauthUser->email,
-            'email_verified_at' => now(),
-        ];
-
-        if (config('neev.support_username')) {
-            $base = explode('@', $oauthUser->email)[0];
-            $username = $base;
-            while (User::getModel()->where('username', $username)->first()) {
-                $username = $base . '_' . Str::random(4);
-            }
-            $userData['username'] = $username;
-        }
-
-        $user = User::model()->forceCreate($userData);
-
-        try {
-            if (config('neev.team')) {
-                $shouldCreateTeam = !$this->isDomainVerified($oauthUser->email);
-
-                if ($shouldCreateTeam) {
-                    $team = Team::model()->forceCreate([
-                        'name' => explode(' ', $user->name, 2)[0] . "'s Team",
-                        'user_id' => $user->id,
-                        'is_public' => false,
-                        'activated_at' => now(),
-                    ]);
-                    $team->addMember($user);
-                }
-            }
-        } catch (Exception $e) {
-            DB::rollBack();
-            Log::error($e);
-            return null;
-        }
-        DB::commit();
-
-        event(new Registered($user));
-
-        return $user;
-    }
-
-    private function isDomainVerified(string $email): bool
-    {
-        $emailDomain = substr(strrchr($email, "@"), 1);
-        $domain = Domain::where('domain', $emailDomain)->first();
-
-        return $domain?->verified_at !== null;
-    }
 }
