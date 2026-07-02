@@ -1,6 +1,6 @@
 # RFC-001: Auth Architecture Rethink — Multi-Tier Users & Per-Group Auth Methods
 
-**Status:** Discussion
+**Status:** Partially superseded — D1–D3 shipped in v0.4.3 and remain authoritative; §6's open questions (Q1–Q4) are resolved by [RFC 003 — Per-Group Auth Policies](./003-auth-policies.md)
 **Date:** 2026-03-10
 **Package:** ssntpl/neev (Laravel auth/teams/multi-tenancy package)
 

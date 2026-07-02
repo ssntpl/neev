@@ -47,6 +47,8 @@ Design proposals and their implementation status.
 |----------|--------|-------------|
 | [SPA Cookie Mode](./spa-cookie-mode.md) | Fully implemented (phases 1–4; consumer guide: [SPA Authentication](./spa-authentication.md)) | HttpOnly-cookie auth + signed double-submit CSRF for same-origin SPAs. Additive to the existing bearer-token API. Driven by the TAILLOG web rebuild and otper. |
 | [RFC 002 — Headless Core + Starter Kits](./rfcs/002-starter-kits.md) | Phase A implemented | Package is fully headless (Fortify-style); Blade UI ejects into the app as a starter kit at install; email templates app-owned with a documented variable contract; React kit reserved as a future kit. |
+| [RFC 003 — Per-Group Auth Policies](./rfcs/003-auth-policies.md) | Proposed (resolves RFC-001 §6) | One tenant, multiple user populations: policy-per-role/domain auth methods, identifier-first routing, platform policies as null-owner rows, migration from tenant/team auth settings. |
+| [Email Reputation Package](./email-reputation-package.md) | v1 scope decided | Standalone classification-only package (free/disposable/relay/unknown); network tier deferred; neev takes no dependency on it. |
 
 ---
 
