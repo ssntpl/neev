@@ -448,6 +448,11 @@ $user->addMultiFactorAuth('authenticator');
 // Verify a pending setup — activates the method
 $user->verifyMfaSetup('authenticator', '123456');
 
+// Programmatic activation escape hatch: skips the OTP proof (caller's
+// responsibility) but keeps the invariants — preferred-flag assignment
+// and the MfaMethodAdded event. For admin provisioning, imports, tests.
+$user->multiFactorAuth('authenticator')->activate();
+
 // Verify OTP code (active methods only)
 $user->verifyMFAOTP('authenticator', '123456');
 

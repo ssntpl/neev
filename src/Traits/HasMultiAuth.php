@@ -138,13 +138,9 @@ trait HasMultiAuth
             return false;
         }
 
-        $auth->status = MultiFactorAuth::STATUS_ACTIVE;
-        $auth->preferred = !$this->preferredMultiFactorAuth()->exists();
         $auth->last_used = now();
-        $auth->save();
+        $auth->activate();
         $this->load('multiFactorAuths');
-
-        event(new MfaMethodAdded($this, $method));
 
         return true;
     }

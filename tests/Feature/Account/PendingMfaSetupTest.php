@@ -196,6 +196,55 @@ class PendingMfaSetupTest extends TestCase
     }
 
     // -----------------------------------------------------------------
+    // Programmatic activation escape hatch
+    // -----------------------------------------------------------------
+
+    public function test_activate_skips_otp_but_keeps_invariants(): void
+    {
+        Event::fake([MfaMethodAdded::class]);
+
+        $user = User::factory()->create();
+        $user->addMultiFactorAuth('authenticator');
+        $auth = $user->multiFactorAuths()->where('method', 'authenticator')->first();
+
+        $this->assertTrue($auth->activate());
+
+        $auth->refresh();
+        $this->assertSame(MultiFactorAuth::STATUS_ACTIVE, $auth->status);
+        $this->assertTrue($auth->preferred);
+        Event::assertDispatched(MfaMethodAdded::class, function (MfaMethodAdded $event) use ($user) {
+            return $event->user->id === $user->id && $event->method === 'authenticator';
+        });
+    }
+
+    public function test_activate_returns_false_for_already_active_method(): void
+    {
+        $user = User::factory()->create();
+        $user->addMultiFactorAuth('email');
+        $auth = $user->multiFactorAuths()->where('method', 'email')->first();
+
+        Event::fake([MfaMethodAdded::class]);
+        $this->assertFalse($auth->activate());
+
+        Event::assertNotDispatched(MfaMethodAdded::class);
+    }
+
+    public function test_activate_does_not_steal_preferred_from_existing_active_method(): void
+    {
+        $user = User::factory()->create();
+        $user->addMultiFactorAuth('email'); // active + preferred
+        $user->load('multiFactorAuths');
+        $user->addMultiFactorAuth('authenticator'); // pending
+
+        $auth = $user->multiFactorAuths()->where('method', 'authenticator')->first();
+        $auth->activate();
+
+        $auth->refresh();
+        $this->assertFalse($auth->preferred);
+        $this->assertSame('email', $user->preferredMultiFactorAuth()->first()->method);
+    }
+
+    // -----------------------------------------------------------------
     // Cleanup command
     // -----------------------------------------------------------------
 
