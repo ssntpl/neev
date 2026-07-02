@@ -62,7 +62,7 @@ class TenantSSOTest extends TestCase
     {
         $this->setCurrentTenant(null);
 
-        $response = $this->getJson('/api/tenant/auth');
+        $response = $this->getJson('/neev/tenant/auth');
 
         $response->assertOk()
             ->assertJsonPath('auth_method', 'password')
@@ -79,7 +79,7 @@ class TenantSSOTest extends TestCase
 
         $this->setCurrentTenant($team);
 
-        $response = $this->getJson('/api/tenant/auth');
+        $response = $this->getJson('/neev/tenant/auth');
 
         $response->assertOk()
             ->assertJsonPath('auth_method', 'sso')
@@ -97,7 +97,7 @@ class TenantSSOTest extends TestCase
 
         $this->setCurrentTenant($team);
 
-        $response = $this->getJson('/api/tenant/auth');
+        $response = $this->getJson('/neev/tenant/auth');
 
         $response->assertOk()
             ->assertJsonPath('auth_method', 'password');
@@ -111,7 +111,7 @@ class TenantSSOTest extends TestCase
     {
         $this->setCurrentTenant(null);
 
-        $response = $this->getJson('/sso/redirect');
+        $response = $this->getJson('/neev/sso/redirect');
 
         $response->assertStatus(400);
     }
@@ -126,7 +126,7 @@ class TenantSSOTest extends TestCase
 
         $this->setCurrentTenant($team);
 
-        $response = $this->get('/sso/redirect');
+        $response = $this->get('/neev/sso/redirect');
 
         $response->assertRedirect(route('login'));
     }
@@ -141,7 +141,7 @@ class TenantSSOTest extends TestCase
 
         $this->setCurrentTenant($team);
 
-        $response = $this->getJson('/sso/redirect');
+        $response = $this->getJson('/neev/sso/redirect');
 
         // Controller calls handleError which returns 400 for JSON
         $response->assertStatus(400);
@@ -155,7 +155,7 @@ class TenantSSOTest extends TestCase
     {
         $this->setCurrentTenant(null);
 
-        $response = $this->getJson('/sso/callback');
+        $response = $this->getJson('/neev/sso/callback');
 
         $response->assertStatus(400);
     }
@@ -165,7 +165,7 @@ class TenantSSOTest extends TestCase
         $team = TeamFactory::new()->create();
         $this->setCurrentTenant($team);
 
-        $response = $this->get('/sso/callback');
+        $response = $this->get('/neev/sso/callback');
 
         $response->assertRedirect(route('login'));
     }
@@ -175,7 +175,7 @@ class TenantSSOTest extends TestCase
         $team = TeamFactory::new()->create();
         $this->setCurrentTenant($team);
 
-        $response = $this->get('/sso/callback?error=access_denied&error_description=User+cancelled');
+        $response = $this->get('/neev/sso/callback?error=access_denied&error_description=User+cancelled');
 
         $response->assertRedirect(route('login'));
     }
@@ -207,7 +207,7 @@ class TenantSSOTest extends TestCase
         $manager->shouldReceive('ensureMembership')->once();
         $this->app->instance(TenantSSOManager::class, $manager);
 
-        $response = $this->get('/sso/callback?code=auth-code-123');
+        $response = $this->get('/neev/sso/callback?code=auth-code-123');
 
         $response->assertRedirect('/dashboard');
     }
@@ -239,7 +239,7 @@ class TenantSSOTest extends TestCase
         // Store redirect_uri in session (simulating the redirect step)
         session(['sso_redirect_uri' => 'http://localhost/app']);
 
-        $response = $this->get('/sso/callback?code=auth-code-123');
+        $response = $this->get('/neev/sso/callback?code=auth-code-123');
 
         $response->assertRedirect();
         $this->assertStringContainsString('http://localhost/app', $response->headers->get('Location'));
@@ -278,7 +278,7 @@ class TenantSSOTest extends TestCase
 
         session(['sso_redirect_uri' => 'https://app.example.com/dashboard']);
 
-        $response = $this->get('/sso/callback?code=auth-code-123');
+        $response = $this->get('/neev/sso/callback?code=auth-code-123');
 
         $response->assertRedirect();
         $location = $response->headers->get('Location');
@@ -317,7 +317,7 @@ class TenantSSOTest extends TestCase
             ->andReturn($driver);
         $this->app->instance(TenantSSOManager::class, $manager);
 
-        $response = $this->get('/sso/redirect');
+        $response = $this->get('/neev/sso/redirect');
 
         $response->assertRedirect();
         $this->assertStringContainsString('login.microsoftonline.com', $response->headers->get('Location'));
@@ -350,7 +350,7 @@ class TenantSSOTest extends TestCase
         $manager->shouldReceive('buildSocialiteDriver')->andReturn($driver);
         $this->app->instance(TenantSSOManager::class, $manager);
 
-        $response = $this->get('/sso/redirect?redirect_uri=' . urlencode('https://app.example.com/dashboard'));
+        $response = $this->get('/neev/sso/redirect?redirect_uri=' . urlencode('https://app.example.com/dashboard'));
 
         $response->assertRedirect();
         $this->assertEquals('https://app.example.com/dashboard', session('sso_redirect_uri'));
@@ -373,7 +373,7 @@ class TenantSSOTest extends TestCase
             ->andThrow(new Exception('Connection failed'));
         $this->app->instance(TenantSSOManager::class, $manager);
 
-        $response = $this->get('/sso/redirect');
+        $response = $this->get('/neev/sso/redirect');
 
         $response->assertRedirect(route('login'));
     }
@@ -392,7 +392,7 @@ class TenantSSOTest extends TestCase
             ->andThrow(new Exception('Provider error'));
         $this->app->instance(TenantSSOManager::class, $manager);
 
-        $response = $this->get('/sso/callback?code=auth-code-123');
+        $response = $this->get('/neev/sso/callback?code=auth-code-123');
 
         $response->assertRedirect(route('login'));
     }

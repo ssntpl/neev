@@ -290,12 +290,14 @@ Update configuration:
 
 ## OAuth Provider Setup
 
+The callback URLs below use the default route prefix (`route_prefix` in `config/neev.php`, env `NEEV_ROUTE_PREFIX`, default `neev`). If you change the prefix, update the redirect URIs registered with each provider accordingly.
+
 ### Google
 
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
 2. Enable Google+ API
 3. Create OAuth 2.0 credentials
-4. Add redirect URI: `https://yourapp.com/oauth/google/callback`
+4. Add redirect URI: `https://yourapp.com/neev/oauth/google/callback`
 
 ```php
 // config/services.php
@@ -309,13 +311,13 @@ Update configuration:
 ```env
 GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
-GOOGLE_REDIRECT_URI="${APP_URL}/oauth/google/callback"
+GOOGLE_REDIRECT_URI="${APP_URL}/neev/oauth/google/callback"
 ```
 
 ### GitHub
 
 1. Create an OAuth App in [GitHub Developer Settings](https://github.com/settings/developers)
-2. Add callback URL: `https://yourapp.com/oauth/github/callback`
+2. Add callback URL: `https://yourapp.com/neev/oauth/github/callback`
 
 ```php
 // config/services.php
@@ -329,7 +331,7 @@ GOOGLE_REDIRECT_URI="${APP_URL}/oauth/google/callback"
 ### Microsoft
 
 1. Register an app in [Azure Portal](https://portal.azure.com/)
-2. Add redirect URI: `https://yourapp.com/oauth/microsoft/callback`
+2. Add redirect URI: `https://yourapp.com/neev/oauth/microsoft/callback`
 
 ```php
 // config/services.php

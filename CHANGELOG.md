@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Configurable route prefix** — new `route_prefix` config key (`NEEV_ROUTE_PREFIX`, default `neev`) namespaces every machine-facing route the package registers: the API namespace, OAuth redirect/callback, tenant SSO, and `/csrf-cookie`. Blade UI pages (`/login`, `/account/...`) stay at the root. Route names are unchanged. The MFA-token route gate in `NeevAPIMiddleware` now follows the prefix (previously hardcoded — customised route files silently broke MFA step-up)
+
+### Changed
+- **BREAKING: OAuth and tenant-SSO routes moved under the route prefix** — `/oauth/{service}[/callback]` → `/neev/oauth/{service}[/callback]`, `/sso/redirect|callback` → `/neev/sso/...`, and `/api/tenant/auth` → `/neev/tenant/auth`. **Update the redirect URIs registered with your identity providers** (Entra/Google/Okta app registrations, OAuth apps)
 - **SPA cookie mode — phase 1 (plumbing)** — same-origin SPAs can now authenticate via an HttpOnly cookie instead of JS-stored bearer tokens:
   - `EnsureSpaRequestsAreStateful` middleware (in the `neev:api` and `neev:login` groups): for requests from a configured stateful origin, validates a signed double-submit CSRF token on state-changing methods (419 on failure) and promotes the auth cookie to an `Authorization: Bearer` header; a no-op for everything else, so existing bearer callers are untouched
   - `GET /neev/csrf-cookie` issues the CSRF cookie; the token is HMAC-signed to the app key (defeats subdomain cookie injection, no server-side state)

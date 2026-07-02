@@ -32,7 +32,7 @@ class OAuthApiController extends Controller
             $params['login_hint'] = $request->email;
         }
 
-        $redirectUrl = config('app.url') . '/oauth/' . $service . '/callback';
+        $redirectUrl = config('app.url') . '/' . trim(config('neev.route_prefix', 'neev'), '/') . '/oauth/' . $service . '/callback';
 
         /** @var \Laravel\Socialite\Two\AbstractProvider $driver */
         $driver = Socialite::driver($service);
@@ -63,7 +63,7 @@ class OAuthApiController extends Controller
         }
 
         try {
-            $redirectUrl = config('app.url') . '/oauth/' . $service . '/callback';
+            $redirectUrl = config('app.url') . '/' . trim(config('neev.route_prefix', 'neev'), '/') . '/oauth/' . $service . '/callback';
 
             /** @var \Laravel\Socialite\Two\AbstractProvider $driver */
             $driver = Socialite::driver($service);

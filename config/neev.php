@@ -19,6 +19,24 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Routes
+    |--------------------------------------------------------------------------
+    |
+    | URL prefix for every machine-facing route the package registers: the
+    | API namespace, OAuth redirect/callback, and tenant SSO endpoints
+    | (e.g. 'auth' gives /auth/login, /auth/oauth/{service}/callback,
+    | /auth/sso/callback). Blade UI pages (/login, /account/...) stay at
+    | the root — they are end-user URLs, not part of the API namespace.
+    |
+    | Changing this also changes the OAuth/SSO callback URLs registered
+    | with your identity providers — update those app registrations too.
+    | Route NAMES are unaffected.
+    |
+    */
+    'route_prefix' => env('NEEV_ROUTE_PREFIX', 'neev'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Authentication
     |--------------------------------------------------------------------------
     */

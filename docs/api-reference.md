@@ -1,6 +1,6 @@
 # API Reference
 
-Complete reference for all Neev API endpoints. All API routes are prefixed with `/neev`.
+Complete reference for all Neev API endpoints. All API routes are prefixed with the configurable route prefix — `route_prefix` in `config/neev.php` (env `NEEV_ROUTE_PREFIX`), default `neev`. This documentation uses the default `/neev` prefix throughout.
 
 ---
 

@@ -79,10 +79,12 @@ These routes are accessible without authentication.
 
 ### OAuth / Social Login
 
+These routes live under the configurable route prefix (`route_prefix` in `config/neev.php`, env `NEEV_ROUTE_PREFIX`, default `neev`). The paths below use the default prefix.
+
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| GET | `/oauth/{service}` | `oauth.redirect` | Redirect to OAuth provider |
-| GET | `/oauth/{service}/callback` | `oauth.callback` | Handle OAuth callback |
+| GET | `/neev/oauth/{service}` | `oauth.redirect` | Redirect to OAuth provider |
+| GET | `/neev/oauth/{service}/callback` | `oauth.callback` | Handle OAuth callback |
 
 **URL Parameters:**
 - `service` - OAuth provider (`google`, `github`, `microsoft`, `apple`)
@@ -91,10 +93,12 @@ These routes are accessible without authentication.
 
 ### Tenant SSO
 
+These routes also live under the configurable route prefix.
+
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| GET | `/sso/redirect` | `sso.redirect` | Redirect to tenant's SSO provider |
-| GET | `/sso/callback` | `sso.callback` | Handle SSO callback |
+| GET | `/neev/sso/redirect` | `sso.redirect` | Redirect to tenant's SSO provider |
+| GET | `/neev/sso/callback` | `sso.callback` | Handle SSO callback |
 
 ---
 

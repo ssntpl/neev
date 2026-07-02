@@ -13,6 +13,26 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.4.5 → Unreleased
 
+**OAuth/SSO routes moved under the route prefix (action required for
+identity providers).**
+All machine-facing routes now live under the configurable
+`route_prefix` (default `neev`):
+
+| Old path | New path |
+|---|---|
+| `/oauth/{service}` and `/oauth/{service}/callback` (web) | `/neev/oauth/{service}[/callback]` |
+| `/sso/redirect`, `/sso/callback` | `/neev/sso/redirect`, `/neev/sso/callback` |
+| `/api/tenant/auth` | `/neev/tenant/auth` |
+
+- **Update the redirect URIs registered at your identity providers**
+  (Microsoft Entra, Google, Okta app registrations and OAuth apps) to
+  the new callback URLs.
+- Apps that published `routes/neev.php` keep their published copy —
+  re-publish or re-apply your customisations to pick up the prefix.
+- To rename the namespace (e.g. `/auth/...`), set
+  `NEEV_ROUTE_PREFIX=auth`. Route *names* (`neev.*` etc.) are
+  unchanged either way.
+
 **Authenticator MFA setup now requires verification (behaviour change).**
 Adding an authenticator creates it in `pending` status; the user must
 submit a valid TOTP (API: `POST /neev/mfa/setup/verify`; web: the

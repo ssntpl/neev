@@ -83,7 +83,7 @@ class OAuthTest extends TestCase
     {
         $this->mockSocialiteRedirect();
 
-        $response = $this->get('/oauth/google');
+        $response = $this->get('/neev/oauth/google');
 
         $response->assertRedirect();
         $this->assertStringContainsString('accounts.google.com', $response->headers->get('Location'));
@@ -103,14 +103,14 @@ class OAuthTest extends TestCase
             ->with('google')
             ->andReturn($provider);
 
-        $response = $this->get('/oauth/google?email=user@example.com');
+        $response = $this->get('/neev/oauth/google?email=user@example.com');
 
         $response->assertRedirect();
     }
 
     public function test_redirect_returns_404_for_unconfigured_service(): void
     {
-        $response = $this->get('/oauth/github');
+        $response = $this->get('/neev/oauth/github');
 
         $response->assertStatus(404);
     }
@@ -125,7 +125,7 @@ class OAuthTest extends TestCase
 
         $this->mockSocialiteUser($user->email);
 
-        $response = $this->get('/oauth/google/callback?code=test-auth-code');
+        $response = $this->get('/neev/oauth/google/callback?code=test-auth-code');
 
         $response->assertRedirect('/dashboard');
         // No stateful host configured: no SPA cookie.
@@ -143,7 +143,7 @@ class OAuthTest extends TestCase
         $user = User::factory()->create();
         $this->mockSocialiteUser($user->email);
 
-        $response = $this->get('/oauth/google/callback?code=test-auth-code');
+        $response = $this->get('/neev/oauth/google/callback?code=test-auth-code');
 
         $response->assertRedirect('/dashboard');
 
@@ -167,7 +167,7 @@ class OAuthTest extends TestCase
 
         $countBefore = User::count();
 
-        $this->get('/oauth/google/callback?code=test-auth-code');
+        $this->get('/neev/oauth/google/callback?code=test-auth-code');
 
         // User should be created regardless of login outcome
         $this->assertEquals($countBefore + 1, User::count());
@@ -178,7 +178,7 @@ class OAuthTest extends TestCase
 
     public function test_callback_redirects_to_login_when_no_code(): void
     {
-        $response = $this->get('/oauth/google/callback');
+        $response = $this->get('/neev/oauth/google/callback');
 
         $response->assertRedirect(route('login'));
     }
@@ -189,7 +189,7 @@ class OAuthTest extends TestCase
 
         $this->mockSocialiteUser($user->email);
 
-        $response = $this->get('/oauth/google/callback?code=test-auth-code');
+        $response = $this->get('/neev/oauth/google/callback?code=test-auth-code');
 
         $response->assertRedirect(route('login'));
     }
@@ -200,7 +200,7 @@ class OAuthTest extends TestCase
 
         $this->mockSocialiteUser('teamuser@example.com', 'Team User');
 
-        $this->get('/oauth/google/callback?code=test-auth-code');
+        $this->get('/neev/oauth/google/callback?code=test-auth-code');
 
         $user = User::where('email', 'teamuser@example.com')->first();
         $this->assertNotNull($user);
@@ -209,7 +209,7 @@ class OAuthTest extends TestCase
 
     public function test_callback_returns_404_for_unconfigured_service(): void
     {
-        $response = $this->get('/oauth/github/callback?code=test-code');
+        $response = $this->get('/neev/oauth/github/callback?code=test-code');
 
         $response->assertStatus(404);
     }
@@ -238,7 +238,7 @@ class OAuthTest extends TestCase
 
         $this->mockSocialiteUser('newuser@verified-corp.com', 'Corp User');
 
-        $this->get('/oauth/google/callback?code=test-auth-code');
+        $this->get('/neev/oauth/google/callback?code=test-auth-code');
 
         $user = User::where('email', 'newuser@verified-corp.com')->first();
         $this->assertNotNull($user);
@@ -254,7 +254,7 @@ class OAuthTest extends TestCase
 
         $this->mockSocialiteUser('newuser@unknown-domain.com', 'Indie User');
 
-        $this->get('/oauth/google/callback?code=test-auth-code');
+        $this->get('/neev/oauth/google/callback?code=test-auth-code');
 
         $user = User::where('email', 'newuser@unknown-domain.com')->first();
         $this->assertNotNull($user);
