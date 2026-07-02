@@ -15,22 +15,29 @@ class StatefulOriginResolver
 {
     public function isStateful(Request $request): bool
     {
+        return $this->isStatefulUrl(
+            $request->headers->get('Origin') ?? $request->headers->get('Referer')
+        );
+    }
+
+    /**
+     * Whether a URL's host matches the stateful list. Used for redirect
+     * targets (OAuth/SSO callbacks), where the browser's Origin header
+     * belongs to the identity provider, not the SPA.
+     */
+    public function isStatefulUrl(?string $url): bool
+    {
         $stateful = config('neev.spa.stateful', []);
-        if (empty($stateful)) {
+        if (empty($stateful) || !$url) {
             return false;
         }
 
-        $source = $request->headers->get('Origin') ?? $request->headers->get('Referer');
-        if (!$source) {
-            return false;
-        }
-
-        $host = parse_url($source, PHP_URL_HOST);
+        $host = parse_url($url, PHP_URL_HOST);
         if (!$host) {
             return false;
         }
 
-        $port = parse_url($source, PHP_URL_PORT);
+        $port = parse_url($url, PHP_URL_PORT);
         $hostWithPort = $port ? "{$host}:{$port}" : $host;
 
         foreach ($stateful as $pattern) {
@@ -40,6 +47,16 @@ class StatefulOriginResolver
         }
 
         return false;
+    }
+
+    /**
+     * Whether the request's own host matches the stateful list — the
+     * same-origin-SPA signal for full-page navigations (no usable
+     * Origin header, e.g. an OAuth callback landing on the monolith).
+     */
+    public function isStatefulHost(Request $request): bool
+    {
+        return $this->isStatefulUrl($request->getSchemeAndHttpHost());
     }
 
     /**

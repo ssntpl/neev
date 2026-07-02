@@ -1,12 +1,12 @@
 # SPA Cookie Mode
 
-> **Status:** Phases 1–2 implemented (config, `EnsureSpaRequestsAreStateful`, signed CSRF, `/neev/csrf-cookie`; cookie issuance on login/register/magic-link/MFA-verify/passkey/OAuth-API with `token` stripped from SPA responses, logout cookie clearing via `SpaCookieResponder`); phase 3 (web-redirect OAuth/SSO callbacks) and phase 4 (consumer migration docs) pending per §8
+> **Status:** Phases 1–3 implemented (config, `EnsureSpaRequestsAreStateful`, signed CSRF, `/neev/csrf-cookie`; cookie issuance on login/register/magic-link/MFA-verify/passkey/OAuth-API with `token` stripped from SPA responses, logout cookie clearing via `SpaCookieResponder`; web-redirect OAuth callbacks issue the cookie on stateful hosts and tenant-SSO callbacks deliver the token via cookie instead of the URL fragment for stateful redirect targets); phase 4 (consumer migration docs) pending per §8
 > **Date:** 2026-06-12 (spec), 2026-07-02 (phase 1)
 > **Target version:** next minor (additive, no breaking changes)
 > **Authors:** TAILLOG team (driving), neev maintainers (review)
 > **Drivers:** [TAILLOG web app rebuild](../../TAILLOG/Documentation/5-Admin-Portal/web-app-spa.md), otper SPA
 >
-> **Implementation notes (phase 1):** the origin check lives in `Services\StatefulOriginResolver` (per §13.4); CSRF tokens are `value.hmac` signed via `SpaCsrfToken` (per §5.4); the middleware is in both `neev:api` and `neev:login` groups (per §5.7.1); stateful patterns match exact host, `host:port`, and `*.wildcard` (resolves §13.6); cookies are issued unencrypted and attached directly to responses — apps running `EncryptCookies` must add both cookie names to its `$except` list (resolves §13.5).
+> **Implementation notes (phase 1):** the origin check lives in `Services\StatefulOriginResolver` (per §13.4); CSRF tokens are `value.hmac` signed via `SpaCsrfToken` (per §5.4); the middleware is in both `neev:api` and `neev:login` groups (per §5.7.1); stateful patterns match exact host, `host:port`, and `*.wildcard` (resolves §13.6); cookies are issued unencrypted and attached directly to responses, and the provider registers `EncryptCookies::except()` for the auth cookie so web-group redirects (OAuth/SSO callbacks) emit it readable by the API routes (resolves §13.5 — the CSRF cookie is not auto-excepted because its default name is shared with Laravel's web-session CSRF cookie).
 
 ## 1. Problem
 

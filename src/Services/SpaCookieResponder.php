@@ -62,6 +62,16 @@ class SpaCookieResponder
         return $response->withCookie($this->makeCookie('', -60));
     }
 
+    /**
+     * Build the auth cookie for attaching to any response type — used
+     * by redirect flows (OAuth/SSO callbacks), where the stateful
+     * decision belongs to the caller.
+     */
+    public function authCookie(string $token, int $expiryMinutes): Cookie
+    {
+        return $this->makeCookie($token, $expiryMinutes);
+    }
+
     protected function makeCookie(string $value, int $expiryMinutes): Cookie
     {
         return new Cookie(
