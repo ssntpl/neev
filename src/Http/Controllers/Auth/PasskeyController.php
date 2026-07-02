@@ -43,6 +43,7 @@ use Webauthn\AuthenticatorAssertionResponseValidator;
 use Webauthn\PublicKeyCredentialRequestOptions;
 use Webauthn\TrustPath\EmptyTrustPath;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\SpaCookieResponder;
 use Ssntpl\Neev\Http\Controllers\Controller;
 
 class PasskeyController extends Controller
@@ -499,13 +500,13 @@ class PasskeyController extends Controller
             $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
             $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::Passkey, $expiryMinutes, $attempt);
 
-            return response()->json([
+            return app(SpaCookieResponder::class)->attach($request, response()->json([
                 'auth_state' => 'authenticated',
                 'token' => $token,
                 'expires_in' => $expiryMinutes,
                 'mfa_options' => null,
                 'email_verified' => $user->hasVerifiedEmail(),
-            ]);
+            ]), $expiryMinutes);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([

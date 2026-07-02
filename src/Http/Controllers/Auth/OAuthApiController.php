@@ -15,6 +15,7 @@ use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\SpaCookieResponder;
 
 class OAuthApiController extends Controller
 {
@@ -97,13 +98,13 @@ class OAuthApiController extends Controller
                 ], 500);
             }
 
-            return response()->json([
+            return app(SpaCookieResponder::class)->attach($request, response()->json([
                 'auth_state' => 'authenticated',
                 'token' => $token,
                 'expires_in' => $expiryMinutes,
                 'mfa_options' => null,
                 'email_verified' => $user->hasVerifiedEmail(),
-            ]);
+            ]), $expiryMinutes);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
