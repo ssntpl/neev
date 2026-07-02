@@ -137,9 +137,9 @@
 - [x] **CORS/SPA guidance** — covered in `docs/spa-authentication.md` (backend setup: cors.php example, credentials, encryption caveats).
 
 ### Code Cleanup
-- [ ] **Remove unused `MembershipService`** — `src/Services/MembershipService.php` is defined but never injected or referenced. Either implement it as the central membership operations service or remove it.
-- [ ] **Extract `isDomainVerified()` to shared service** — Currently duplicated as a private method in `UserAuthController`, `UserAuthApiController`, and `OAuthController`. Move to `EmailDomainValidator` service.
-- [ ] **Web/API registration feature parity** — Web and API registration controllers have diverged in feature coverage. Consider extracting a `RegistrationService` to centralize: company email enforcement, tenant isolation handling, username support, team creation with activation.
+- [x] **Remove unused `MembershipService`** — removed (verified: never injected or referenced).
+- [x] **Extract `isDomainVerified()`** — the four private copies (plus one inline variant) replaced by `Domain::isVerifiedForEmail()`. (The old note's `EmailDomainValidator` target no longer exists.)
+- [x] **Web/API registration feature parity** — `RegistrationService` now owns validation rules, user creation, invitation acceptance, federated-domain team rules, OAuth registration, the transaction, and the `Registered` event; all four controllers delegate to it. Future hooks (email reputation, RFC-001 self-registration routing) plug in here.
 - [x] ~~Lint violations in demo/ directory~~ — obsolete: `demo/` is gitignored (local-only, not shipped).
 
 ---

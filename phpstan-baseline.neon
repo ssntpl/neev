@@ -63,6 +63,12 @@ parameters:
 		-
 			message: '#^Access to an undefined property Laravel\\Socialite\\Contracts\\User\:\:\$email\.$#'
 			identifier: property.notFound
+			count: 2
+			path: src/Http/Controllers/Auth/OAuthController.php
+
+		-
+			message: '#^Access to an undefined property Laravel\\Socialite\\Contracts\\User\:\:\$name\.$#'
+			identifier: property.notFound
 			count: 1
 			path: src/Http/Controllers/Auth/OAuthController.php
 
