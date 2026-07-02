@@ -10,61 +10,58 @@ Complete guide to implementing multi-tenant SaaS applications with Neev.
 
 Neev's multi-tenancy features allow you to:
 
-- Choose between **shared** and **isolated** identity strategies
+- Isolate users per tenant with a single `tenant` config flag
 - Isolate organizations by subdomain or custom domain
-- Configure per-tenant authentication methods
+- Configure per-tenant authentication methods (stored in the database)
 - Support enterprise SSO (Microsoft Entra ID, Google Workspace, Okta)
 - Auto-provision users from identity providers
 - Scope any Eloquent model to the current tenant or team automatically
 
 ---
 
-## Identity Strategy
+## Identity Modes
 
-Neev supports two identity strategies, configured at install time:
-
-### Shared Identity (default)
-
-Users are global. A single user can belong to multiple teams. There is no tenant boundary — teams serve as collaboration containers.
+Neev's identity model is controlled by two orthogonal booleans in `config/neev.php`:
 
 ```php
 // config/neev.php
-'identity_strategy' => 'shared',
+
+// Multi-tenant isolation. Users scoped to tenant.
+// Same email can exist in different tenants.
+'tenant' => false,
+
+// Team sub-grouping. Optional in both tenant and non-tenant modes.
+'team' => false,
 ```
+
+### Shared Identity (`tenant => false`, default)
+
+Users are global. There is no tenant boundary. With `team => true`, a single user can belong to multiple teams — teams serve as collaboration containers.
 
 Best for: GitHub-style platforms, project management tools, collaborative SaaS.
 
-### Isolated Identity
+### Tenant Isolation (`tenant => true`)
 
-Users are scoped inside a **tenant** (an identity boundary). The same email can exist in different tenants. The tenant must be resolved *before* authentication so Neev knows which identity provider to use.
+Users are scoped inside a **tenant** (an identity boundary) via a `tenant_id` column on the `users` table. The same email can exist in different tenants. The tenant is resolved *before* authentication so Neev knows which identity provider to use.
 
-```php
-// config/neev.php
-'identity_strategy' => 'isolated',
-```
+In tenant mode, Neev resolves a `Tenant` model from the request. With `team => true`, teams still exist as collaboration containers *within* a tenant.
 
-Best for: white-label SaaS, reseller platforms, regulated industries.
-
-In isolated mode, Neev resolves a `Tenant` model (instead of a `Team`) from the request. Teams still exist as collaboration containers *within* a tenant.
+Best for: white-label SaaS, regulated industries.
 
 > **Key distinction**: Tenant = identity boundary (who can log in). Team = collaboration boundary (who works together). See [Architecture](./architecture.md) for the full conceptual model.
 
-### Choosing Your Strategy
+### Choosing Your Mode
 
-| If you need... | Use | Config |
-|----------------|-----|--------|
-| Users joining multiple orgs (GitHub/Slack model) | **Shared** | `identity_strategy: 'shared'`, `team: true` |
-| Simple app with no org concept | **Shared** | `identity_strategy: 'shared'`, `team: false` |
-| Same email in different orgs (white-label) | **Isolated** | `identity_strategy: 'isolated'`, `tenant_isolation: true` |
-| Per-org SSO with separate identity providers | **Isolated** | `identity_strategy: 'isolated'`, `tenant_auth: true` |
-| Subdomain-based org access (acme.app.com) | Either | `tenant_isolation: true` |
-| Regulatory data isolation between orgs | **Isolated** | `identity_strategy: 'isolated'`, `tenant_isolation: true` |
+| If you need... | Config |
+|----------------|--------|
+| Users joining multiple orgs (GitHub/Slack model) | `tenant: false`, `team: true` |
+| Simple app with no org concept | `tenant: false`, `team: false` |
+| Same email in different orgs (white-label) | `tenant: true` |
+| Per-org SSO with separate identity providers | `tenant: true` (or `team: true`) + auth settings in DB |
+| Subdomain/custom-domain org access (acme.app.com) | `tenant: true` + verified `domains` records |
+| Regulatory data isolation between orgs | `tenant: true` |
 
-**Key config interactions:**
-- `tenant_isolation` requires `team: true`
-- `tenant_auth` requires `tenant_isolation: true`
-- `domain_federation` requires `team: true` (shared mode only — auto-join teams by email domain)
-- `require_company_email` requires `team: true`
+Per-tenant and per-team authentication (password vs SSO) is **not** a config toggle — it lives in the `tenant_auth_settings` and `team_auth_settings` database tables. See [Tenant-Driven Authentication](#tenant-driven-authentication).
 
 ---
 
@@ -74,100 +71,53 @@ In isolated mode, Neev resolves a `Tenant` model (instead of a `Team`) from the 
 
 ```php
 // config/neev.php
-'team' => true,                    // Required
-'tenant_isolation' => true,        // Enable tenant isolation
-
-'tenant_isolation_options' => [
-    'subdomain_suffix' => env('NEEV_SUBDOMAIN_SUFFIX', '.yourapp.com'),
-    'allow_custom_domains' => true,
-],
+'tenant' => true,   // Multi-tenant isolation
+'team' => true,     // Optional: team sub-grouping within tenants
 ```
 
-### Environment Variables
-
-```env
-NEEV_SUBDOMAIN_SUFFIX=.yourapp.com
-```
+There are no other tenant-related config keys. Domain-based access (subdomains and custom domains) is managed through the `domains` table, and per-tenant auth settings live in the `tenant_auth_settings` table.
 
 ---
 
-## Isolation Approaches
+## How Isolation Works
 
-Neev supports two approaches to tenant isolation. Choose the one that fits your data model.
+When `tenant => true`:
 
-### Membership-Based Isolation (Default)
+- Each user belongs to a tenant via a nullable `tenant_id` column on the `users` table (`NULL` = platform-level user)
+- The `users` table has a unique constraint on `(tenant_id, email)`, so the same email can exist in different tenants
+- Neev's User model includes the `BelongsToTenant` trait, so all user queries are automatically scoped to the resolved tenant via the `TenantScope` global scope
+- The `EnsureTenantMembership` middleware validates that the authenticated user belongs to the resolved tenant — directly via `tenant_id`, or indirectly through membership in one of the tenant's teams
 
-Users can belong to multiple tenants via team memberships. The `EnsureTenantMembership` middleware validates that the authenticated user belongs to the current tenant on each request. Data models use the `BelongsToTenant` trait to scope queries by `tenant_id`.
+The `tenant_id` column is included in the base migrations — no additional setup is required beyond enabling the config.
 
-- Users exist independently of any single tenant
-- A user can switch between tenants
-- Best for: collaboration platforms, project management tools, consulting firms
-
-### Hard User Isolation (`tenant_id` on Users Table)
-
-Each user belongs to exactly one tenant via a `tenant_id` column on the `users` table. Neev's User model includes the `BelongsToTenant` trait by default, so all user queries are automatically scoped to the current tenant when a tenant context is resolved.
-
-- Users are permanently bound to a single tenant
-- The same email address can exist in different tenants
-- Best for: regulated industries, data-sensitive applications, single-employer SaaS
-
-The `tenant_id` column is included in the base migrations — no additional setup is required beyond enabling the config:
-
-```php
-// config/neev.php
-'identity_strategy' => 'isolated',
-'tenant_isolation' => true,
-```
-
-In shared mode, the `tenant_id` columns remain `NULL` and the global scope is a no-op — all queries run unscoped as before.
+When `tenant => false`, the `tenant_id` columns remain `NULL` and the global scope is a no-op — all queries run unscoped.
 
 ### Config vs Trait
 
-The `tenant_isolation` config key controls the **infrastructure**: tenant resolver, middleware, SSO routes. It determines whether Neev resolves tenants from subdomains, headers, and custom domains.
+The `tenant` config key controls the **infrastructure**: tenant resolver, middleware, SSO routes. It determines whether Neev resolves tenants from the `X-Tenant` header and request host.
 
-The `BelongsToTenant` trait controls **per-model scoping**. Adding the trait to a model opts that model into automatic query scoping and `tenant_id` auto-assignment — regardless of the `tenant_isolation` config value. This means you can use `BelongsToTenant` on your own models even in simpler setups where you manage the tenant context manually via `TenantResolver::setCurrentTenant()`.
-
----
-
-## Tenant Isolation Options
-
-### Subdomain Suffix
-
-```php
-'subdomain_suffix' => '.yourapp.com',
-```
-
-- Tenants access via `acme.yourapp.com`, `corp.yourapp.com`
-- Set to `null` to disable subdomain support
-
-### Custom Domains
-
-```php
-'allow_custom_domains' => true,
-```
-
-- Tenants can use their own domains (e.g., `app.acme.com`)
-- Requires DNS verification before activation
+The `BelongsToTenant` trait controls **per-model scoping**. Adding the trait to a model opts that model into automatic query scoping and `tenant_id` auto-assignment — regardless of the `tenant` config value. This means you can use `BelongsToTenant` on your own models even in simpler setups where you manage the tenant context manually via `TenantResolver::setCurrentTenant()`.
 
 ---
 
 ## Tenant Resolution
 
-The `TenantResolver` singleton resolves the current tenant using the following priority order:
+The `TenantResolver` (a request-scoped singleton) resolves the current tenant — it only runs when `tenant => true`. Priority order:
 
-1. **X-Tenant Header** -- Resolve by team ID, slug, or domain via the `X-Tenant` request header
-2. **Subdomain** -- Extract slug from subdomain (e.g., `acme.yourapp.com` -> slug `acme`)
-3. **Custom Domain** -- Look up the full domain in the `domains` table
+1. **X-Tenant Header** -- Resolve by tenant ID (numeric), slug, or a domain registered in the `domains` table
+2. **Request Host** -- Look up the full host (subdomain or custom domain) in the `domains` table
+
+Host lookups only match **verified** domains and are cached for 5 minutes. A domain owned directly by a tenant resolves that tenant; a domain owned by a team resolves the team's tenant.
 
 ### Using the X-Tenant Header (API)
 
-For API requests where subdomain routing isn't available, use the `X-Tenant` header:
+For API requests where domain routing isn't available, use the `X-Tenant` header:
 
 ```bash
-# By team ID
+# By tenant ID
 curl -H "X-Tenant: 42" -H "Authorization: Bearer {token}" https://api.yourapp.com/resource
 
-# By team slug
+# By tenant slug
 curl -H "X-Tenant: acme-corp" -H "Authorization: Bearer {token}" https://api.yourapp.com/resource
 
 # By domain
@@ -181,20 +131,17 @@ use Ssntpl\Neev\Services\TenantResolver;
 
 $resolver = app(TenantResolver::class);
 
-// Shared mode — returns the resolved Team (backward compat)
-$team = $resolver->current();
-
-// Isolated mode — returns the resolved Tenant
+// The resolved Tenant model
 $tenant = $resolver->currentTenant();
 
-// Either mode — returns the resolved context container (Team or Tenant)
+// The resolved context container (Tenant, or Team when set manually)
 $context = $resolver->resolvedContext();
 
 // Resolution metadata
-$resolver->resolvedVia();                  // 'subdomain', 'header', or 'custom'
+$resolver->resolvedVia();                  // 'header', 'custom', or 'manual'
 $resolver->isResolvedDomainVerified();     // Whether the domain is verified
-$resolver->currentId();                     // Context ID (Team ID or Tenant ID)
-$resolver->isIsolated();                    // true if identity_strategy is 'isolated'
+$resolver->currentId();                     // Context ID (Tenant ID or Team ID)
+$resolver->isEnabled();                     // true when config('neev.tenant') is enabled
 
 // Run code in a specific tenant context (useful for platform provisioning)
 $resolver->runInContext($tenant, function () {
@@ -204,37 +151,36 @@ $resolver->runInContext($tenant, function () {
 
 ---
 
-## Subdomain-Based Tenancy
+## Domain-Based Tenancy
 
 ### How It Works
 
-1. User accesses `acme.yourapp.com`
-2. `TenantMiddleware` extracts subdomain `acme`
-3. Team with slug `acme` is resolved
-4. Tenant context is set for the request
+1. User accesses `acme.yourapp.com` (or `app.acme.com`)
+2. `TenantMiddleware` passes the host to `TenantResolver::resolve()`
+3. The host is looked up in the `domains` table (only verified domains match)
+4. The domain's owner (Tenant, or a Team belonging to a Tenant) determines the tenant
+5. Tenant context is set for the request
 
-### Team Slugs
+Subdomains are not derived from slugs at request time — every host (subdomain or custom domain) must exist as a verified `Domain` record. Subdomains added via the tenant-domains API with `type: subdomain` are auto-verified; custom domains require DNS verification.
 
-Slugs are auto-generated from team names:
+### Tenant & Team Slugs
+
+Slugs are auto-generated from names and can be used for `X-Tenant` header resolution:
 
 ```php
 $team = Team::create(['name' => 'Acme Corporation']);
 // $team->slug = 'acme-corporation'
 ```
 
-### Reserved Slugs
+### Slug Configuration
 
 ```php
 // config/neev.php
 'slug' => [
-    'reserved' => ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn'],
+    'min_length' => 2,
+    'max_length' => 63,
+    'reserved' => ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn', 'assets', 'static'],
 ],
-```
-
-### Computed Subdomain
-
-```php
-$team->subdomain;  // Returns 'acme.yourapp.com'
 ```
 
 ---
@@ -255,27 +201,27 @@ curl -X POST https://yourapp.com/neev/tenant-domains \
 
 ```json
 {
+  "message": "Domain added successfully.",
   "data": {
     "id": 1,
     "domain": "app.acme.com",
-    "verification_token": "neev-verify=abc123...",
     "verified_at": null
+  },
+  "verification_token": "abc123...",
+  "dns_record": {
+    "type": "TXT",
+    "name": "_neev-verification.app.acme.com",
+    "value": "abc123..."
   }
 }
 ```
 
 ### DNS Verification
 
-Tenant must add a TXT record:
+Tenant must add a TXT record named `_neev-verification.{domain}` whose value is the verification token:
 
 ```
-TXT neev-verify=abc123...
-```
-
-Or a CNAME record pointing to your subdomain:
-
-```
-CNAME app.acme.com -> acme.yourapp.com
+_neev-verification.app.acme.com.  TXT  "abc123..."
 ```
 
 ### Verify Domain
@@ -295,7 +241,7 @@ curl -X POST https://yourapp.com/neev/tenant-domains/1/primary \
 ### Web Domain Resolution
 
 ```php
-$team->webDomain;  // Returns primary verified domain or subdomain
+$team->webDomain;  // Returns the primary verified domain, or null
 ```
 
 ---
@@ -312,7 +258,7 @@ $context = app(ContextManager::class);
 $context->currentTenant();    // Tenant model or null
 $context->currentTeam();      // Team model or null
 $context->currentUser();      // User model or null
-$context->currentContext();   // Tenant (isolated) or Team (shared), or null
+$context->currentContext();   // Tenant (tenant mode) or Team, or null
 $context->isBound();          // true after BindContextMiddleware runs
 ```
 
@@ -366,10 +312,12 @@ $resolver->runInContext($tenant, function () use ($data) {
 });
 ```
 
-Alternatively, you can set `tenant_id` explicitly via mass assignment (`User` includes `tenant_id` in its fillable attributes):
+Note that `tenant_id` is **not** mass-assignable on the User model. Outside of `runInContext()`, set it explicitly before saving:
 
 ```php
-$user = User::create(['name' => $data['name'], 'email' => $data['email'], 'tenant_id' => $tenant->id]);
+$user = User::model()->fill(['name' => $data['name'], 'email' => $data['email']]);
+$user->tenant_id = $tenant->id;
+$user->save();
 ```
 
 **Using `setCurrentTenant()` (manual):**
@@ -414,13 +362,26 @@ class ProcessTenantReport implements ShouldQueue
 
 ## Tenant Middleware
 
-### Available Middleware
+### Available Middleware Groups
 
-| Middleware | Description |
+| Group | Description |
 |------------|-------------|
-| `neev:web` | Web authentication (includes tenant resolution when enabled) |
-| `neev:api` | API authentication (includes tenant resolution when enabled) |
-| `neev:tenant` | Resolves tenant from domain (no auth) |
+| `neev:web` | Session authentication for web routes (includes tenant resolution when enabled) |
+| `neev:api` | Token authentication for API routes (includes tenant resolution when enabled) |
+| `neev:login` | MFA JWT authentication (used for `POST /neev/mfa/otp/verify`) |
+| `neev:tenant` | Tenant resolution only, no auth — uses `TenantMiddleware:required`, returns 404 when no tenant resolves |
+
+### Middleware Aliases
+
+| Alias | Middleware |
+|-------|------------|
+| `neev:active-team` | `EnsureTeamIsActive` |
+| `neev:active-tenant` | `EnsureTenantIsActive` |
+| `neev:tenant-member` | `EnsureTenantMembership` |
+| `neev:resolve-team` | `ResolveTeamMiddleware` |
+| `neev:ensure-sso` | `EnsureContextSSO` |
+| `neev:password-not-expired` | `EnsurePasswordNotExpired` |
+| `neev:verified-email` | `EnsureEmailIsVerified` |
 
 ### Using Middleware
 
@@ -444,62 +405,65 @@ The middleware groups run in this order:
 
 **`neev:api`**: TenantMiddleware (resolve tenant) → ResolveTeamMiddleware (resolve team) → NeevAPIMiddleware (authenticate user) → EnsureTenantMembership (check membership) → BindContextMiddleware (lock context)
 
-When `tenant_isolation` is disabled, the tenant-specific middleware are no-ops. Authentication always runs before the membership check. This ensures `$request->user()` is available when `EnsureTenantMembership` validates that the user belongs to the current tenant.
+When `tenant` is disabled, the tenant-specific middleware are no-ops. Authentication always runs before the membership check. This ensures `$request->user()` is available when `EnsureTenantMembership` validates that the user belongs to the current tenant.
 
-### Middleware Behavior
+### TenantMiddleware Behavior
 
-1. Extracts host from request
-2. Checks for custom domain match
-3. Falls back to subdomain extraction
-4. Validates tenant exists and is verified
-5. Sets tenant context on request
-6. Proceeds to next middleware
+1. Skips entirely when `tenant => false`
+2. Resolves the tenant via `TenantResolver` (X-Tenant header, then host lookup in the `domains` table)
+3. If no tenant resolves: returns 404 in `required` mode (`neev:tenant` group), otherwise passes through
+4. If the resolved domain is not verified: returns 403
+5. Sets the `tenant` attribute on the request and proceeds
 
 ---
 
 ## Tenant-Driven Authentication
 
-Per-tenant authentication method configuration.
+Per-tenant authentication method configuration. There is no config toggle for this — auth settings live in the database (`tenant_auth_settings` for tenants, `team_auth_settings` for teams). When no settings row exists, the tenant defaults to password authentication.
 
-### Enable Tenant Auth
+### Configuring via CLI
 
-```php
-// config/neev.php
-'tenant_isolation' => true,  // Required
-'tenant_auth' => true,
+```bash
+# Configure SSO for a tenant
+php artisan neev:auth:configure --tenant=acme --method=sso \
+    --sso-provider=entra --sso-client-id=... --sso-client-secret=... --sso-tenant-id=...
 
-'tenant_auth_options' => [
-    'default_method' => 'password',
-    'sso_providers' => ['entra', 'google', 'okta'],
-    'auto_provision' => false,
-    'auto_provision_role' => null,
-],
+# Configure auth for a team (non-tenant mode)
+php artisan neev:auth:configure --team=acme --method=password
+
+# Show current auth settings
+php artisan neev:auth:show --tenant=acme
 ```
 
-### TeamAuthSettings Model
+### TenantAuthSettings / TeamAuthSettings Models
 
-Each tenant can have custom auth settings:
+Each tenant (or team) can have custom auth settings:
 
 ```php
-$team->authSettings()->create([
+$tenant->authSettings()->create([
     'auth_method' => 'sso',           // 'password' or 'sso'
-    'sso_provider' => 'entra',        // SSO provider
+    'sso_provider' => 'entra',        // 'entra', 'google', or 'okta'
     'sso_client_id' => 'client-id',
-    'sso_client_secret' => encrypt('client-secret'),
+    'sso_client_secret' => 'client-secret',  // encrypted automatically via cast
     'sso_tenant_id' => 'azure-tenant-id',
     'auto_provision' => true,
-    'default_role' => 'member',
+    'auto_provision_role' => 'member',
 ]);
 ```
 
+Provider-specific extras (Okta base URL, domain restrictions, etc.) go in the `sso_extra_config` JSON column and are merged into the Socialite config.
+
 ### Checking Auth Method
 
+Both `Tenant` and `Team` (via the `HasTenantAuth` trait) expose the same API. Settings are cached for 30 minutes:
+
 ```php
-// In Team model (HasTenantAuth trait)
-$team->getAuthMethod();        // 'password' or 'sso'
-$team->requiresSSO();          // true if SSO is required
-$team->hasSSOConfigured();     // true if SSO is properly configured
-$team->getSSOProvider();       // 'entra', 'google', or 'okta'
+$tenant->getAuthMethod();        // 'password' or 'sso'
+$tenant->requiresSSO();          // true if SSO is required
+$tenant->hasSSOConfigured();     // true if SSO is properly configured
+$tenant->getSSOProvider();       // 'entra', 'google', or 'okta'
+$tenant->allowsAutoProvision();  // true if SSO users are auto-created
+$tenant->getAutoProvisionRole(); // role assigned to auto-provisioned users
 ```
 
 ---
@@ -521,11 +485,11 @@ Each provider requires specific configuration:
 #### Microsoft Entra ID (Azure AD)
 
 ```php
-$team->authSettings()->create([
+$tenant->authSettings()->create([
     'auth_method' => 'sso',
     'sso_provider' => 'entra',
     'sso_client_id' => 'your-app-id',
-    'sso_client_secret' => encrypt('your-client-secret'),
+    'sso_client_secret' => 'your-client-secret',  // encrypted automatically via cast
     'sso_tenant_id' => 'your-azure-tenant-id',
 ]);
 ```
@@ -540,24 +504,24 @@ Azure App Registration:
 #### Google Workspace
 
 ```php
-$team->authSettings()->create([
+$tenant->authSettings()->create([
     'auth_method' => 'sso',
     'sso_provider' => 'google',
     'sso_client_id' => 'your-client-id',
-    'sso_client_secret' => encrypt('your-client-secret'),
-    'sso_domain' => 'acme.com',  // Restrict to domain
+    'sso_client_secret' => 'your-client-secret',
+    'sso_extra_config' => ['hd' => 'acme.com'],  // Restrict to domain
 ]);
 ```
 
 #### Okta
 
 ```php
-$team->authSettings()->create([
+$tenant->authSettings()->create([
     'auth_method' => 'sso',
     'sso_provider' => 'okta',
     'sso_client_id' => 'your-client-id',
-    'sso_client_secret' => encrypt('your-client-secret'),
-    'sso_base_url' => 'https://acme.okta.com',
+    'sso_client_secret' => 'your-client-secret',
+    'sso_extra_config' => ['base_url' => 'https://acme.okta.com'],
 ]);
 ```
 
@@ -615,7 +579,7 @@ GET /sso/redirect?redirect_uri=https://acme.yourapp.com/app
 After SSO, user is redirected with the token in the URL fragment (not query parameter) to prevent server-side logging:
 
 ```
-https://acme.yourapp.com/app#token=1|abc123...
+https://acme.yourapp.com/app#token=1|abc123...&auth_state=authenticated&email_verified=true&expires_in=1440
 ```
 
 Your SPA should extract the token from `window.location.hash`:
@@ -642,18 +606,20 @@ Automatically create users on SSO login.
 
 ### Enable Auto-Provisioning
 
+Auto-provisioning is configured per tenant (or team) in its auth settings — it is disabled by default:
+
 ```php
-// Global default
-'tenant_auth_options' => [
+$tenant->authSettings()->update([
     'auto_provision' => true,
     'auto_provision_role' => 'member',
-],
-
-// Per-tenant override
-$team->authSettings()->update([
-    'auto_provision' => true,
-    'auto_provision_role' => 'viewer',
 ]);
+```
+
+Or via CLI:
+
+```bash
+php artisan neev:auth:configure --tenant=acme --method=sso \
+    --auto-provision --auto-provision-role=member ...
 ```
 
 ### How It Works
@@ -729,11 +695,11 @@ $ssoManager->ensureMembership($user, $tenant);
 
 ### users Table (tenant_id column)
 
-The `users` table includes a nullable `tenant_id` column. In isolated mode, the `BelongsToTenant` global scope uses this column to automatically filter all queries to the current tenant. In shared mode, this column remains `NULL` and is ignored.
+The `users` table includes a nullable `tenant_id` column. In tenant mode, the `BelongsToTenant` global scope uses this column to automatically filter all queries to the current tenant. When `tenant` is disabled, this column remains `NULL` and is ignored.
 
 The `users` table has a unique constraint on `(tenant_id, email)`, allowing the same email address to exist in different tenants while preventing duplicates within one tenant.
 
-### tenants Table (isolated mode)
+### tenants Table (tenant mode)
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -750,18 +716,20 @@ The `users` table has a unique constraint on `(tenant_id, email)`, allowing the 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | bigint | Primary key |
-| team_id | bigint (nullable) | Team reference (shared mode, domain federation) |
-| tenant_id | bigint (nullable) | Tenant reference (isolated mode) |
+| owner_type | string (nullable) | Polymorphic owner type (`team` or `tenant`) |
+| owner_id | bigint (nullable) | Polymorphic owner ID |
+| enforce | boolean | Enforce email-domain matching (federation) |
 | domain | string | Custom domain or email domain |
 | verification_token | string | DNS verification token |
 | verified_at | timestamp | When verified |
+| verification_failed_at | timestamp | When re-verification last failed |
 | is_primary | boolean | Primary custom domain |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 
 The `domains` table serves two purposes:
-- **Domain federation** (shared mode): email domains claimed by teams for auto-join rules
-- **Custom domains** (tenant isolation): custom domains for tenant/team access (e.g., `app.acme.com`)
+- **Domain federation**: email domains claimed by teams for auto-join rules
+- **Custom domains** (tenant mode): domains for tenant/team access (e.g., `app.acme.com`)
 
 ### team_auth_settings Table
 
@@ -780,9 +748,9 @@ The `domains` table serves two purposes:
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 
-### tenant_auth_settings Table (isolated mode)
+### tenant_auth_settings Table (tenant mode)
 
-Same schema as `team_auth_settings`, but with `tenant_id` instead of `team_id`. Used when `identity_strategy` is `'isolated'` and SSO is configured at the tenant level.
+Same schema as `team_auth_settings`, but with `tenant_id` instead of `team_id`. Used when `tenant` is enabled and SSO is configured at the tenant level.
 
 ---
 
@@ -791,14 +759,12 @@ Same schema as `team_auth_settings`, but with `tenant_id` instead of `team_id`. 
 ### Domain Verification
 
 - Always verify domain ownership via DNS
-- Don't allow unverified domains for auth
-- Re-verify periodically for long-lived tenants
-- Multiple tenants can claim (add) the same domain, but only one can verify it — verification is rejected if another owner has already verified that domain
+- Don't allow unverified domains for auth — `TenantMiddleware` rejects unverified custom domains with a 403
+- Re-verify periodically for long-lived tenants (`VerifyDomainJob` / `VerifyAllDomainsJob` support scheduled re-verification, tracked via `verification_failed_at`)
 
 ### Secret Storage
 
-- Store `sso_client_secret` encrypted
-- Use Laravel's `encrypt()` helper
+- `sso_client_secret` is encrypted at rest automatically (Eloquent `encrypted` cast) and hidden from serialization
 - Never log or expose secrets
 
 ### Redirect URI Validation
@@ -827,7 +793,7 @@ Route::middleware('web')->group(function () {
     Route::get('/', [HomeController::class, 'index']);
 });
 
-// Authenticated routes (tenant-aware when tenant_isolation is enabled)
+// Authenticated routes (tenant-aware when `tenant` is enabled)
 Route::middleware(['neev:web'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index']);
     Route::get('/settings', [SettingsController::class, 'index']);
@@ -838,7 +804,7 @@ Route::middleware(['neev:web'])->group(function () {
 
 Neev provides two scoping traits:
 
-- **`BelongsToTenant`** -- scopes models by `tenant_id` (uses `TenantScope`). The column references either the `teams` or `tenants` table depending on your identity strategy.
+- **`BelongsToTenant`** -- scopes models by `tenant_id` (uses `TenantScope`). The column references the `tenants` table when `tenant` is enabled, otherwise the `teams` table.
 - **`BelongsToTeam`** -- scopes models by `team_id` (uses `TeamScope`). Useful when you need team-level scoping within a tenant.
 
 Both traits auto-assign the ID on creation and add a global scope that filters queries automatically.
@@ -857,7 +823,7 @@ Add a `tenant_id` column to your table:
 ```php
 Schema::create('projects', function (Blueprint $table) {
     $table->id();
-    $table->foreignId('tenant_id')->constrained('teams')->cascadeOnDelete();
+    $table->foreignId('tenant_id')->constrained('tenants')->cascadeOnDelete();
     $table->string('name');
     $table->timestamps();
 
@@ -883,7 +849,7 @@ That's it. All queries on `Project` are now automatically scoped to the current 
 
 - **Querying**: A `WHERE tenant_id = <current_tenant_id>` clause is added to every query automatically.
 - **Creating**: `tenant_id` is set from the resolved tenant. You can override it by setting the value explicitly.
-- **No tenant context**: When tenant isolation is enabled but no tenant is resolved, the scope **fails closed** — queries return empty results. Use `runInContext()` or `setCurrentTenant()` to establish context in console commands and queue jobs, or `withoutTenantScope()` when you explicitly need cross-tenant access.
+- **No tenant context**: When tenant isolation is enabled but no tenant is resolved, the scope **fails closed** — queries are scoped to `tenant_id IS NULL`, so only platform-level records (no tenant) are visible and tenant data can never leak. Use `runInContext()` or `setCurrentTenant()` to establish context in console commands and queue jobs, or `withoutTenantScope()` when you explicitly need cross-tenant access.
 
 #### Querying
 
@@ -904,7 +870,7 @@ $allProjects = Project::withoutTenantScope()->where('status', 'active')->paginat
 $project = Project::create(['name' => 'My Project']);
 
 // You can override tenant_id explicitly
-$project = Project::create(['name' => 'My Project', 'tenant_id' => $otherTeamId]);
+$project = Project::create(['name' => 'My Project', 'tenant_id' => $otherTenantId]);
 ```
 
 #### Tenant Relationship
@@ -912,7 +878,7 @@ $project = Project::create(['name' => 'My Project', 'tenant_id' => $otherTeamId]
 The trait provides a `tenant()` relationship:
 
 ```php
-$project->tenant;       // Returns the Team model
+$project->tenant;       // Returns the Tenant model (or Team when tenant mode is off)
 $project->tenant->name; // 'Acme Corporation'
 ```
 
@@ -962,7 +928,7 @@ class ProjectController extends Controller
 
 ## Next Steps
 
-- [Architecture](./architecture.md) -- conceptual foundations for identity strategy, tenant vs team
+- [Architecture](./architecture.md) -- conceptual foundations for identity modes, tenant vs team
 - [Security Features](./security.md) -- brute force protection, login tracking, session management
 - [Teams Guide](./teams.md) -- team management, invitations, domain federation
 - [API Reference](./api-reference.md) -- complete API endpoint reference

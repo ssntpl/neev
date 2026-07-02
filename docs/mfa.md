@@ -39,9 +39,18 @@ Neev supports multiple MFA methods that provide an extra layer of security beyon
 
 ```php
 // config/neev.php
-'otp_expiry_time' => 15,  // Minutes before OTP expires
-'otp_min' => 100000,      // Minimum OTP value (6 digits)
-'otp_max' => 999999,      // Maximum OTP value (6 digits)
+'otp_expiry_time' => 15,  // Minutes before email OTP codes expire
+'otp_length' => 6,        // OTP length: 4, 6, or 8 digits
+```
+
+### MFA JWT Settings
+
+After a password login that requires MFA, the API issues a short-lived JWT used only to complete verification:
+
+```php
+// config/neev.php
+'mfa_jwt_expiry_minutes' => 30,           // Minutes before the MFA JWT expires
+'jwt_secret' => env('NEEV_JWT_SECRET'),   // Signing key; falls back to APP_KEY if not set
 ```
 
 ---
@@ -71,6 +80,7 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 
 ```json
 {
+  "status": "Success",
   "qr_code": "<svg xmlns=\"http://www.w3.org/2000/svg\">...</svg>",
   "secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
   "method": "authenticator"
@@ -142,19 +152,20 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 
 ```json
 {
+  "status": "Success",
+  "method": "email",
   "message": "Email Configured."
 }
 ```
 
-### Send OTP
+### Sending the OTP
 
-```bash
-curl -X POST https://yourapp.com/neev/email/otp/send \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "john@example.com",
-    "mfa": true
-  }'
+There is no standalone API endpoint to send the MFA email OTP. During API login, when the user's MFA method is `email`, the OTP is generated and emailed automatically as part of the `auth_state: mfa_required` response.
+
+In the web (Blade) flow, users on the MFA verification page can request a resend:
+
+```http
+POST /neev/otp/mfa/send   (route: otp.mfa.send)
 ```
 
 ### Verify OTP
@@ -246,7 +257,7 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 
 1. User enters email and password
 2. Credentials are validated
-3. MFA token is returned instead of full token
+3. A short-lived MFA JWT is returned instead of a full token (and the email OTP is sent automatically if the method is `email`)
 4. User is redirected to MFA verification
 5. User enters TOTP code or email OTP
 6. Full access token is returned
@@ -256,9 +267,9 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 ```php
 // After successful password verification
 if (count($user->multiFactorAuths) > 0) {
-    session(['email' => $email]);
+    session(['email' => $user->email]);
     return redirect(route('otp.mfa.create',
-        $user->preferredMultiFactorAuth?->method ??
+        $user->preferredMultiFactorAuth->method ??
         $user->multiFactorAuths()->first()?->method
     ));
 }
@@ -290,6 +301,8 @@ Response includes `auth_state` and `mfa_options`:
 
 **Step 2: Verify MFA**
 
+The `token` from step 1 is a JWT signed with `neev.jwt_secret` (expires after `mfa_jwt_expiry_minutes`, default 30). Send it as the Bearer token to the verify endpoint, which runs under the `neev:login` middleware group (JWT authentication) and is throttled to 5 requests per minute:
+
 ```bash
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
   -H "Authorization: Bearer jwt_mfa_token..." \
@@ -303,6 +316,7 @@ Response with full token:
   "auth_state": "authenticated",
   "token": "1|full_access_token...",
   "expires_in": 1440,
+  "mfa_options": null,
   "email_verified": true
 }
 ```
@@ -316,11 +330,10 @@ Users with multiple MFA methods can set a preferred one.
 ### Set Preferred Method
 
 ```bash
-# Via API (not directly exposed, use web route)
-PUT /account/multiFactorAuth
-Content-Type: application/json
-
-{"method": "authenticator"}
+curl -X PUT https://yourapp.com/neev/mfa/preferred \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"auth_method": "authenticator"}'
 ```
 
 ### How It Works
@@ -399,9 +412,9 @@ $user->generateRecoveryCodes();
 | id | bigint | Primary key |
 | user_id | bigint | Foreign key to users |
 | method | string | MFA method name |
-| secret | string | TOTP secret (encrypted) |
+| secret | text | TOTP secret (encrypted) |
 | preferred | boolean | Is this the preferred method |
-| otp | string | Current email OTP (if applicable) |
+| otp | text | Current email OTP, stored hashed (if applicable) |
 | expires_at | timestamp | OTP expiry time |
 | last_used | timestamp | Last successful verification |
 | created_at | timestamp | Creation time |
@@ -423,22 +436,22 @@ $user->generateRecoveryCodes();
 
 ### Secret Storage
 
-- TOTP secrets are stored in the database
-- Consider encrypting the `secret` column
-- Recovery codes are stored hashed (bcrypt)
+- TOTP secrets are stored encrypted (the `secret` column uses Laravel's `encrypted` cast)
+- Email OTP codes are stored hashed (the `otp` column uses the `hashed` cast)
+- Recovery codes are stored hashed (the `code` column uses the `hashed` cast)
 
 ### Email OTP Security
 
-- Codes expire after configurable time
+- Codes expire after `otp_expiry_time` minutes (default 15)
 - Used codes are immediately invalidated
-- Rate limit OTP sending to prevent abuse
+- The verify endpoint is throttled to 5 requests per minute
 
 ### Recovery Code Security
 
-- Codes are case-insensitive
-- Each code works only once
+- Codes are entered exactly as shown (they are generated as lowercase; matching is case-sensitive)
+- Each code works only once — it is deleted after use
 - Regenerating invalidates all previous codes
-- Codes are 10 characters (alphanumeric)
+- Codes are 10 characters (lowercase alphanumeric)
 
 ---
 
@@ -490,7 +503,7 @@ $domain->rules()->where('name', 'mfa')->first();
 
 ### Recovery Codes Not Working
 
-1. Check for typos (case-insensitive)
+1. Check for typos (codes are lowercase; matching is case-sensitive)
 2. Ensure code hasn't been used
 3. Codes might have been regenerated
 

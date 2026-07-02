@@ -33,24 +33,26 @@ This will install Neev and its dependencies:
 php artisan neev:install
 ```
 
-This interactive command will:
-1. Publish the configuration file
-2. Publish database migrations
-3. Ask about feature toggles
-4. Configure your environment
+This command must be run on a fresh installation — it aborts if the `users` table already contains records. It will:
+1. Publish the configuration file to `config/neev.php` (overwriting any existing copy)
+2. Set the `tenant` and `team` config options based on your answers
 
 ### Installation Options
 
-During installation, you'll be asked about:
+The command takes two arguments and interactively prompts for any that are missing:
 
-| Option | Description |
-|--------|-------------|
-| Team Management | Enable team/organization features |
-| Email Verification | Require email verification before access |
-| Username Support | Allow login with username (in addition to email) |
-| Magic Links | Enable passwordless login via email |
-| Domain Federation | Auto-join teams based on email domain |
-| Tenant Isolation | Enable multi-tenancy with domain separation |
+| Prompt | Config key | Description |
+|--------|------------|-------------|
+| Would you like to enable multi-tenant isolation? | `tenant` | Users scoped to a tenant; the same email can exist in different tenants |
+| Would you like to install team support? | `team` | Enable team/organization features |
+
+You can also pass the answers directly:
+
+```bash
+php artisan neev:install yes no   # tenant: yes, teams: no
+```
+
+All other features (username support, OAuth, MFA, password policies, etc.) are configured by editing `config/neev.php` — see the [Configuration Reference](./configuration.md).
 
 ---
 
@@ -59,16 +61,15 @@ During installation, you'll be asked about:
 Add the following to your `.env` file:
 
 ```env
-# Required
-NEEV_DASHBOARD_URL="${APP_URL}/dashboard"
-
 # GeoIP (optional but recommended)
 MAXMIND_LICENSE_KEY="your-maxmind-license-key"
 MAXMIND_EDITION="GeoLite2-City"
 
-# Tenant isolation (if enabled)
-NEEV_SUBDOMAIN_SUFFIX=".yourapp.com"
+# Optional: secret for signing MFA JWTs (falls back to APP_KEY if not set)
+NEEV_JWT_SECRET="your-random-secret"
 ```
+
+The post-login redirect is not an environment variable — it is the `home` key in `config/neev.php` (default: `/dashboard`).
 
 ### Getting a MaxMind License Key
 
@@ -85,12 +86,14 @@ NEEV_SUBDOMAIN_SUFFIX=".yourapp.com"
 php artisan migrate
 ```
 
+Migrations load automatically from the package — no publishing is required before running them.
+
 This creates the following tables:
 
 | Table | Description |
 |-------|-------------|
 | `users` | User accounts (includes nullable `tenant_id` for tenant isolation, password, and password history) |
-| `otps` | One-time passwords |
+| `otp` | One-time passwords |
 | `passkeys` | WebAuthn credentials |
 | `multi_factor_auths` | MFA configurations |
 | `recovery_codes` | MFA backup codes |
@@ -102,6 +105,8 @@ This creates the following tables:
 | `tenants` | Tenants (isolated identity mode) |
 | `domains` | Custom domains and email domains for federation |
 | `domain_rules` | Domain-specific security rules |
+| `team_auth_settings` | Per-team authentication settings |
+| `tenant_auth_settings` | Per-tenant authentication/SSO settings |
 
 ---
 
@@ -174,7 +179,7 @@ This creates `config/neev.php` where you can customize all settings.
 php artisan vendor:publish --tag=neev-migrations
 ```
 
-This copies migrations to `database/migrations/` for customization.
+This copies migrations to `database/migrations/` for customization. Publishing is optional — migrations load automatically from the package.
 
 ### Publish Views
 
@@ -190,7 +195,7 @@ This copies Blade templates to `resources/views/vendor/neev/` for customization.
 php artisan vendor:publish --tag=neev-routes
 ```
 
-This copies route files to `routes/` for customization.
+This copies `routes/neev.php` to your application's `routes/` directory for customization. When a published copy exists, Neev loads it instead of the package routes.
 
 ---
 
@@ -214,8 +219,7 @@ class User extends NeevUser
         'name',
         'username',
         'active',
-        'avatar',
-        'phone',
+        // ...plus any custom columns you add via your own migrations
     ];
 
     // Add your custom methods and relationships
@@ -264,8 +268,7 @@ class Team extends NeevTeam
         'name',
         'slug',
         'is_public',
-        'logo',
-        'description',
+        // ...plus any custom columns you add via your own migrations
     ];
 
     // Add your custom methods

@@ -12,7 +12,7 @@ Neev's team system allows users to:
 - Invite members via email
 - Assign roles and permissions
 - Configure domain-based auto-joining
-- Switch between multiple teams
+- Belong to multiple teams and set a default team
 
 ---
 
@@ -32,16 +32,15 @@ Neev's team system allows users to:
 'slug' => [
     'min_length' => 2,
     'max_length' => 63,
-    'reserved' => ['www', 'api', 'admin', 'app', 'mail', 'ftp'],
+    'reserved' => ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn', 'assets', 'static'],
 ],
 ```
 
+Slugs are auto-generated from the team name on creation (normalized, uniquified, reserved words avoided).
+
 ### Domain Federation
 
-```php
-// config/neev.php
-'domain_federation' => true,  // Enable domain-based auto-joining
-```
+Domain federation (domain-based auto-joining) has no config toggle — it is available whenever teams are enabled. See [Domain Federation](#domain-federation) below.
 
 ---
 
@@ -110,6 +109,9 @@ $user->teamRequests;
 // Join requests sent by user
 $user->sendRequests;
 
+// The user's default team (persisted preference, not request context)
+$user->defaultTeam;
+
 // Set default team (persisted preference for next login)
 $user->setDefaultTeam($team);
 
@@ -160,16 +162,17 @@ name=New+Team&public=0
 
 ### Auto-Created Teams
 
-When users register (with teams enabled), a personal team is created:
+When users register (with teams enabled), a personal team is created — unless they registered via a team invitation link, or their email domain matches a verified federated domain:
 
 ```php
-$team = Team::forceCreate([
+$team = Team::model()->forceCreate([
     'name' => explode(' ', $user->name, 2)[0] . "'s Team",
     'user_id' => $user->id,
     'is_public' => false,
+    'activated_at' => now(),
 ]);
 
-$team->users()->attach($user, ['joined' => true]);
+$team->addMember($user);
 ```
 
 ---
@@ -178,15 +181,16 @@ $team->users()->attach($user, ['joined' => true]);
 
 ### Membership Model
 
-The `Membership` model represents user-team relationships:
+The `Membership` model represents user-team relationships (pivot table `team_user`):
 
 | Column | Type | Description |
 |--------|------|-------------|
 | team_id | bigint | Team reference |
 | user_id | bigint | User reference |
-| role | string | User's role in team |
 | joined | boolean | Has accepted invitation |
 | action | string | How relationship was created |
+
+Roles are not stored on the pivot — they are managed by `ssntpl/laravel-acl` via polymorphic role assignments scoped to the team.
 
 ### Actions
 
@@ -353,38 +357,34 @@ The new owner must be an existing team member.
 
 ---
 
-## Team Switching
+## Default Team
 
-For users in multiple teams:
+For users in multiple teams, the **default team** is a persisted preference — the team to land on after login. It is *not* the request-scoped team context (which comes from `TenantResolver`/`ContextManager`).
 
-### Switch Team
+### Set Default Team (API)
 
 ```http
-PUT /teams/switch
+PUT /neev/teams/default
+Authorization: Bearer {token}
 Content-Type: application/json
 
 {"team_id": 2}
 ```
 
-### Default Team
+### In Code
 
 ```php
-$user->defaultTeam;  // The user's default team (preference, not request context)
+$user->defaultTeam;            // The user's default team (preference, not request context)
+$user->setDefaultTeam($team);  // Persist the preference (returns false if not a member)
 ```
+
+On the web, `PUT /teams/switch` (route `teams.switch`) simply redirects to the selected team's profile page.
 
 ---
 
 ## Domain Federation
 
-Automatically associate users with teams based on email domain.
-
-### Enable Domain Federation
-
-```php
-// config/neev.php
-'team' => true,
-'domain_federation' => true,
-```
+Automatically associate users with teams based on email domain. Available whenever teams are enabled (`'team' => true`) — there is no separate config toggle.
 
 ### Add Domain to Team
 
@@ -403,16 +403,16 @@ curl -X POST https://yourapp.com/neev/domains \
 ```json
 {
   "message": "Domain federated successfully.",
-  "token": "neev-verification=abc123def456..."
+  "token": "abc123def456..."
 }
 ```
 
 ### Verify Domain
 
-Add a TXT record to your DNS:
+Add a TXT record named `_neev-verification.{domain}` to your DNS with the token as its value:
 
 ```
-TXT neev-verification=abc123def456...
+_neev-verification.company.com.  TXT  "abc123def456..."
 ```
 
 Then verify:
@@ -425,9 +425,10 @@ curl -X PUT https://yourapp.com/neev/domains \
 
 ### Domain Enforcement
 
-When `enforce` is true:
-- Only users with matching email domain can join
-- Existing non-domain users are deactivated
+When `enforce` is true (and the domain is verified):
+- Only users with a matching email domain can be invited
+- Join requests are blocked
+- Members with non-matching email domains are reported as `outside_members` in the domains listing
 
 ```bash
 curl -X PUT https://yourapp.com/neev/domains \
@@ -490,13 +491,11 @@ if ($team->isActive()) {
 $reason = $team->inactive_reason;  // Why it's inactive
 ```
 
-### Company Email Requirement
+Teams auto-created at registration are activated immediately. Enforcement is opt-in: apply the `neev:active-team` middleware alias (`EnsureTeamIsActive`) to routes that should reject inactive teams. Teams can also be activated from the CLI:
 
-When `require_company_email` is enabled:
-
-- Users with free email providers (Gmail, Yahoo) get waitlisted teams
-- Teams are created but `activated_at` is null
-- Admin must manually activate
+```bash
+php artisan neev:team:activate {team}
+```
 
 ---
 
@@ -507,6 +506,8 @@ When `require_company_email` is enabled:
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/neev/teams` | List user's teams |
+| GET | `/neev/teams/invitations` | Get user's invitations and join requests |
+| PUT | `/neev/teams/default` | Set the user's default team |
 | GET | `/neev/teams/{id}` | Get team details |
 | POST | `/neev/teams` | Create team |
 | PUT | `/neev/teams` | Update team |
@@ -545,6 +546,7 @@ When `require_company_email` is enabled:
 | Column | Type | Description |
 |--------|------|-------------|
 | id | bigint | Primary key |
+| tenant_id | bigint (nullable) | Tenant reference (tenant mode) |
 | user_id | bigint | Owner's user ID |
 | name | string | Team name |
 | slug | string | URL-friendly identifier |
@@ -560,11 +562,12 @@ When `require_company_email` is enabled:
 |--------|------|-------------|
 | team_id | bigint | Team reference |
 | user_id | bigint | User reference |
-| role | string | User's role |
 | joined | boolean | Has accepted |
 | action | string | How relationship was created |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
+
+Roles are stored in laravel-acl's polymorphic role assignment table, not on this pivot.
 
 ### team_invitations Table
 
@@ -583,12 +586,14 @@ When `require_company_email` is enabled:
 | Column | Type | Description |
 |--------|------|-------------|
 | id | bigint | Primary key |
-| team_id | bigint | Team reference |
-| domain | string | Email domain |
+| owner_type | string | Polymorphic owner type (`team` or `tenant`) |
+| owner_id | bigint | Polymorphic owner ID |
+| domain | string | Email domain or web domain |
 | is_primary | boolean | Primary domain |
 | enforce | boolean | Enforce domain matching |
 | verification_token | string | DNS verification token |
 | verified_at | timestamp | When verified |
+| verification_failed_at | timestamp | When re-verification last failed |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 

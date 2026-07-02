@@ -60,11 +60,11 @@ neev/
 │   └── views/                # Blade templates (64 files)
 ├── routes/
 │   ├── neev.php              # Web and API routes
-│   └── sso.php               # Tenant SSO routes (loaded when tenant_auth enabled)
+│   └── sso.php               # Tenant SSO routes
 └── src/
     ├── Commands/              # Artisan commands
     ├── Contracts/             # Interfaces (ContextContainer, HasMembers, etc.)
-    ├── Events/                # LoggedInEvent, LoggedOutEvent
+    ├── Events/                # Login/logout and domain verification events
     ├── Http/
     │   ├── Controllers/       # Auth, User, Team, Role, TenantDomain, TenantSSO
     │   └── Middleware/        # Auth, tenant, team, context middleware
@@ -88,9 +88,10 @@ These are pre-composed groups you apply to route groups.
 |-------|----------|
 | `neev:web` | TenantMiddleware > ResolveTeamMiddleware > NeevMiddleware (session auth) > EnsureTenantMembership > BindContextMiddleware |
 | `neev:api` | TenantMiddleware > ResolveTeamMiddleware > NeevAPIMiddleware (token auth) > EnsureTenantMembership > BindContextMiddleware |
+| `neev:login` | TenantMiddleware > ResolveTeamMiddleware > JwtLoginMiddleware (MFA JWT auth) > EnsureTenantMembership > BindContextMiddleware |
 | `neev:tenant` | TenantMiddleware (required) > ResolveTeamMiddleware > BindContextMiddleware |
 
-When `tenant_isolation` is disabled, tenant-specific middleware are no-ops.
+When `tenant` is disabled, tenant-specific middleware are no-ops.
 
 ### Middleware Aliases
 
@@ -99,9 +100,12 @@ These can be applied individually to specific routes.
 | Alias | Description |
 |-------|-------------|
 | `neev:active-team` | Blocks access when team is inactive/waitlisted |
+| `neev:active-tenant` | Blocks access when tenant is inactive |
 | `neev:tenant-member` | Ensures user is a member of the current tenant |
 | `neev:resolve-team` | Resolves team from route parameter (slug or ID) |
 | `neev:ensure-sso` | Enforces SSO-only access for the current context |
+| `neev:password-not-expired` | Blocks access when the user's password has expired |
+| `neev:verified-email` | Blocks access until the user's email is verified |
 
 ### Usage
 
@@ -148,8 +152,11 @@ class User extends \Ssntpl\Neev\Models\User
 |-------|------------|
 | `Ssntpl\Neev\Events\LoggedInEvent` | User logs in (any method) |
 | `Ssntpl\Neev\Events\LoggedOutEvent` | User logs out |
+| `Ssntpl\Neev\Events\DomainVerified` | A domain passes DNS verification for the first time |
+| `Ssntpl\Neev\Events\DomainReverified` | A domain that had been failing re-verification passes again |
+| `Ssntpl\Neev\Events\DomainVerificationFailed` | A previously verified domain first fails re-verification |
 
-Additional events (registration, password change, team lifecycle, MFA changes, SSO attempts, domain verification) are planned for a future release. In the meantime, you can listen to Eloquent model events on Neev models for similar functionality.
+Additional events (registration, password change, team lifecycle, MFA changes, SSO attempts) are planned for a future release. In the meantime, you can listen to Eloquent model events on Neev models for similar functionality.
 
 ```php
 // app/Listeners/LogSuccessfulLogin.php

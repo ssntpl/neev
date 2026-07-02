@@ -1004,6 +1004,38 @@ Authorization: Bearer {token}
 
 ---
 
+### Set Default Team
+
+Set the user's default team (the team to land on after login).
+
+```http
+PUT /neev/teams/default
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Request Body:**
+
+```json
+{
+    "team_id": 1
+}
+```
+
+**Response:**
+
+```json
+{
+    "message": "Default team updated successfully.",
+    "data": {...}
+}
+```
+
+---
+
 ### Get Team Details
 
 ```http

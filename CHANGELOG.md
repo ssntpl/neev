@@ -8,7 +8,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Specification for SPA cookie mode with Sanctum-style CSRF token (`docs/spa-cookie-mode.md`, proposed)
+
+## [0.4.5] - 2026-06-02
+
+### Added
 - **Passkey multi-origin support** — new `neev.relying_party_id` and `neev.allowed_origins` config keys let `PasskeyController` verify WebAuthn ceremonies against multiple origins (apex + subdomains, staging + production) bound to a single relying party ID. `CheckOrigin` replaced with `CheckAllowedOrigins`; RP ID and origin list are no longer hardcoded to `APP_URL`
+- **`JwtLoginMiddleware` + `neev:login` middleware group** — MFA step-up flow now uses a short-lived JWT between the password step and MFA verification
+- **`JwtSecret` service** — dedicated JWT signing secret via `NEEV_JWT_SECRET` env (`neev.jwt_secret`), falling back to `APP_KEY`
+- `login_token_expiry_minutes` config key; `email_verified` field in auth responses
+- `AuthService::createApiToken()` and auth building blocks: `sendEmailVerification()`, `sendEmailChangeVerification()`, `verifyEmailSignature()`, `changePassword()`
+- `User::findByEmail()`, `User::uniqueEmailRule()`; `hasVerifiedEmail()` / `markEmailAsVerified()` on `NeevAuthenticatable`
+
+### Changed
+- **BREAKING: login flow** — login responses now return `auth_state` (`authenticated` / `mfa_required`); MFA verification happens via `POST /neev/mfa/otp/verify` under the `neev:login` group using the step-up JWT
+- **BREAKING: users table consolidation** — `email`, `email_verified_at`, `password`, `password_history` (JSON), `password_changed_at` are now columns on `users`; multi-email-per-user support removed
+- **BREAKING: email verification always uses signed URLs** — OTP-based email verification removed; API password reset switched from OTP to signed URLs
+
+### Removed
+- **BREAKING:** `emails` and `passwords` tables; `Email` and `Password` models; `VerifyEmail` trait; `EmailFactory`
+- **BREAKING:** email management routes/controllers/views (add / delete / set-primary email)
+- `neev:clean-passwords` (`CleanOldPasswords`) command — the JSON `password_history` array is self-trimming
+- `email_verification_method` config key (always signed URLs now)
 
 ## [0.4.4] - 2026-03-11
 

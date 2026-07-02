@@ -277,17 +277,17 @@ Route::bind('user', fn($value) => User::model()->findOrFail($value));
 
 ### neev:web
 
-Applied to authenticated web routes. Checks:
+Applied to authenticated web routes. Resolves the tenant and team context, then checks:
 1. User is logged in
 2. User account is active
 3. MFA is completed (if enabled)
-4. Email is verified (if required)
+4. User is a member of the resolved tenant (when `tenant` is enabled)
+
+Email verification is enforced separately via the `neev:verified-email` middleware alias.
 
 ### neev:tenant
 
-For multi-tenant routes. Additionally resolves:
-1. Current tenant from domain
-2. User's membership in tenant
+For multi-tenant routes. Requires a tenant to be resolved (from the X-Tenant header, subdomain, or custom domain) — returns 404 when no tenant is found. Also resolves the current team and binds the request context. Does not require authentication.
 
 ---
 

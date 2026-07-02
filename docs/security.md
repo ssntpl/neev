@@ -23,36 +23,43 @@ Neev provides comprehensive security features:
 
 ```php
 // config/neev.php
-'login_soft_attempts' => 5,    // Progressive delays after this
-'login_hard_attempts' => 20,   // Lockout after this
-'login_block_minutes' => 15,   // Lockout duration (recommended: 15+ for production)
+'login_throttle' => [
+    'delay_after' => 3,          // Failed attempts before progressive delay kicks in
+    'max_delay_seconds' => 300,  // Maximum delay in seconds (exponential backoff caps here)
+],
 ```
 
 ### How It Works
 
-| Attempts | Behavior |
-|----------|----------|
-| 1-5 | Normal login speed |
-| 6-19 | Progressive delays (exponential backoff) |
-| 20+ | Account locked for configured duration (default 15 minutes) |
+Failed attempts are counted per email + IP address (cached for 1 hour). Once the count reaches `delay_after`, each subsequent failed attempt triggers an exponentially growing delay:
 
-### Storage Method
+| Failed Attempts | Behavior |
+|-----------------|----------|
+| 1 to `delay_after` - 1 | Normal login speed |
+| `delay_after` and beyond | Delay of `2^(attempts - delay_after)` seconds before the next attempt is allowed |
+| Higher counts | Delay keeps doubling, capped at `max_delay_seconds` (default 300s / 5 minutes) |
+
+While a delay is active, login attempts are rejected with a throttle validation error that includes the seconds remaining. There is no permanent lockout — the delay never exceeds `max_delay_seconds`. A successful login clears the counter and any pending delay.
+
+### Logging Failed Attempts
 
 ```php
 // config/neev.php
-'record_failed_login_attempts' => false,  // Use cache (default)
-'record_failed_login_attempts' => true,   // Use database
+'log_failed_logins' => false,  // Cache-only counting (default)
+'log_failed_logins' => true,   // Also persist failed attempts to the database
 ```
 
-**Cache (recommended for performance):**
-- Faster lookups
+Throttle counters always live in the cache. When `log_failed_logins` is `true`, each failed login is additionally recorded in the `login_attempts` table (with IP, browser, platform, location, `is_success => false`).
+
+**Cache only (recommended for performance):**
+- Faster
 - Auto-expires
 - Lost on cache clear
 
 **Database (recommended for compliance):**
 - Persistent records
 - Auditable
-- Manual cleanup required
+- Cleaned up by `neev:clean-login-attempts`
 
 ---
 
@@ -100,35 +107,31 @@ Checks that password doesn't contain user's name or email.
 
 ```php
 // config/neev.php
-'password_soft_expiry_days' => 30,  // Warning period
-'password_hard_expiry_days' => 90,  // Forced change
+'password_expiry_days' => 90,  // Days before password expires. 0 = disabled.
 ```
 
-> **Important:** Neev provides the configuration values and stores password timestamps, but does not currently ship enforcement middleware. You must implement your own middleware to check password age and enforce changes. Here is a recommended pattern:
+Expiry is measured from the user's `password_changed_at` timestamp. The user model exposes:
 
 ```php
-// app/Http/Middleware/EnforcePasswordExpiry.php
-public function handle($request, Closure $next)
-{
-    $user = $request->user();
-    if (! $user) {
-        return $next($request);
-    }
-
-    $password = $user->password;
-    $hardExpiry = config('neev.password_hard_expiry_days');
-
-    if ($hardExpiry > 0 && $password->created_at->diffInDays(now()) >= $hardExpiry) {
-        return redirect()->route('password.expired');
-    }
-
-    return $next($request);
-}
+$user->passwordExpiresAt();          // Carbon|null — null when disabled or no timestamp
+$user->isPasswordExpired();          // bool
+$user->isPasswordExpiringSoon(7);    // bool — expiring within the given days
 ```
 
-**Soft expiry:** Use `password_soft_expiry_days` to show warnings (e.g., flash messages) as the hard expiry approaches.
+Enforcement ships as middleware, registered under the `neev:password-not-expired` alias (`Ssntpl\Neev\Http\Middleware\EnsurePasswordNotExpired`). Apply it to routes that should be blocked once the password expires:
 
-**Hard expiry:** Use `password_hard_expiry_days` to force a password change. Set to `0` to disable.
+```php
+Route::middleware(['neev:api', 'neev:password-not-expired'])->group(function () {
+    // Protected routes
+});
+```
+
+When the authenticated user's password has expired:
+
+- **API (JSON) requests** receive a `403` response: `{"error": "password_expired", "message": "Your password has expired. Please change your password."}`
+- **Web requests** are aborted with a `403` and the same message
+
+Unauthenticated requests pass through unchanged. Set `password_expiry_days` to `0` to disable expiry entirely.
 
 ---
 
@@ -179,7 +182,7 @@ GET /account/loginAttempts
 
 ```php
 // config/neev.php
-'last_login_attempts_in_days' => 30,
+'login_history_retention_days' => 30,
 ```
 
 Clean up old records:
@@ -196,9 +199,11 @@ php artisan neev:clean-login-attempts
 
 ```php
 // config/neev.php
-'geo_ip_db' => 'app/geoip/GeoLite2-City.mmdb',
-'edition' => env('MAXMIND_EDITION', 'GeoLite2-City'),
-'maxmind_license_key' => env('MAXMIND_LICENSE_KEY'),
+'maxmind' => [
+    'db_path' => 'app/geoip/GeoLite2-City.mmdb',
+    'edition' => env('MAXMIND_EDITION', 'GeoLite2-City'),
+    'license_key' => env('MAXMIND_LICENSE_KEY'),
+],
 ```
 
 ### Setup
@@ -319,15 +324,17 @@ php artisan migrate
 
 ### Token Storage
 
-Tokens are hashed before storage:
+Tokens are hashed before storage. A random 40-character plaintext is generated and the `AccessToken` model's `'token' => 'hashed'` cast hashes it on write; verification uses `Hash::check()`:
 
 ```php
-$plainTextToken = hash('sha256', Str::random(40));
+$plainTextToken = Str::random(40);
 $token = $user->accessTokens()->create([
-    'token' => $plainTextToken,  // Stored hashed
+    'token' => $plainTextToken,  // Stored hashed via the 'hashed' cast
     // ...
 ]);
 ```
+
+The plaintext is returned to the client once (as `{id}|{plaintext}`) and cannot be recovered from the database.
 
 ### Token Format
 
@@ -370,23 +377,36 @@ if ($token->can('write')) {
 The API middleware provides:
 
 1. **Token Extraction:**
-   - Bearer token from Authorization header
-   - `token` query parameter
-   - `token` request body
+   - Bearer token from the `Authorization` header, in `{id}|{plaintext}` format
 
 2. **Token Validation:**
-   - Checks token exists
-   - Validates hash matches
-   - Checks expiry
-   - Validates MFA completion
+   - Looks up the token by ID and verifies the plaintext against the stored hash (`Hash::check`)
+   - Checks expiry — expired tokens are deleted and rejected with `401`
+   - Restricts `mfa_token` type tokens to the MFA verification endpoints only
 
-3. **Email Verification:**
-   - Blocks unverified users (if enabled)
-   - Allows verification-related endpoints
+3. **Account Status:**
+   - Rejects deactivated users with `403` ("Your account is deactivated.")
 
 4. **User Context:**
-   - Sets authenticated user on request
+   - Sets authenticated user on request (and on the `ContextManager`)
    - Updates `last_used_at` timestamp
+
+### Email Verification Enforcement
+
+Email verification is enforced by a dedicated middleware, registered under the `neev:verified-email` alias (`Ssntpl\Neev\Http\Middleware\EnsureEmailIsVerified`):
+
+```php
+Route::middleware(['neev:api', 'neev:verified-email'])->group(function () {
+    // Routes requiring a verified email
+});
+```
+
+When the authenticated user's email is not verified:
+
+- **API (JSON) requests** receive a `403` response: `{"message": "Email not verified."}`
+- **Web requests** are redirected to the `verification.notice` route
+
+Unauthenticated requests pass through unchanged.
 
 ---
 
@@ -396,46 +416,43 @@ The API middleware provides:
 
 ```php
 $codes = $user->generateRecoveryCodes();
-// Returns array of 8 plain-text codes
+// Deletes any existing codes, returns array of plain-text codes
+// (count from config('neev.recovery_codes'), default 8; 10-char lowercase alphanumeric)
 ```
 
 ### Storage
 
-Codes are stored hashed:
+Codes are stored hashed via the `RecoveryCode` model's `'code' => 'hashed'` cast:
 
 ```php
 $this->recoveryCodes()->create([
-    'code' => Hash::make($code),
+    'code' => $code,  // Hashed on write by the cast
 ]);
 ```
 
 ### Usage
 
-Each code is single-use:
+Each code is single-use — it is deleted after a successful verification:
 
 ```php
-public function verifyMFAOTP($method, $otp): bool
-{
-    if ($method === 'recovery') {
-        $code = $this->recoveryCodes->first(function ($rc) use ($otp) {
-            return Hash::check($otp, $rc->code);
-        });
-
-        if ($code) {
-            $code->code = Str::random(10);  // Invalidate
-            $code->save();
-            return true;
-        }
+case 'recovery':
+    $code = $this->recoveryCodes->first(function ($recoveryCode) use ($otp) {
+        return Hash::check($otp, $recoveryCode->code);
+    });
+    if ($code) {
+        $code->delete();  // Single-use: removed after verification
+        return true;
     }
-    // ...
-}
+    break;
 ```
 
 ---
 
 ## Suspicious Login Detection
 
-### Factors Considered
+The `login_attempts` table includes a boolean `is_suspicious` column (default `false`). Neev stores and exposes this flag but does not currently compute it automatically — flagging logic is left to your application.
+
+### Suggested Factors
 
 - New IP address
 - New device/browser
@@ -443,31 +460,20 @@ public function verifyMFAOTP($method, $otp): bool
 - Failed MFA attempts
 - Multiple simultaneous sessions
 
-### Implementation
+### Example Implementation
 
 ```php
-// In LoginAttempt model
-public function isSuspicious(): bool
-{
-    // Compare with recent login history
-    $recentAttempts = $this->user->loginAttempts()
-        ->where('is_success', true)
-        ->latest()
-        ->take(10)
-        ->get();
+// In your application (e.g. a LoggedInEvent listener)
+$recentAttempts = $user->loginAttempts()
+    ->where('is_success', true)
+    ->latest()
+    ->take(10)
+    ->get();
 
-    // Check for new location
-    if (!$recentAttempts->contains('location', $this->location)) {
-        return true;
-    }
+$isSuspicious = !$recentAttempts->contains('ip_address', $attempt->ip_address)
+    || !$recentAttempts->contains('location', $attempt->location);
 
-    // Check for new IP
-    if (!$recentAttempts->contains('ip_address', $this->ip_address)) {
-        return true;
-    }
-
-    return false;
-}
+$attempt->update(['is_suspicious' => $isSuspicious]);
 ```
 
 ---
@@ -581,9 +587,17 @@ public function handle($request, Closure $next)
 
 ```php
 // config/neev.php
-'email_verified' => true,
 'multi_factor_auth' => ['authenticator', 'email'],
-'record_failed_login_attempts' => true,
+'log_failed_logins' => true,
+'password_expiry_days' => 90,
+```
+
+Apply the enforcement middleware to protected routes:
+
+```php
+Route::middleware(['neev:api', 'neev:verified-email', 'neev:password-not-expired'])->group(function () {
+    // ...
+});
 ```
 
 ### 2. Use HTTPS

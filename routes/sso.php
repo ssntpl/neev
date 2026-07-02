@@ -8,8 +8,9 @@ use Ssntpl\Neev\Http\Controllers\Auth\TenantSSOController;
 | Tenant SSO Routes
 |--------------------------------------------------------------------------
 |
-| These routes handle tenant-specific SSO authentication. They are loaded
-| automatically when tenant_auth is enabled in the neev config.
+| These routes handle tenant-specific SSO authentication. They are always
+| loaded; SSO behaviour is driven by each tenant's/team's auth settings
+| (tenant_auth_settings / team_auth_settings tables).
 |
 */
 

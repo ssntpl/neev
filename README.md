@@ -53,8 +53,7 @@ Neev is a comprehensive Laravel package that provides enterprise-grade user auth
 - Team switching for multi-team users
 
 ### Security Features
-- Brute force protection with progressive delays
-- Account lockout after failed attempts
+- Brute force protection with progressive delays (exponential backoff)
 - Password history to prevent reuse
 - Password expiry policies
 - Login attempt tracking with GeoIP
@@ -62,7 +61,7 @@ Neev is a comprehensive Laravel package that provides enterprise-grade user auth
 - Suspicious login detection
 
 ### Multi-Tenancy
-- Subdomain-based tenant isolation
+- Domain-based tenant resolution (`X-Tenant` header or host lookup)
 - Custom domain support with DNS verification
 - Per-tenant authentication configuration
 - Per-tenant SSO integration
@@ -86,9 +85,11 @@ php artisan neev:install
 ### 3. Configure Environment
 
 ```env
-NEEV_DASHBOARD_URL="${APP_URL}/dashboard"
-MAXMIND_LICENSE_KEY="your-maxmind-key"
+NEEV_JWT_SECRET="secret-for-mfa-jwts"   # optional, falls back to APP_KEY
+MAXMIND_LICENSE_KEY="your-maxmind-key"  # optional, for GeoIP login tracking
 ```
+
+The post-login redirect is controlled by the `home` key in `config/neev.php` (defaults to `/dashboard`).
 
 ### 4. Run Migrations
 
@@ -208,8 +209,8 @@ Enable in configuration:
 ```
 
 Redirect URLs:
-- `GET /oauth/{provider}` - Redirect to provider
-- `GET /oauth/{provider}/callback` - Handle callback
+- `GET /oauth/{service}` - Redirect to provider
+- `GET /oauth/{service}/callback` - Handle callback
 
 ---
 
@@ -228,7 +229,6 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 | POST | `/neev/logout` | Logout current session | Yes |
 | POST | `/neev/logoutAll` | Logout all other sessions | Yes |
 | POST | `/neev/forgotPassword` | Send password reset link | No |
-
 | POST | `/neev/resetPassword` | Reset password (signed URL) | No |
 
 ### Email Endpoints
@@ -244,7 +244,9 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
+| GET | `/neev/mfa` | List enabled MFA methods | Yes |
 | POST | `/neev/mfa/add` | Enable MFA method | Yes |
+| PUT | `/neev/mfa/preferred` | Set preferred MFA method | Yes |
 | DELETE | `/neev/mfa/delete` | Disable MFA method | Yes |
 | POST | `/neev/mfa/otp/verify` | Verify MFA code | MFA JWT |
 | POST | `/neev/recoveryCodes` | Generate recovery codes | Yes |
@@ -256,7 +258,7 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 | GET | `/neev/passkeys` | List user's passkeys | Yes |
 | GET | `/neev/passkeys/register/options` | Get registration options | Yes |
 | POST | `/neev/passkeys/register` | Register passkey | Yes |
-| POST | `/neev/passkeys/login/options` | Get login options | No |
+| GET | `/neev/passkeys/login/options` | Get login options | No |
 | POST | `/neev/passkeys/login` | Login with passkey | No |
 | PUT | `/neev/passkeys` | Update passkey name | Yes |
 | DELETE | `/neev/passkeys` | Delete passkey | Yes |
@@ -288,6 +290,7 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 |--------|----------|-------------|------|
 | GET | `/neev/teams` | List user's teams | Yes |
 | GET | `/neev/teams/invitations` | Get user's invitations and join requests | Yes |
+| PUT | `/neev/teams/default` | Set default team | Yes |
 | GET | `/neev/teams/{id}` | Get team details | Yes |
 | POST | `/neev/teams` | Create team | Yes |
 | PUT | `/neev/teams` | Update team | Yes |
@@ -318,9 +321,11 @@ All API routes are prefixed with `/neev`. Include the Bearer token for authentic
 |--------|----------|-------------|------|
 | GET | `/neev/tenant-domains` | List tenant domains | Yes |
 | POST | `/neev/tenant-domains` | Add custom domain | Yes |
+| GET | `/neev/tenant-domains/current` | Get current tenant | Yes |
 | GET | `/neev/tenant-domains/{id}` | Get domain details | Yes |
 | DELETE | `/neev/tenant-domains/{id}` | Delete domain | Yes |
 | POST | `/neev/tenant-domains/{id}/verify` | Verify domain | Yes |
+| POST | `/neev/tenant-domains/{id}/regenerate-token` | Regenerate verification token | Yes |
 | POST | `/neev/tenant-domains/{id}/primary` | Set as primary | Yes |
 
 ---
@@ -510,24 +515,19 @@ curl -X PUT https://yourapp.com/neev/teams/inviteUser \
 
 ```php
 // config/neev.php
-'team' => true,
-'tenant_isolation' => true,
-'tenant_isolation_options' => [
-    'subdomain_suffix' => env('NEEV_SUBDOMAIN_SUFFIX', '.yourapp.com'),
-    'allow_custom_domains' => true,
-],
+'tenant' => true,  // isolate users per tenant
+'team' => true,    // optional team sub-grouping
 ```
+
+Tenant context is resolved on each request from the `X-Tenant` header or by looking up the request host in the `domains` table — subdomains and verified custom domains both work.
 
 ### Tenant SSO
 
-```php
-// config/neev.php
-'tenant_auth' => true,
-'tenant_auth_options' => [
-    'default_method' => 'password',
-    'sso_providers' => ['entra', 'google', 'okta'],
-    'auto_provision' => true,
-],
+Per-tenant authentication and SSO are stored per tenant/team (in the `tenant_auth_settings` / `team_auth_settings` tables) rather than in config. Manage them via Artisan:
+
+```bash
+php artisan neev:auth:configure   # Configure auth method / SSO for a tenant or team
+php artisan neev:auth:show        # Show current auth settings
 ```
 
 ### Get Tenant Auth Config
@@ -550,18 +550,22 @@ Response:
 
 | Middleware | Description |
 |------------|-------------|
-| `neev:web` | Web authentication (includes tenant resolution when enabled) |
-| `neev:api` | API authentication (includes tenant resolution when enabled) |
-| `neev:tenant` | Tenant resolution from domain (no auth) |
+| `neev:web` | Web (session) authentication with tenant/team resolution |
+| `neev:api` | API (token) authentication with tenant/team resolution |
+| `neev:login` | Temporary MFA JWT authentication (during MFA verification) |
+| `neev:tenant` | Tenant resolution from domain, tenant required (no auth) |
 
 ### Middleware Aliases
 
 | Alias | Description |
 |-------|-------------|
 | `neev:active-team` | Blocks access when team is inactive/waitlisted |
+| `neev:active-tenant` | Blocks access when tenant is inactive |
 | `neev:tenant-member` | Ensures user is a member of the current tenant |
 | `neev:resolve-team` | Resolves team from route parameter |
 | `neev:ensure-sso` | Enforces SSO-only access for the current context |
+| `neev:password-not-expired` | Forces password change when password has expired |
+| `neev:verified-email` | Requires a verified email address |
 
 ---
 
@@ -569,11 +573,14 @@ Response:
 
 ### Brute Force Protection
 
+Progressive exponential backoff — there is no hard lockout:
+
 ```php
 // config/neev.php
-'login_soft_attempts' => 5,    // Delays start
-'login_hard_attempts' => 20,   // Lockout
-'login_block_minutes' => 1,    // Lockout duration
+'login_throttle' => [
+    'delay_after' => 3,          // Failed attempts before delays kick in
+    'max_delay_seconds' => 300,  // Exponential backoff caps here
+],
 ```
 
 ### Password Policies
@@ -587,9 +594,10 @@ Response:
     PasswordHistory::notReused(5),
     PasswordUserData::notContain(['name', 'email']),
 ],
-'password_soft_expiry_days' => 30,  // Warning
-'password_hard_expiry_days' => 90,  // Forced change
+'password_expiry_days' => 90,  // 0 = disabled
 ```
+
+Password expiry is enforced by applying the opt-in `neev:password-not-expired` middleware alias to your routes.
 
 ### Login Tracking
 
@@ -619,22 +627,17 @@ php artisan neev:download-geoip
 
 ```php
 // config/neev.php
-'team' => true,                    // Team management
-'email_verified' => true,          // Require verification
-'require_company_email' => false,  // Waitlist free emails
-'domain_federation' => true,       // Domain-based joining
-'identity_strategy' => 'shared',   // 'shared' or 'isolated'
-'tenant_isolation' => false,       // Multi-tenancy
-'tenant_auth' => false,            // Per-tenant auth
-'support_username' => false,       // Username login
-'magicauth' => true,               // Magic link login
+'tenant' => false,            // Multi-tenant isolation (users scoped to tenant)
+'team' => false,              // Team management
+'support_username' => false,  // Username login
 ```
 
-### URLs
+Email verification is enforced by applying the opt-in `neev:verified-email` middleware alias to your routes.
+
+### Post-Auth Redirect
 
 ```php
-'dashboard_url' => env('NEEV_DASHBOARD_URL', env('APP_URL').'/dashboard'),
-'frontend_url' => env('APP_URL'),
+'home' => '/dashboard',  // Redirect after login (Blade flows)
 ```
 
 ### MFA
@@ -642,6 +645,7 @@ php artisan neev:download-geoip
 ```php
 'multi_factor_auth' => ['authenticator', 'email'],
 'recovery_codes' => 8,
+'otp_length' => 6,        // 4, 6, or 8 digits
 'otp_expiry_time' => 15,  // minutes
 ```
 
@@ -659,8 +663,10 @@ php artisan neev:download-geoip
 ### Token Expiry
 
 ```php
-'url_expiry_time' => 60,  // Magic links, reset links
-'otp_expiry_time' => 15,  // OTP codes
+'login_token_expiry_minutes' => 1440,  // Login access tokens
+'mfa_jwt_expiry_minutes' => 30,        // Temporary MFA JWTs
+'url_expiry_time' => 60,               // Magic links, reset links
+'otp_expiry_time' => 15,               // OTP codes
 ```
 
 ---
@@ -670,8 +676,35 @@ php artisan neev:download-geoip
 ### Setup
 
 ```bash
-php artisan neev:install              # Interactive setup
+php artisan neev:install              # Interactive setup (asks: tenants? teams?)
 php artisan neev:download-geoip       # Download GeoIP database
+```
+
+### Tenant & Team Management
+
+```bash
+php artisan neev:tenant:create        # Create a tenant or team
+php artisan neev:tenant:list          # List tenants
+php artisan neev:tenant:show          # Show tenant details
+php artisan neev:team:activate        # Activate a waitlisted team
+```
+
+### Domains & Members
+
+```bash
+php artisan neev:domain:add           # Add a domain
+php artisan neev:domain:verify        # Verify a domain
+php artisan neev:domain:list          # List domains
+php artisan neev:member:add           # Add a member
+php artisan neev:member:remove        # Remove a member
+php artisan neev:member:list          # List members
+```
+
+### Auth Settings
+
+```bash
+php artisan neev:auth:configure       # Configure tenant/team auth & SSO
+php artisan neev:auth:show            # Show tenant/team auth settings
 ```
 
 ### Maintenance
@@ -683,12 +716,11 @@ php artisan neev:clean-login-attempts # Clean old login records
 ### Scheduled Tasks
 
 ```php
-// app/Console/Kernel.php
-protected function schedule(Schedule $schedule)
-{
-    $schedule->command('neev:clean-login-attempts')->daily();
-    $schedule->command('neev:download-geoip')->monthly();
-}
+// routes/console.php
+use Illuminate\Support\Facades\Schedule;
+
+Schedule::command('neev:clean-login-attempts')->daily();
+Schedule::command('neev:download-geoip')->monthly();
 ```
 
 ---
@@ -700,7 +732,7 @@ protected function schedule(Schedule $schedule)
 | Table | Description |
 |-------|-------------|
 | `users` | User accounts (includes password and password history) |
-| `otps` | One-time passwords |
+| `otp` | One-time passwords |
 | `passkeys` | WebAuthn credentials |
 | `multi_factor_auths` | MFA configurations |
 | `recovery_codes` | MFA backup codes |
