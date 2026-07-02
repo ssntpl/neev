@@ -384,11 +384,54 @@ Authorization: Bearer {token}
 }
 ```
 
+The authenticator method is created in a **pending** state and is not enforced at login until activated via [Verify MFA Setup](#verify-mfa-setup). The email method is created active immediately.
+
 **Response (email):**
 
 ```json
 {
     "message": "Email Configured."
+}
+```
+
+---
+
+### Verify MFA Setup
+
+Activate a pending authenticator setup by verifying a TOTP code. On success the method becomes active (and preferred, if no other active method is preferred).
+
+```http
+POST /neev/mfa/setup/verify
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Request Body:**
+
+```json
+{
+    "auth_method": "authenticator",
+    "otp": "123456"
+}
+```
+
+**Response:**
+
+```json
+{
+    "message": "Method has been verified and enabled.",
+    "method": "authenticator"
+}
+```
+
+**Response (wrong code or no pending setup, 400):**
+
+```json
+{
+    "message": "Code verification failed."
 }
 ```
 

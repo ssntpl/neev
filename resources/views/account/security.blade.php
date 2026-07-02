@@ -66,7 +66,7 @@
                 </x-slot>
                 <x-slot name="content">
                     <p class="text-sm">Multi-factor authentication adds an additional layer of security to your account by requiring more than just a password to log in</p>
-                    @if (count($user->multiFactorAuths))
+                    @if (count($user->activeMultiFactorAuths))
                         <div class="flex justify-between gap-2 items-center border shadow px-4 py-2 rounded-lg">
                             <div>
                                 <h1 class="font-bold">Preferred MFA method</h1>
@@ -76,7 +76,7 @@
                                 @csrf
                                 @method('PUT')
                                 <select name="auth_method" class="border rounded-md px-2 py-1" onchange="this.form.submit()">
-                                    @foreach ($user->multiFactorAuths as $method)
+                                    @foreach ($user->activeMultiFactorAuths as $method)
                                         <option value="{{$method->method}}" {{ $method->id === $user->preferredMultiFactorAuth?->id ? 'selected' : '' }}>{{$method->method}}</option>
                                     @endforeach
                                 </select>
@@ -90,8 +90,10 @@
                                 <div class="flex gap-2 py-2 px-4 items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition">
                                     <div class="flex gap-2 items-center w-1/4">
                                         <p>{{$method}}</p>
-                                        @if ($user->multiFactorAuth($method))
+                                        @if ($user->multiFactorAuth($method)?->isActive())
                                             <span class="border border-green-700 rounded-full text-xs font-medium leading-[18px] px-2 tracking-tight text-green-700">{{ 'Configured' }}</span>
+                                        @elseif ($user->multiFactorAuth($method))
+                                            <span class="border border-yellow-600 rounded-full text-xs font-medium leading-[18px] px-2 tracking-tight text-yellow-700">{{ 'Pending verification' }}</span>
                                         @endif
                                     </div>
                                     <div class="flex gap-2 items-center">
@@ -143,7 +145,7 @@
                                 @endif
                             </li>
                         @endforeach
-                        @if (count($user->multiFactorAuths) > 0)
+                        @if (count($user->activeMultiFactorAuths) > 0)
                             <li class="border odd:bg-white even:bg-gray-50">
                                 <div class="flex gap-2 py-2 px-4 items-center justify-between hover:bg-gray-100 dark:hover:bg-gray-700 transition">
                                     <div class="flex gap-2 items-center">

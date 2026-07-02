@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $id
  * @property int $user_id
  * @property string $method
+ * @property string $status
  * @property string|null $secret
  * @property string|null $otp
  * @property bool $preferred
@@ -18,9 +19,13 @@ use Illuminate\Database\Eloquent\Model;
  */
 class MultiFactorAuth extends Model
 {
+    public const STATUS_PENDING = 'pending';
+    public const STATUS_ACTIVE = 'active';
+
     protected $fillable = [
         'user_id',
         'method',
+        'status',
         'secret',
         'otp',
         'expires_at',
@@ -44,5 +49,15 @@ class MultiFactorAuth extends Model
     public function user()
     {
         return $this->belongsTo(User::getClass(), 'user_id');
+    }
+
+    public function scopeActive($query)
+    {
+        return $query->where('status', self::STATUS_ACTIVE);
+    }
+
+    public function isActive(): bool
+    {
+        return $this->status === self::STATUS_ACTIVE;
     }
 }

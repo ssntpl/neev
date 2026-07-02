@@ -183,7 +183,7 @@ class UserController extends Controller
 
         $user = User::model()->find($request->user()?->id);
         $auth = $user?->multiFactorAuth($request->auth_method);
-        if (!$user || !$auth) {
+        if (!$user || !$auth || !$auth->isActive()) {
             return back()->withErrors(['message' => 'preferred auth was not updated.']);
         }
         $preferred = $user->preferredMultiFactorAuth;
@@ -199,7 +199,7 @@ class UserController extends Controller
     public function recoveryCodes(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
-        if (count($user?->multiFactorAuths) === 0) {
+        if (!$user || count($user->activeMultiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
 
@@ -213,7 +213,7 @@ class UserController extends Controller
     public function generateRecoveryCodes(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
-        if (count($user?->multiFactorAuths) === 0) {
+        if (!$user || count($user->activeMultiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
         $user->recoveryCodes()->delete();

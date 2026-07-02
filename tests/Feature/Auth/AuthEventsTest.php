@@ -206,8 +206,11 @@ class AuthEventsTest extends TestCase
         $user = User::factory()->create();
         $user->addMultiFactorAuth('email');
         $user->load('multiFactorAuths');
-        $user->addMultiFactorAuth('authenticator');
-        $user->load('multiFactorAuths');
+        $setup = $user->addMultiFactorAuth('authenticator');
+
+        // Activate the authenticator so two active methods exist.
+        $totp = \OTPHP\TOTP::create($setup['secret']);
+        $this->assertTrue($user->verifyMfaSetup('authenticator', $totp->now()));
 
         $preferred = $user->preferredMultiFactorAuth()->first();
         $user->removeMultiFactorAuth($preferred->method);

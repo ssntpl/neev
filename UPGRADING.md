@@ -13,6 +13,24 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.4.5 → Unreleased
 
+**Authenticator MFA setup now requires verification (behaviour change).**
+Adding an authenticator creates it in `pending` status; the user must
+submit a valid TOTP (API: `POST /neev/mfa/setup/verify`; web: the
+Verify form on the security page) before the method becomes active and
+is enforced at login. Consequences for existing installs:
+
+- The `multi_factor_auths` table gains a `status` column. The package
+  edits its migration in place; existing installs must add the column
+  themselves with `default('active')` so already-configured methods
+  keep working: `$table->string('status')->default('active');`
+- API clients that add an authenticator must follow up with the
+  setup-verify call — until then the method is not enforced and does
+  not appear in `mfa_options`.
+- `MfaMethodAdded` fires on activation (email OTP: immediately, since
+  the account email is already verified).
+- Schedule `neev:clean-pending-mfa-setups` to purge abandoned setups
+  (`mfa_pending_setup_retention_days`, default 2 days).
+
 **Laravel 11 support dropped.**
 `laravel/framework` requirement is now `^12.0`. Laravel 11 is past
 security-EOL with permanently-unpatched advisories (Composer ≥2.9
