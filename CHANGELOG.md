@@ -8,7 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Events system expansion** — neev now fires Laravel's native auth events where semantics match, plus Neev-specific events for package concepts:
+  - Native: `Illuminate\Auth\Events\Registered` (web/API/OAuth registration, SSO auto-provision), `Illuminate\Auth\Events\PasswordReset` (web/API reset flows); `Lockout` was already fired by `LoginRequest`
+  - Neev: `PasswordChanged` (any password change incl. resets), `EmailVerified` (first-time email verification; dispatched after commit), `MfaMethodAdded`, `MfaMethodRemoved`, `RecoveryCodesGenerated`, `TeamCreated`, `TeamDeleted`, `MemberAdded`, `MemberRemoved`, `TenantCreated`, `SsoUserProvisioned`
+  - Model-lifecycle events (`TeamCreated`, `TeamDeleted`, `TenantCreated`, `MemberAdded`, `MemberRemoved`) implement `ShouldDispatchAfterCommit` so listeners never observe rolled-back state
+- **`removeMultiFactorAuth()` on `HasMultiAuth`** — centralises MFA method removal (preferred-flag reassignment, recovery-code cleanup) previously duplicated across the web and API controllers
+- **`DELETE /neev/sessions/{id}`** — revoke a single login session remotely; the current session is protected (use logout), other users' sessions return 404
 - Specification for SPA cookie mode with Sanctum-style CSRF token (`docs/spa-cookie-mode.md`, proposed)
+
+### Changed
+- **BREAKING: `LoggedInEvent` → `LoggedIn`, `LoggedOutEvent` → `LoggedOut`** — event classes renamed to match Laravel's unsuffixed past-tense convention (consistent with the existing domain events). Update any listeners referencing the old class names
 
 ### Removed
 - **BREAKING: Laravel 11 support dropped** — `laravel/framework` requirement is now `^12.0` (testbench `^10.0`). Laravel 11 is past security-EOL with permanently-unpatched advisories, which newer Composer versions refuse to resolve. Apps on Laravel 11 should stay on neev `<=0.4.5`

@@ -2,6 +2,8 @@
 
 namespace Ssntpl\Neev\Traits;
 
+use Illuminate\Support\Facades\DB;
+use Ssntpl\Neev\Events\EmailVerified;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\Passkey;
 
@@ -27,8 +29,18 @@ trait NeevAuthenticatable
 
     public function markEmailAsVerified(): bool
     {
+        $wasVerified = $this->hasVerifiedEmail();
+
         $this->email_verified_at = now();
-        return $this->save();
+        $saved = $this->save();
+
+        if ($saved && !$wasVerified) {
+            // Registration flows call this inside a transaction; only
+            // announce the verification once it is durable.
+            DB::afterCommit(fn () => event(new EmailVerified($this)));
+        }
+
+        return $saved;
     }
 
     /**

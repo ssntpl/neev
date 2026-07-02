@@ -620,16 +620,16 @@ Delays are keyed per email + IP. A successful login clears the counter.
 
 ## Events
 
-### LoggedInEvent
+### LoggedIn
 
 Fired when a user successfully logs in.
 
 ```php
-use Ssntpl\Neev\Events\LoggedInEvent;
+use Ssntpl\Neev\Events\LoggedIn;
 
 class LogSuccessfulLogin
 {
-    public function handle(LoggedInEvent $event)
+    public function handle(LoggedIn $event)
     {
         $user = $event->user;
         // Log activity, send notification, etc.
@@ -637,16 +637,16 @@ class LogSuccessfulLogin
 }
 ```
 
-### LoggedOutEvent
+### LoggedOut
 
 Fired when a user logs out.
 
 ```php
-use Ssntpl\Neev\Events\LoggedOutEvent;
+use Ssntpl\Neev\Events\LoggedOut;
 
 class LogSuccessfulLogout
 {
-    public function handle(LoggedOutEvent $event)
+    public function handle(LoggedOut $event)
     {
         $user = $event->user;
         // Cleanup, audit logging, etc.

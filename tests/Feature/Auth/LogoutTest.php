@@ -5,7 +5,7 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Str;
-use Ssntpl\Neev\Events\LoggedOutEvent;
+use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
@@ -57,14 +57,14 @@ class LogoutTest extends TestCase
 
     public function test_logout_dispatches_logged_out_event(): void
     {
-        Event::fake([LoggedOutEvent::class]);
+        Event::fake([LoggedOut::class]);
 
         $data = $this->createAuthenticatedUser();
 
         $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
             ->postJson('/neev/logout');
 
-        Event::assertDispatched(LoggedOutEvent::class, function (LoggedOutEvent $event) use ($data) {
+        Event::assertDispatched(LoggedOut::class, function (LoggedOut $event) use ($data) {
             return $event->user->id === $data['user']->id;
         });
     }
@@ -137,14 +137,14 @@ class LogoutTest extends TestCase
 
     public function test_logout_all_dispatches_logged_out_event(): void
     {
-        Event::fake([LoggedOutEvent::class]);
+        Event::fake([LoggedOut::class]);
 
         $data = $this->createAuthenticatedUser();
 
         $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
             ->postJson('/neev/logoutAll');
 
-        Event::assertDispatched(LoggedOutEvent::class, function (LoggedOutEvent $event) use ($data) {
+        Event::assertDispatched(LoggedOut::class, function (LoggedOut $event) use ($data) {
             return $event->user->id === $data['user']->id;
         });
     }

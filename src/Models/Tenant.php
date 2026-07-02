@@ -14,6 +14,7 @@ use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
+use Ssntpl\Neev\Events\TenantCreated;
 
 /**
  * @property int $id
@@ -41,6 +42,11 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
     protected $casts = [
         'activated_at' => 'datetime',
     ];
+
+    protected static function booted()
+    {
+        static::created(fn (Tenant $tenant) => event(new TenantCreated($tenant)));
+    }
 
     protected static function newFactory()
     {

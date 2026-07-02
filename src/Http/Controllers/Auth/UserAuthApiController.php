@@ -11,8 +11,10 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Validation\ValidationException;
-use Ssntpl\Neev\Events\LoggedOutEvent;
+use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
@@ -91,6 +93,8 @@ class UserAuthApiController extends Controller
                 }
             }
             DB::commit();
+
+            event(new Registered($user));
 
             if (!$user->hasVerifiedEmail()) {
                 app(AuthService::class)->sendEmailVerification($user);
@@ -284,7 +288,7 @@ class UserAuthApiController extends Controller
 
         $accessToken->delete();
 
-        event(new LoggedOutEvent($user));
+        event(new LoggedOut($user));
 
         return response()->json([
             'message' => 'Logged out successfully.',
@@ -303,7 +307,7 @@ class UserAuthApiController extends Controller
         $currentTokenId = $request->attributes->get('token_id');
         $user->loginTokens()->where('id', '!=', $currentTokenId)->delete();
 
-        event(new LoggedOutEvent($user));
+        event(new LoggedOut($user));
 
         return response()->json([
             'message' => 'Logged out from all other devices successfully.',
@@ -397,6 +401,8 @@ class UserAuthApiController extends Controller
             ]);
 
             app(AuthService::class)->changePassword($user, $request->password);
+
+            event(new PasswordReset($user));
 
             return response()->json([
                 'message' => 'Password has been updated.'

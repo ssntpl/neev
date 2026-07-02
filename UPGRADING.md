@@ -19,6 +19,19 @@ security-EOL with permanently-unpatched advisories (Composer ≥2.9
 refuses to install it by default). Apps still on Laravel 11 should pin
 neev to `<=0.4.5` and plan a framework upgrade.
 
+**Event class renames.**
+`Ssntpl\Neev\Events\LoggedInEvent` → `LoggedIn` and
+`LoggedOutEvent` → `LoggedOut`. Update listener registrations and
+type-hints. Payloads are unchanged (`public $user`).
+
+**New events are additive** — see CHANGELOG for the full list. One
+behavioural note: neev now fires `Illuminate\Auth\Events\Registered`.
+If your app's User model implements `MustVerifyEmail`, Laravel's
+auto-registered `SendEmailVerificationNotification` listener will react
+to it — disable that listener or neev's own verification mail to avoid
+duplicate emails. (Neev's shipped User model does not implement the
+contract, so default installs are unaffected.)
+
 ## 0.4.4 → 0.4.5
 
 **Users table consolidation (schema change).**

@@ -463,7 +463,7 @@ The `login_attempts` table includes a boolean `is_suspicious` column (default `f
 ### Example Implementation
 
 ```php
-// In your application (e.g. a LoggedInEvent listener)
+// In your application (e.g. a LoggedIn listener)
 $recentAttempts = $user->loginAttempts()
     ->where('is_success', true)
     ->latest()
@@ -525,11 +525,11 @@ $user->email_verified_at;  // Null if unverified
 ### Events to Listen For
 
 ```php
-// LoggedInEvent
-use Ssntpl\Neev\Events\LoggedInEvent;
+// LoggedIn
+use Ssntpl\Neev\Events\LoggedIn;
 
-// LoggedOutEvent
-use Ssntpl\Neev\Events\LoggedOutEvent;
+// LoggedOut
+use Ssntpl\Neev\Events\LoggedOut;
 ```
 
 ### Example Listener
@@ -537,7 +537,7 @@ use Ssntpl\Neev\Events\LoggedOutEvent;
 ```php
 class SecurityAuditListener
 {
-    public function handleLogin(LoggedInEvent $event)
+    public function handleLogin(LoggedIn $event)
     {
         AuditLog::create([
             'user_id' => $event->user->id,
@@ -547,7 +547,7 @@ class SecurityAuditListener
         ]);
     }
 
-    public function handleLogout(LoggedOutEvent $event)
+    public function handleLogout(LoggedOut $event)
     {
         AuditLog::create([
             'user_id' => $event->user->id,

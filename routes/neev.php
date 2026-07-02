@@ -229,6 +229,7 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
         Route::put('/users', [UserApiController::class, 'updateUser']);
         Route::delete('/users', [UserApiController::class, 'deleteUser']);
         Route::get('/sessions', [UserApiController::class, 'sessions']);
+        Route::delete('/sessions/{id}', [UserApiController::class, 'deleteSession'])->whereNumber('id');
         Route::get('/loginAttempts', [UserApiController::class, 'loginAttempts']);
         Route::put('/changePassword', [UserApiController::class, 'changePassword']);
 

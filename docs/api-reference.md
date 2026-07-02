@@ -805,6 +805,36 @@ Authorization: Bearer {token}
 
 ---
 
+### Revoke a Session
+
+```http
+DELETE /neev/sessions/{id}
+```
+
+Deletes one of the user's login sessions (the underlying login token), immediately invalidating it. The current session cannot be revoked this way — use `POST /neev/logout` instead.
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Response:**
+
+```json
+{
+    "message": "Session has been revoked."
+}
+```
+
+**Errors:**
+
+| Status | Condition |
+|--------|-----------|
+| 400 | `{id}` is the current session |
+| 404 | Session does not exist or belongs to another user |
+
+---
+
 ### Get Login Attempts
 
 ```http

@@ -64,7 +64,7 @@ neev/
 └── src/
     ├── Commands/              # Artisan commands
     ├── Contracts/             # Interfaces (ContextContainer, HasMembers, etc.)
-    ├── Events/                # Login/logout and domain verification events
+    ├── Events/                # Auth, MFA, team/tenant lifecycle, and domain events
     ├── Http/
     │   ├── Controllers/       # Auth, User, Team, Role, TenantDomain, TenantSSO
     │   └── Middleware/        # Auth, tenant, team, context middleware
@@ -148,23 +148,46 @@ class User extends \Ssntpl\Neev\Models\User
 
 ## Events
 
+Neev fires Laravel's native auth events where semantics match, and its own events for package concepts.
+
+**Laravel native events:**
+
 | Event | Fired when |
 |-------|------------|
-| `Ssntpl\Neev\Events\LoggedInEvent` | User logs in (any method) |
-| `Ssntpl\Neev\Events\LoggedOutEvent` | User logs out |
-| `Ssntpl\Neev\Events\DomainVerified` | A domain passes DNS verification for the first time |
-| `Ssntpl\Neev\Events\DomainReverified` | A domain that had been failing re-verification passes again |
-| `Ssntpl\Neev\Events\DomainVerificationFailed` | A previously verified domain first fails re-verification |
+| `Illuminate\Auth\Events\Registered` | User registers (web, API, OAuth, SSO auto-provision) |
+| `Illuminate\Auth\Events\PasswordReset` | Password is reset via a reset link (web or API) |
+| `Illuminate\Auth\Events\Lockout` | Login throttle rejects an attempt |
 
-Additional events (registration, password change, team lifecycle, MFA changes, SSO attempts) are planned for a future release. In the meantime, you can listen to Eloquent model events on Neev models for similar functionality.
+**Neev events (`Ssntpl\Neev\Events\`):**
+
+| Event | Payload | Fired when |
+|-------|---------|------------|
+| `LoggedIn` | `$user` | User logs in (any method) |
+| `LoggedOut` | `$user` | User logs out |
+| `PasswordChanged` | `$user` | Password changes (including resets) |
+| `EmailVerified` | `$user` | Email is verified for the first time |
+| `MfaMethodAdded` | `$user, $method` | An MFA method is configured |
+| `MfaMethodRemoved` | `$user, $method` | An MFA method is removed |
+| `RecoveryCodesGenerated` | `$user` | Recovery codes are (re)generated |
+| `TeamCreated` / `TeamDeleted` | `$team` | A team is created / deleted |
+| `MemberAdded` / `MemberRemoved` | `$team, $user` | Team membership changes |
+| `TenantCreated` | `$tenant` | A tenant is created |
+| `SsoUserProvisioned` | `$user, $owner` | SSO auto-provisions a new user |
+| `DomainVerified` | `$domain` | A domain passes DNS verification for the first time |
+| `DomainReverified` | `$domain` | A domain that had been failing re-verification passes again |
+| `DomainVerificationFailed` | `$domain` | A previously verified domain first fails re-verification |
+
+The model-lifecycle events (`TeamCreated`, `TeamDeleted`, `TenantCreated`, `MemberAdded`, `MemberRemoved`) implement `ShouldDispatchAfterCommit`, so listeners never observe state from a transaction that later rolls back. `EmailVerified` is likewise dispatched after commit.
+
+> **Note:** neev's User model deliberately does not implement `MustVerifyEmail`. If your custom user model does, Laravel's auto-registered `SendEmailVerificationNotification` listener will also react to `Registered` — disable it or neev's own verification mail to avoid duplicate emails.
 
 ```php
 // app/Listeners/LogSuccessfulLogin.php
-use Ssntpl\Neev\Events\LoggedInEvent;
+use Ssntpl\Neev\Events\LoggedIn;
 
 class LogSuccessfulLogin
 {
-    public function handle(LoggedInEvent $event)
+    public function handle(LoggedIn $event)
     {
         activity()->log("User {$event->user->name} logged in");
     }

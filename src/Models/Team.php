@@ -14,6 +14,10 @@ use Ssntpl\Neev\Contracts\ContextContainerInterface;
 use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Contracts\ResolvableContextInterface;
+use Ssntpl\Neev\Events\MemberAdded;
+use Ssntpl\Neev\Events\MemberRemoved;
+use Ssntpl\Neev\Events\TeamCreated;
+use Ssntpl\Neev\Events\TeamDeleted;
 use Ssntpl\Neev\Support\SlugHelper;
 use Ssntpl\Neev\Traits\HasTenantAuth;
 
@@ -49,6 +53,9 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
                 $team->slug = SlugHelper::generate($team->name);
             }
         });
+
+        static::created(fn (Team $team) => event(new TeamCreated($team)));
+        static::deleted(fn (Team $team) => event(new TeamDeleted($team)));
     }
 
     /** @return static */
@@ -168,6 +175,8 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
         }
 
         $this->users()->detach($user);
+
+        event(new MemberRemoved($this, $user));
     }
 
     /**
@@ -256,6 +265,8 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     {
         if (! $this->allUsers()->where('users.id', $user->id)->exists()) {
             $this->allUsers()->attach($user, ['joined' => true]);
+
+            event(new MemberAdded($this, $user));
         }
 
         if ($role) {

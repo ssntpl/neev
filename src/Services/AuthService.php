@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
-use Ssntpl\Neev\Events\LoggedInEvent;
+use Ssntpl\Neev\Events\LoggedIn;
+use Ssntpl\Neev\Events\PasswordChanged;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
@@ -33,7 +34,7 @@ class AuthService
 
         $request->session()->regenerate();
 
-        event(new LoggedInEvent($user));
+        event(new LoggedIn($user));
 
         $attempt = $this->recordLoginAttempt($request, $geoIP, $user, $method, $mfa, $attempt);
         session(['attempt_id' => $attempt->id ?? null]);
@@ -89,7 +90,7 @@ class AuthService
             $accessToken->attempt_id = $attempt->id;
             $accessToken->save();
 
-            event(new LoggedInEvent($user));
+            event(new LoggedIn($user));
 
             return $token->plainTextToken;
         } catch (Exception $e) {
@@ -179,6 +180,8 @@ class AuthService
             $user->password_changed_at = now();
             $user->save();
         });
+
+        event(new PasswordChanged($user));
     }
 
     /**

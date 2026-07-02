@@ -3,11 +3,13 @@
 namespace Ssntpl\Neev\Services;
 
 use Exception;
+use Illuminate\Auth\Events\Registered;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Contracts\User as SocialiteUser;
 use Laravel\Socialite\Facades\Socialite;
 use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
+use Ssntpl\Neev\Events\SsoUserProvisioned;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 
@@ -121,6 +123,9 @@ class TenantSSOManager
             'password' => bin2hex(random_bytes(32)),
             'password_changed_at' => now(),
         ]);
+
+        event(new Registered($user));
+        event(new SsoUserProvisioned($user, $owner));
 
         return $user;
     }
