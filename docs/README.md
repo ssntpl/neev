@@ -44,7 +44,8 @@ Design proposals under review, not yet implemented.
 
 | Document | Status | Description |
 |----------|--------|-------------|
-| [SPA Cookie Mode](./spa-cookie-mode.md) | Proposed (2026-06-12), target v0.4.5 | HttpOnly-cookie auth + double-submit CSRF for same-origin SPAs. Additive to the existing bearer-token API. Driven by the TAILLOG web rebuild and otper. |
+| [SPA Cookie Mode](./spa-cookie-mode.md) | Phases 1–3 implemented; phase 4 (consumer guide) pending | HttpOnly-cookie auth + signed double-submit CSRF for same-origin SPAs. Additive to the existing bearer-token API. Driven by the TAILLOG web rebuild and otper. |
+| [RFC 002 — Headless Core + Starter Kits](./rfcs/002-starter-kits.md) | Proposed (design agreed 2026-07-02) | Package becomes fully headless (Fortify-style); Blade UI ejects into the app as a starter kit at install; email templates app-owned with a documented variable contract; React kit reserved as a future kit. |
 
 ---
 
