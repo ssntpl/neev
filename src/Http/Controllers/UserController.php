@@ -156,20 +156,8 @@ class UserController extends Controller
             return back()->withErrors(['message' => 'User not found.']);
         }
         if ($request->action === 'delete') {
-            $auth = $user->multiFactorAuth($request->auth_method);
-            if (!$auth) {
+            if (!$user->removeMultiFactorAuth($request->auth_method)) {
                 return back()->withErrors(['message' => 'Auth was not deleted.']);
-            }
-
-            if ($auth->preferred && count($user->multiFactorAuths) > 1) {
-                $method = $user->multiFactorAuths()->whereNot('method', $auth->method)->first();
-                $method->preferred = true;
-                $method->save();
-            }
-            $auth->delete();
-
-            if (count($user->multiFactorAuths) <= 1) {
-                $user->recoveryCodes()->delete();
             }
 
             return back()->with('status', 'Auth has been deleted.');

@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
 use Exception;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -151,6 +152,9 @@ class OAuthApiController extends Controller
             return null;
         }
         DB::commit();
+
+        event(new Registered($user));
+
         return $user;
     }
 

@@ -5,7 +5,7 @@ namespace Ssntpl\Neev\Events;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class LoggedInEvent
+class LoggedOut
 {
     use Dispatchable;
     use SerializesModels;

@@ -10,6 +10,9 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
+use Ssntpl\Neev\Events\MfaMethodAdded;
+use Ssntpl\Neev\Events\MfaMethodRemoved;
+use Ssntpl\Neev\Events\RecoveryCodesGenerated;
 use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\RecoveryCode;
 
@@ -50,6 +53,8 @@ trait HasMultiAuth
                         'preferred' => !$this->preferredMultiFactorAuth?->preferred,
                         'secret' => $totp->getSecret(),
                     ]);
+
+                    event(new MfaMethodAdded($this, $method));
                 }
 
                 $renderer = new ImageRenderer(
@@ -81,6 +86,8 @@ trait HasMultiAuth
                     'preferred' => !$this->preferredMultiFactorAuth?->preferred,
                 ]);
 
+                event(new MfaMethodAdded($this, $method));
+
                 return [
                     'status' => 'Success',
                     'method' => $method,
@@ -90,6 +97,37 @@ trait HasMultiAuth
             default:
                 return null;
         }
+    }
+
+    /**
+     * Remove an MFA method, reassigning the preferred flag to another
+     * configured method and deleting recovery codes when this was the
+     * last real method.
+     *
+     * @return bool False if the method was not configured.
+     */
+    public function removeMultiFactorAuth(string $method): bool
+    {
+        $auth = $this->multiFactorAuth($method);
+        if (!$auth) {
+            return false;
+        }
+
+        if ($auth->preferred && count($this->multiFactorAuths) > 1) {
+            $next = $this->multiFactorAuths()->whereNot('method', $auth->method)->first();
+            $next->preferred = true;
+            $next->save();
+        }
+        $auth->delete();
+        $this->load('multiFactorAuths');
+
+        if (count($this->multiFactorAuths) < 1) {
+            $this->recoveryCodes()->delete();
+        }
+
+        event(new MfaMethodRemoved($this, $method));
+
+        return true;
     }
 
     public function verifyMFAOTP($method, $otp): bool
@@ -143,6 +181,8 @@ trait HasMultiAuth
             ]);
             $codes[] = $code;
         }
+
+        event(new RecoveryCodesGenerated($this));
 
         return $codes;
     }

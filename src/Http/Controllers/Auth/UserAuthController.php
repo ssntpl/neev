@@ -10,8 +10,10 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Validation\ValidationException;
-use Ssntpl\Neev\Events\LoggedOutEvent;
+use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
 use Ssntpl\Neev\Mail\EmailOTP;
@@ -121,6 +123,9 @@ class UserAuthController extends Controller
                 }
             }
             DB::commit();
+
+            event(new Registered($user));
+
             $this->auth->login($request, $geoIP, $user, LoginAttempt::Password);
 
             if (!$user->hasVerifiedEmail()) {
@@ -368,6 +373,9 @@ class UserAuthController extends Controller
             return back()->withErrors(['message' => 'Failed to update password.']);
         }
         $this->auth->changePassword($user, $request->password);
+
+        event(new PasswordReset($user));
+
         return redirect('login');
     }
 
@@ -497,7 +505,7 @@ class UserAuthController extends Controller
 
         $request->session()->invalidate();
 
-        event(new LoggedOutEvent($user));
+        event(new LoggedOut($user));
 
         return redirect(route('login'));
     }
@@ -535,7 +543,7 @@ class UserAuthController extends Controller
                 ->delete();
         }
 
-        event(new LoggedOutEvent($user));
+        event(new LoggedOut($user));
 
         return back()->with('logoutStatus', __('Logged out from other sessions.'));
     }
