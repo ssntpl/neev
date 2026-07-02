@@ -244,6 +244,54 @@ class TenantSSOTest extends TestCase
         $response->assertRedirect();
         $this->assertStringContainsString('http://localhost/app', $response->headers->get('Location'));
         $this->assertStringContainsString('token=', $response->headers->get('Location'));
+
+        // Bearer-mode SPA: no auth cookie is issued.
+        $this->assertNull(
+            collect($response->headers->getCookies())->firstWhere(fn ($c) => $c->getName() === 'neev_session')
+        );
+    }
+
+    public function test_callback_spa_login_with_stateful_redirect_uri_uses_cookie_not_fragment(): void
+    {
+        config(['neev.spa.stateful' => ['app.example.com']]);
+
+        $team = TeamFactory::new()->create();
+        TeamAuthSettingsFactory::new()
+            ->sso('entra')
+            ->autoProvision('member')
+            ->create(['team_id' => $team->id]);
+
+        $this->setCurrentTenant($team);
+
+        $user = User::factory()->create();
+        $team->users()->attach($user, ['joined' => true]);
+
+        $ssoUser = Mockery::mock(SocialiteUser::class);
+        $ssoUser->shouldReceive('getEmail')->andReturn($user->email);
+        $ssoUser->shouldReceive('getName')->andReturn($user->name);
+
+        $manager = Mockery::mock(TenantSSOManager::class);
+        $manager->shouldReceive('handleCallback')->andReturn($ssoUser);
+        $manager->shouldReceive('findOrCreateUser')->andReturn($user);
+        $manager->shouldReceive('ensureMembership')->once();
+        $this->app->instance(TenantSSOManager::class, $manager);
+
+        session(['sso_redirect_uri' => 'https://app.example.com/dashboard']);
+
+        $response = $this->get('/sso/callback?code=auth-code-123');
+
+        $response->assertRedirect();
+        $location = $response->headers->get('Location');
+        $this->assertStringContainsString('https://app.example.com/dashboard', $location);
+        $this->assertStringContainsString('auth_state=authenticated', $location);
+        // The token must never appear in the URL for stateful targets.
+        $this->assertStringNotContainsString('token=', $location);
+
+        $cookie = collect($response->headers->getCookies())
+            ->firstWhere(fn ($c) => $c->getName() === 'neev_session');
+        $this->assertNotNull($cookie);
+        $this->assertTrue($cookie->isHttpOnly());
+        $this->assertStringContainsString('|', $cookie->getValue());
     }
 
     public function test_redirect_with_valid_sso_redirects_to_provider(): void

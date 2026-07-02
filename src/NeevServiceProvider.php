@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev;
 
+use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Route;
@@ -43,6 +44,16 @@ class NeevServiceProvider extends ServiceProvider
 {
     public function boot(): void
     {
+        // The SPA auth cookie must read identically whether it was set on a
+        // plain API route or inside a 'web'-group redirect (OAuth/SSO
+        // callbacks) — so it is never encrypted. It carries an already
+        // opaque token; encryption adds nothing. The CSRF cookie is not
+        // excepted here: its default name (XSRF-TOKEN) is shared with
+        // Laravel's own web-session CSRF cookie, which must stay encrypted.
+        EncryptCookies::except([
+            config('neev.spa.cookie_name', 'neev_session'),
+        ]);
+
         Relation::morphMap([
             'team' => \Ssntpl\Neev\Models\Team::getClass(),
             'tenant' => \Ssntpl\Neev\Models\Tenant::getClass(),

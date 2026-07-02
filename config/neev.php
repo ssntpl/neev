@@ -58,10 +58,14 @@ return [
     | ("localhost:3000"), and prefix wildcards ("*.example.com"). An empty
     | list disables SPA cookie mode entirely.
     |
-    | If your route stack runs Laravel's EncryptCookies middleware, add both
-    | cookie names to its $except list — neev issues them unencrypted (the
-    | CSRF token is HMAC-signed to APP_KEY instead, and the auth cookie
-    | carries an already-opaque token).
+    | The auth cookie is automatically excluded from Laravel's cookie
+    | encryption (neev registers EncryptCookies::except for it) so it reads
+    | identically on API routes and inside web-group redirects; it carries
+    | an already-opaque token. The CSRF token is HMAC-signed to APP_KEY
+    | instead of encrypted. Only if you route neev's endpoints through a
+    | web-style stack yourself must the CSRF cookie name also be excepted —
+    | and consider renaming it then, since XSRF-TOKEN is shared with
+    | Laravel's own web-session CSRF cookie.
     |
     */
     'spa' => [

@@ -9,6 +9,8 @@ use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\SpaCookieResponder;
+use Ssntpl\Neev\Services\StatefulOriginResolver;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Services\TenantSSOManager;
 
@@ -198,14 +200,23 @@ class TenantSSOController extends Controller
 
                 $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::SSO, $expiryMinutes);
 
-                // Build redirect URL with token in fragment (not query string)
-                // Fragment (#) is not sent to server in HTTP requests, preventing token leakage via referrer headers/logs
                 $params = [
-                    'token' => $token,
                     'auth_state' => 'authenticated',
                     'email_verified' => $user->hasVerifiedEmail() ? 'true' : 'false',
                     'expires_in' => $expiryMinutes,
                 ];
+
+                // Stateful SPA target: deliver the token in the HttpOnly
+                // cookie and keep it out of the URL entirely.
+                if (app(StatefulOriginResolver::class)->isStatefulUrl($redirectUri)) {
+                    return redirect($redirectUri . '#' . http_build_query($params))
+                        ->withCookie(app(SpaCookieResponder::class)->authCookie($token, $expiryMinutes));
+                }
+
+                // Bearer-mode SPA: token in the fragment (not query string) —
+                // fragments are not sent to servers, preventing leakage via
+                // referrer headers and logs.
+                $params = ['token' => $token] + $params;
 
                 return redirect($redirectUri . '#' . http_build_query($params));
             }

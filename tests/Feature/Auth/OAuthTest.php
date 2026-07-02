@@ -128,6 +128,37 @@ class OAuthTest extends TestCase
         $response = $this->get('/oauth/google/callback?code=test-auth-code');
 
         $response->assertRedirect('/dashboard');
+        // No stateful host configured: no SPA cookie.
+        $this->assertNull(
+            collect($response->headers->getCookies())->firstWhere(fn ($c) => $c->getName() === 'neev_session')
+        );
+    }
+
+    public function test_callback_on_stateful_host_also_issues_spa_cookie(): void
+    {
+        // Test requests hit "localhost" — declaring it stateful makes the
+        // callback a same-origin SPA monolith flow.
+        config(['neev.spa.stateful' => ['localhost']]);
+
+        $user = User::factory()->create();
+        $this->mockSocialiteUser($user->email);
+
+        $response = $this->get('/oauth/google/callback?code=test-auth-code');
+
+        $response->assertRedirect('/dashboard');
+
+        $cookie = collect($response->headers->getCookies())
+            ->firstWhere(fn ($c) => $c->getName() === 'neev_session');
+        $this->assertNotNull($cookie);
+        $this->assertTrue($cookie->isHttpOnly());
+        $this->assertStringContainsString('|', $cookie->getValue());
+
+        // The cookie-borne token authenticates API calls.
+        $this->withCredentials()
+            ->withHeader('Origin', 'http://localhost')
+            ->withUnencryptedCookie('neev_session', $cookie->getValue())
+            ->getJson('/neev/users')
+            ->assertOk();
     }
 
     public function test_callback_creates_new_user_when_email_not_found(): void

@@ -15,6 +15,8 @@ use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\SpaCookieResponder;
+use Ssntpl\Neev\Services\StatefulOriginResolver;
 
 class OAuthController extends Controller
 {
@@ -66,7 +68,23 @@ class OAuthController extends Controller
 
         $this->auth->login($request, $geoIP, $user, $service);
 
-        return redirect(config('neev.home'));
+        $response = redirect(config('neev.home'));
+
+        // Same-origin SPA monolith: also issue a login token in the
+        // HttpOnly cookie so the SPA is authenticated for API calls when
+        // the redirect lands. The attempt is reused from the session
+        // login above, so no extra LoggedIn event or attempt row.
+        if (app(StatefulOriginResolver::class)->isStatefulHost($request)) {
+            $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
+            $newToken = $user->createLoginToken($expiryMinutes);
+            $newToken->accessToken->forceFill(['attempt_id' => session('attempt_id')])->save();
+
+            $response->withCookie(
+                app(SpaCookieResponder::class)->authCookie($newToken->plainTextToken, $expiryMinutes)
+            );
+        }
+
+        return $response;
     }
 
     public function register($oauthUser)
