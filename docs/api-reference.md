@@ -12,11 +12,7 @@ All authenticated endpoints require a Bearer token in the Authorization header:
 Authorization: Bearer {token_id}|{token}
 ```
 
-Or as a query parameter:
-
-```http
-GET /neev/users?token={token_id}|{token}
-```
+The header is the only accepted transport — query-string and request-body tokens were removed in v0.4.4 (tokens in URLs leak via logs, referrers, and browser history).
 
 ---
 
