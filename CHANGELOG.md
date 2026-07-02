@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-02
+
 ### Added
 - **`RegistrationService`** — central registration logic (validation rules, user creation, invitation acceptance with `InvalidInvitationException`, federated-domain team rules, OAuth registration, transaction ownership, `Registered` event); previously duplicated with drift across four controllers. `Domain::isVerifiedForEmail()` replaces five copies of the domain-verification check; unused `MembershipService` removed
 - **SPA consumer guide** (`docs/spa-authentication.md`) — completes SPA cookie mode phase 4: backend/CORS/axios setup, all auth flows with exact response shapes, the SSO → SPA hand-off, and troubleshooting

@@ -11,7 +11,7 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## 0.4.5 → Unreleased
+## 0.4.5 → 0.5.0
 
 **The package is now headless by default (RFC 002, action required for
 Blade UI users).**
