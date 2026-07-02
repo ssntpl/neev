@@ -23,6 +23,7 @@ auth_policies
 ├── role_slug                 (nullable: match users holding this role)
 ├── email_domain              (nullable: match by email domain, pre-auth)
 ├── auth_method               ('password' | 'sso' | 'magicauth')
+├── enforce_method            (boolean — MUST vs legacy CAN; see Q1)
 ├── sso_provider, sso_client_id, sso_client_secret (encrypted),
 │   sso_tenant_id, sso_extra_config (json)
 ├── mfa_required              (boolean)
@@ -75,10 +76,20 @@ resolved live (one indexed query).
   Policies are evaluated per login attempt, never stored on the user.
   Existing sessions/tokens are untouched until they expire or the app
   revokes them (documented).
-- **MUST or CAN?** **MUST.** `auth_method` is enforced: a user matched
-  to an SSO policy cannot password-login. This matches the semantics
-  of today's `requiresSSO()` and is the posture enterprise buyers
-  expect. (CAN is the future `allowed_methods` extension.)
+- **MUST or CAN?** **MUST — but never introduced by migration.**
+  `auth_method` is enforced: a user matched to an SSO policy cannot
+  password-login. This matches today's `requiresSSO()` and is the
+  posture enterprise buyers expect. (CAN is the future
+  `allowed_methods` extension.) **Critical nuance:** today a
+  `password` tenant still allows magic-link login (magic links are
+  always available). A blanket-MUST `password` policy would block
+  them — a silent behaviour change for every migrated tenant. So
+  enforcement strictness is a property of the policy row
+  (`enforce_method` boolean): migrated policies get
+  `enforce_method = false` for `password` (preserving today's
+  password-or-magic-link behaviour) and `true` for `sso` (preserving
+  today's `requiresSSO()`). New policies default to `true`. Tenants
+  opt into strictness; migration never imposes it.
 - **Self-registration routing?** Self-registering users have no role
   yet, so **registration always routes via domain or default policy**;
   invited users get the invitation's role, so their *next login*
@@ -136,7 +147,10 @@ consolidation):
 
 1. Create `auth_policies`.
 2. Copy every `tenant_auth_settings` / `team_auth_settings` row into a
-   default policy (null role/domain) for the same owner.
+   default policy (null role/domain) for the same owner — with
+   `enforce_method = (auth_method === 'sso')`, so migrated tenants keep
+   exactly today's enforcement (SSO-required stays required; password
+   tenants keep magic-link availability).
 3. `HasTenantAuth`'s public surface (`requiresSSO()`,
    `hasSSOConfigured()`, `authSettings`) delegates to the owner's
    default policy for one release (deprecated), so consuming apps run
@@ -149,9 +163,10 @@ consolidation):
 6. `neev:auth:configure` gains `--role=` / `--domain=` /
    `--priority=`; `neev:auth:show` lists all policies for an owner.
 
-**BC invariant (testable):** an owner with exactly one default policy
-behaves identically to today's single `auth_method` — the acceptance
-gate for phase A.
+**BC invariant (testable):** an owner with exactly one *migrated*
+default policy behaves identically to today's single `auth_method` —
+**including magic-link availability for `password` owners** — the
+acceptance gate for phase A.
 
 ## 4. What this deliberately does not do (non-goals)
 
@@ -188,8 +203,11 @@ gate for phase A.
 
 1. **`magicauth` as an enforceable method:** magic links are currently
    always available. Under a MUST policy, should a `password` policy
-   *block* magic-link login for matched users? Proposal: yes —
-   enforcement means the matched method only (recovery codes excepted).
+   *block* magic-link login for matched users? Proposal: **yes for
+   policies with `enforce_method = true`, but never via migration** —
+   migrated policies carry `enforce_method = false` for `password`, so
+   strict enforcement is always a deliberate tenant choice (recovery
+   codes excepted either way).
 2. **`mfa_methods` narrowing:** when a policy lists `['authenticator']`,
    a user's active email-OTP method no longer satisfies MFA. Proposal:
    enforce at challenge time, prompt enrolment if needed.

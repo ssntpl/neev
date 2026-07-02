@@ -179,7 +179,7 @@
 - [ ] **Rate limiting with Redis** - Distributed rate limiting for multi-server deployments (currently cache-based)
 
 ### Code Quality
-- [ ] **Decompose large controllers** - `UserAuthController.php` (27 methods) and `TeamApiController.php` (26 methods) could benefit from splitting into focused controllers
+- [ ] **Decompose large controllers** - `UserAuthController.php` (27 methods) and `TeamApiController.php` (26 methods) could benefit from splitting into focused controllers. **⚠ BREAKING when done:** apps that published `routes/neev.php` reference these controller class names — splitting/renaming breaks their published copies. Must ship with an UPGRADING entry (re-publish or update class references), not as casual housekeeping.
 - [x] **PHPStan / static analysis** - Level 5 with Larastan, integrated in CI
 - [x] **PHP CS Fixer / Pint config** - PSR-12 code style enforcement via Pint
 
