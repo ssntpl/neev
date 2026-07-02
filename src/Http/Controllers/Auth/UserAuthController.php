@@ -280,9 +280,9 @@ class UserAuthController extends Controller
         }
         $this->auth->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, attempt: $attempt, viaRequestAuth: true);
 
-        if (count($user->multiFactorAuths) > 0) {
+        if (count($user->activeMultiFactorAuths) > 0) {
             session(['email' => $user->email]);
-            return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->multiFactorAuths()->first()?->method));
+            return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method));
         }
 
         if ($request->redirect && $request->redirect != '/' && str_starts_with($request->redirect, '/')) {
@@ -609,11 +609,20 @@ class UserAuthController extends Controller
             $attempt->multi_factor_method = $request->auth_method;
             $attempt->save();
         }
-        if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
-            if ($request->action === 'verify') {
+        if ($request->action === 'verify') {
+            // Setup verification from the security page: activates a
+            // pending method, or just confirms a code for an active one.
+            if ($user->verifyMfaSetup($request->auth_method, (string) $request->otp)) {
+                return back()->with('status', 'Method verified and enabled.');
+            }
+            if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
                 return back()->with('status', 'Code verified.');
             }
 
+            return back()->withErrors(['message' => 'Code is invalid']);
+        }
+
+        if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
             $this->auth->login($request, $geoIP, $user, LoginAttempt::Password, $request->auth_method, $attempt ?? null);
             return redirect(config('neev.home'));
         }

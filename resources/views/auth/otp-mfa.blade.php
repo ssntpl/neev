@@ -65,7 +65,7 @@
                             </div>
                         </form>
                     @endif
-                    @foreach ($user?->multiFactorAuths()->whereNot('method', $method)->get() as $auth)
+                    @foreach ($user?->activeMultiFactorAuths()->whereNot('method', $method)->get() as $auth)
                         <a href="{{route('otp.mfa.create', $auth->method)}}">
                             <x-neev-component::secondary-button class="w-full flex justify-center">{{$auth->method}}</x-neev-component::secondary-button>
                         </a>

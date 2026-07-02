@@ -111,6 +111,14 @@ Origins permitted to complete WebAuthn ceremonies. List every allowed origin for
 
 Number of single-use recovery codes generated per user.
 
+### Pending Setup Retention
+
+```php
+'mfa_pending_setup_retention_days' => 2,
+```
+
+Days to keep unverified (pending) MFA setups before the `neev:clean-pending-mfa-setups` command deletes them.
+
 ---
 
 ## Verification
@@ -358,6 +366,7 @@ return [
     // MFA
     'multi_factor_auth' => ['authenticator', 'email'],
     'recovery_codes' => 8,
+    'mfa_pending_setup_retention_days' => 2,
 
     // Verification
     'otp_length' => 6,

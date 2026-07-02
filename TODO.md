@@ -23,6 +23,7 @@
 - [x] Recovery codes (8 single-use backup codes, hash-stored)
 - [x] Preferred MFA method tracking per user
 - [x] MFA enforcement during login flow
+- [x] Setup verification (pending → active): authenticator only enforced after the user proves the setup with a valid TOTP; abandoned setups purged by `neev:clean-pending-mfa-setups`
 
 ### Team Management
 - [x] Team CRUD with auto-slug generation

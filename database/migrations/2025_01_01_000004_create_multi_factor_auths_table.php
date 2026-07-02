@@ -14,6 +14,7 @@ return new class () extends Migration {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('method');
+            $table->string('status')->default('active');
             $table->text('secret')->nullable();
             $table->text('otp')->nullable();
             $table->boolean('preferred')->default(false);

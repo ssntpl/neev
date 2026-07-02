@@ -229,14 +229,26 @@ class HasMultiAuthTest extends TestCase
 
         // Generate a valid OTP from the secret
         $totp = TOTP::create($secret);
-        $validOtp = $totp->now();
 
-        // Reload the relation so multiFactorAuth() can find it
-        $user->load('multiFactorAuths');
+        // Activate the pending setup first — an unverified authenticator
+        // cannot satisfy an MFA challenge.
+        $this->assertTrue($user->verifyMfaSetup('authenticator', $totp->now()));
 
-        $verified = $user->verifyMFAOTP('authenticator', $validOtp);
+        $verified = $user->verifyMFAOTP('authenticator', $totp->now());
 
         $this->assertTrue($verified);
+    }
+
+    public function test_verify_mfa_otp_rejects_pending_authenticator(): void
+    {
+        $user = User::factory()->create();
+        $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
+
+        $result = $user->addMultiFactorAuth('authenticator');
+        $totp = TOTP::create($result['secret']);
+
+        // Correct code, but the setup was never verified: must fail.
+        $this->assertFalse($user->verifyMFAOTP('authenticator', $totp->now()));
     }
 
     public function test_verify_mfa_otp_authenticator_returns_false_for_wrong_otp(): void
@@ -261,10 +273,9 @@ class HasMultiAuthTest extends TestCase
         $secret = $result['secret'];
 
         $totp = TOTP::create($secret);
-        $validOtp = $totp->now();
 
-        $user->load('multiFactorAuths');
-        $user->verifyMFAOTP('authenticator', $validOtp);
+        $this->assertTrue($user->verifyMfaSetup('authenticator', $totp->now()));
+        $user->verifyMFAOTP('authenticator', $totp->now());
 
         $auth = $user->multiFactorAuths()->where('method', 'authenticator')->first();
         $this->assertNotNull($auth->last_used);

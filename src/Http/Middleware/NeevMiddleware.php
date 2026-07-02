@@ -39,22 +39,24 @@ class NeevMiddleware
             return $this->unauthenticated($request, 'Your account is deactivated, please contact your admin to activate your account.', 403);
         }
 
-        // Eager load MFA relationships to avoid N+1 queries
-        $user->loadMissing('multiFactorAuths', 'preferredMultiFactorAuth');
+        // Eager load MFA relationships to avoid N+1 queries.
+        // Only active methods count towards MFA enforcement — a pending
+        // (unverified) setup must never gate the session.
+        $user->loadMissing('activeMultiFactorAuths', 'preferredMultiFactorAuth');
 
         $attemptID = session('attempt_id');
         $attempt = $user->loginAttempts()->where('id', $attemptID)->first();
-        if ($attempt && count($user->multiFactorAuths ?? []) > 0) {
+        if ($attempt && count($user->activeMultiFactorAuths ?? []) > 0) {
             if (!$attempt->multi_factor_method) {
                 if ($request->expectsJson()) {
                     return response()->json([
                         'message' => 'MFA verification required.',
-                        'mfa_method' => $user->preferredMultiFactorAuth?->method ?? $user->multiFactorAuths()->first()?->method,
+                        'mfa_method' => $user->preferredMultiFactorAuth?->method ?? $user->activeMultiFactorAuths()->first()?->method,
                     ], 403);
                 }
-                return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth?->method ?? $user->multiFactorAuths()->first()?->method));
+                return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth?->method ?? $user->activeMultiFactorAuths()->first()?->method));
             }
-        } elseif (!$attempt && count($user->multiFactorAuths ?? []) > 0) {
+        } elseif (!$attempt && count($user->activeMultiFactorAuths ?? []) > 0) {
             return $this->unauthenticated($request, 'Unauthenticated.');
         }
 

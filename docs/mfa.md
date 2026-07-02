@@ -43,6 +43,15 @@ Neev supports multiple MFA methods that provide an extra layer of security beyon
 'otp_length' => 6,        // OTP length: 4, 6, or 8 digits
 ```
 
+### Pending Setup Retention
+
+```php
+// config/neev.php
+'mfa_pending_setup_retention_days' => 2,  // Days before unverified setups are deleted
+```
+
+Authenticator setups that are started but never verified remain in a `pending` state. The `neev:clean-pending-mfa-setups` command deletes pending setups older than this many days — see [CLI Commands](./cli-commands.md).
+
 ### MFA JWT Settings
 
 After a password login that requires MFA, the API issues a short-lived JWT used only to complete verification:
@@ -61,11 +70,15 @@ Time-based One-Time Password using apps like Google Authenticator, Authy, 1Passw
 
 ### Setup Flow
 
+Enabling an authenticator is a two-step flow — the method must be verified before it is enforced:
+
 1. User navigates to Security settings
-2. Clicks "Enable Authenticator"
+2. Clicks "Enable Authenticator" — the method is created in a **pending** state
 3. Scans QR code with authenticator app
-4. Enters verification code
-5. MFA is enabled
+4. Enters a TOTP code to verify the setup
+5. The method becomes **active** and MFA is enabled
+
+While a setup is **pending** it is not an enrolled factor: it is never enforced at login, does not appear in `mfa_options`, cannot be set as the preferred method, and does not count towards recovery-code eligibility. Removing a pending setup is a silent cancel.
 
 ### API: Enable Authenticator
 
@@ -96,6 +109,39 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 </div>
 <p>Or enter manually: {{ $response['secret'] }}</p>
 ```
+
+### API: Verify the Setup
+
+Confirm the user scanned the QR code by verifying a TOTP code. On success the method becomes active (and preferred, if no other active method holds the flag) and the `MfaMethodAdded` event fires:
+
+```bash
+curl -X POST https://yourapp.com/neev/mfa/setup/verify \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "auth_method": "authenticator",
+    "otp": "123456"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "message": "Method has been verified and enabled.",
+  "method": "authenticator"
+}
+```
+
+A wrong code — or no pending setup for the method — returns a `400`:
+
+```json
+{
+  "message": "Code verification failed."
+}
+```
+
+In the web (Blade) flow, the Verify form on the security page (posts to `otp.mfa.store` with `action=verify`) activates the pending method. Until then, the method list shows a "Pending verification" badge.
 
 ### Verify OTP During Login
 
@@ -138,6 +184,8 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 2. Clicks "Enable Email OTP"
 3. Receives confirmation email with code
 4. MFA is enabled
+
+Unlike the authenticator method, email OTP requires no verification step — the account email is already verified, so the method is created **active** immediately.
 
 ### API: Enable Email OTP
 
@@ -262,15 +310,17 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 5. User enters TOTP code or email OTP
 6. Full access token is returned
 
+Only **active** methods trigger the MFA challenge — pending setups never gate login, and the verify endpoint rejects codes for pending methods.
+
 ### Web Flow
 
 ```php
 // After successful password verification
-if (count($user->multiFactorAuths) > 0) {
+if (count($user->activeMultiFactorAuths) > 0) {
     session(['email' => $user->email]);
     return redirect(route('otp.mfa.create',
         $user->preferredMultiFactorAuth->method ??
-        $user->multiFactorAuths()->first()?->method
+        $user->activeMultiFactorAuths()->first()?->method
     ));
 }
 ```
@@ -284,7 +334,7 @@ curl -X POST https://yourapp.com/neev/login \
   -d '{"email": "john@example.com", "password": "password"}'
 ```
 
-Response includes `auth_state` and `mfa_options`:
+Response includes `auth_state` and `mfa_options` (active methods only):
 
 ```json
 {
@@ -357,8 +407,9 @@ curl -X DELETE https://yourapp.com/neev/mfa/delete \
 
 ### Behavior
 
-- If deleting the preferred method, another method becomes preferred
-- If deleting the last MFA method, recovery codes are also deleted
+- If deleting the preferred method, another active method becomes preferred
+- If deleting the last active MFA method, recovery codes are also deleted
+- Deleting a pending (unverified) setup is a silent cancel — the `MfaMethodRemoved` event only fires for methods that were active
 - Users can re-enable MFA at any time
 
 ---
@@ -379,8 +430,11 @@ class User extends Authenticatable
 ### Available Methods
 
 ```php
-// Get all MFA configurations
+// Get all MFA configurations (including pending setups)
 $user->multiFactorAuths();
+
+// Get only active (verified) MFA configurations
+$user->activeMultiFactorAuths();
 
 // Get specific MFA method
 $user->multiFactorAuth('authenticator');
@@ -388,10 +442,18 @@ $user->multiFactorAuth('authenticator');
 // Get preferred MFA method
 $user->preferredMultiFactorAuth();
 
-// Add MFA method (returns QR code for authenticator)
+// Add MFA method (authenticator starts pending; returns QR code)
 $user->addMultiFactorAuth('authenticator');
 
-// Verify OTP code
+// Verify a pending setup — activates the method
+$user->verifyMfaSetup('authenticator', '123456');
+
+// Programmatic activation escape hatch: skips the OTP proof (caller's
+// responsibility) but keeps the invariants — preferred-flag assignment
+// and the MfaMethodAdded event. For admin provisioning, imports, tests.
+$user->multiFactorAuth('authenticator')->activate();
+
+// Verify OTP code (active methods only)
 $user->verifyMFAOTP('authenticator', '123456');
 
 // Get recovery codes
@@ -412,6 +474,7 @@ $user->generateRecoveryCodes();
 | id | bigint | Primary key |
 | user_id | bigint | Foreign key to users |
 | method | string | MFA method name |
+| status | string | `pending` or `active` (default `active`) |
 | secret | text | TOTP secret (encrypted) |
 | preferred | boolean | Is this the preferred method |
 | otp | text | Current email OTP, stored hashed (if applicable) |
@@ -465,7 +528,7 @@ public function handle($request, $next)
 {
     $user = $request->user();
 
-    if (count($user->multiFactorAuths) === 0) {
+    if (count($user->activeMultiFactorAuths) === 0) {
         return redirect()->route('account.security')
             ->with('warning', 'Please enable MFA for your account.');
     }

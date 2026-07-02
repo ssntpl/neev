@@ -23,6 +23,11 @@ trait HasMultiAuth
         return $this->hasMany(MultiFactorAuth::class);
     }
 
+    public function activeMultiFactorAuths()
+    {
+        return $this->hasMany(MultiFactorAuth::class)->where('status', MultiFactorAuth::STATUS_ACTIVE);
+    }
+
     public function multiFactorAuth($method)
     {
         return $this->multiFactorAuths->where('method', $method)->first();
@@ -30,7 +35,9 @@ trait HasMultiAuth
 
     public function preferredMultiFactorAuth()
     {
-        return $this->hasOne(MultiFactorAuth::class)->where('preferred', true);
+        return $this->hasOne(MultiFactorAuth::class)
+            ->where('preferred', true)
+            ->where('status', MultiFactorAuth::STATUS_ACTIVE);
     }
 
     public function recoveryCodes()
@@ -48,13 +55,17 @@ trait HasMultiAuth
                 $totp->setLabel($this->email);
                 $totp->setIssuer(config('app.name', 'Neev'));
                 if (!$auth) {
+                    // Created pending: the method only becomes active (and
+                    // enforced at login) once the user proves they scanned
+                    // the QR code via verifyMfaSetup(). MfaMethodAdded fires
+                    // on activation, not here.
                     $this->multiFactorAuths()->create([
                         'method' => $method,
-                        'preferred' => !$this->preferredMultiFactorAuth?->preferred,
+                        'status' => MultiFactorAuth::STATUS_PENDING,
+                        'preferred' => false,
                         'secret' => $totp->getSecret(),
                     ]);
-
-                    event(new MfaMethodAdded($this, $method));
+                    $this->load('multiFactorAuths');
                 }
 
                 $renderer = new ImageRenderer(
@@ -81,10 +92,14 @@ trait HasMultiAuth
                     ];
                 }
 
+                // The account email is already verified, so email OTP is
+                // active immediately.
                 $this->multiFactorAuths()->create([
                     'method' => $method,
+                    'status' => MultiFactorAuth::STATUS_ACTIVE,
                     'preferred' => !$this->preferredMultiFactorAuth?->preferred,
                 ]);
+                $this->load('multiFactorAuths');
 
                 event(new MfaMethodAdded($this, $method));
 
@@ -100,9 +115,41 @@ trait HasMultiAuth
     }
 
     /**
+     * Complete a pending MFA setup by verifying an OTP against it.
+     * On success the method becomes active, is made preferred when no
+     * other active method holds the flag, and MfaMethodAdded fires.
+     *
+     * @return bool False if there is no pending setup for the method or
+     *              the code is wrong.
+     */
+    public function verifyMfaSetup(string $method, string $otp): bool
+    {
+        $auth = $this->multiFactorAuth($method);
+        if (!$auth || $auth->isActive()) {
+            return false;
+        }
+
+        if ($method === 'authenticator') {
+            $totp = TOTP::create(secret: $auth->secret);
+            if (!$totp->verify(otp: (string) $otp, timestamp: null, leeway: 29)) {
+                return false;
+            }
+        } else {
+            return false;
+        }
+
+        $auth->last_used = now();
+        $auth->activate();
+        $this->load('multiFactorAuths');
+
+        return true;
+    }
+
+    /**
      * Remove an MFA method, reassigning the preferred flag to another
-     * configured method and deleting recovery codes when this was the
-     * last real method.
+     * active method and deleting recovery codes when this was the last
+     * active method. Removing a pending setup is a silent cancellation:
+     * MfaMethodRemoved only fires for methods that were active.
      *
      * @return bool False if the method was not configured.
      */
@@ -113,19 +160,25 @@ trait HasMultiAuth
             return false;
         }
 
-        if ($auth->preferred && count($this->multiFactorAuths) > 1) {
-            $next = $this->multiFactorAuths()->whereNot('method', $auth->method)->first();
-            $next->preferred = true;
-            $next->save();
+        $wasActive = $auth->isActive();
+
+        if ($auth->preferred) {
+            $next = $this->multiFactorAuths()->active()->whereNot('method', $auth->method)->first();
+            if ($next) {
+                $next->preferred = true;
+                $next->save();
+            }
         }
         $auth->delete();
         $this->load('multiFactorAuths');
 
-        if (count($this->multiFactorAuths) < 1) {
+        if ($this->activeMultiFactorAuths()->count() < 1) {
             $this->recoveryCodes()->delete();
         }
 
-        event(new MfaMethodRemoved($this, $method));
+        if ($wasActive) {
+            event(new MfaMethodRemoved($this, $method));
+        }
 
         return true;
     }
@@ -133,6 +186,13 @@ trait HasMultiAuth
     public function verifyMFAOTP($method, $otp): bool
     {
         $auth = $this->multiFactorAuth($method ?? $this->preferredMultiFactorAuth?->method);
+
+        // Pending setups cannot satisfy an MFA challenge — they are not
+        // an enrolled factor until verifyMfaSetup() activates them.
+        if ($auth && !$auth->isActive()) {
+            $auth = null;
+        }
+
         if (!$auth && $method !== 'recovery') {
             return false;
         }

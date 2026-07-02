@@ -40,6 +40,20 @@ php artisan neev:clean-login-attempts
 
 Retention is controlled by `config('neev.login_history_retention_days')`.
 
+### `neev:clean-pending-mfa-setups`
+
+Delete MFA setups that were started but never verified (still in the `pending` state).
+
+```bash
+php artisan neev:clean-pending-mfa-setups
+```
+
+Retention is controlled by `config('neev.mfa_pending_setup_retention_days')` (default: 2 days). Schedule it alongside the other maintenance commands:
+
+```php
+$schedule->command('neev:clean-pending-mfa-setups')->daily();
+```
+
 ---
 
 ## Tenant / Team Provisioning

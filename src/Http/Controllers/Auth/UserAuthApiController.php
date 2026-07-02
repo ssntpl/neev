@@ -143,7 +143,7 @@ class UserAuthApiController extends Controller
             ], 401);
         }
 
-        $mfaMethod = $user->preferredMultiFactorAuth->method ?? $user->multiFactorAuths()->first()?->method;
+        $mfaMethod = $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method;
         if (!Hash::check($request->password, $user->password)) {
             if (config('neev.log_failed_logins')) {
                 $clientDetails = LoginAttempt::getClientDetails($request);
@@ -208,8 +208,7 @@ class UserAuthApiController extends Controller
 
     private function getMfaOptions(User $user): array
     {
-        $user->loadMissing('multiFactorAuths');
-        return $user->multiFactorAuths->pluck('method')->values()->all();
+        return $user->activeMultiFactorAuths()->pluck('method')->values()->all();
     }
 
     private function getJwtToken(int $userId, string $type, int $ttlSeconds, array $extraClaims = []): string

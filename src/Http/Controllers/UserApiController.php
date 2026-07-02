@@ -44,6 +44,26 @@ class UserApiController extends Controller
         return response()->json($res);
     }
 
+    public function verifyMfaSetup(Request $request)
+    {
+        $request->validate([
+            'auth_method' => ['required', 'string'],
+            'otp' => ['required'],
+        ]);
+
+        $user = User::model()->find($request->user()?->id);
+        if (!$user?->verifyMfaSetup($request->auth_method, (string) $request->otp)) {
+            return response()->json([
+                'message' => 'Code verification failed.',
+            ], 400);
+        }
+
+        return response()->json([
+            'message' => 'Method has been verified and enabled.',
+            'method' => $request->auth_method,
+        ]);
+    }
+
     public function deleteMultiFactorAuthentication(Request $request)
     {
         $request->validate([
@@ -304,7 +324,7 @@ class UserApiController extends Controller
                 'message' => 'User not found.',
             ], 404);
         }
-        if (count($user->multiFactorAuths) === 0) {
+        if (count($user->activeMultiFactorAuths) === 0) {
             return response()->json([
                 'message' => 'Enable MFA first.',
             ], 400);
@@ -326,7 +346,7 @@ class UserApiController extends Controller
         $user = User::model()->find($request->user()?->id);
         $auth = $user?->multiFactorAuth($request->auth_method);
 
-        if (!$auth) {
+        if (!$auth || !$auth->isActive()) {
             return response()->json([
                 'message' => 'MFA method not found.',
             ], 400);
