@@ -13,6 +13,29 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.4.5 → Unreleased
 
+**The package is now headless by default (RFC 002, action required for
+Blade UI users).**
+Page views are no longer auto-loaded from the package, and the Blade
+page routes (`/login`, `/account/...`) only register when
+`config('neev.ui') === 'blade'`.
+
+- **Using the shipped Blade UI?** Run `php artisan neev:ui blade` —
+  it ejects the views to `resources/views/vendor/neev` (app-owned from
+  then on) and sets `'ui' => 'blade'`. If you had already published
+  the views, your files are untouched (same path); just set the `ui`
+  config.
+- **Headless / SPA / API-only?** Nothing to do — the Blade page routes
+  disappear (they were dead weight), and verification/invitation email
+  links now point at your frontend (`{app.url}/verify-email?...`,
+  `{app.url}/register?invitation_id=...&hash=...`) carrying the
+  signed query for the API endpoints.
+- Email templates: the installer copies them to
+  `resources/views/vendor/neev/emails` so they're yours to edit; the
+  package retains fallbacks. The available variables per template are
+  documented and stable (see RFC 002 §5.5).
+- The `neev-views` publish tag is replaced by `neev-blade-kit` and
+  `neev-mail`.
+
 **OAuth/SSO routes moved under the route prefix (action required for
 identity providers).**
 All machine-facing routes now live under the configurable

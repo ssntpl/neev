@@ -16,9 +16,33 @@ Interactive setup wizard for new installations.
 
 ```bash
 php artisan neev:install
+
+# Non-interactive: {tenant} {teams} {kit}
+php artisan neev:install yes no blade
 ```
 
-Prompts for: multi-tenant isolation and team support. Publishes the config file and sets the `tenant` and `team` options accordingly. Only runs on a fresh installation (fails if the `users` table has records).
+Prompts for: multi-tenant isolation (`yes`/`no`), team support (`yes`/`no`), and the frontend starter kit (`blade`/`none`, default `blade`). Publishes the config file, sets the `tenant` and `team` options accordingly, and calls `neev:ui` to eject the chosen kit (and, always, the email templates). Only runs on a fresh installation (fails if the `users` table has records).
+
+### `neev:ui`
+
+Eject a frontend starter kit into the application. Also the way to switch an existing install between Blade and headless.
+
+```bash
+php artisan neev:ui blade            # eject the Blade kit
+php artisan neev:ui blade --force    # overwrite files that already exist in the app
+php artisan neev:ui none             # headless — no page views, page routes disabled
+```
+
+| Argument / Option | Description |
+|-------------------|-------------|
+| `kit` | Starter kit to eject: `blade` or `none` |
+| `--force` | Overwrite files that already exist in the app (without it, existing files are kept) |
+
+What it does:
+
+- **`blade`**: copies the package's Blade page views (auth, account, team pages, components, layouts) from `stubs/blade/views/` to `resources/views/vendor/neev/` — app-owned from then on — and sets `'ui' => 'blade'` in `config/neev.php`, which registers the Blade page routes.
+- **`none`**: sets `'ui' => env('NEEV_UI')` (headless — no Blade page routes); no page views are copied.
+- **Always** (both kits): ejects the email templates to `resources/views/vendor/neev/emails/` so they're the app's to edit. The package keeps fallback copies, so headless installs send mail with zero setup. The variables available in each template are documented in [RFC 002 §5.5](./rfcs/002-starter-kits.md#55-email-templates--app-owned-with-a-variable-contract) and treated as API.
 
 ### `neev:download-geoip`
 

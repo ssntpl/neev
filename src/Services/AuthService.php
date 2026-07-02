@@ -105,13 +105,26 @@ class AuthService
     public function sendEmailVerification(User $user): void
     {
         $expiryMinutes = config('neev.url_expiry_time', 60);
-        $signedUrl = URL::temporarySignedRoute(
-            'verification.verify',
-            now()->addMinutes($expiryMinutes),
-            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
-        );
 
-        Mail::to($user->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email', $expiryMinutes));
+        if (config('neev.ui') === 'blade') {
+            $url = URL::temporarySignedRoute(
+                'verification.verify',
+                now()->addMinutes($expiryMinutes),
+                ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
+            );
+        } else {
+            // Headless: the Blade page routes are not registered. Link to
+            // the app's frontend, carrying the signature for the API
+            // verification endpoint (route 'mail.verify').
+            $signedUrl = URL::temporarySignedRoute(
+                'mail.verify',
+                now()->addMinutes($expiryMinutes),
+                ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
+            );
+            $url = config('app.url') . '/verify-email?' . parse_url($signedUrl, PHP_URL_QUERY);
+        }
+
+        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', $expiryMinutes));
     }
 
     /**

@@ -1,6 +1,6 @@
 # Neev Documentation
 
-Neev is an enterprise-grade Laravel package for user authentication, team management, and multi-tenancy in SaaS applications. See the [main README](../README.md) for a quick overview and getting started guide.
+Neev is an enterprise-grade Laravel package for user authentication, team management, and multi-tenancy in SaaS applications. The package is headless by default — API, OAuth/SSO, and email flows work standalone — with an optional Blade starter kit whose pages are ejected into your app at install ([RFC 002](./rfcs/002-starter-kits.md)). See the [main README](../README.md) for a quick overview and getting started guide.
 
 ---
 
@@ -26,7 +26,7 @@ Endpoint and route details for building against Neev.
 | Reference | Description |
 |-----------|-------------|
 | [API Reference](./api-reference.md) | Every REST endpoint with request/response examples |
-| [Web Routes](./web-routes.md) | All Blade-rendered web routes and view files |
+| [Web Routes](./web-routes.md) | All Blade-rendered web routes and view files (require the Blade starter kit, `'ui' => 'blade'`) |
 
 ## Architecture
 
@@ -40,12 +40,12 @@ Design decisions and internal patterns — useful when extending Neev or contrib
 
 ## Proposals
 
-Design proposals under review, not yet implemented.
+Design proposals and their implementation status.
 
 | Document | Status | Description |
 |----------|--------|-------------|
 | [SPA Cookie Mode](./spa-cookie-mode.md) | Phases 1–3 implemented; phase 4 (consumer guide) pending | HttpOnly-cookie auth + signed double-submit CSRF for same-origin SPAs. Additive to the existing bearer-token API. Driven by the TAILLOG web rebuild and otper. |
-| [RFC 002 — Headless Core + Starter Kits](./rfcs/002-starter-kits.md) | Proposed (design agreed 2026-07-02) | Package becomes fully headless (Fortify-style); Blade UI ejects into the app as a starter kit at install; email templates app-owned with a documented variable contract; React kit reserved as a future kit. |
+| [RFC 002 — Headless Core + Starter Kits](./rfcs/002-starter-kits.md) | Phase A implemented | Package is fully headless (Fortify-style); Blade UI ejects into the app as a starter kit at install; email templates app-owned with a documented variable contract; React kit reserved as a future kit. |
 
 ---
 
@@ -59,10 +59,14 @@ neev/
 │   ├── factories/            # Model factories (testing)
 │   └── migrations/           # Database migrations
 ├── resources/
-│   └── views/                # Blade templates (64 files)
+│   └── views/
+│       └── emails/           # Email templates (headless fallbacks; ejected to the app at install)
 ├── routes/
 │   ├── neev.php              # Web and API routes
 │   └── sso.php               # Tenant SSO routes
+├── stubs/
+│   └── blade/
+│       └── views/            # Blade starter kit page views (ejected via neev:ui blade)
 └── src/
     ├── Commands/              # Artisan commands
     ├── Contracts/             # Interfaces (ContextContainer, HasMembers, etc.)
@@ -204,7 +208,8 @@ See [CLI Commands](./cli-commands.md) for full reference with options and exampl
 
 | Command | Description |
 |---------|-------------|
-| `neev:install` | Interactive setup wizard |
+| `neev:install` | Interactive setup wizard (tenant, teams, starter kit) |
+| `neev:ui` | Eject a frontend starter kit (`blade`/`none`) and the email templates |
 | `neev:download-geoip` | Download MaxMind GeoLite2 database |
 | `neev:clean-login-attempts` | Remove old login attempt records |
 | `neev:tenant:create` | Create a tenant (isolated) or team (shared) |

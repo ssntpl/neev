@@ -37,6 +37,22 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Frontend UI
+    |--------------------------------------------------------------------------
+    |
+    | Which starter kit drives the frontend. 'blade' registers the Blade
+    | page routes (/login, /account/..., rendered from the app-owned views
+    | the installer ejected). null runs the package headless: only the API,
+    | OAuth/SSO, and email flows are active, and you build the frontend
+    | yourself (see docs/rfcs/002-starter-kits.md).
+    |
+    | Set by `php artisan neev:install` / `php artisan neev:ui`.
+    |
+    */
+    'ui' => env('NEEV_UI'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Authentication
     |--------------------------------------------------------------------------
     */

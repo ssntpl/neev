@@ -60,6 +60,21 @@ Blade UI pages (`/login`, `/register`, `/account/...`) stay at the root — they
 
 ---
 
+## Frontend UI
+
+```php
+'ui' => env('NEEV_UI'),
+```
+
+Which starter kit drives the frontend. Valid values:
+
+- **`'blade'`** — registers the Blade page routes (`/login`, `/register`, `/account/...`), rendered from the app-owned views the installer ejected to `resources/views/vendor/neev/`. Setting `'blade'` without ejecting the kit gives a clear "view not found" error — run `php artisan neev:ui blade` first.
+- **`null`** (default) — headless: no Blade page routes are registered. The API routes, OAuth/SSO endpoints, and email flows are unaffected; you build the frontend yourself. Verification and new-user invitation email links point at your frontend (`{app.url}/verify-email?...`, `{app.url}/register?invitation_id=...&hash=...`) carrying the signed query for the API endpoints.
+
+This value is normally set for you by `php artisan neev:install` / `php artisan neev:ui` — see [CLI Commands](./cli-commands.md#neevui) and [RFC 002](./rfcs/002-starter-kits.md).
+
+---
+
 ## Authentication
 
 ### Username Support
@@ -371,6 +386,9 @@ return [
     // Routes
     'route_prefix' => env('NEEV_ROUTE_PREFIX', 'neev'),
 
+    // Frontend UI ('blade' = Blade page routes from app-owned views; null = headless)
+    'ui' => env('NEEV_UI'),
+
     // Authentication
     'support_username' => false,
     'oauth' => [
@@ -456,6 +474,7 @@ return [
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `NEEV_ROUTE_PREFIX` | Prefix for machine-facing routes (API, OAuth, SSO, csrf-cookie) | `neev` |
+| `NEEV_UI` | Frontend starter kit: `blade` or unset (headless) | unset (headless) |
 | `NEEV_JWT_SECRET` | Secret for signing MFA JWTs | Falls back to `APP_KEY` |
 | `MAXMIND_EDITION` | GeoIP database edition | `GeoLite2-City` |
 | `MAXMIND_LICENSE_KEY` | MaxMind license key | - |

@@ -36,21 +36,32 @@ php artisan neev:install
 This command must be run on a fresh installation — it aborts if the `users` table already contains records. It will:
 1. Publish the configuration file to `config/neev.php` (overwriting any existing copy)
 2. Set the `tenant` and `team` config options based on your answers
+3. Eject your chosen frontend starter kit — and, always, the email templates — via `neev:ui`
 
 ### Installation Options
 
-The command takes two arguments and interactively prompts for any that are missing:
+The command takes three arguments and interactively prompts for any that are missing:
 
 | Prompt | Config key | Description |
 |--------|------------|-------------|
 | Would you like to enable multi-tenant isolation? | `tenant` | Users scoped to a tenant; the same email can exist in different tenants |
 | Would you like to install team support? | `team` | Enable team/organization features |
+| Which frontend starter kit would you like? | `ui` | `blade` — ready-made pages ejected into your app; `none` — headless, you build the frontend yourself |
+
+**Starter kit choices:**
+
+- **`blade`** (default): copies the Blade page views (login, account, team pages, components, layouts) to `resources/views/vendor/neev/` — they are app-owned from then on — and sets `'ui' => 'blade'` so the Blade page routes (`/login`, `/account/...`) are registered.
+- **`none`**: headless. No page views are copied and no Blade page routes are registered — the API, OAuth/SSO, and email flows are fully functional, and you build the frontend yourself.
+
+Either way, the email templates are copied to `resources/views/vendor/neev/emails/` so they're yours to edit from day one.
 
 You can also pass the answers directly:
 
 ```bash
-php artisan neev:install yes no   # tenant: yes, teams: no
+php artisan neev:install yes no blade   # tenant: yes, teams: no, kit: blade
 ```
+
+If you start headless and want the Blade kit later, run `php artisan neev:ui blade` at any time — see [CLI Commands](./cli-commands.md#neevui).
 
 All other features (username support, OAuth, MFA, password policies, etc.) are configured by editing `config/neev.php` — see the [Configuration Reference](./configuration.md).
 
@@ -181,13 +192,25 @@ php artisan vendor:publish --tag=neev-migrations
 
 This copies migrations to `database/migrations/` for customization. Publishing is optional — migrations load automatically from the package.
 
-### Publish Views
+### Eject the Blade Starter Kit
+
+Neev is headless by default — the Blade pages only exist once the starter kit is ejected into your app (normally done by the installer). To eject it later, or re-eject:
 
 ```bash
-php artisan vendor:publish --tag=neev-views
+php artisan neev:ui blade            # never overwrites your files
+php artisan neev:ui blade --force    # overwrites existing files
 ```
 
-This copies Blade templates to `resources/views/vendor/neev/` for customization.
+This copies the page views to `resources/views/vendor/neev/` (app-owned) and sets `'ui' => 'blade'` in your config, which registers the Blade page routes. See [CLI Commands](./cli-commands.md#neevui).
+
+The raw publish tags also exist if you prefer `vendor:publish` (note these do not set the `ui` config):
+
+```bash
+php artisan vendor:publish --tag=neev-blade-kit   # page views, components, layouts
+php artisan vendor:publish --tag=neev-mail        # email templates only
+```
+
+> The old `neev-views` tag no longer exists — it was replaced by `neev-blade-kit` and `neev-mail`.
 
 ### Publish Routes
 
