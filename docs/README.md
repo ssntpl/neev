@@ -200,7 +200,7 @@ See [CLI Commands](./cli-commands.md) for full reference with options and exampl
 ## Requirements
 
 - PHP 8.3+
-- Laravel 11.x or 12.x
+- Laravel 12.x
 - MySQL, PostgreSQL, or SQLite
 
 ### Optional

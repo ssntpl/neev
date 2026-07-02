@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Specification for SPA cookie mode with Sanctum-style CSRF token (`docs/spa-cookie-mode.md`, proposed)
 
+### Removed
+- **BREAKING: Laravel 11 support dropped** — `laravel/framework` requirement is now `^12.0` (testbench `^10.0`). Laravel 11 is past security-EOL with permanently-unpatched advisories, which newer Composer versions refuse to resolve. Apps on Laravel 11 should stay on neev `<=0.4.5`
+
 ## [0.4.5] - 2026-06-02
 
 ### Added
