@@ -1,10 +1,12 @@
 # SPA Cookie Mode
 
-> **Status:** Proposed
-> **Date:** 2026-06-12
-> **Target version:** v0.4.5 (additive, no breaking changes)
+> **Status:** Phase 1 implemented (config, `EnsureSpaRequestsAreStateful`, signed CSRF, `/neev/csrf-cookie`); phases 2+ (login/logout cookie issuance, MFA, OAuth/SSO callbacks) pending per §8
+> **Date:** 2026-06-12 (spec), 2026-07-02 (phase 1)
+> **Target version:** next minor (additive, no breaking changes)
 > **Authors:** TAILLOG team (driving), neev maintainers (review)
 > **Drivers:** [TAILLOG web app rebuild](../../TAILLOG/Documentation/5-Admin-Portal/web-app-spa.md), otper SPA
+>
+> **Implementation notes (phase 1):** the origin check lives in `Services\StatefulOriginResolver` (per §13.4); CSRF tokens are `value.hmac` signed via `SpaCsrfToken` (per §5.4); the middleware is in both `neev:api` and `neev:login` groups (per §5.7.1); stateful patterns match exact host, `host:port`, and `*.wildcard` (resolves §13.6); cookies are issued unencrypted and attached directly to responses — apps running `EncryptCookies` must add both cookie names to its `$except` list (resolves §13.5).
 
 ## 1. Problem
 

@@ -44,6 +44,38 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | SPA Cookie Mode
+    |--------------------------------------------------------------------------
+    |
+    | Same-origin web SPAs can authenticate via an HttpOnly cookie instead of
+    | storing the bearer token in JS-accessible storage. Requests whose
+    | Origin/Referer host matches the stateful list have their auth cookie
+    | promoted to an Authorization header and, for state-changing methods,
+    | must pass a signed double-submit CSRF check. Everything else falls
+    | through to the plain bearer-token path unchanged.
+    |
+    | 'stateful' supports exact hosts ("app.example.com"), host:port
+    | ("localhost:3000"), and prefix wildcards ("*.example.com"). An empty
+    | list disables SPA cookie mode entirely.
+    |
+    | If your route stack runs Laravel's EncryptCookies middleware, add both
+    | cookie names to its $except list — neev issues them unencrypted (the
+    | CSRF token is HMAC-signed to APP_KEY instead, and the auth cookie
+    | carries an already-opaque token).
+    |
+    */
+    'spa' => [
+        'stateful' => array_filter(explode(',', (string) env('NEEV_SPA_STATEFUL_DOMAINS', ''))),
+        'cookie_name' => env('NEEV_SPA_COOKIE_NAME', 'neev_session'),
+        'csrf_cookie_name' => env('NEEV_SPA_CSRF_COOKIE_NAME', 'XSRF-TOKEN'),
+        'csrf_header_name' => env('NEEV_SPA_CSRF_HEADER_NAME', 'X-XSRF-TOKEN'),
+        'cookie_secure' => (bool) env('NEEV_SPA_COOKIE_SECURE', true),
+        'cookie_same_site' => env('NEEV_SPA_COOKIE_SAME_SITE', 'lax'),
+        'cookie_domain' => env('NEEV_SPA_COOKIE_DOMAIN'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Multi-Factor Authentication
     |--------------------------------------------------------------------------
     */

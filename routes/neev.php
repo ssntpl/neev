@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Ssntpl\Neev\Http\Controllers\Auth\CsrfCookieController;
 use Ssntpl\Neev\Http\Controllers\Auth\UserAuthApiController;
 use Ssntpl\Neev\Http\Controllers\Auth\OAuthController;
 use Ssntpl\Neev\Http\Controllers\Auth\OAuthApiController;
@@ -193,6 +194,10 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
 
 //APIs
 Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
+    Route::get('/csrf-cookie', [CsrfCookieController::class, 'show'])
+        ->middleware('throttle:60,1')
+        ->name('neev.csrf-cookie');
+
     Route::middleware('throttle:10,1')->group(function () {
         Route::post('/register', [UserAuthApiController::class, 'register']);
         Route::post('/login', [UserAuthApiController::class, 'login']);

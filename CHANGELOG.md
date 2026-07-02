@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **SPA cookie mode — phase 1 (plumbing)** — same-origin SPAs can now authenticate via an HttpOnly cookie instead of JS-stored bearer tokens:
+  - `EnsureSpaRequestsAreStateful` middleware (in the `neev:api` and `neev:login` groups): for requests from a configured stateful origin, validates a signed double-submit CSRF token on state-changing methods (419 on failure) and promotes the auth cookie to an `Authorization: Bearer` header; a no-op for everything else, so existing bearer callers are untouched
+  - `GET /neev/csrf-cookie` issues the CSRF cookie; the token is HMAC-signed to the app key (defeats subdomain cookie injection, no server-side state)
+  - New `spa` config block: `stateful` origin allowlist (exact host, `host:port`, `*.wildcard`), cookie names/attributes; empty list disables the feature entirely
+  - `StatefulOriginResolver` and `SpaCsrfToken` services
+  - Login/logout cookie issuance (phase 2) and OAuth/SSO callback support (phase 3) follow per `docs/spa-cookie-mode.md`
 - **MFA setup verification (pending → active)** — adding an authenticator now creates the method in `pending` status; it only becomes `active` (and enforced at login) after the user proves the setup by submitting a valid TOTP to the new `POST /neev/mfa/setup/verify` endpoint (web: the Verify form on the security page). Previously the method was enforced the moment the QR code was generated — abandoning setup locked the user out at next login. `MfaMethodAdded` now fires on activation, not row creation; pending setups cannot satisfy MFA challenges, be set preferred, or count towards recovery-code eligibility
 - **`neev:clean-pending-mfa-setups` command** — deletes pending setups older than `mfa_pending_setup_retention_days` (default 2); schedule it alongside `neev:clean-login-attempts`
 - `status` column on `multi_factor_auths` (`pending`/`active`); `activeMultiFactorAuths()` relation and `verifyMfaSetup()` on `HasMultiAuth`

@@ -26,6 +26,7 @@ use Ssntpl\Neev\Http\Middleware\BindContextMiddleware;
 use Ssntpl\Neev\Http\Middleware\EnsureContextSSO;
 use Ssntpl\Neev\Http\Middleware\EnsureEmailIsVerified;
 use Ssntpl\Neev\Http\Middleware\EnsurePasswordNotExpired;
+use Ssntpl\Neev\Http\Middleware\EnsureSpaRequestsAreStateful;
 use Ssntpl\Neev\Http\Middleware\EnsureTeamIsActive;
 use Ssntpl\Neev\Http\Middleware\EnsureTenantIsActive;
 use Ssntpl\Neev\Http\Middleware\EnsureTenantMembership;
@@ -58,14 +59,19 @@ class NeevServiceProvider extends ServiceProvider
         Route::middlewareGroup('neev:api', [
             TenantMiddleware::class,
             ResolveTeamMiddleware::class,
+            EnsureSpaRequestsAreStateful::class,
             NeevAPIMiddleware::class,
             EnsureTenantMembership::class,
             BindContextMiddleware::class,
         ]);
 
+        // EnsureSpaRequestsAreStateful also runs here: the MFA verify step
+        // is the one token-issuing route that must READ the SPA cookie
+        // (it carries the step-up JWT between password and OTP).
         Route::middlewareGroup('neev:login', [
             TenantMiddleware::class,
             ResolveTeamMiddleware::class,
+            EnsureSpaRequestsAreStateful::class,
             JwtLoginMiddleware::class,
             EnsureTenantMembership::class,
             BindContextMiddleware::class,
