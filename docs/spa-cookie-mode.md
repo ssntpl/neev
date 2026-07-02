@@ -1,6 +1,6 @@
 # SPA Cookie Mode
 
-> **Status:** Phase 1 implemented (config, `EnsureSpaRequestsAreStateful`, signed CSRF, `/neev/csrf-cookie`); phases 2+ (login/logout cookie issuance, MFA, OAuth/SSO callbacks) pending per §8
+> **Status:** Phases 1–2 implemented (config, `EnsureSpaRequestsAreStateful`, signed CSRF, `/neev/csrf-cookie`; cookie issuance on login/register/magic-link/MFA-verify/passkey/OAuth-API with `token` stripped from SPA responses, logout cookie clearing via `SpaCookieResponder`); phase 3 (web-redirect OAuth/SSO callbacks) and phase 4 (consumer migration docs) pending per §8
 > **Date:** 2026-06-12 (spec), 2026-07-02 (phase 1)
 > **Target version:** next minor (additive, no breaking changes)
 > **Authors:** TAILLOG team (driving), neev maintainers (review)

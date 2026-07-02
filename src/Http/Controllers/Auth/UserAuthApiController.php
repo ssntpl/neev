@@ -27,6 +27,7 @@ use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\JwtSecret;
+use Ssntpl\Neev\Services\SpaCookieResponder;
 
 class UserAuthApiController extends Controller
 {
@@ -107,13 +108,13 @@ class UserAuthApiController extends Controller
                     'message' => 'Something went wrong.',
                 ], 500);
             }
-            return response()->json([
+            return app(SpaCookieResponder::class)->attach($request, response()->json([
                 'auth_state' => 'authenticated',
                 'token' => $token,
                 'expires_in' => $expiryMinutes,
                 'mfa_options' => null,
                 'email_verified' => $user->hasVerifiedEmail(),
-            ]);
+            ]), $expiryMinutes);
         } catch (ValidationException $e) {
             DB::rollBack();
             throw $e;
@@ -186,24 +187,26 @@ class UserAuthApiController extends Controller
                 'attempt_id' => $attempt->id
             ]);
 
-            return response()->json([
+            // SPA callers get the short-lived MFA JWT in the cookie; it is
+            // replaced by the real login token after OTP verification.
+            return app(SpaCookieResponder::class)->attach($request, response()->json([
                 'auth_state' => 'mfa_required',
                 'token' => $tempToken,
                 'expires_in' => $expiryMinutes,
                 'mfa_options' => $this->getMfaOptions($user),
                 'email_verified' => $user->hasVerifiedEmail(),
-            ]);
+            ]), $expiryMinutes);
         }
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
         $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::Password, $expiryMinutes);
 
-        return response()->json([
+        return app(SpaCookieResponder::class)->attach($request, response()->json([
             'auth_state' => 'authenticated',
             'token' => $token,
             'expires_in' => $expiryMinutes,
             'mfa_options' => null,
             'email_verified' => $user->hasVerifiedEmail(),
-        ]);
+        ]), $expiryMinutes);
     }
 
     private function getMfaOptions(User $user): array
@@ -289,9 +292,9 @@ class UserAuthApiController extends Controller
 
         event(new LoggedOut($user));
 
-        return response()->json([
+        return app(SpaCookieResponder::class)->clear($request, response()->json([
             'message' => 'Logged out successfully.',
-        ]);
+        ]));
     }
 
     public function logoutAll(Request $request)
@@ -308,6 +311,7 @@ class UserAuthApiController extends Controller
 
         event(new LoggedOut($user));
 
+        // logoutAll keeps the current session, so the SPA cookie stays.
         return response()->json([
             'message' => 'Logged out from all other devices successfully.',
         ]);
@@ -461,13 +465,13 @@ class UserAuthApiController extends Controller
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
         $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::MagicAuth, $expiryMinutes);
 
-        return response()->json([
+        return app(SpaCookieResponder::class)->attach($request, response()->json([
             'auth_state' => 'authenticated',
             'token' => $token,
             'expires_in' => $expiryMinutes,
             'mfa_options' => null,
             'email_verified' => $user->hasVerifiedEmail(),
-        ]);
+        ]), $expiryMinutes);
     }
 
     public function requestEmailChange(Request $request)
@@ -603,12 +607,13 @@ class UserAuthApiController extends Controller
 
         $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::Password, $expiryMinutes, $attempt);
 
-        return response()->json([
+        // Replaces the MFA JWT cookie with the real login token for SPAs.
+        return app(SpaCookieResponder::class)->attach($request, response()->json([
             'auth_state' => 'authenticated',
             'token' => $token,
             'expires_in' => $expiryMinutes,
             'mfa_options' => null,
             'email_verified' => $user->hasVerifiedEmail(),
-        ]);
+        ]), $expiryMinutes);
     }
 }
