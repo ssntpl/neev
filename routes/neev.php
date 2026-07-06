@@ -28,9 +28,6 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
     Route::get('/login', [UserAuthController::class, 'loginCreate'])
         ->name('login');
 
-    Route::get('/login/{id}', [UserAuthController::class, 'loginUsingLink'])
-        ->name('login.link');
-
     Route::get('/otp/mfa/{method}', [UserAuthController::class, 'verifyMFAOTPCreate'])
         ->name('otp.mfa.create');
 
@@ -61,6 +58,9 @@ Route::middleware(['web', TenantMiddleware::class])->group(function () {
 
         Route::post('/login/link', [UserAuthController::class, 'sendLoginLink'])
             ->name('login.link.send');
+
+        Route::match(['get', 'post'], '/login-link/verify', [UserAuthController::class, 'verifyLoginLink'])
+            ->name('login.link.verify');
 
         Route::post('/otp/mfa', [UserAuthController::class, 'verifyMFAOTPStore'])
             ->name('otp.mfa.store');
@@ -204,7 +204,8 @@ Route::prefix('/neev')->middleware(TenantMiddleware::class)->group(function () {
         Route::get('/oauth/{service}/redirect', [OAuthApiController::class, 'redirectUrl']);
         Route::post('/oauth/{service}/callback', [OAuthApiController::class, 'callback']);
     });
-    Route::get('/loginUsingLink', [UserAuthApiController::class, 'loginUsingLink'])->name('loginUsingLink');
+    Route::match(['get', 'post'], '/loginUsingLink', [UserAuthApiController::class, 'loginUsingLink'])->name('loginUsingLink');
+    Route::match(['get', 'post'], '/loginUsingLink/validate', [UserAuthApiController::class, 'validateLoginLink'])->name('neev.loginUsingLink.validate');
     Route::post('/resetPassword', [UserAuthApiController::class, 'resetPassword'])->middleware('throttle:10,1')->name('neev.resetPassword');
     Route::post('/email/change/verify', [UserAuthApiController::class, 'verifyEmailChange'])->middleware('throttle:10,1')->name('neev.email.change.verify');
 

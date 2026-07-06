@@ -78,7 +78,7 @@ return [
     // Secret key for signing MFA JWTs. Falls back to APP_KEY if not set.
     'jwt_secret' => env('NEEV_JWT_SECRET'),
 
-    // Minutes before magic links, password reset links expire.
+    // Minutes before password reset links expire.
     'url_expiry_time' => 60,
 
     // Minutes before email OTP codes expire.
@@ -86,6 +86,54 @@ return [
 
     // Days before password expires. 0 = disabled.
     'password_expiry_days' => 90,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Magic Link (Passwordless) Authentication
+    |--------------------------------------------------------------------------
+    |
+    | Neev ships two magic-link drivers:
+    |   - 'signed_url' : Laravel temporary signed URLs (stateless, legacy default).
+    |                    Links remain valid until they expire and are replayable.
+    |   - 'stateful'   : Server-side, single-use, revocable opaque tokens with
+    |                    optional browser binding and confirmation-required flows.
+    |
+    | Neev is UI-agnostic: it manages token lifecycle, validation and security
+    | policy only. Host applications own all routing, deep-link and UI concerns.
+    |
+    */
+
+    'magic_link' => [
+        // Minutes before a magic link expires. Recommended: 5-15 minutes.
+        'expires_in' => env('NEEV_MAGIC_LINK_EXPIRY', 10),
+
+        'bind_to_browser' => false,
+
+        'require_confirmation' => false,
+
+        // Channel-aware link generation. Neev builds the URL; it never renders
+        // UI or handles deep-link routing — the host app does.
+        //
+        // Add your own channels here (e.g. 'desktop') — no code changes needed.
+        // A channel with a 'scheme'/'universal_link' is built as a deep link;
+        // otherwise it is a web URL built from 'base_url' + 'path'.
+        'channels' => [
+            'web' => [
+                'base_url' => env('APP_URL'),
+                // Path appended to base_url for the redemption link.
+                'path' => '/login-link',
+            ],
+            'mobile' => [
+                // Custom URL scheme for native deep links (e.g. "myapp://login").
+                'scheme' => env('NEEV_MOBILE_SCHEME'),
+                // HTTPS universal/app link fallback.
+                'universal_link' => env('NEEV_MOBILE_UNIVERSAL_LINK'),
+            ],
+            // 'desktop' => [
+            //     'scheme' => env('NEEV_DESKTOP_SCHEME'), // e.g. "myapp-desktop://login"
+            // ],
+        ],
+    ],
 
     /*
     |--------------------------------------------------------------------------

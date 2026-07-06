@@ -15,6 +15,8 @@ use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOutEvent;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Mail\LoginUsingLink;
+use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
+use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\Models\Domain;
@@ -411,7 +413,7 @@ class UserAuthApiController extends Controller
         }
     }
 
-    public function sendLoginLink(Request $request)
+    public function sendLoginLink(Request $request, MagicLinkManager $magicLink)
     {
         $user = User::findByEmail($request->email);
         if (!$user) {
@@ -420,39 +422,82 @@ class UserAuthApiController extends Controller
             ], 401);
         }
 
-        $expiryMinutes = config('neev.url_expiry_time', 60);
-        $signedUrl = URL::temporarySignedRoute(
-            'loginUsingLink',
-            now()->addMinutes($expiryMinutes),
-            ['id' => $user->id]
-        );
+        $channel = (string) $request->input('channel', 'web');
 
-        $query = parse_url($signedUrl, PHP_URL_QUERY);
-        $frontendUrl = config('app.url');
-        $url = "{$frontendUrl}/login-link?{$query}";
+        $link = $magicLink->generate($user, $channel, ['request' => $request]);
 
-        Mail::to($user->email)->send(new LoginUsingLink($url, $expiryMinutes));
+        Mail::to($user->email)->send(new LoginUsingLink($link['url'], $link['expires_in']));
 
         return response()->json([
             'message' => 'Login link has been sent.',
         ]);
     }
 
-    public function loginUsingLink(Request $request, GeoIP $geoIP)
+    /**
+     * Redeem a magic link (login + confirmation share this single route).
+     *
+     * When confirmation is required, a GET only validates the link (scanner-safe)
+     * and returns a "confirmation_required" state; a POST is the user's explicit
+     * confirmation, which consumes the link. Otherwise the link is consumed and
+     * a login token is issued.
+     */
+    public function loginUsingLink(Request $request, GeoIP $geoIP, MagicLinkManager $magicLink)
     {
-        if (! $request->hasValidSignature()) {
+        if (config('neev.magic_link.require_confirmation', false) && $request->isMethod('get')) {
+            $result = $magicLink->validate($request);
+        } else {
+            $result = $magicLink->consume($request);
+        }
+
+        return $this->respondToMagicLink($request, $geoIP, $result);
+    }
+
+    /**
+     * Validate a magic link WITHOUT consuming it.
+     *
+     * Exposes channel metadata and the "pending confirmation" state so host
+     * applications can build confirmation UX. Never authenticates.
+     */
+    public function validateLoginLink(Request $request, MagicLinkManager $magicLink)
+    {
+        $result = $magicLink->validate($request);
+
+        return response()->json([
+            'status' => $result->status,
+            'valid' => $result->isValid(),
+            'requires_confirmation' => $result->needsConfirmation(),
+            'channel' => $result->channel,
+            'email_verified' => $result->user?->hasVerifiedEmail(),
+        ]);
+    }
+
+    /**
+     * Build the JSON response for a magic-link redemption result.
+     */
+    protected function respondToMagicLink(Request $request, GeoIP $geoIP, MagicLinkResult $result)
+    {
+        if ($result->needsConfirmation()) {
+            return response()->json([
+                'auth_state' => 'confirmation_required',
+                'channel' => $result->channel,
+                'message' => 'Please confirm this login to continue.',
+            ]);
+        }
+
+        if (!$result->isValid()) {
+            // Preserve the historical deactivated-account behaviour (422).
+            if ($result->status === MagicLinkResult::INACTIVE_USER) {
+                throw ValidationException::withMessages([
+                    'email' => 'Your account is deactivated, please contact your admin to activate your account.',
+                ]);
+            }
+
             return response()->json([
                 'message' => 'Invalid or expired verification link.',
             ], 403);
         }
 
-        $user = User::model()->find($request->id);
-        if (!$user || !$user->hasVerifiedEmail()) {
-            return response()->json([
-                'message' => 'Invalid or expired verification link.',
-            ], 403);
-        }
-
+        $user = $result->user;
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
         $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::MagicAuth, $expiryMinutes);
 
