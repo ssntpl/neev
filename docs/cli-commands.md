@@ -78,6 +78,21 @@ Retention is controlled by `config('neev.mfa_pending_setup_retention_days')` (de
 $schedule->command('neev:clean-pending-mfa-setups')->daily();
 ```
 
+### `neev:clean-magic-links`
+
+Delete expired magic-link tokens. (Consumed and superseded tokens are already
+deleted on use, so only expired rows can linger.)
+
+```bash
+php artisan neev:clean-magic-links
+```
+
+Schedule it alongside the other maintenance commands:
+
+```php
+$schedule->command('neev:clean-magic-links')->daily();
+```
+
 ---
 
 ## Tenant / Team Provisioning

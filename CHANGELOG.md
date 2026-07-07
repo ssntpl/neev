@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **BREAKING: Magic-link authentication rebuilt as stateful, single-use tokens** — replaces the stateless signed-URL flow. Opaque, high-entropy tokens are stored **hashed** (SHA-256) in the new `magic_link_tokens` table; only the plain token ever leaves the app (in the emailed URL).
+  - **Single-use by deletion** — the token row is deleted on successful redemption, so a link can never be replayed. Generating a new link **invalidates the user's previous link** for that channel.
+  - **Config-driven, extensible channels** — new `magic_link.channels` config (`web`, `mobile`, and any host-defined channel such as `desktop`, added by config with no code change). A channel with a `scheme`/`universal_link` is built as a deep link; otherwise `base_url` + `path`. Send accepts a `channel` parameter.
+  - **Optional browser/device binding** (`magic_link.bind_to_browser`) and **confirmation-required flow** (`magic_link.require_confirmation`) to defeat email-scanner auto-consumption.
+  - **Single route for login + confirmation** — `GET|POST /neev/loginUsingLink` (API) and `GET|POST /login-link/verify` (Blade): GET opens the link (validate-only when confirmation is required), POST is the explicit confirm. New `GET|POST /neev/loginUsingLink/validate` checks a token without consuming it. Redemption routes are now rate-limited (`throttle:10,1`).
+  - **New `magic_link` config block** — single engine (no driver switch): `expires_in` (default 10 min), `bind_to_browser`, `require_confirmation`, `channels`. The legacy `url_expiry_time` no longer governs magic links (still used by password-reset / email-verification links).
+  - **API surface** — `MagicLinkManager` service (inject it; no facade). `forWeb()`/`forMobile()`/`generate()` return an array (`url`, `token`, `expires_in`, `channel`, `model`); `validate()`/`consume()` return a `MagicLinkResult` whose status is a string constant (`MagicLinkResult::VALID`, `EXPIRED`, `INVALID`, `BINDING_MISMATCH`, `PENDING_CONFIRMATION`, `INACTIVE_USER`). Token mechanics (`generateToken`/`hashToken`/`findByToken`) live on the `MagicLinkToken` model.
+  - **Removed the legacy web route** `GET /login/{id}` (`login.link`); the Blade flow now redeems at `GET|POST /login-link/verify` (`login.link.verify`).
+  - Note: a valid magic link still completes login **without** enforcing MFA (unchanged, by design).
+
+### Added
+- **Lifecycle events** — `MagicLinkGenerated`, `MagicLinkConsumed`, `MagicLinkRejected` for auditing, notifications, and abuse detection.
+- **`neev:clean-magic-links` command** — deletes expired magic-link tokens; schedule alongside `neev:clean-login-attempts`.
+
 ## [0.5.0] - 2026-07-02
 
 ### Added

@@ -41,8 +41,12 @@ These routes are accessible without authentication.
 
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| POST | `/login/link` | `login.link.send` | Send login link to email |
-| GET | `/login/{id}` | `login.link` | Login via magic link |
+| POST | `/login/link` | `login.link.send` | Send a single-use login link to email |
+| GET / POST | `/login-link/verify` | `login.link.verify` | Redeem the link (GET opens; POST confirms) |
+
+The link is single-use and redeemed via `token`. When
+`magic_link.require_confirmation` is enabled, the `GET` shows a confirmation page
+and the user's `POST` completes the login (see [authentication.md](./authentication.md#magic-link-authentication)).
 
 ---
 

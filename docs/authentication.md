@@ -165,13 +165,21 @@ Enforcement is opt-in: apply the `neev:password-not-expired` middleware alias (`
 
 Passwordless login via secure email links. Always available — no config toggle.
 
+Magic links are **stateful and single-use**: an opaque, high-entropy token is
+stored **hashed** in the `magic_link_tokens` table (only the plain token ever
+leaves the app, inside the emailed URL). On successful use the row is **deleted**,
+so a link can never be replayed, and issuing a new link **invalidates the user's
+previous link** for that channel.
+
+> A valid magic link completes login **without** enforcing MFA, even if the user
+> has MFA enabled (by design — same posture as OAuth login). See [security.md](./security.md).
+
 ### Flow
 
-1. User enters email on login page
-2. Clicks "Send Login Link"
-3. Receives email with secure link
-4. Clicks link to authenticate
-5. Automatically logged in
+1. User enters email and requests a link (`POST /neev/sendLoginLink`)
+2. Receives an email with a secure link containing an opaque `token`
+3. Opens the link → the token is validated and consumed
+4. Automatically logged in (web: session; API: a login token)
 
 ### API Example
 
@@ -180,22 +188,55 @@ Passwordless login via secure email links. Always available — no config toggle
 ```bash
 curl -X POST https://yourapp.com/neev/sendLoginLink \
   -H "Content-Type: application/json" \
-  -d '{"email": "john@example.com"}'
+  -d '{"email": "john@example.com", "channel": "web"}'
 ```
 
 **Use Link:**
 
 ```bash
-curl -X GET "https://yourapp.com/neev/loginUsingLink?id=1&signature=abc123&expires=1234567890"
+curl -X GET "https://yourapp.com/neev/loginUsingLink?token=THE_OPAQUE_TOKEN"
 ```
 
-### Link Expiry
+Login and the (optional) confirmation step share one route: `GET` opens the link,
+`POST` is the explicit confirm. `GET|POST /neev/loginUsingLink/validate` checks a
+token without consuming it. Redemption is rate-limited (`throttle:10,1`).
 
-Configure in `config/neev.php`:
+### Channels
+
+`sendLoginLink` accepts a `channel` (default `web`). Channels are config-driven —
+add your own (e.g. `desktop`) under `magic_link.channels` with no code change. A
+channel with a `scheme`/`universal_link` builds a deep link; otherwise a web URL.
+
+### Configuration & options
+
+Configured under `magic_link` in `config/neev.php`:
 
 ```php
-'url_expiry_time' => 60,  // Minutes
+'magic_link' => [
+    'expires_in' => 10,              // minutes a link stays valid
+    'bind_to_browser' => false,      // restrict redemption to the originating browser/device
+    'require_confirmation' => false, // require an explicit confirm step (defeats email scanners)
+    'channels' => [ /* web, mobile, ... */ ],
+],
 ```
+
+See [configuration.md](./configuration.md#magic-link) for the full block.
+
+### Calling it in code
+
+Inject the `MagicLinkManager` service (there is no facade):
+
+```php
+use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
+
+$link = $magicLink->forWeb($user);   // ['url', 'token', 'expires_in', 'channel', 'model']
+$result = $magicLink->consume($request);
+if ($result->isValid()) { /* $result->user is authenticated */ }
+```
+
+Lifecycle events `MagicLinkGenerated`, `MagicLinkConsumed`, and `MagicLinkRejected`
+are fired for auditing/notifications. Prune expired tokens with
+`php artisan neev:clean-magic-links`.
 
 ---
 

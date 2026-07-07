@@ -198,7 +198,52 @@ Secret key for signing MFA JWTs. Falls back to `APP_KEY` if not set.
 'url_expiry_time' => 60,
 ```
 
-Minutes before magic links and password reset links expire.
+Minutes before password-reset and email-verification links expire. (Magic links
+use their own `magic_link.expires_in` — see [Magic Link](#magic-link) below.)
+
+### Magic Link
+
+Stateful, single-use passwordless login. See
+[authentication.md](./authentication.md#magic-link-authentication) for the flow.
+
+```php
+'magic_link' => [
+    // Minutes a link stays valid (recommended 5–15).
+    'expires_in' => env('NEEV_MAGIC_LINK_EXPIRY', 10),
+
+    // Restrict redemption to the browser/device that requested it.
+    'bind_to_browser' => false,
+
+    // Require an explicit confirm step before consuming (defeats email scanners).
+    'require_confirmation' => false,
+
+    // Channel-aware URL building. Add your own channels (e.g. 'desktop') here
+    // with no code change. A channel with a 'scheme'/'universal_link' is built
+    // as a deep link; otherwise a web URL from 'base_url' + 'path'.
+    'channels' => [
+        'web' => [
+            'base_url' => env('APP_URL'),   // point at your frontend for a decoupled SPA
+            'path' => '/login-link',
+        ],
+        'mobile' => [
+            'scheme' => env('NEEV_MOBILE_SCHEME'),           // e.g. myapp://login
+            'universal_link' => env('NEEV_MOBILE_UNIVERSAL_LINK'),
+        ],
+    ],
+],
+```
+
+| Key | Default | Purpose |
+|---|---|---|
+| `expires_in` | `10` | Minutes a link is valid. |
+| `bind_to_browser` | `false` | Only redeem from the originating browser/device. |
+| `require_confirmation` | `false` | Add an explicit confirm step. |
+| `channels` | web + mobile | Per-channel URL building (extensible). |
+
+Notes:
+- Tokens are single-use (deleted on redemption); a new link invalidates the previous one.
+- A magic link does **not** enforce MFA (by design).
+- Prune expired rows with `php artisan neev:clean-magic-links`.
 
 ### OTP Expiry
 
