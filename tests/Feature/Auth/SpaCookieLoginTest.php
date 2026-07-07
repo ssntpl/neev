@@ -3,8 +3,8 @@
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\URL;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
 use Ssntpl\Neev\Services\SpaCsrfToken;
 use Ssntpl\Neev\Tests\TestCase;
 
@@ -85,9 +85,10 @@ class SpaCookieLoginTest extends TestCase
     public function test_spa_magic_link_login_sets_cookie(): void
     {
         $user = User::factory()->create(['email_verified_at' => now()]);
-        $url = URL::temporarySignedRoute('loginUsingLink', now()->addMinutes(60), ['id' => $user->id]);
+        $link = app(MagicLinkManager::class)->forWeb($user);
 
-        $response = $this->withHeader('Origin', 'https://app.example.com')->getJson($url);
+        $response = $this->withHeader('Origin', 'https://app.example.com')
+            ->getJson('/neev/loginUsingLink?token=' . $link['token']);
 
         $response->assertOk();
         $response->assertJsonMissingPath('token');
