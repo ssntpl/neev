@@ -1,6 +1,6 @@
 # API Reference
 
-Complete reference for all Neev API endpoints. All API routes are prefixed with `/neev`.
+Complete reference for all Neev API endpoints. All API routes are prefixed with the configurable route prefix — `route_prefix` in `config/neev.php` (env `NEEV_ROUTE_PREFIX`), default `neev`. This documentation uses the default `/neev` prefix throughout.
 
 ---
 
@@ -12,15 +12,25 @@ All authenticated endpoints require a Bearer token in the Authorization header:
 Authorization: Bearer {token_id}|{token}
 ```
 
-Or as a query parameter:
+The header is the only accepted transport — query-string and request-body tokens were removed in v0.4.4 (tokens in URLs leak via logs, referrers, and browser history).
 
-```http
-GET /neev/users?token={token_id}|{token}
-```
+**SPA cookie mode:** same-origin SPAs whose host is listed in `config('neev.spa.stateful')` may instead carry the token in an HttpOnly cookie — the `EnsureSpaRequestsAreStateful` middleware promotes it to the Authorization header. State-changing requests (POST/PUT/PATCH/DELETE) from stateful origins must echo the CSRF cookie in the `X-XSRF-TOKEN` header or they are rejected with **419**. See [SPA Cookie Mode](./spa-cookie-mode.md).
 
 ---
 
 ## Authentication Endpoints
+
+### CSRF Cookie (SPA cookie mode)
+
+Issues the signed double-submit CSRF cookie. SPAs call this once on app load (and again after a 419).
+
+```http
+GET /neev/csrf-cookie
+```
+
+**Response:** `204 No Content` with an `XSRF-TOKEN` cookie (not HttpOnly — the SPA reads it and echoes the value in `X-XSRF-TOKEN`). Throttled to 60 requests/minute.
+
+---
 
 ### Register
 
@@ -177,7 +187,7 @@ Authorization: Bearer {token}
 
 ### Logout All Sessions
 
-Logout from all devices.
+Logout from all other devices — the current session survives.
 
 ```http
 POST /neev/logoutAll
@@ -192,7 +202,7 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "message": "Logged out successfully."
+    "message": "Logged out from all other devices successfully."
 }
 ```
 
@@ -388,11 +398,54 @@ Authorization: Bearer {token}
 }
 ```
 
+The authenticator method is created in a **pending** state and is not enforced at login until activated via [Verify MFA Setup](#verify-mfa-setup). The email method is created active immediately.
+
 **Response (email):**
 
 ```json
 {
     "message": "Email Configured."
+}
+```
+
+---
+
+### Verify MFA Setup
+
+Activate a pending authenticator setup by verifying a TOTP code. On success the method becomes active (and preferred, if no other active method is preferred).
+
+```http
+POST /neev/mfa/setup/verify
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Request Body:**
+
+```json
+{
+    "auth_method": "authenticator",
+    "otp": "123456"
+}
+```
+
+**Response:**
+
+```json
+{
+    "message": "Method has been verified and enabled.",
+    "method": "authenticator"
+}
+```
+
+**Response (wrong code or no pending setup, 400):**
+
+```json
+{
+    "message": "Code verification failed."
 }
 ```
 
@@ -809,6 +862,36 @@ Authorization: Bearer {token}
 
 ---
 
+### Revoke a Session
+
+```http
+DELETE /neev/sessions/{id}
+```
+
+Deletes one of the user's login sessions (the underlying login token), immediately invalidating it. The current session cannot be revoked this way — use `POST /neev/logout` instead.
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Response:**
+
+```json
+{
+    "message": "Session has been revoked."
+}
+```
+
+**Errors:**
+
+| Status | Condition |
+|--------|-----------|
+| 400 | `{id}` is the current session |
+| 404 | Session does not exist or belongs to another user |
+
+---
+
 ### Get Login Attempts
 
 ```http
@@ -999,6 +1082,38 @@ Authorization: Bearer {token}
             }
         }
     ]
+}
+```
+
+---
+
+### Set Default Team
+
+Set the user's default team (the team to land on after login).
+
+```http
+PUT /neev/teams/default
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Request Body:**
+
+```json
+{
+    "team_id": 1
+}
+```
+
+**Response:**
+
+```json
+{
+    "message": "Default team updated successfully.",
+    "data": {...}
 }
 ```
 

@@ -11,10 +11,10 @@ Neev supports multiple authentication methods:
 | Method | Description | Configuration |
 |--------|-------------|---------------|
 | Password | Traditional email/password login | Always available |
-| Magic Link | Passwordless via email | `magicauth` config |
+| Magic Link | Passwordless via email | Always available |
 | Passkey/WebAuthn | Biometric or hardware key | Always available |
 | OAuth | Social login (Google, GitHub, etc.) | `oauth` config |
-| Tenant SSO | Enterprise SSO (Entra ID, Okta) | `tenant_auth` config |
+| Tenant SSO | Enterprise SSO (Entra ID, Okta) | Per-tenant/per-team auth settings in DB |
 
 ---
 
@@ -25,8 +25,8 @@ Neev supports multiple authentication methods:
 1. User submits registration form with name, email, password
 2. System validates password against rules
 3. User account is created with email (unverified)
-4. If teams enabled, personal team is created
-5. Verification email is sent (if enabled)
+4. If teams enabled, personal team is created (skipped for invitation-link signups and verified federated domains)
+5. Verification email is sent
 6. User is logged in and redirected
 
 **API Example:**
@@ -101,7 +101,7 @@ curl -X POST https://yourapp.com/neev/login \
 }
 ```
 
-When MFA is required, the returned token is a short-lived JWT (type `mfa`). Use it to verify MFA:
+When MFA is required, the returned token is a short-lived JWT (type `mfa`, expiry set by `mfa_jwt_expiry_minutes`, default 30). Send it as a Bearer token to the verification endpoint (protected by the `neev:login` middleware group, which authenticates the MFA JWT):
 
 ```bash
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
@@ -113,7 +113,7 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
   }'
 ```
 
-`expires_in` is returned in minutes.
+On success, the endpoint returns `auth_state: "authenticated"` with a regular access token in the `{id}|{plaintext}` format. `expires_in` is returned in minutes. Accepted `auth_method` values are the user's configured MFA methods (`authenticator`, `email`) or `recovery` for recovery codes.
 
 ---
 
@@ -154,24 +154,16 @@ Configure password aging:
 
 ```php
 // config/neev.php
-'password_soft_expiry_days' => 30,  // Warning period before expiry
-'password_hard_expiry_days' => 90,  // Forced password change
+'password_expiry_days' => 90,  // Days before password expires. 0 = disabled.
 ```
 
-> **Note:** These configuration values are available for your application to read, but Neev does not currently ship enforcement middleware. See the [Security Guide](./security.md#password-expiry) for a recommended implementation pattern.
+Enforcement is opt-in: apply the `neev:password-not-expired` middleware alias (`EnsurePasswordNotExpired`) to routes that should reject users with expired passwords. Helpers are available on the user: `passwordExpiresAt()`, `isPasswordExpired()`, `isPasswordExpiringSoon()`.
 
 ---
 
 ## Magic Link Authentication
 
-Passwordless login via secure email links.
-
-### Enable Magic Links
-
-```php
-// config/neev.php
-'magicauth' => true,
-```
+Passwordless login via secure email links. Always available — no config toggle.
 
 ### Flow
 
@@ -371,12 +363,24 @@ Authenticate via third-party providers.
 ```env
 GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
-GOOGLE_REDIRECT_URI="${APP_URL}/oauth/google/callback"
+GOOGLE_REDIRECT_URI="${APP_URL}/neev/oauth/google/callback"
 ```
 
-### Security Note
+### Security Warning: OAuth Bypasses MFA and Password Policies
 
-OAuth and Social login bypasses Neev's MFA requirements and password policies. Users authenticated via OAuth skip the MFA verification step and are not subject to password expiry or complexity rules. If your application requires MFA for all users, consider implementing a post-OAuth MFA check in your application logic, or restrict OAuth to low-sensitivity accounts.
+> **Warning — OAuth is a complete authentication path that skips the MFA gate.**
+>
+> Password login checks the user's enrolled MFA methods and, when any are active, withholds the session/token until a second factor is verified (`mfa_required` state with a temporary JWT on the API; redirect to the OTP page on the web). The OAuth callback does **not** perform this check: once the provider returns a verified email that matches an account, the user is logged in (web) or issued a full access token (API) immediately — even if that user has TOTP or email MFA enabled. A compromised Google/GitHub/Microsoft/Apple account therefore grants access without the second factor.
+>
+> Password policies are also inapplicable to OAuth-created accounts: they are created **without a password**, so complexity rules, password history, and password expiry never apply to them, and their email is marked verified automatically (it was verified by the provider).
+
+**What this means for enterprise policy:** if your compliance posture requires MFA for all users (or organization-controlled credentials), enabling app-wide OAuth providers undermines that guarantee — every enabled provider is an alternate front door that skips your MFA and password controls.
+
+**Mitigations:**
+
+- **Limit or empty the `oauth` providers list** in `config/neev.php`. Providers not in the list 404 on both redirect and callback, so this fully disables the path.
+- **Use tenant SSO instead for organizations that need enforced IdP login.** Tenant/team SSO is database-configured per organization, and the `neev:ensure-sso` middleware rejects (API) or redirects (web) any authenticated session that was not established via SSO — including sessions created through app-wide OAuth. See [Multi-Tenancy → Enterprise SSO](./multi-tenancy.md#enterprise-sso).
+- **Add an application-level step-up check** after login if MFA must be universal regardless of login method (Neev does not provide this out of the box).
 
 ### Flow
 
@@ -390,28 +394,16 @@ OAuth and Social login bypasses Neev's MFA requirements and password policies. U
 
 ### URLs
 
-- **Redirect:** `GET /oauth/{provider}`
-- **Callback:** `GET /oauth/{provider}/callback`
+- **Redirect:** `GET /neev/oauth/{provider}`
+- **Callback:** `GET /neev/oauth/{provider}/callback`
+
+The `/neev` prefix is configurable via `route_prefix` in `config/neev.php` (env `NEEV_ROUTE_PREFIX`). Changing it also changes the callback URLs registered with your OAuth providers.
 
 ---
 
 ## Tenant SSO (Enterprise)
 
-Per-tenant identity provider configuration.
-
-### Enable Tenant SSO
-
-```php
-// config/neev.php
-'tenant_isolation' => true,
-'tenant_auth' => true,
-'tenant_auth_options' => [
-    'default_method' => 'password',
-    'sso_providers' => ['entra', 'google', 'okta'],
-    'auto_provision' => true,
-    'auto_provision_role' => 'member',
-],
-```
+Per-tenant identity provider configuration. There is no config toggle — SSO settings live in the database (`tenant_auth_settings` for tenants, `team_auth_settings` for teams) and default to password auth when no row exists.
 
 ### Supported Providers
 
@@ -421,17 +413,24 @@ Per-tenant identity provider configuration.
 
 ### Tenant Configuration
 
-Configure SSO for a tenant via API or admin interface:
+Configure SSO for a tenant (or team) via CLI:
+
+```bash
+php artisan neev:auth:configure --tenant=acme --method=sso \
+    --sso-provider=entra --sso-client-id=... --sso-client-secret=... --sso-tenant-id=...
+```
+
+Or in code:
 
 ```php
-$team->authSettings()->create([
+$tenant->authSettings()->create([
     'auth_method' => 'sso',
     'sso_provider' => 'entra',
     'sso_client_id' => 'your-client-id',
-    'sso_client_secret' => encrypt('your-client-secret'),
+    'sso_client_secret' => 'your-client-secret',  // encrypted automatically via cast
     'sso_tenant_id' => 'your-azure-tenant-id',
     'auto_provision' => true,
-    'default_role' => 'member',
+    'auto_provision_role' => 'member',
 ]);
 ```
 
@@ -448,7 +447,7 @@ $team->authSettings()->create([
 ### API Endpoint
 
 ```http
-GET /api/tenant/auth
+GET /neev/tenant/auth
 ```
 
 Returns tenant auth configuration:
@@ -458,7 +457,7 @@ Returns tenant auth configuration:
   "auth_method": "sso",
   "sso_enabled": true,
   "sso_provider": "entra",
-  "sso_redirect_url": "https://acme.yourapp.com/sso/redirect"
+  "sso_redirect_url": "https://acme.yourapp.com/neev/sso/redirect"
 }
 ```
 
@@ -466,20 +465,23 @@ Returns tenant auth configuration:
 
 ## Email Verification
 
-### Enable Verification
+### Enforcing Verification
+
+Verification emails are always sent on registration. Enforcement is opt-in: apply the `neev:verified-email` middleware alias (`EnsureEmailIsVerified`) to routes that should require a verified email — there is no config toggle.
 
 ```php
-// config/neev.php
-'email_verified' => true,
+Route::middleware(['neev:api', 'neev:verified-email'])->group(function () {
+    // Routes that require a verified email
+});
 ```
 
 ### Flow
 
-1. User registers or adds new email
+1. User registers or changes email
 2. Verification email is sent automatically
 3. User clicks verification link
 4. Email is marked as verified
-5. User can access the application
+5. User can access routes protected by `neev:verified-email`
 
 ### Resend Verification
 
@@ -542,7 +544,9 @@ POST /neev/logout
 Authorization: Bearer {token}
 ```
 
-### Logout All Sessions
+### Logout All Other Sessions
+
+Deletes all of the user's login tokens except the current one:
 
 ```http
 POST /neev/logoutAll
@@ -584,7 +588,7 @@ For each login attempt, Neev records:
 |----------|-------|-------------|
 | `LoginAttempt::Password` | `password` | Password authentication |
 | `LoginAttempt::Passkey` | `passkey` | WebAuthn/passkey |
-| `LoginAttempt::MagicAuth` | `magic_auth` | Magic link |
+| `LoginAttempt::MagicAuth` | `magic auth` | Magic link |
 | `LoginAttempt::OAuth` | `oauth` | Social login |
 | `LoginAttempt::SSO` | `sso` | Tenant SSO |
 
@@ -603,39 +607,43 @@ Authorization: Bearer {token}
 
 ```php
 // config/neev.php
-'login_soft_attempts' => 5,   // Delays start after this
-'login_hard_attempts' => 20,  // Lockout after this
-'login_block_minutes' => 15,  // Lockout duration (recommended: 15+ for production)
+'login_throttle' => [
+    'delay_after' => 3,          // Failed attempts before progressive delay kicks in
+    'max_delay_seconds' => 300,  // Maximum delay (exponential backoff caps here)
+],
 ```
 
 ### Behavior
 
-1. **Attempts 1-5:** Normal login speed
-2. **Attempts 6-19:** Progressive delays between attempts (exponential backoff)
-3. **Attempts 20+:** Account locked for configured duration (default 15 minutes)
+Progressive delay instead of a hard lockout:
+
+1. **Attempts 1-2:** Normal login speed
+2. **Attempt 3 onwards:** Exponential backoff between attempts (`2^(attempts - delay_after)` seconds), capped at `max_delay_seconds` (default 5 minutes)
+
+Delays are keyed per email + IP. A successful login clears the counter.
 
 ### Storage
 
 ```php
 // config/neev.php
-'record_failed_login_attempts' => false,  // Use cache
-'record_failed_login_attempts' => true,   // Use database
+'log_failed_logins' => false,  // Failed attempts tracked in cache only
+'log_failed_logins' => true,   // Also record failed attempts in the database
 ```
 
 ---
 
 ## Events
 
-### LoggedInEvent
+### LoggedIn
 
 Fired when a user successfully logs in.
 
 ```php
-use Ssntpl\Neev\Events\LoggedInEvent;
+use Ssntpl\Neev\Events\LoggedIn;
 
 class LogSuccessfulLogin
 {
-    public function handle(LoggedInEvent $event)
+    public function handle(LoggedIn $event)
     {
         $user = $event->user;
         // Log activity, send notification, etc.
@@ -643,16 +651,16 @@ class LogSuccessfulLogin
 }
 ```
 
-### LoggedOutEvent
+### LoggedOut
 
 Fired when a user logs out.
 
 ```php
-use Ssntpl\Neev\Events\LoggedOutEvent;
+use Ssntpl\Neev\Events\LoggedOut;
 
 class LogSuccessfulLogout
 {
-    public function handle(LoggedOutEvent $event)
+    public function handle(LoggedOut $event)
     {
         $user = $event->user;
         // Cleanup, audit logging, etc.
@@ -666,12 +674,12 @@ class LogSuccessfulLogout
 
 1. **Enable MFA** for all users, especially administrators
 2. **Use HTTPS** in production
-3. **Implement password expiry middleware** if needed for compliance (Neev provides config values but not enforcement — see [Security Guide](./security.md#password-expiry))
-4. **Enable email verification** to prevent fake accounts
+3. **Apply `neev:password-not-expired` middleware** if password aging is a compliance requirement
+4. **Apply `neev:verified-email` middleware** to prevent unverified accounts from accessing sensitive routes
 5. **Monitor login attempts** for suspicious activity
 6. **Use session database** driver for logout-all-devices functionality
 7. **Keep GeoIP database** updated for accurate location tracking
-8. **Be aware that OAuth bypasses MFA** — consider additional checks for OAuth users if MFA is a compliance requirement
+8. **Be aware that OAuth bypasses MFA and password policies** — see [the OAuth security warning](#security-warning-oauth-bypasses-mfa-and-password-policies) for mitigations
 
 ---
 

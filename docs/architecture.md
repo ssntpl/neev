@@ -50,7 +50,9 @@ Neev does **not** enforce business-domain ownership or product-level policies.
 
 Identity strategy defines how user identities exist in the system.
 
-Selected at install time and stored in configuration.
+Selected at install time via the `tenant` boolean in `config/neev.php` — `false` selects shared identity, `true` selects isolated identity.
+
+> For a practical decision matrix covering all four `tenant` × `team` combinations (email uniqueness, resolver behaviour, typical product shapes, and a four-question checklist), see [Choosing Your Mode](./multi-tenancy.md#choosing-your-mode).
 
 ---
 
@@ -334,8 +336,8 @@ Examples:
 ```
 BelongsToTenant
 BelongsToTeam
-ScopedByCurrentTenant
-ScopedByCurrentTeam
+TenantScope
+TeamScope
 ```
 
 These are optional.
@@ -382,9 +384,9 @@ Context resolved via middleware.
 Flow:
 
 ```
-ResolveTenant
-→ ResolveTeam
-→ BindContext
+TenantMiddleware
+→ ResolveTeamMiddleware
+→ BindContextMiddleware
 ```
 
 Context stored in container:
@@ -567,4 +569,4 @@ Not a forced multi-tenancy or business ownership system.
 - [Architecture Internals](./architecture-internals.md) -- implementation patterns, interfaces, and coding standards
 - [Multi-Tenancy](./multi-tenancy.md) -- practical setup guide for tenant isolation and SSO
 - [Teams](./teams.md) -- team management, invitations, and domain federation
-- [Configuration](./configuration.md) -- all configuration options including identity strategy
+- [Configuration](./configuration.md) -- all configuration options including the `tenant` and `team` toggles

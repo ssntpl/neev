@@ -1,6 +1,6 @@
 # Neev Config Refactor Plan
 
-> **Status: Implemented in v2.0.0.** This document is the design rationale. For upgrade instructions, see the [Migration Guide in CHANGELOG.md](../CHANGELOG.md#migration-guide).
+> **Status: Implemented in v0.4.0.** This document is the design rationale. For the full list of changed/removed keys, see the `[0.4.0]` section of [CHANGELOG.md](../CHANGELOG.md) and the upgrade guide in [UPGRADING.md](../UPGRADING.md).
 
 ## Core Identity (Before → After)
 

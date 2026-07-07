@@ -44,6 +44,26 @@ class UserApiController extends Controller
         return response()->json($res);
     }
 
+    public function verifyMfaSetup(Request $request)
+    {
+        $request->validate([
+            'auth_method' => ['required', 'string'],
+            'otp' => ['required'],
+        ]);
+
+        $user = User::model()->find($request->user()?->id);
+        if (!$user?->verifyMfaSetup($request->auth_method, (string) $request->otp)) {
+            return response()->json([
+                'message' => 'Code verification failed.',
+            ], 400);
+        }
+
+        return response()->json([
+            'message' => 'Method has been verified and enabled.',
+            'method' => $request->auth_method,
+        ]);
+    }
+
     public function deleteMultiFactorAuthentication(Request $request)
     {
         $request->validate([
@@ -51,22 +71,10 @@ class UserApiController extends Controller
         ]);
 
         $user = User::model()->find($request->user()?->id);
-        $auth = $user?->multiFactorAuth($request->auth_method);
-        if (!$auth) {
+        if (!$user?->removeMultiFactorAuth($request->auth_method)) {
             return response()->json([
                 'message' => 'Auth was not deleted.',
             ], 403);
-        }
-
-        if ($auth->preferred && count($user->multiFactorAuths) > 1) {
-            $method = $user->multiFactorAuths()->whereNot('method', $auth->method)->first();
-            $method->preferred = true;
-            $method->save();
-        }
-        $auth->delete();
-
-        if (count($user->multiFactorAuths) <= 1) {
-            $user->recoveryCodes()->delete();
         }
 
         return response()->json([
@@ -137,6 +145,35 @@ class UserApiController extends Controller
 
         return response()->json([
             'data' => $sessions
+        ]);
+    }
+
+    public function deleteSession(Request $request, int $id)
+    {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'message' => 'User not found.',
+            ], 404);
+        }
+
+        if ($id === (int) $request->attributes->get('token_id')) {
+            return response()->json([
+                'message' => 'You cannot revoke your current session. Use logout instead.',
+            ], 400);
+        }
+
+        $session = $user->loginTokens()->find($id);
+        if (!$session) {
+            return response()->json([
+                'message' => 'Session not found.',
+            ], 404);
+        }
+
+        $session->delete();
+
+        return response()->json([
+            'message' => 'Session has been revoked.',
         ]);
     }
 
@@ -287,7 +324,7 @@ class UserApiController extends Controller
                 'message' => 'User not found.',
             ], 404);
         }
-        if (count($user->multiFactorAuths) === 0) {
+        if (count($user->activeMultiFactorAuths) === 0) {
             return response()->json([
                 'message' => 'Enable MFA first.',
             ], 400);
@@ -309,7 +346,7 @@ class UserApiController extends Controller
         $user = User::model()->find($request->user()?->id);
         $auth = $user?->multiFactorAuth($request->auth_method);
 
-        if (!$auth) {
+        if (!$auth || !$auth->isActive()) {
             return response()->json([
                 'message' => 'MFA method not found.',
             ], 400);

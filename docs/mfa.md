@@ -39,9 +39,27 @@ Neev supports multiple MFA methods that provide an extra layer of security beyon
 
 ```php
 // config/neev.php
-'otp_expiry_time' => 15,  // Minutes before OTP expires
-'otp_min' => 100000,      // Minimum OTP value (6 digits)
-'otp_max' => 999999,      // Maximum OTP value (6 digits)
+'otp_expiry_time' => 15,  // Minutes before email OTP codes expire
+'otp_length' => 6,        // OTP length: 4, 6, or 8 digits
+```
+
+### Pending Setup Retention
+
+```php
+// config/neev.php
+'mfa_pending_setup_retention_days' => 2,  // Days before unverified setups are deleted
+```
+
+Authenticator setups that are started but never verified remain in a `pending` state. The `neev:clean-pending-mfa-setups` command deletes pending setups older than this many days — see [CLI Commands](./cli-commands.md).
+
+### MFA JWT Settings
+
+After a password login that requires MFA, the API issues a short-lived JWT used only to complete verification:
+
+```php
+// config/neev.php
+'mfa_jwt_expiry_minutes' => 30,           // Minutes before the MFA JWT expires
+'jwt_secret' => env('NEEV_JWT_SECRET'),   // Signing key; falls back to APP_KEY if not set
 ```
 
 ---
@@ -52,11 +70,15 @@ Time-based One-Time Password using apps like Google Authenticator, Authy, 1Passw
 
 ### Setup Flow
 
+Enabling an authenticator is a two-step flow — the method must be verified before it is enforced:
+
 1. User navigates to Security settings
-2. Clicks "Enable Authenticator"
+2. Clicks "Enable Authenticator" — the method is created in a **pending** state
 3. Scans QR code with authenticator app
-4. Enters verification code
-5. MFA is enabled
+4. Enters a TOTP code to verify the setup
+5. The method becomes **active** and MFA is enabled
+
+While a setup is **pending** it is not an enrolled factor: it is never enforced at login, does not appear in `mfa_options`, cannot be set as the preferred method, and does not count towards recovery-code eligibility. Removing a pending setup is a silent cancel.
 
 ### API: Enable Authenticator
 
@@ -71,6 +93,7 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 
 ```json
 {
+  "status": "Success",
   "qr_code": "<svg xmlns=\"http://www.w3.org/2000/svg\">...</svg>",
   "secret": "JBSWY3DPEHPK3PXPJBSWY3DPEHPK3PXP",
   "method": "authenticator"
@@ -86,6 +109,39 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 </div>
 <p>Or enter manually: {{ $response['secret'] }}</p>
 ```
+
+### API: Verify the Setup
+
+Confirm the user scanned the QR code by verifying a TOTP code. On success the method becomes active (and preferred, if no other active method holds the flag) and the `MfaMethodAdded` event fires:
+
+```bash
+curl -X POST https://yourapp.com/neev/mfa/setup/verify \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "auth_method": "authenticator",
+    "otp": "123456"
+  }'
+```
+
+**Response:**
+
+```json
+{
+  "message": "Method has been verified and enabled.",
+  "method": "authenticator"
+}
+```
+
+A wrong code — or no pending setup for the method — returns a `400`:
+
+```json
+{
+  "message": "Code verification failed."
+}
+```
+
+In the web (Blade) flow, the Verify form on the security page (posts to `otp.mfa.store` with `action=verify`) activates the pending method. Until then, the method list shows a "Pending verification" badge.
 
 ### Verify OTP During Login
 
@@ -129,6 +185,8 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 3. Receives confirmation email with code
 4. MFA is enabled
 
+Unlike the authenticator method, email OTP requires no verification step — the account email is already verified, so the method is created **active** immediately.
+
 ### API: Enable Email OTP
 
 ```bash
@@ -142,19 +200,20 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 
 ```json
 {
+  "status": "Success",
+  "method": "email",
   "message": "Email Configured."
 }
 ```
 
-### Send OTP
+### Sending the OTP
 
-```bash
-curl -X POST https://yourapp.com/neev/email/otp/send \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "john@example.com",
-    "mfa": true
-  }'
+There is no standalone API endpoint to send the MFA email OTP. During API login, when the user's MFA method is `email`, the OTP is generated and emailed automatically as part of the `auth_state: mfa_required` response.
+
+In the web (Blade) flow, users on the MFA verification page can request a resend:
+
+```http
+POST /neev/otp/mfa/send   (route: otp.mfa.send)
 ```
 
 ### Verify OTP
@@ -246,20 +305,22 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 
 1. User enters email and password
 2. Credentials are validated
-3. MFA token is returned instead of full token
+3. A short-lived MFA JWT is returned instead of a full token (and the email OTP is sent automatically if the method is `email`)
 4. User is redirected to MFA verification
 5. User enters TOTP code or email OTP
 6. Full access token is returned
+
+Only **active** methods trigger the MFA challenge — pending setups never gate login, and the verify endpoint rejects codes for pending methods.
 
 ### Web Flow
 
 ```php
 // After successful password verification
-if (count($user->multiFactorAuths) > 0) {
-    session(['email' => $email]);
+if (count($user->activeMultiFactorAuths) > 0) {
+    session(['email' => $user->email]);
     return redirect(route('otp.mfa.create',
-        $user->preferredMultiFactorAuth?->method ??
-        $user->multiFactorAuths()->first()?->method
+        $user->preferredMultiFactorAuth->method ??
+        $user->activeMultiFactorAuths()->first()?->method
     ));
 }
 ```
@@ -273,7 +334,7 @@ curl -X POST https://yourapp.com/neev/login \
   -d '{"email": "john@example.com", "password": "password"}'
 ```
 
-Response includes `auth_state` and `mfa_options`:
+Response includes `auth_state` and `mfa_options` (active methods only):
 
 ```json
 {
@@ -290,6 +351,8 @@ Response includes `auth_state` and `mfa_options`:
 
 **Step 2: Verify MFA**
 
+The `token` from step 1 is a JWT signed with `neev.jwt_secret` (expires after `mfa_jwt_expiry_minutes`, default 30). Send it as the Bearer token to the verify endpoint, which runs under the `neev:login` middleware group (JWT authentication) and is throttled to 5 requests per minute:
+
 ```bash
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
   -H "Authorization: Bearer jwt_mfa_token..." \
@@ -303,6 +366,7 @@ Response with full token:
   "auth_state": "authenticated",
   "token": "1|full_access_token...",
   "expires_in": 1440,
+  "mfa_options": null,
   "email_verified": true
 }
 ```
@@ -316,11 +380,10 @@ Users with multiple MFA methods can set a preferred one.
 ### Set Preferred Method
 
 ```bash
-# Via API (not directly exposed, use web route)
-PUT /account/multiFactorAuth
-Content-Type: application/json
-
-{"method": "authenticator"}
+curl -X PUT https://yourapp.com/neev/mfa/preferred \
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"auth_method": "authenticator"}'
 ```
 
 ### How It Works
@@ -344,8 +407,9 @@ curl -X DELETE https://yourapp.com/neev/mfa/delete \
 
 ### Behavior
 
-- If deleting the preferred method, another method becomes preferred
-- If deleting the last MFA method, recovery codes are also deleted
+- If deleting the preferred method, another active method becomes preferred
+- If deleting the last active MFA method, recovery codes are also deleted
+- Deleting a pending (unverified) setup is a silent cancel — the `MfaMethodRemoved` event only fires for methods that were active
 - Users can re-enable MFA at any time
 
 ---
@@ -366,8 +430,11 @@ class User extends Authenticatable
 ### Available Methods
 
 ```php
-// Get all MFA configurations
+// Get all MFA configurations (including pending setups)
 $user->multiFactorAuths();
+
+// Get only active (verified) MFA configurations
+$user->activeMultiFactorAuths();
 
 // Get specific MFA method
 $user->multiFactorAuth('authenticator');
@@ -375,10 +442,18 @@ $user->multiFactorAuth('authenticator');
 // Get preferred MFA method
 $user->preferredMultiFactorAuth();
 
-// Add MFA method (returns QR code for authenticator)
+// Add MFA method (authenticator starts pending; returns QR code)
 $user->addMultiFactorAuth('authenticator');
 
-// Verify OTP code
+// Verify a pending setup — activates the method
+$user->verifyMfaSetup('authenticator', '123456');
+
+// Programmatic activation escape hatch: skips the OTP proof (caller's
+// responsibility) but keeps the invariants — preferred-flag assignment
+// and the MfaMethodAdded event. For admin provisioning, imports, tests.
+$user->multiFactorAuth('authenticator')->activate();
+
+// Verify OTP code (active methods only)
 $user->verifyMFAOTP('authenticator', '123456');
 
 // Get recovery codes
@@ -399,9 +474,10 @@ $user->generateRecoveryCodes();
 | id | bigint | Primary key |
 | user_id | bigint | Foreign key to users |
 | method | string | MFA method name |
-| secret | string | TOTP secret (encrypted) |
+| status | string | `pending` or `active` (default `active`) |
+| secret | text | TOTP secret (encrypted) |
 | preferred | boolean | Is this the preferred method |
-| otp | string | Current email OTP (if applicable) |
+| otp | text | Current email OTP, stored hashed (if applicable) |
 | expires_at | timestamp | OTP expiry time |
 | last_used | timestamp | Last successful verification |
 | created_at | timestamp | Creation time |
@@ -423,22 +499,22 @@ $user->generateRecoveryCodes();
 
 ### Secret Storage
 
-- TOTP secrets are stored in the database
-- Consider encrypting the `secret` column
-- Recovery codes are stored hashed (bcrypt)
+- TOTP secrets are stored encrypted (the `secret` column uses Laravel's `encrypted` cast)
+- Email OTP codes are stored hashed (the `otp` column uses the `hashed` cast)
+- Recovery codes are stored hashed (the `code` column uses the `hashed` cast)
 
 ### Email OTP Security
 
-- Codes expire after configurable time
+- Codes expire after `otp_expiry_time` minutes (default 15)
 - Used codes are immediately invalidated
-- Rate limit OTP sending to prevent abuse
+- The verify endpoint is throttled to 5 requests per minute
 
 ### Recovery Code Security
 
-- Codes are case-insensitive
-- Each code works only once
+- Codes are entered exactly as shown (they are generated as lowercase; matching is case-sensitive)
+- Each code works only once — it is deleted after use
 - Regenerating invalidates all previous codes
-- Codes are 10 characters (alphanumeric)
+- Codes are 10 characters (lowercase alphanumeric)
 
 ---
 
@@ -452,7 +528,7 @@ public function handle($request, $next)
 {
     $user = $request->user();
 
-    if (count($user->multiFactorAuths) === 0) {
+    if (count($user->activeMultiFactorAuths) === 0) {
         return redirect()->route('account.security')
             ->with('warning', 'Please enable MFA for your account.');
     }
@@ -490,7 +566,7 @@ $domain->rules()->where('name', 'mfa')->first();
 
 ### Recovery Codes Not Working
 
-1. Check for typos (case-insensitive)
+1. Check for typos (codes are lowercase; matching is case-sensitive)
 2. Ensure code hasn't been used
 3. Codes might have been regenerated
 

@@ -15,15 +15,9 @@ jobs:
       matrix:
         include:
           - php: '8.3'
-            laravel: '11.*'
-            testbench: '9.*'
-          - php: '8.3'
             laravel: '12.*'
             testbench: '10.*'
             coverage: true
-          - php: '8.4'
-            laravel: '11.*'
-            testbench: '9.*'
           - php: '8.4'
             laravel: '12.*'
             testbench: '10.*'
@@ -32,7 +26,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
@@ -56,6 +50,6 @@ jobs:
 
       - name: Upload coverage to Codecov
         if: ${{ matrix.coverage }}
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v6
         with:
           files: coverage.xml

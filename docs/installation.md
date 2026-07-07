@@ -5,7 +5,7 @@ This guide will walk you through installing and configuring Neev for your Larave
 ## Prerequisites
 
 - PHP 8.3 or higher
-- Laravel 11.x or 12.x
+- Laravel 12.x
 - Composer
 - Database (MySQL, PostgreSQL, or SQLite)
 
@@ -33,24 +33,37 @@ This will install Neev and its dependencies:
 php artisan neev:install
 ```
 
-This interactive command will:
-1. Publish the configuration file
-2. Publish database migrations
-3. Ask about feature toggles
-4. Configure your environment
+This command must be run on a fresh installation — it aborts if the `users` table already contains records. It will:
+1. Publish the configuration file to `config/neev.php` (overwriting any existing copy)
+2. Set the `tenant` and `team` config options based on your answers
+3. Eject your chosen frontend starter kit — and, always, the email templates — via `neev:ui`
 
 ### Installation Options
 
-During installation, you'll be asked about:
+The command takes three arguments and interactively prompts for any that are missing:
 
-| Option | Description |
-|--------|-------------|
-| Team Management | Enable team/organization features |
-| Email Verification | Require email verification before access |
-| Username Support | Allow login with username (in addition to email) |
-| Magic Links | Enable passwordless login via email |
-| Domain Federation | Auto-join teams based on email domain |
-| Tenant Isolation | Enable multi-tenancy with domain separation |
+| Prompt | Config key | Description |
+|--------|------------|-------------|
+| Would you like to enable multi-tenant isolation? | `tenant` | Users scoped to a tenant; the same email can exist in different tenants |
+| Would you like to install team support? | `team` | Enable team/organization features |
+| Which frontend starter kit would you like? | `ui` | `blade` — ready-made pages ejected into your app; `none` — headless, you build the frontend yourself |
+
+**Starter kit choices:**
+
+- **`blade`** (default): copies the Blade page views (login, account, team pages, components, layouts) to `resources/views/vendor/neev/` — they are app-owned from then on — and sets `'ui' => 'blade'` so the Blade page routes (`/login`, `/account/...`) are registered.
+- **`none`**: headless. No page views are copied and no Blade page routes are registered — the API, OAuth/SSO, and email flows are fully functional, and you build the frontend yourself.
+
+Either way, the email templates are copied to `resources/views/vendor/neev/emails/` so they're yours to edit from day one.
+
+You can also pass the answers directly:
+
+```bash
+php artisan neev:install yes no blade   # tenant: yes, teams: no, kit: blade
+```
+
+If you start headless and want the Blade kit later, run `php artisan neev:ui blade` at any time — see [CLI Commands](./cli-commands.md#neevui).
+
+All other features (username support, OAuth, MFA, password policies, etc.) are configured by editing `config/neev.php` — see the [Configuration Reference](./configuration.md).
 
 ---
 
@@ -59,16 +72,15 @@ During installation, you'll be asked about:
 Add the following to your `.env` file:
 
 ```env
-# Required
-NEEV_DASHBOARD_URL="${APP_URL}/dashboard"
-
 # GeoIP (optional but recommended)
 MAXMIND_LICENSE_KEY="your-maxmind-license-key"
 MAXMIND_EDITION="GeoLite2-City"
 
-# Tenant isolation (if enabled)
-NEEV_SUBDOMAIN_SUFFIX=".yourapp.com"
+# Optional: secret for signing MFA JWTs (falls back to APP_KEY if not set)
+NEEV_JWT_SECRET="your-random-secret"
 ```
+
+The post-login redirect is not an environment variable — it is the `home` key in `config/neev.php` (default: `/dashboard`).
 
 ### Getting a MaxMind License Key
 
@@ -85,12 +97,14 @@ NEEV_SUBDOMAIN_SUFFIX=".yourapp.com"
 php artisan migrate
 ```
 
+Migrations load automatically from the package — no publishing is required before running them.
+
 This creates the following tables:
 
 | Table | Description |
 |-------|-------------|
 | `users` | User accounts (includes nullable `tenant_id` for tenant isolation, password, and password history) |
-| `otps` | One-time passwords |
+| `otp` | One-time passwords |
 | `passkeys` | WebAuthn credentials |
 | `multi_factor_auths` | MFA configurations |
 | `recovery_codes` | MFA backup codes |
@@ -102,6 +116,8 @@ This creates the following tables:
 | `tenants` | Tenants (isolated identity mode) |
 | `domains` | Custom domains and email domains for federation |
 | `domain_rules` | Domain-specific security rules |
+| `team_auth_settings` | Per-team authentication settings |
+| `tenant_auth_settings` | Per-tenant authentication/SSO settings |
 
 ---
 
@@ -174,15 +190,27 @@ This creates `config/neev.php` where you can customize all settings.
 php artisan vendor:publish --tag=neev-migrations
 ```
 
-This copies migrations to `database/migrations/` for customization.
+This copies migrations to `database/migrations/` for customization. Publishing is optional — migrations load automatically from the package.
 
-### Publish Views
+### Eject the Blade Starter Kit
+
+Neev is headless by default — the Blade pages only exist once the starter kit is ejected into your app (normally done by the installer). To eject it later, or re-eject:
 
 ```bash
-php artisan vendor:publish --tag=neev-views
+php artisan neev:ui blade            # never overwrites your files
+php artisan neev:ui blade --force    # overwrites existing files
 ```
 
-This copies Blade templates to `resources/views/vendor/neev/` for customization.
+This copies the page views to `resources/views/vendor/neev/` (app-owned) and sets `'ui' => 'blade'` in your config, which registers the Blade page routes. See [CLI Commands](./cli-commands.md#neevui).
+
+The raw publish tags also exist if you prefer `vendor:publish` (note these do not set the `ui` config):
+
+```bash
+php artisan vendor:publish --tag=neev-blade-kit   # page views, components, layouts
+php artisan vendor:publish --tag=neev-mail        # email templates only
+```
+
+> The old `neev-views` tag no longer exists — it was replaced by `neev-blade-kit` and `neev-mail`.
 
 ### Publish Routes
 
@@ -190,7 +218,7 @@ This copies Blade templates to `resources/views/vendor/neev/` for customization.
 php artisan vendor:publish --tag=neev-routes
 ```
 
-This copies route files to `routes/` for customization.
+This copies `routes/neev.php` to your application's `routes/` directory for customization. When a published copy exists, Neev loads it instead of the package routes.
 
 ---
 
@@ -214,8 +242,7 @@ class User extends NeevUser
         'name',
         'username',
         'active',
-        'avatar',
-        'phone',
+        // ...plus any custom columns you add via your own migrations
     ];
 
     // Add your custom methods and relationships
@@ -264,8 +291,7 @@ class Team extends NeevTeam
         'name',
         'slug',
         'is_public',
-        'logo',
-        'description',
+        // ...plus any custom columns you add via your own migrations
     ];
 
     // Add your custom methods
@@ -287,12 +313,14 @@ Update configuration:
 
 ## OAuth Provider Setup
 
+The callback URLs below use the default route prefix (`route_prefix` in `config/neev.php`, env `NEEV_ROUTE_PREFIX`, default `neev`). If you change the prefix, update the redirect URIs registered with each provider accordingly.
+
 ### Google
 
 1. Create a project in [Google Cloud Console](https://console.cloud.google.com/)
 2. Enable Google+ API
 3. Create OAuth 2.0 credentials
-4. Add redirect URI: `https://yourapp.com/oauth/google/callback`
+4. Add redirect URI: `https://yourapp.com/neev/oauth/google/callback`
 
 ```php
 // config/services.php
@@ -306,13 +334,13 @@ Update configuration:
 ```env
 GOOGLE_CLIENT_ID=your-client-id
 GOOGLE_CLIENT_SECRET=your-client-secret
-GOOGLE_REDIRECT_URI="${APP_URL}/oauth/google/callback"
+GOOGLE_REDIRECT_URI="${APP_URL}/neev/oauth/google/callback"
 ```
 
 ### GitHub
 
 1. Create an OAuth App in [GitHub Developer Settings](https://github.com/settings/developers)
-2. Add callback URL: `https://yourapp.com/oauth/github/callback`
+2. Add callback URL: `https://yourapp.com/neev/oauth/github/callback`
 
 ```php
 // config/services.php
@@ -326,7 +354,7 @@ GOOGLE_REDIRECT_URI="${APP_URL}/oauth/google/callback"
 ### Microsoft
 
 1. Register an app in [Azure Portal](https://portal.azure.com/)
-2. Add redirect URI: `https://yourapp.com/oauth/microsoft/callback`
+2. Add redirect URI: `https://yourapp.com/neev/oauth/microsoft/callback`
 
 ```php
 // config/services.php

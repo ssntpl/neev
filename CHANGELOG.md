@@ -7,8 +7,68 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-07-02
+
+### Added
+- **`RegistrationService`** — central registration logic (validation rules, user creation, invitation acceptance with `InvalidInvitationException`, federated-domain team rules, OAuth registration, transaction ownership, `Registered` event); previously duplicated with drift across four controllers. `Domain::isVerifiedForEmail()` replaces five copies of the domain-verification check; unused `MembershipService` removed
+- **SPA consumer guide** (`docs/spa-authentication.md`) — completes SPA cookie mode phase 4: backend/CORS/axios setup, all auth flows with exact response shapes, the SSO → SPA hand-off, and troubleshooting
+- Documentation: identity-mode decision matrix (multi-tenancy.md), authoritative middleware usage & ordering guide (architecture-internals.md), queue/tenant-context job pattern (multi-tenancy.md), and a verified, prominent warning that OAuth login bypasses MFA and password policies with mitigations (authentication.md, security.md)
+- **Headless core + Blade starter kit (RFC 002, phase A)** — the package is now fully headless by default, Fortify-style:
+  - New `ui` config value (`NEEV_UI`: `'blade'` | `null`). `null` (default) registers no Blade page routes — API, OAuth/SSO, and email flows work standalone. `'blade'` registers the page routes, rendered from **app-owned** views
+  - The Blade page templates moved from package-loaded views to `stubs/blade/views/`; `php artisan neev:ui blade` ejects them to `resources/views/vendor/neev` where they belong to the app (existing published views keep working — same path)
+  - **Email templates are ejected to the app by the installer** (always, regardless of kit) so they're editable from day one; the package keeps fallback copies so headless installs still send mail. The per-template variable contract is documented in `docs/rfcs/002-starter-kits.md` §5.5 and treated as API
+  - `neev:install` gains a starter-kit prompt (`blade`/`none`) and third argument; new `neev:ui {kit} [--force]` command for kit ejection on existing apps (never overwrites app files without `--force`)
+  - Headless email links point at the app's frontend (`{app.url}/verify-email?...`, `/register?invitation_id=...`) instead of the unregistered Blade routes
+  - New publish tags: `neev-blade-kit`, `neev-mail` (replacing `neev-views`)
+- **Configurable route prefix** — new `route_prefix` config key (`NEEV_ROUTE_PREFIX`, default `neev`) namespaces every machine-facing route the package registers: the API namespace, OAuth redirect/callback, tenant SSO, and `/csrf-cookie`. Blade UI pages (`/login`, `/account/...`) stay at the root. Route names are unchanged. The MFA-token route gate in `NeevAPIMiddleware` now follows the prefix (previously hardcoded — customised route files silently broke MFA step-up)
+
+### Changed
+- **BREAKING: OAuth and tenant-SSO routes moved under the route prefix** — `/oauth/{service}[/callback]` → `/neev/oauth/{service}[/callback]`, `/sso/redirect|callback` → `/neev/sso/...`, and `/api/tenant/auth` → `/neev/tenant/auth`. **Update the redirect URIs registered with your identity providers** (Entra/Google/Okta app registrations, OAuth apps)
+- **SPA cookie mode — phase 1 (plumbing)** — same-origin SPAs can now authenticate via an HttpOnly cookie instead of JS-stored bearer tokens:
+  - `EnsureSpaRequestsAreStateful` middleware (in the `neev:api` and `neev:login` groups): for requests from a configured stateful origin, validates a signed double-submit CSRF token on state-changing methods (419 on failure) and promotes the auth cookie to an `Authorization: Bearer` header; a no-op for everything else, so existing bearer callers are untouched
+  - `GET /neev/csrf-cookie` issues the CSRF cookie; the token is HMAC-signed to the app key (defeats subdomain cookie injection, no server-side state)
+  - New `spa` config block: `stateful` origin allowlist (exact host, `host:port`, `*.wildcard`), cookie names/attributes; empty list disables the feature entirely
+  - `StatefulOriginResolver` and `SpaCsrfToken` services
+- **SPA cookie mode — phase 2 (cookie issuance)** — for stateful-origin callers, all token-issuing endpoints (`/neev/login`, `/neev/register`, `/neev/loginUsingLink`, `/neev/mfa/otp/verify`, passkey login, OAuth API callback) now deliver the token in the HttpOnly auth cookie and **omit `token` from the JSON body**; the MFA step carries the short-lived JWT in the cookie and swaps it for the login token on verification; `POST /neev/logout` expires the cookie for cookie-authenticated sessions (`logoutAll` keeps it — the current session survives). Non-SPA callers see byte-identical responses. New `SpaCookieResponder` service. The consumer migration guide (phase 4) follows per `docs/spa-cookie-mode.md`
+- **SPA cookie mode — phase 3 (web-redirect callbacks)** — tenant-SSO callbacks with a stateful `redirect_uri` deliver the token via the HttpOnly cookie and keep it **out of the URL fragment** (fragments are JS-visible and XSS-exfiltratable; non-stateful targets keep the fragment flow); web OAuth callbacks on a stateful host additionally issue the SPA cookie alongside the session login. The auth cookie is auto-excluded from Laravel's cookie encryption (`EncryptCookies::except()` registered by the provider) so web-group redirects emit it readable by the API routes
+- **MFA setup verification (pending → active)** — adding an authenticator now creates the method in `pending` status; it only becomes `active` (and enforced at login) after the user proves the setup by submitting a valid TOTP to the new `POST /neev/mfa/setup/verify` endpoint (web: the Verify form on the security page). Previously the method was enforced the moment the QR code was generated — abandoning setup locked the user out at next login. `MfaMethodAdded` now fires on activation, not row creation; pending setups cannot satisfy MFA challenges, be set preferred, or count towards recovery-code eligibility
+- **`neev:clean-pending-mfa-setups` command** — deletes pending setups older than `mfa_pending_setup_retention_days` (default 2); schedule it alongside `neev:clean-login-attempts`
+- `status` column on `multi_factor_auths` (`pending`/`active`); `activeMultiFactorAuths()` relation and `verifyMfaSetup()` on `HasMultiAuth`
+- **`MultiFactorAuth::activate()`** — sanctioned escape hatch for programmatic activation (admin provisioning, imports, tests): skips the OTP proof but keeps the invariants (preferred-flag assignment, `MfaMethodAdded` event)
+- **Events system expansion** — neev now fires Laravel's native auth events where semantics match, plus Neev-specific events for package concepts:
+  - Native: `Illuminate\Auth\Events\Registered` (web/API/OAuth registration, SSO auto-provision), `Illuminate\Auth\Events\PasswordReset` (web/API reset flows); `Lockout` was already fired by `LoginRequest`
+  - Neev: `PasswordChanged` (any password change incl. resets), `EmailVerified` (first-time email verification; dispatched after commit), `MfaMethodAdded`, `MfaMethodRemoved`, `RecoveryCodesGenerated`, `TeamCreated`, `TeamDeleted`, `MemberAdded`, `MemberRemoved`, `TenantCreated`, `SsoUserProvisioned`
+  - Model-lifecycle events (`TeamCreated`, `TeamDeleted`, `TenantCreated`, `MemberAdded`, `MemberRemoved`) implement `ShouldDispatchAfterCommit` so listeners never observe rolled-back state
+- **`removeMultiFactorAuth()` on `HasMultiAuth`** — centralises MFA method removal (preferred-flag reassignment, recovery-code cleanup) previously duplicated across the web and API controllers
+- **`DELETE /neev/sessions/{id}`** — revoke a single login session remotely; the current session is protected (use logout), other users' sessions return 404
+- Specification for SPA cookie mode with Sanctum-style CSRF token (`docs/spa-cookie-mode.md`, proposed)
+
+### Changed
+- **BREAKING: `LoggedInEvent` → `LoggedIn`, `LoggedOutEvent` → `LoggedOut`** — event classes renamed to match Laravel's unsuffixed past-tense convention (consistent with the existing domain events). Update any listeners referencing the old class names
+
+### Removed
+- **BREAKING: Laravel 11 support dropped** — `laravel/framework` requirement is now `^12.0` (testbench `^10.0`). Laravel 11 is past security-EOL with permanently-unpatched advisories, which newer Composer versions refuse to resolve. Apps on Laravel 11 should stay on neev `<=0.4.5`
+
+## [0.4.5] - 2026-06-02
+
 ### Added
 - **Passkey multi-origin support** — new `neev.relying_party_id` and `neev.allowed_origins` config keys let `PasskeyController` verify WebAuthn ceremonies against multiple origins (apex + subdomains, staging + production) bound to a single relying party ID. `CheckOrigin` replaced with `CheckAllowedOrigins`; RP ID and origin list are no longer hardcoded to `APP_URL`
+- **`JwtLoginMiddleware` + `neev:login` middleware group** — MFA step-up flow now uses a short-lived JWT between the password step and MFA verification
+- **`JwtSecret` service** — dedicated JWT signing secret via `NEEV_JWT_SECRET` env (`neev.jwt_secret`), falling back to `APP_KEY`
+- `login_token_expiry_minutes` config key; `email_verified` field in auth responses
+- `AuthService::createApiToken()` and auth building blocks: `sendEmailVerification()`, `sendEmailChangeVerification()`, `verifyEmailSignature()`, `changePassword()`
+- `User::findByEmail()`, `User::uniqueEmailRule()`; `hasVerifiedEmail()` / `markEmailAsVerified()` on `NeevAuthenticatable`
+
+### Changed
+- **BREAKING: login flow** — login responses now return `auth_state` (`authenticated` / `mfa_required`); MFA verification happens via `POST /neev/mfa/otp/verify` under the `neev:login` group using the step-up JWT
+- **BREAKING: users table consolidation** — `email`, `email_verified_at`, `password`, `password_history` (JSON), `password_changed_at` are now columns on `users`; multi-email-per-user support removed
+- **BREAKING: email verification always uses signed URLs** — OTP-based email verification removed; API password reset switched from OTP to signed URLs
+
+### Removed
+- **BREAKING:** `emails` and `passwords` tables; `Email` and `Password` models; `VerifyEmail` trait; `EmailFactory`
+- **BREAKING:** email management routes/controllers/views (add / delete / set-primary email)
+- `neev:clean-passwords` (`CleanOldPasswords`) command — the JSON `password_history` array is self-trimming
+- `email_verification_method` config key (always signed URLs now)
 
 ## [0.4.4] - 2026-03-11
 

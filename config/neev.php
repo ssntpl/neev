@@ -19,6 +19,40 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Routes
+    |--------------------------------------------------------------------------
+    |
+    | URL prefix for every machine-facing route the package registers: the
+    | API namespace, OAuth redirect/callback, and tenant SSO endpoints
+    | (e.g. 'auth' gives /auth/login, /auth/oauth/{service}/callback,
+    | /auth/sso/callback). Blade UI pages (/login, /account/...) stay at
+    | the root — they are end-user URLs, not part of the API namespace.
+    |
+    | Changing this also changes the OAuth/SSO callback URLs registered
+    | with your identity providers — update those app registrations too.
+    | Route NAMES are unaffected.
+    |
+    */
+    'route_prefix' => env('NEEV_ROUTE_PREFIX', 'neev'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Frontend UI
+    |--------------------------------------------------------------------------
+    |
+    | Which starter kit drives the frontend. 'blade' registers the Blade
+    | page routes (/login, /account/..., rendered from the app-owned views
+    | the installer ejected). null runs the package headless: only the API,
+    | OAuth/SSO, and email flows are active, and you build the frontend
+    | yourself (see docs/rfcs/002-starter-kits.md).
+    |
+    | Set by `php artisan neev:install` / `php artisan neev:ui`.
+    |
+    */
+    'ui' => env('NEEV_UI'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Authentication
     |--------------------------------------------------------------------------
     */
@@ -44,6 +78,42 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | SPA Cookie Mode
+    |--------------------------------------------------------------------------
+    |
+    | Same-origin web SPAs can authenticate via an HttpOnly cookie instead of
+    | storing the bearer token in JS-accessible storage. Requests whose
+    | Origin/Referer host matches the stateful list have their auth cookie
+    | promoted to an Authorization header and, for state-changing methods,
+    | must pass a signed double-submit CSRF check. Everything else falls
+    | through to the plain bearer-token path unchanged.
+    |
+    | 'stateful' supports exact hosts ("app.example.com"), host:port
+    | ("localhost:3000"), and prefix wildcards ("*.example.com"). An empty
+    | list disables SPA cookie mode entirely.
+    |
+    | The auth cookie is automatically excluded from Laravel's cookie
+    | encryption (neev registers EncryptCookies::except for it) so it reads
+    | identically on API routes and inside web-group redirects; it carries
+    | an already-opaque token. The CSRF token is HMAC-signed to APP_KEY
+    | instead of encrypted. Only if you route neev's endpoints through a
+    | web-style stack yourself must the CSRF cookie name also be excepted —
+    | and consider renaming it then, since XSRF-TOKEN is shared with
+    | Laravel's own web-session CSRF cookie.
+    |
+    */
+    'spa' => [
+        'stateful' => array_filter(explode(',', (string) env('NEEV_SPA_STATEFUL_DOMAINS', ''))),
+        'cookie_name' => env('NEEV_SPA_COOKIE_NAME', 'neev_session'),
+        'csrf_cookie_name' => env('NEEV_SPA_CSRF_COOKIE_NAME', 'XSRF-TOKEN'),
+        'csrf_header_name' => env('NEEV_SPA_CSRF_HEADER_NAME', 'X-XSRF-TOKEN'),
+        'cookie_secure' => (bool) env('NEEV_SPA_COOKIE_SECURE', true),
+        'cookie_same_site' => env('NEEV_SPA_COOKIE_SAME_SITE', 'lax'),
+        'cookie_domain' => env('NEEV_SPA_COOKIE_DOMAIN'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Multi-Factor Authentication
     |--------------------------------------------------------------------------
     */
@@ -53,6 +123,9 @@ return [
 
     // Number of single-use recovery codes per user.
     'recovery_codes' => 8,
+
+    // Days to keep unverified (pending) MFA setups before neev:clean-pending-mfa-setups deletes them.
+    'mfa_pending_setup_retention_days' => 2,
 
     /*
     |--------------------------------------------------------------------------

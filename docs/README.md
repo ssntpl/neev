@@ -1,6 +1,6 @@
 # Neev Documentation
 
-Neev is an enterprise-grade Laravel package for user authentication, team management, and multi-tenancy in SaaS applications. See the [main README](../README.md) for a quick overview and getting started guide.
+Neev is an enterprise-grade Laravel package for user authentication, team management, and multi-tenancy in SaaS applications. The package is headless by default — API, OAuth/SSO, and email flows work standalone — with an optional Blade starter kit whose pages are ejected into your app at install ([RFC 002](./rfcs/002-starter-kits.md)). See the [main README](../README.md) for a quick overview and getting started guide.
 
 ---
 
@@ -13,6 +13,7 @@ Start here to set up and use Neev in your application.
 | [Installation](./installation.md) | Step-by-step setup: Composer, migrations, environment, publishing assets |
 | [Configuration](./configuration.md) | All `config/neev.php` options with explanations |
 | [Authentication](./authentication.md) | Password, magic link, passkey, OAuth, and SSO login flows |
+| [SPA Authentication](./spa-authentication.md) | Wiring a same-origin React/Vue SPA to neev: cookie mode, CSRF, CORS, SSO hand-off, troubleshooting |
 | [MFA](./mfa.md) | Authenticator apps (TOTP), email OTP, and recovery codes |
 | [Teams](./teams.md) | Team creation, invitations, roles, domain federation |
 | [Multi-Tenancy](./multi-tenancy.md) | Identity strategy, tenant isolation, subdomain/custom domain, enterprise SSO |
@@ -26,7 +27,7 @@ Endpoint and route details for building against Neev.
 | Reference | Description |
 |-----------|-------------|
 | [API Reference](./api-reference.md) | Every REST endpoint with request/response examples |
-| [Web Routes](./web-routes.md) | All Blade-rendered web routes and view files |
+| [Web Routes](./web-routes.md) | All Blade-rendered web routes and view files (require the Blade starter kit, `'ui' => 'blade'`) |
 
 ## Architecture
 
@@ -34,16 +35,20 @@ Design decisions and internal patterns — useful when extending Neev or contrib
 
 | Document | Description |
 |----------|-------------|
+| [Design Principles](./design-principles.md) | What is enforced vs configurable vs left to the app — the four-layer boundary every PR is judged against |
 | [Architecture](./architecture.md) | Identity strategy (shared vs isolated), tenant/team concepts, context lifecycle |
 | [Architecture Internals](./architecture-internals.md) | Interfaces, traits, services, coding standards, anti-patterns |
 
 ## Proposals
 
-Design proposals under review, not yet implemented.
+Design proposals and their implementation status.
 
 | Document | Status | Description |
 |----------|--------|-------------|
-| [SPA Cookie Mode](./spa-cookie-mode.md) | Proposed (2026-06-12), target v0.4.5 | HttpOnly-cookie auth + double-submit CSRF for same-origin SPAs. Additive to the existing bearer-token API. Driven by the TAILLOG web rebuild and otper. |
+| [SPA Cookie Mode](./spa-cookie-mode.md) | Fully implemented (phases 1–4; consumer guide: [SPA Authentication](./spa-authentication.md)) | HttpOnly-cookie auth + signed double-submit CSRF for same-origin SPAs. Additive to the existing bearer-token API. Driven by the TAILLOG web rebuild and otper. |
+| [RFC 002 — Headless Core + Starter Kits](./rfcs/002-starter-kits.md) | Phase A implemented | Package is fully headless (Fortify-style); Blade UI ejects into the app as a starter kit at install; email templates app-owned with a documented variable contract; React kit reserved as a future kit. |
+| [RFC 003 — Per-Group Auth Policies](./rfcs/003-auth-policies.md) | Proposed (resolves RFC-001 §6) | One tenant, multiple user populations: policy-per-role/domain auth methods, identifier-first routing, platform policies as null-owner rows, migration from tenant/team auth settings. |
+| [Email Reputation Package](./email-reputation-package.md) | v1 scope decided | Standalone classification-only package (free/disposable/relay/unknown); network tier deferred; neev takes no dependency on it. |
 
 ---
 
@@ -57,14 +62,18 @@ neev/
 │   ├── factories/            # Model factories (testing)
 │   └── migrations/           # Database migrations
 ├── resources/
-│   └── views/                # Blade templates (64 files)
+│   └── views/
+│       └── emails/           # Email templates (headless fallbacks; ejected to the app at install)
 ├── routes/
 │   ├── neev.php              # Web and API routes
-│   └── sso.php               # Tenant SSO routes (loaded when tenant_auth enabled)
+│   └── sso.php               # Tenant SSO routes
+├── stubs/
+│   └── blade/
+│       └── views/            # Blade starter kit page views (ejected via neev:ui blade)
 └── src/
     ├── Commands/              # Artisan commands
     ├── Contracts/             # Interfaces (ContextContainer, HasMembers, etc.)
-    ├── Events/                # LoggedInEvent, LoggedOutEvent
+    ├── Events/                # Auth, MFA, team/tenant lifecycle, and domain events
     ├── Http/
     │   ├── Controllers/       # Auth, User, Team, Role, TenantDomain, TenantSSO
     │   └── Middleware/        # Auth, tenant, team, context middleware
@@ -88,9 +97,10 @@ These are pre-composed groups you apply to route groups.
 |-------|----------|
 | `neev:web` | TenantMiddleware > ResolveTeamMiddleware > NeevMiddleware (session auth) > EnsureTenantMembership > BindContextMiddleware |
 | `neev:api` | TenantMiddleware > ResolveTeamMiddleware > NeevAPIMiddleware (token auth) > EnsureTenantMembership > BindContextMiddleware |
+| `neev:login` | TenantMiddleware > ResolveTeamMiddleware > JwtLoginMiddleware (MFA JWT auth) > EnsureTenantMembership > BindContextMiddleware |
 | `neev:tenant` | TenantMiddleware (required) > ResolveTeamMiddleware > BindContextMiddleware |
 
-When `tenant_isolation` is disabled, tenant-specific middleware are no-ops.
+When `tenant` is disabled, tenant-specific middleware are no-ops.
 
 ### Middleware Aliases
 
@@ -99,9 +109,12 @@ These can be applied individually to specific routes.
 | Alias | Description |
 |-------|-------------|
 | `neev:active-team` | Blocks access when team is inactive/waitlisted |
+| `neev:active-tenant` | Blocks access when tenant is inactive |
 | `neev:tenant-member` | Ensures user is a member of the current tenant |
 | `neev:resolve-team` | Resolves team from route parameter (slug or ID) |
 | `neev:ensure-sso` | Enforces SSO-only access for the current context |
+| `neev:password-not-expired` | Blocks access when the user's password has expired |
+| `neev:verified-email` | Blocks access until the user's email is verified |
 
 ### Usage
 
@@ -144,20 +157,46 @@ class User extends \Ssntpl\Neev\Models\User
 
 ## Events
 
+Neev fires Laravel's native auth events where semantics match, and its own events for package concepts.
+
+**Laravel native events:**
+
 | Event | Fired when |
 |-------|------------|
-| `Ssntpl\Neev\Events\LoggedInEvent` | User logs in (any method) |
-| `Ssntpl\Neev\Events\LoggedOutEvent` | User logs out |
+| `Illuminate\Auth\Events\Registered` | User registers (web, API, OAuth, SSO auto-provision) |
+| `Illuminate\Auth\Events\PasswordReset` | Password is reset via a reset link (web or API) |
+| `Illuminate\Auth\Events\Lockout` | Login throttle rejects an attempt |
 
-Additional events (registration, password change, team lifecycle, MFA changes, SSO attempts, domain verification) are planned for a future release. In the meantime, you can listen to Eloquent model events on Neev models for similar functionality.
+**Neev events (`Ssntpl\Neev\Events\`):**
+
+| Event | Payload | Fired when |
+|-------|---------|------------|
+| `LoggedIn` | `$user` | User logs in (any method) |
+| `LoggedOut` | `$user` | User logs out |
+| `PasswordChanged` | `$user` | Password changes (including resets) |
+| `EmailVerified` | `$user` | Email is verified for the first time |
+| `MfaMethodAdded` | `$user, $method` | An MFA method is configured |
+| `MfaMethodRemoved` | `$user, $method` | An MFA method is removed |
+| `RecoveryCodesGenerated` | `$user` | Recovery codes are (re)generated |
+| `TeamCreated` / `TeamDeleted` | `$team` | A team is created / deleted |
+| `MemberAdded` / `MemberRemoved` | `$team, $user` | Team membership changes |
+| `TenantCreated` | `$tenant` | A tenant is created |
+| `SsoUserProvisioned` | `$user, $owner` | SSO auto-provisions a new user |
+| `DomainVerified` | `$domain` | A domain passes DNS verification for the first time |
+| `DomainReverified` | `$domain` | A domain that had been failing re-verification passes again |
+| `DomainVerificationFailed` | `$domain` | A previously verified domain first fails re-verification |
+
+The model-lifecycle events (`TeamCreated`, `TeamDeleted`, `TenantCreated`, `MemberAdded`, `MemberRemoved`) implement `ShouldDispatchAfterCommit`, so listeners never observe state from a transaction that later rolls back. `EmailVerified` is likewise dispatched after commit.
+
+> **Note:** neev's User model deliberately does not implement `MustVerifyEmail`. If your custom user model does, Laravel's auto-registered `SendEmailVerificationNotification` listener will also react to `Registered` — disable it or neev's own verification mail to avoid duplicate emails.
 
 ```php
 // app/Listeners/LogSuccessfulLogin.php
-use Ssntpl\Neev\Events\LoggedInEvent;
+use Ssntpl\Neev\Events\LoggedIn;
 
 class LogSuccessfulLogin
 {
-    public function handle(LoggedInEvent $event)
+    public function handle(LoggedIn $event)
     {
         activity()->log("User {$event->user->name} logged in");
     }
@@ -172,7 +211,8 @@ See [CLI Commands](./cli-commands.md) for full reference with options and exampl
 
 | Command | Description |
 |---------|-------------|
-| `neev:install` | Interactive setup wizard |
+| `neev:install` | Interactive setup wizard (tenant, teams, starter kit) |
+| `neev:ui` | Eject a frontend starter kit (`blade`/`none`) and the email templates |
 | `neev:download-geoip` | Download MaxMind GeoLite2 database |
 | `neev:clean-login-attempts` | Remove old login attempt records |
 | `neev:tenant:create` | Create a tenant (isolated) or team (shared) |
@@ -193,7 +233,7 @@ See [CLI Commands](./cli-commands.md) for full reference with options and exampl
 ## Requirements
 
 - PHP 8.3+
-- Laravel 11.x or 12.x
+- Laravel 12.x
 - MySQL, PostgreSQL, or SQLite
 
 ### Optional

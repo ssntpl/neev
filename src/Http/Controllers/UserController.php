@@ -156,20 +156,8 @@ class UserController extends Controller
             return back()->withErrors(['message' => 'User not found.']);
         }
         if ($request->action === 'delete') {
-            $auth = $user->multiFactorAuth($request->auth_method);
-            if (!$auth) {
+            if (!$user->removeMultiFactorAuth($request->auth_method)) {
                 return back()->withErrors(['message' => 'Auth was not deleted.']);
-            }
-
-            if ($auth->preferred && count($user->multiFactorAuths) > 1) {
-                $method = $user->multiFactorAuths()->whereNot('method', $auth->method)->first();
-                $method->preferred = true;
-                $method->save();
-            }
-            $auth->delete();
-
-            if (count($user->multiFactorAuths) <= 1) {
-                $user->recoveryCodes()->delete();
             }
 
             return back()->with('status', 'Auth has been deleted.');
@@ -195,7 +183,7 @@ class UserController extends Controller
 
         $user = User::model()->find($request->user()?->id);
         $auth = $user?->multiFactorAuth($request->auth_method);
-        if (!$user || !$auth) {
+        if (!$user || !$auth || !$auth->isActive()) {
             return back()->withErrors(['message' => 'preferred auth was not updated.']);
         }
         $preferred = $user->preferredMultiFactorAuth;
@@ -211,7 +199,7 @@ class UserController extends Controller
     public function recoveryCodes(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
-        if (count($user?->multiFactorAuths) === 0) {
+        if (!$user || count($user->activeMultiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
 
@@ -225,7 +213,7 @@ class UserController extends Controller
     public function generateRecoveryCodes(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
-        if (count($user?->multiFactorAuths) === 0) {
+        if (!$user || count($user->activeMultiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
         $user->recoveryCodes()->delete();

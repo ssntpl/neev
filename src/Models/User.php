@@ -30,6 +30,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
  * @property-read MultiFactorAuth|null $preferredMultiFactorAuth
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Passkey> $passkeys
  * @property-read \Illuminate\Database\Eloquent\Collection<int, MultiFactorAuth> $multiFactorAuths
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, MultiFactorAuth> $activeMultiFactorAuths
  * @property-read \Illuminate\Database\Eloquent\Collection<int, RecoveryCode> $recoveryCodes
  * @property-read \Illuminate\Database\Eloquent\Collection<int, LoginAttempt> $loginAttempts
  * @property-read \Illuminate\Database\Eloquent\Collection<int, AccessToken> $accessTokens

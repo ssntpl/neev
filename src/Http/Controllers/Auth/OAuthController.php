@@ -4,16 +4,15 @@ namespace Ssntpl\Neev\Http\Controllers\Auth;
 
 use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Laravel\Socialite\Facades\Socialite;
 use Ssntpl\Neev\Http\Controllers\Controller;
-use Ssntpl\Neev\Models\Domain;
-use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\RegistrationService;
+use Ssntpl\Neev\Services\SpaCookieResponder;
+use Ssntpl\Neev\Services\StatefulOriginResolver;
 
 class OAuthController extends Controller
 {
@@ -57,65 +56,34 @@ class OAuthController extends Controller
                 return redirect(route('login'));
             }
         } else {
-            $user = $this->register($oauthUser);
-            if (!$user) {
+            try {
+                $user = app(RegistrationService::class)
+                    ->registerViaOAuth($oauthUser->name, $oauthUser->email);
+            } catch (Exception $e) {
+                Log::error($e);
                 return redirect(route('register'));
             }
         }
 
         $this->auth->login($request, $geoIP, $user, $service);
 
-        return redirect(config('neev.home'));
-    }
+        $response = redirect(config('neev.home'));
 
-    public function register($oauthUser)
-    {
-        DB::beginTransaction();
-        $userData = [
-            'name' => $oauthUser->name,
-            'email' => $oauthUser->email,
-            'email_verified_at' => now(),
-        ];
+        // Same-origin SPA monolith: also issue a login token in the
+        // HttpOnly cookie so the SPA is authenticated for API calls when
+        // the redirect lands. The attempt is reused from the session
+        // login above, so no extra LoggedIn event or attempt row.
+        if (app(StatefulOriginResolver::class)->isStatefulHost($request)) {
+            $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
+            $newToken = $user->createLoginToken($expiryMinutes);
+            $newToken->accessToken->forceFill(['attempt_id' => session('attempt_id')])->save();
 
-        if (config('neev.support_username')) {
-            $base = explode('@', $oauthUser->email)[0];
-            $username = $base;
-            while (User::getModel()->where('username', $username)->first()) {
-                $username = $base . '_' . Str::random(4);
-            }
-            $userData['username'] = $username;
+            $response->withCookie(
+                app(SpaCookieResponder::class)->authCookie($newToken->plainTextToken, $expiryMinutes)
+            );
         }
 
-        $user = User::model()->forceCreate($userData);
-
-        try {
-            if (config('neev.team')) {
-                $shouldCreateTeam = !$this->isDomainVerified($oauthUser->email);
-
-                if ($shouldCreateTeam) {
-                    $team = Team::model()->forceCreate([
-                        'name' => explode(' ', $user->name, 2)[0] . "'s Team",
-                        'user_id' => $user->id,
-                        'is_public' => false,
-                        'activated_at' => now(),
-                    ]);
-                    $team->addMember($user);
-                }
-            }
-        } catch (Exception $e) {
-            DB::rollBack();
-            Log::error($e);
-            return null;
-        }
-        DB::commit();
-        return $user;
+        return $response;
     }
 
-    private function isDomainVerified(string $email): bool
-    {
-        $emailDomain = substr(strrchr($email, "@"), 1);
-        $domain = Domain::where('domain', $emailDomain)->first();
-
-        return $domain?->verified_at !== null;
-    }
 }

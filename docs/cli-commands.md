@@ -1,6 +1,6 @@
 # CLI Commands
 
-Complete reference for all Neev Artisan commands. Commands adapt to your [identity strategy](./architecture.md) — in **shared** mode they operate on teams, in **isolated** mode they operate on tenants.
+Complete reference for all Neev Artisan commands. Commands adapt to your [identity mode](./architecture.md) — in **shared** mode (`'tenant' => false`) they operate on teams, in **isolated** mode (`'tenant' => true`) they operate on tenants.
 
 > Run `php artisan list neev` to see all available commands.
 
@@ -16,9 +16,33 @@ Interactive setup wizard for new installations.
 
 ```bash
 php artisan neev:install
+
+# Non-interactive: {tenant} {teams} {kit}
+php artisan neev:install yes no blade
 ```
 
-Prompts for: team support, email verification, domain federation, tenant isolation. Publishes config and migrations.
+Prompts for: multi-tenant isolation (`yes`/`no`), team support (`yes`/`no`), and the frontend starter kit (`blade`/`none`, default `blade`). Publishes the config file, sets the `tenant` and `team` options accordingly, and calls `neev:ui` to eject the chosen kit (and, always, the email templates). Only runs on a fresh installation (fails if the `users` table has records).
+
+### `neev:ui`
+
+Eject a frontend starter kit into the application. Also the way to switch an existing install between Blade and headless.
+
+```bash
+php artisan neev:ui blade            # eject the Blade kit
+php artisan neev:ui blade --force    # overwrite files that already exist in the app
+php artisan neev:ui none             # headless — no page views, page routes disabled
+```
+
+| Argument / Option | Description |
+|-------------------|-------------|
+| `kit` | Starter kit to eject: `blade` or `none` |
+| `--force` | Overwrite files that already exist in the app (without it, existing files are kept) |
+
+What it does:
+
+- **`blade`**: copies the package's Blade page views (auth, account, team pages, components, layouts) from `stubs/blade/views/` to `resources/views/vendor/neev/` — app-owned from then on — and sets `'ui' => 'blade'` in `config/neev.php`, which registers the Blade page routes.
+- **`none`**: sets `'ui' => env('NEEV_UI')` (headless — no Blade page routes); no page views are copied.
+- **Always** (both kits): ejects the email templates to `resources/views/vendor/neev/emails/` so they're the app's to edit. The package keeps fallback copies, so headless installs send mail with zero setup. The variables available in each template are documented in [RFC 002 §5.5](./rfcs/002-starter-kits.md#55-email-templates--app-owned-with-a-variable-contract) and treated as API.
 
 ### `neev:download-geoip`
 
@@ -38,7 +62,21 @@ Remove login attempt records older than the configured retention period.
 php artisan neev:clean-login-attempts
 ```
 
-Retention is controlled by `config('neev.last_login_attempts_in_days')`.
+Retention is controlled by `config('neev.login_history_retention_days')`.
+
+### `neev:clean-pending-mfa-setups`
+
+Delete MFA setups that were started but never verified (still in the `pending` state).
+
+```bash
+php artisan neev:clean-pending-mfa-setups
+```
+
+Retention is controlled by `config('neev.mfa_pending_setup_retention_days')` (default: 2 days). Schedule it alongside the other maintenance commands:
+
+```php
+$schedule->command('neev:clean-pending-mfa-setups')->daily();
+```
 
 ---
 
@@ -63,7 +101,7 @@ php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --domain=acme.
 | `name` | Name of the tenant or team (prompted if omitted) |
 | `--slug=` | Custom slug (auto-generated from name if omitted) |
 | `--owner=` | Owner by user ID or email address |
-| `--domain=` | Attach a domain (auto-verifies subdomains, shows DNS instructions for custom) |
+| `--domain=` | Attach a domain as primary (shows DNS TXT verification instructions) |
 | `--activate` | Activate the team immediately |
 
 **Shared mode**: Creates a `Team` with the given owner. If `--activate` is passed, sets `activated_at`.
@@ -122,26 +160,26 @@ Manage domains attached to tenants or teams.
 Add a domain to a tenant or team.
 
 ```bash
-# Add subdomain (auto-verified if it matches your subdomain suffix)
-php artisan neev:domain:add acme.yourapp.com --team=acme-corp --primary
+# Add a domain to a team
+php artisan neev:domain:add acme.yourapp.com --owner-type=team --owner-id=1 --primary
 
-# Add custom domain (requires DNS verification)
-php artisan neev:domain:add app.acme.com --tenant=acme-corp
+# Add a domain to a tenant (requires DNS verification)
+php artisan neev:domain:add app.acme.com --owner-type=tenant --owner-id=42
 
 # Skip verification (local dev)
-php artisan neev:domain:add custom.local --team=1 --skip-verification
+php artisan neev:domain:add custom.local --owner-type=team --owner-id=1 --skip-verification
 ```
 
 | Argument / Option | Description |
 |-------------------|-------------|
 | `domain` | The domain to add (prompted if omitted) |
-| `--tenant=` | Tenant ID or slug |
-| `--team=` | Team ID or slug |
+| `--owner-type=` | Owner type: `team` or `tenant` (required) |
+| `--owner-id=` | Owner ID (required) |
 | `--primary` | Set as primary domain |
 | `--enforce` | Enforce domain-based federation |
 | `--skip-verification` | Mark as verified immediately |
 
-Subdomains matching `config('neev.tenant_isolation_options.subdomain_suffix')` are automatically verified. Custom domains display DNS TXT record instructions.
+Unless `--skip-verification` is passed, the command displays the DNS TXT record (name and token) required to verify the domain.
 
 ### `neev:domain:verify`
 
@@ -153,12 +191,16 @@ php artisan neev:domain:verify app.acme.com
 
 # Force-verify without DNS check (local dev)
 php artisan neev:domain:verify app.acme.com --force
+
+# Re-verify all previously verified domains (dispatches queued jobs)
+php artisan neev:domain:verify --all
 ```
 
 | Argument / Option | Description |
 |-------------------|-------------|
-| `domain` | The domain to verify (prompted if omitted) |
+| `domain` | The domain to verify (optional when using `--all`) |
 | `--force` | Mark verified without DNS check |
+| `--all` | Re-verify all previously verified domains |
 
 Performs a `dns_get_record()` lookup on `_neev-verification.{domain}` and matches the TXT value against the stored verification token.
 
@@ -168,18 +210,18 @@ List domains with optional filters.
 
 ```bash
 php artisan neev:domain:list
-php artisan neev:domain:list --tenant=acme-corp --unverified
-php artisan neev:domain:list --team=1 --json
+php artisan neev:domain:list --owner-type=tenant --unverified
+php artisan neev:domain:list --owner-type=team --owner-id=1 --json
 ```
 
 | Option | Description |
 |--------|-------------|
-| `--tenant=` | Filter by tenant ID or slug |
-| `--team=` | Filter by team ID or slug |
+| `--owner-type=` | Filter by owner type (`team` or `tenant`) |
+| `--owner-id=` | Filter by owner ID |
 | `--unverified` | Show only unverified domains |
 | `--json` | Output as JSON |
 
-Columns: ID, Domain, Team ID, Tenant ID, Primary, Enforce, Status.
+Columns: ID, Domain, Owner Type, Owner ID, Primary, Enforce, Status.
 
 ---
 
@@ -223,7 +265,7 @@ Refuses to remove the team owner.
 
 ### `neev:member:list`
 
-List members of a team or tenant.
+List members of a team.
 
 ```bash
 php artisan neev:member:list --team=acme-corp
@@ -277,7 +319,7 @@ php artisan neev:auth:configure --tenant=acme-corp \
 | `--auto-provision` | Enable auto-provisioning of SSO users |
 | `--auto-provision-role=` | Role for auto-provisioned users |
 
-Creates or updates `TenantAuthSettings` (isolated) or `TeamAuthSettings` (shared). Validates the provider against `config('neev.tenant_auth_options.sso_providers')`.
+Creates or updates `TenantAuthSettings` (isolated) or `TeamAuthSettings` (shared). Supported SSO providers: `entra`, `google`, `okta`.
 
 ### `neev:auth:show`
 

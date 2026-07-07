@@ -10,8 +10,10 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Session;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Validation\ValidationException;
-use Ssntpl\Neev\Events\LoggedOutEvent;
+use Ssntpl\Neev\Events\LoggedOut;
+use Ssntpl\Neev\Exceptions\InvalidInvitationException;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
@@ -21,12 +23,12 @@ use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\LoginAttempt;
-use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\TenantResolver;
 use Illuminate\Support\Facades\URL;
 
@@ -68,61 +70,15 @@ class UserAuthController extends Controller
     */
     public function registerStore(LoginRequest $request, GeoIP $geoIP)
     {
-        $validationRules = [
-            'name' => 'required|string|max:255',
-            'email' => ['required', 'string', 'email', 'max:255', User::uniqueEmailRule()],
-            'password' => config('neev.password'),
-        ];
-
-        if (config('neev.support_username')) {
-            $validationRules['username'] = config('neev.username');
-        }
-
-        $request->validate($validationRules);
+        $request->validate(app(RegistrationService::class)->rules());
 
         try {
-            DB::beginTransaction();
+            $user = app(RegistrationService::class)->register(
+                $request->only(['name', 'email', 'password', 'username']),
+                $request->invitation_id,
+                $request->hash,
+            );
 
-            $userData = [
-                'name' => $request->name,
-                'email' => $request->email,
-                'password' => $request->password,
-                'password_changed_at' => now(),
-            ];
-
-            if (config('neev.support_username')) {
-                $userData['username'] = $request->username;
-            }
-
-            $user = User::model()->forceCreate($userData);
-            $user = User::model()->find($user->id);
-
-            if (config('neev.team')) {
-                if ($request->invitation_id) {
-                    $invitation = TeamInvitation::find($request->invitation_id);
-                    if (!$invitation || !hash_equals(sha1($invitation?->email), $request->hash)) {
-                        DB::rollBack();
-                        return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
-                    }
-
-                    $user->markEmailAsVerified();
-
-                    $team = $invitation->team;
-                    $team->users()->attach($user, ['joined' => true]);
-                    if ($invitation?->role) {
-                        $user->assignRole($invitation->role, $team);
-                    }
-                    $invitation->delete();
-                } else {
-                    $shouldCreateTeam = !$this->isDomainVerified($request->email);
-
-                    if ($shouldCreateTeam) {
-                        $team = $this->createUserTeam($user, $request->email);
-                        $team->addMember($user);
-                    }
-                }
-            }
-            DB::commit();
             $this->auth->login($request, $geoIP, $user, LoginAttempt::Password);
 
             if (!$user->hasVerifiedEmail()) {
@@ -131,8 +87,9 @@ class UserAuthController extends Controller
             }
 
             return redirect(config('neev.home'));
+        } catch (InvalidInvitationException $e) {
+            return back()->withErrors(['message' => $e->getMessage()]);
         } catch (Exception $e) {
-            DB::rollBack();
             Log::error($e);
             return back()->withErrors(['message' => 'Unable to register user.']);
         }
@@ -183,15 +140,7 @@ class UserAuthController extends Controller
             ]);
         }
 
-        $isDomainFederated = false;
-        if (config('neev.team')) {
-            $emailDomain = substr(strrchr($request->email, "@"), 1);
-
-            $domain = Domain::where('domain', $emailDomain)->first();
-            if ($domain?->verified_at) {
-                $isDomainFederated = true;
-            }
-        }
+        $isDomainFederated = config('neev.team') && Domain::isVerifiedForEmail($request->email);
 
         $loginOptions = [];
         if (count($user->passkeys) > 0) {
@@ -303,9 +252,9 @@ class UserAuthController extends Controller
         }
         $this->auth->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, attempt: $attempt, viaRequestAuth: true);
 
-        if (count($user->multiFactorAuths) > 0) {
+        if (count($user->activeMultiFactorAuths) > 0) {
             session(['email' => $user->email]);
-            return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->multiFactorAuths()->first()?->method));
+            return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method));
         }
 
         if ($request->redirect && $request->redirect != '/' && str_starts_with($request->redirect, '/')) {
@@ -396,6 +345,9 @@ class UserAuthController extends Controller
             return back()->withErrors(['message' => 'Failed to update password.']);
         }
         $this->auth->changePassword($user, $request->password);
+
+        event(new PasswordReset($user));
+
         return redirect('login');
     }
 
@@ -525,7 +477,7 @@ class UserAuthController extends Controller
 
         $request->session()->invalidate();
 
-        event(new LoggedOutEvent($user));
+        event(new LoggedOut($user));
 
         return redirect(route('login'));
     }
@@ -563,7 +515,7 @@ class UserAuthController extends Controller
                 ->delete();
         }
 
-        event(new LoggedOutEvent($user));
+        event(new LoggedOut($user));
 
         return back()->with('logoutStatus', __('Logged out from other sessions.'));
     }
@@ -629,11 +581,20 @@ class UserAuthController extends Controller
             $attempt->multi_factor_method = $request->auth_method;
             $attempt->save();
         }
-        if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
-            if ($request->action === 'verify') {
+        if ($request->action === 'verify') {
+            // Setup verification from the security page: activates a
+            // pending method, or just confirms a code for an active one.
+            if ($user->verifyMfaSetup($request->auth_method, (string) $request->otp)) {
+                return back()->with('status', 'Method verified and enabled.');
+            }
+            if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
                 return back()->with('status', 'Code verified.');
             }
 
+            return back()->withErrors(['message' => 'Code is invalid']);
+        }
+
+        if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
             $this->auth->login($request, $geoIP, $user, LoginAttempt::Password, $request->auth_method, $attempt ?? null);
             return redirect(config('neev.home'));
         }
@@ -641,20 +602,4 @@ class UserAuthController extends Controller
         return back()->withErrors(['message' => 'Code is invalid']);
     }
 
-    private function isDomainVerified(string $email): bool
-    {
-        $emailDomain = substr(strrchr($email, "@"), 1);
-        $domain = Domain::where('domain', $emailDomain)->first();
-        return $domain?->verified_at !== null;
-    }
-
-    private function createUserTeam(User $user, ?string $email = null): Team
-    {
-        return Team::model()->forceCreate([
-            'name' => explode(' ', $user->name, 2)[0] . "'s Team",
-            'user_id' => $user->id,
-            'is_public' => false,
-            'activated_at' => now(),
-        ]);
-    }
 }

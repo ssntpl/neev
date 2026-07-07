@@ -17,7 +17,8 @@ class InstallNeev extends Command implements PromptsForMissingInput
      * @var string
      */
     protected $signature = 'neev:install    {tenant : Enable multi-tenant isolation (yes/no)}
-                                            {teams : Enable team support (yes/no)}';
+                                            {teams : Enable team support (yes/no)}
+                                            {kit : Frontend starter kit (blade/none)}';
 
     /**
      * The console command description.
@@ -50,6 +51,9 @@ class InstallNeev extends Command implements PromptsForMissingInput
         if ($this->argument('teams') === 'yes') {
             $this->replaceInFile("'team' => false,", "'team' => true,", $file);
         }
+
+        // Eject the chosen starter kit (and, always, the email templates).
+        $this->call('neev:ui', ['kit' => $this->argument('kit')]);
 
         $this->info('Neev installed successfully!');
     }
@@ -88,6 +92,15 @@ class InstallNeev extends Command implements PromptsForMissingInput
                     'no' => 'No'
                 ],
                 default: 'yes'
+            ),
+
+            'kit' => fn () => select(
+                label: 'Which frontend starter kit would you like?',
+                options: [
+                    'blade' => 'Blade — ready-made pages ejected into your app',
+                    'none' => 'None — headless, I will build the frontend myself',
+                ],
+                default: 'blade'
             ),
         ];
     }

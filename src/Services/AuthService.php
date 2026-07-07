@@ -10,7 +10,8 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
-use Ssntpl\Neev\Events\LoggedInEvent;
+use Ssntpl\Neev\Events\LoggedIn;
+use Ssntpl\Neev\Events\PasswordChanged;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
@@ -33,7 +34,7 @@ class AuthService
 
         $request->session()->regenerate();
 
-        event(new LoggedInEvent($user));
+        event(new LoggedIn($user));
 
         $attempt = $this->recordLoginAttempt($request, $geoIP, $user, $method, $mfa, $attempt);
         session(['attempt_id' => $attempt->id ?? null]);
@@ -89,7 +90,7 @@ class AuthService
             $accessToken->attempt_id = $attempt->id;
             $accessToken->save();
 
-            event(new LoggedInEvent($user));
+            event(new LoggedIn($user));
 
             return $token->plainTextToken;
         } catch (Exception $e) {
@@ -104,13 +105,26 @@ class AuthService
     public function sendEmailVerification(User $user): void
     {
         $expiryMinutes = config('neev.url_expiry_time', 60);
-        $signedUrl = URL::temporarySignedRoute(
-            'verification.verify',
-            now()->addMinutes($expiryMinutes),
-            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
-        );
 
-        Mail::to($user->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email', $expiryMinutes));
+        if (config('neev.ui') === 'blade') {
+            $url = URL::temporarySignedRoute(
+                'verification.verify',
+                now()->addMinutes($expiryMinutes),
+                ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
+            );
+        } else {
+            // Headless: the Blade page routes are not registered. Link to
+            // the app's frontend, carrying the signature for the API
+            // verification endpoint (route 'mail.verify').
+            $signedUrl = URL::temporarySignedRoute(
+                'mail.verify',
+                now()->addMinutes($expiryMinutes),
+                ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
+            );
+            $url = config('app.url') . '/verify-email?' . parse_url($signedUrl, PHP_URL_QUERY);
+        }
+
+        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', $expiryMinutes));
     }
 
     /**
@@ -179,6 +193,8 @@ class AuthService
             $user->password_changed_at = now();
             $user->save();
         });
+
+        event(new PasswordChanged($user));
     }
 
     /**

@@ -3,7 +3,6 @@ composer.lock
 /node_modules/
 .claude/
 CLAUDE.md
-TODO.md
 .DS_Store
 .cursor/
 .vscode/

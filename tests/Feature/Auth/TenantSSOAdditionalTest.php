@@ -51,7 +51,7 @@ class TenantSSOAdditionalTest extends TestCase
 
         $this->setCurrentTenant($team);
 
-        $response = $this->getJson('/api/tenant/auth');
+        $response = $this->getJson('/neev/tenant/auth');
 
         $response->assertOk()
             ->assertJsonPath('auth_method', 'password')
@@ -84,7 +84,7 @@ class TenantSSOAdditionalTest extends TestCase
         $this->app->instance(\Ssntpl\Neev\Services\TenantSSOManager::class, $manager);
 
         // Invalid redirect_uri (external domain)
-        $response = $this->get('/sso/redirect?redirect_uri=' . urlencode('https://malicious.com/steal'));
+        $response = $this->get('/neev/sso/redirect?redirect_uri=' . urlencode('https://malicious.com/steal'));
 
         $response->assertRedirect();
         // Should not store invalid redirect_uri in session
@@ -115,7 +115,7 @@ class TenantSSOAdditionalTest extends TestCase
         $manager->shouldReceive('buildSocialiteDriver')->andReturn($driver);
         $this->app->instance(\Ssntpl\Neev\Services\TenantSSOManager::class, $manager);
 
-        $response = $this->get('/sso/redirect?email=user@example.com');
+        $response = $this->get('/neev/sso/redirect?email=user@example.com');
 
         $response->assertRedirect();
     }

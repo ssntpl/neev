@@ -11,7 +11,7 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Validation\ValidationException;
 use Mockery;
 use Ssntpl\Neev\Database\Factories\LoginAttemptFactory;
-use Ssntpl\Neev\Events\LoggedInEvent;
+use Ssntpl\Neev\Events\LoggedIn;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
@@ -124,7 +124,7 @@ class AuthServiceTest extends TestCase
 
     public function test_dispatches_logged_in_event(): void
     {
-        Event::fake([LoggedInEvent::class]);
+        Event::fake([LoggedIn::class]);
 
         $user = User::factory()->create();
 
@@ -135,7 +135,7 @@ class AuthServiceTest extends TestCase
             LoginAttempt::Password
         );
 
-        Event::assertDispatched(LoggedInEvent::class, function (LoggedInEvent $event) use ($user) {
+        Event::assertDispatched(LoggedIn::class, function (LoggedIn $event) use ($user) {
             return $event->user->id === $user->id;
         });
     }

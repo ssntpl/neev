@@ -3,21 +3,21 @@
 namespace Ssntpl\Neev\Tests\Unit\Events;
 
 use Illuminate\Support\Facades\Event;
-use Ssntpl\Neev\Events\LoggedInEvent;
-use Ssntpl\Neev\Events\LoggedOutEvent;
+use Ssntpl\Neev\Events\LoggedIn;
+use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Tests\TestCase;
 
 class EventsTest extends TestCase
 {
     // -----------------------------------------------------------------
-    // LoggedInEvent
+    // LoggedIn
     // -----------------------------------------------------------------
 
     public function test_logged_in_event_stores_user_property(): void
     {
         $user = (object) ['id' => 1, 'name' => 'John'];
 
-        $event = new LoggedInEvent($user);
+        $event = new LoggedIn($user);
 
         $this->assertSame($user, $event->user);
     }
@@ -26,7 +26,7 @@ class EventsTest extends TestCase
     {
         $user = (object) ['id' => 42];
 
-        $event = new LoggedInEvent($user);
+        $event = new LoggedIn($user);
 
         $reflection = new \ReflectionClass($event);
         $property = $reflection->getProperty('user');
@@ -40,22 +40,22 @@ class EventsTest extends TestCase
 
         $user = (object) ['id' => 1];
 
-        LoggedInEvent::dispatch($user);
+        LoggedIn::dispatch($user);
 
-        Event::assertDispatched(LoggedInEvent::class, function ($event) use ($user) {
+        Event::assertDispatched(LoggedIn::class, function ($event) use ($user) {
             return $event->user === $user;
         });
     }
 
     // -----------------------------------------------------------------
-    // LoggedOutEvent
+    // LoggedOut
     // -----------------------------------------------------------------
 
     public function test_logged_out_event_stores_user_property(): void
     {
         $user = (object) ['id' => 2, 'name' => 'Jane'];
 
-        $event = new LoggedOutEvent($user);
+        $event = new LoggedOut($user);
 
         $this->assertSame($user, $event->user);
     }
@@ -64,7 +64,7 @@ class EventsTest extends TestCase
     {
         $user = (object) ['id' => 99];
 
-        $event = new LoggedOutEvent($user);
+        $event = new LoggedOut($user);
 
         $reflection = new \ReflectionClass($event);
         $property = $reflection->getProperty('user');
@@ -78,9 +78,9 @@ class EventsTest extends TestCase
 
         $user = (object) ['id' => 2];
 
-        LoggedOutEvent::dispatch($user);
+        LoggedOut::dispatch($user);
 
-        Event::assertDispatched(LoggedOutEvent::class, function ($event) use ($user) {
+        Event::assertDispatched(LoggedOut::class, function ($event) use ($user) {
             return $event->user === $user;
         });
     }
@@ -96,11 +96,11 @@ class EventsTest extends TestCase
         $userA = (object) ['id' => 1];
         $userB = (object) ['id' => 2];
 
-        LoggedInEvent::dispatch($userA);
-        LoggedOutEvent::dispatch($userB);
+        LoggedIn::dispatch($userA);
+        LoggedOut::dispatch($userB);
 
-        Event::assertDispatched(LoggedInEvent::class, 1);
-        Event::assertDispatched(LoggedOutEvent::class, 1);
+        Event::assertDispatched(LoggedIn::class, 1);
+        Event::assertDispatched(LoggedOut::class, 1);
     }
 
     // -----------------------------------------------------------------
@@ -109,14 +109,14 @@ class EventsTest extends TestCase
 
     public function test_logged_in_event_accepts_null_user(): void
     {
-        $event = new LoggedInEvent(null);
+        $event = new LoggedIn(null);
 
         $this->assertNull($event->user);
     }
 
     public function test_logged_out_event_accepts_null_user(): void
     {
-        $event = new LoggedOutEvent(null);
+        $event = new LoggedOut(null);
 
         $this->assertNull($event->user);
     }

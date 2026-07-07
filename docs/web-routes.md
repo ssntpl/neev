@@ -2,6 +2,8 @@
 
 Complete reference for all Neev web routes. These routes render Blade views for browser-based authentication.
 
+> **Blade kit required:** all Blade page routes in this document register only when `'ui' => 'blade'` in `config/neev.php` — i.e. after the Blade starter kit is ejected (`php artisan neev:ui blade` or the installer's kit prompt). On a headless install (`ui` = `null`, the default) none of these page routes exist. The [OAuth / Social Login](#oauth--social-login) and [Tenant SSO](#tenant-sso) routes below, and everything in the [API Reference](./api-reference.md), are always registered regardless.
+
 ---
 
 ## Public Routes
@@ -79,10 +81,12 @@ These routes are accessible without authentication.
 
 ### OAuth / Social Login
 
+These routes live under the configurable route prefix (`route_prefix` in `config/neev.php`, env `NEEV_ROUTE_PREFIX`, default `neev`). The paths below use the default prefix. Unlike the Blade page routes, they are **always registered** — headless installs use them too.
+
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| GET | `/oauth/{service}` | `oauth.redirect` | Redirect to OAuth provider |
-| GET | `/oauth/{service}/callback` | `oauth.callback` | Handle OAuth callback |
+| GET | `/neev/oauth/{service}` | `oauth.redirect` | Redirect to OAuth provider |
+| GET | `/neev/oauth/{service}/callback` | `oauth.callback` | Handle OAuth callback |
 
 **URL Parameters:**
 - `service` - OAuth provider (`google`, `github`, `microsoft`, `apple`)
@@ -91,10 +95,12 @@ These routes are accessible without authentication.
 
 ### Tenant SSO
 
+These routes also live under the configurable route prefix and are always registered.
+
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| GET | `/sso/redirect` | `sso.redirect` | Redirect to tenant's SSO provider |
-| GET | `/sso/callback` | `sso.callback` | Handle SSO callback |
+| GET | `/neev/sso/redirect` | `sso.redirect` | Redirect to tenant's SSO provider |
+| GET | `/neev/sso/callback` | `sso.callback` | Handle SSO callback |
 
 ---
 
@@ -277,26 +283,26 @@ Route::bind('user', fn($value) => User::model()->findOrFail($value));
 
 ### neev:web
 
-Applied to authenticated web routes. Checks:
+Applied to authenticated web routes. Resolves the tenant and team context, then checks:
 1. User is logged in
 2. User account is active
 3. MFA is completed (if enabled)
-4. Email is verified (if required)
+4. User is a member of the resolved tenant (when `tenant` is enabled)
+
+Email verification is enforced separately via the `neev:verified-email` middleware alias.
 
 ### neev:tenant
 
-For multi-tenant routes. Additionally resolves:
-1. Current tenant from domain
-2. User's membership in tenant
+For multi-tenant routes. Requires a tenant to be resolved (from the X-Tenant header, subdomain, or custom domain) — returns 404 when no tenant is found. Also resolves the current team and binds the request context. Does not require authentication.
 
 ---
 
 ## View Files
 
-Views are stored in `resources/views/` and can be published:
+The page views are part of the Blade starter kit — they live in your application at `resources/views/vendor/neev/` (app-owned) once the kit is ejected:
 
 ```bash
-php artisan vendor:publish --tag=neev-views
+php artisan neev:ui blade
 ```
 
 | View | Description |

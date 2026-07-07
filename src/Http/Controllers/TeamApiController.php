@@ -255,11 +255,20 @@ class TeamApiController extends Controller
                 $invitation->role = $request->role;
                 $invitation->save();
 
-                $signedUrl = URL::temporarySignedRoute(
-                    'register',
-                    $expiry,
-                    ['id' => $invitation->id, 'hash' => sha1($request->email)]
-                );
+                if (config('neev.ui') === 'blade') {
+                    $signedUrl = URL::temporarySignedRoute(
+                        'register',
+                        $expiry,
+                        ['id' => $invitation->id, 'hash' => sha1($request->email)]
+                    );
+                } else {
+                    // Headless: link to the app's register page; the SPA
+                    // forwards invitation_id + hash to POST register.
+                    $signedUrl = config('app.url') . '/register?' . http_build_query([
+                        'invitation_id' => $invitation->id,
+                        'hash' => sha1($request->email),
+                    ]);
+                }
 
                 Mail::to($request->email)->send(new TeamInvitation($team->name, 'there', $signedUrl, $expiry, false));
                 return response()->json([

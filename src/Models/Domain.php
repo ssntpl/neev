@@ -58,6 +58,18 @@ class Domain extends Model
         return $this->morphTo();
     }
 
+    /**
+     * Whether the email's domain has been claimed and DNS-verified by
+     * a team/tenant (used to skip personal-team auto-creation for
+     * federated domains during registration).
+     */
+    public static function isVerifiedForEmail(string $email): bool
+    {
+        $emailDomain = substr(strrchr($email, '@'), 1);
+
+        return static::where('domain', $emailDomain)->first()?->verified_at !== null;
+    }
+
     public function rules()
     {
         return $this->hasMany(DomainRule::class);
