@@ -21,6 +21,26 @@ class RegistrationTest extends TestCase
         config(['neev.password' => ['required', 'confirmed']]);
     }
 
+    public function test_registration_succeeds_with_the_default_password_rules(): void
+    {
+        // Regression: PasswordHistory::notReused() used to fail with
+        // "Unable to verify password history." for first-time signups
+        // (no resolvable user), blocking every registration under the
+        // shipped default config. This test runs WITHOUT the simplified
+        // rules from setUp().
+        config(['neev.password' => (require dirname(__DIR__, 3) . '/config/neev.php')['password']]);
+
+        $response = $this->postJson('/neev/register', [
+            'name' => 'Default Rules',
+            'email' => 'default-rules@company.com',
+            'password' => 'Str0ng@Passw0rd!',
+            'password_confirmation' => 'Str0ng@Passw0rd!',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('auth_state', 'authenticated');
+    }
+
     public function test_api_registration_returns_token(): void
     {
         $response = $this->postJson('/neev/register', [
