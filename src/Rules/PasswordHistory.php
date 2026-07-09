@@ -40,7 +40,11 @@ class PasswordHistory implements ValidationRule
         }
 
         if (!$user) {
-            $fail('Unable to verify password history.');
+            // No resolvable user means there is no history to reuse —
+            // first-time registration lands here (no authenticated user,
+            // and the submitted email belongs to nobody yet). The check
+            // is vacuously satisfied; failing would block every
+            // registration under the default password rules.
             return;
         }
 

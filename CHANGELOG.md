@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **`PasswordHistory` rule blocked first-time registration** — with the default `neev.password` rules, `PasswordHistory::notReused()` failed with "Unable to verify password history." whenever no user could be resolved, which is exactly the first-time-signup case (no authenticated user; the submitted email belongs to nobody yet). The rule now passes vacuously when there is no user — there is no history to reuse. Reported by a consuming-app developer
+
 ## [0.5.0] - 2026-07-02
 
 ### Added
