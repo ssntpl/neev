@@ -152,7 +152,7 @@ place them. The contract per template:
 
 | Template (`neev::emails.*`) | Mailable | Variables |
 |---|---|---|
-| `email-verify` | `VerifyUserEmail` | `$url` (signed verification link), `$username`, `$purpose`, `$expiry` (minutes) |
+| `email-verify` | `VerifyUserEmail` | `$url` (signed verification link), `$username`, `$purpose`, `$expiry` (minutes), `$otp` (verification code; null for reset/email-change purposes — the template chooses whether to show link, code, or both) |
 | `email-otp` | `EmailOTP` | `$username`, `$otp`, `$expiry` |
 | `login-link` | `LoginUsingLink` | `$url` (signed magic link), `$expiry` |
 | `team-invitation` | `TeamInvitation` | `$team`, `$username`, `$url` (accept link), `$expiry`, `$userExist` |
