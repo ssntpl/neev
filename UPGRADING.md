@@ -11,6 +11,18 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
+## 0.5.0 → Unreleased
+
+**Email verification code (additive; one schema note).**
+Verification emails now carry a numeric code alongside the signed link,
+verifiable via `POST {prefix}/email/verify-otp` or the Blade kit's
+verification page. The `otp` table gains an `attempts` column — the
+package edits its migration in place, so existing installs add it
+themselves: `$table->unsignedTinyInteger('attempts')->default(0);`
+Apps that ejected the `email-verify` template before this release
+won't show the code until they add the `$otp` block (see the stub
+template) — everything else works regardless.
+
 ## 0.4.5 → 0.5.0
 
 **The package is now headless by default (RFC 002, action required for

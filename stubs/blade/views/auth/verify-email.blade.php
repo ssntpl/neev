@@ -20,6 +20,22 @@
         <div class="py-2">
             {{$email}}
         </div>
+
+        <form method="POST" action="{{ route('email.verify.otp') }}" class="mt-4">
+            @csrf
+
+            <div class="flex gap-2 items-end">
+                <div class="grow">
+                    <x-neev-component::label for="otp" value="{{ __('Or enter the code from the email') }}" />
+                    <x-neev-component::input id="otp" class="block mt-1 w-full" type="text" name="otp" inputmode="numeric" autocomplete="one-time-code" required />
+                </div>
+
+                <x-neev-component::button type="submit">
+                    {{ __('Verify') }}
+                </x-neev-component::button>
+            </div>
+        </form>
+
         <div class="mt-4 flex items-center justify-between">
             <form method="GET" action="{{ route('email.verification.send') }}">
                 @csrf

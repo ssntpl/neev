@@ -21,6 +21,19 @@
         </a>
     </p>
 
+    @if (!empty($otp))
+        <p>Or enter this code on the device you signed up on:</p>
+
+        <p style="
+            font-size: 24px;
+            font-weight: bold;
+            letter-spacing: 6px;
+            background-color: #f4f4f4;
+            display: inline-block;
+            padding: 10px 20px;
+            border-radius: 5px;">{{ $otp }}</p>
+    @endif
+
     <p>This link is valid for {{ $expiry ?? '15' }} minutes after you receive this email. If you didn’t request this, you can safely ignore this email.</p>
 
     <p>Regards,<br>{{ config('app.name') }}</p>

@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Traits;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Events\EmailVerified;
 use Ssntpl\Neev\Models\LoginAttempt;
+use Ssntpl\Neev\Models\OTP;
 use Ssntpl\Neev\Models\Passkey;
 
 trait NeevAuthenticatable
@@ -35,6 +36,13 @@ trait NeevAuthenticatable
         $saved = $this->save();
 
         if ($saved && !$wasVerified) {
+            // Whichever proof completed verification (signed link or
+            // emailed code), the outstanding code is now dead.
+            OTP::query()
+                ->where('owner_id', $this->id)
+                ->where('owner_type', $this->getMorphClass())
+                ->delete();
+
             // Registration flows call this inside a transaction; only
             // announce the verification once it is durable.
             DB::afterCommit(fn () => event(new EmailVerified($this)));

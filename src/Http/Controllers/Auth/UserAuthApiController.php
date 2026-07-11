@@ -199,20 +199,39 @@ class UserAuthApiController extends Controller
             ], 400);
         }
 
-        $expiryMinutes = config('neev.url_expiry_time', 60);
-        $signedUrl = URL::temporarySignedRoute(
-            'mail.verify',
-            now()->addMinutes($expiryMinutes),
-            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
-        );
-
-        $query = parse_url($signedUrl, PHP_URL_QUERY);
-        $frontendUrl = config('app.url');
-        $url = "{$frontendUrl}/verify-email?{$query}";
-        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', $expiryMinutes));
+        app(AuthService::class)->sendEmailVerification($user);
 
         return response()->json([
             'message' => 'Verification link has been sent.',
+        ]);
+    }
+
+    public function verifyEmailOtp(Request $request)
+    {
+        $request->validate([
+            'otp' => ['required'],
+        ]);
+
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'message' => 'User not found.',
+            ], 404);
+        }
+        if ($user->hasVerifiedEmail()) {
+            return response()->json([
+                'message' => 'Email already verified.',
+            ], 400);
+        }
+
+        if (!app(AuthService::class)->verifyEmailOtp($user, (string) $request->otp)) {
+            return response()->json([
+                'message' => 'Code verification failed.',
+            ], 400);
+        }
+
+        return response()->json([
+            'message' => 'Email verification done.',
         ]);
     }
 

@@ -242,6 +242,38 @@ Content-Type: application/json
 }
 ```
 
+#### The "verify your email" waiting screen
+
+`email_verified: false` means your app should show a verification
+screen. The verification email carries **both a link and a numeric
+code**, and there are two patterns for completing it without leaving
+the user stranded:
+
+- **Code entry (recommended for cross-device):** the user reads the
+  code from their mail app (possibly on another device) and types it
+  into your waiting screen:
+
+  ```http
+  POST /neev/email/verify-otp
+  { "otp": "123456" }
+  ```
+
+  The verification completes *in the waiting session* — no polling, no
+  stale tab. Codes expire (`otp_expiry_time`) and die after 5 wrong
+  attempts; `POST /neev/email/send` re-issues both proofs.
+
+- **Link + re-check:** if the user clicks the emailed link instead
+  (which may open in a different browser), your waiting screen won't
+  know. Poll `GET /neev/users` every few seconds — or show an
+  "I've verified" button that re-checks — and proceed when
+  `email_verified` flips to `true`. Either proof invalidates the
+  other, so supporting both is safe.
+
+Your app decides which proofs to surface: the email template is
+app-owned (edit `resources/views/vendor/neev/emails/email-verify.blade.php`
+to show the link, the code, or both), and your UI decides whether to
+render a code input.
+
 ### 4.4 Magic link
 
 Request the link:

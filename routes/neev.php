@@ -100,6 +100,10 @@ if (config('neev.ui') === 'blade') {
             Route::get('/email/send', [UserAuthController::class, 'emailVerifySend'])
                 ->name('email.verification.send');
 
+            Route::post('/email/verify-otp', [UserAuthController::class, 'emailVerifyOtpStore'])
+                ->middleware('throttle:5,1')
+                ->name('email.verify.otp');
+
             Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
                 ->name('email.change');
             Route::put('/email/change', [UserAuthController::class, 'emailChangeStore'])
@@ -233,6 +237,7 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
 
         Route::post('/email/send', [UserAuthApiController::class, 'sendMailVerificationLink']);
         Route::get('/email/verify', [UserAuthApiController::class, 'emailVerify'])->name('mail.verify');
+        Route::post('/email/verify-otp', [UserAuthApiController::class, 'verifyEmailOtp'])->middleware('throttle:5,1');
         Route::post('/email/change', [UserAuthApiController::class, 'requestEmailChange']);
         Route::get('/mfa', [UserApiController::class, 'getMFAMethods']);
         Route::post('/mfa/add', [UserApiController::class, 'addMultiFactorAuthentication']);
