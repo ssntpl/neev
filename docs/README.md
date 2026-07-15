@@ -49,6 +49,8 @@ Design proposals and their implementation status.
 | [RFC 002 — Headless Core + Starter Kits](./rfcs/002-starter-kits.md) | Phase A implemented | Package is fully headless (Fortify-style); Blade UI ejects into the app as a starter kit at install; email templates app-owned with a documented variable contract; React kit reserved as a future kit. |
 | [RFC 003 — Per-Group Auth Policies](./rfcs/003-auth-policies.md) | Proposed (resolves RFC-001 §6) | One tenant, multiple user populations: policy-per-role/domain auth methods, identifier-first routing, platform policies as null-owner rows, migration from tenant/team auth settings. |
 | [Email Reputation Package](./email-reputation-package.md) | v1 scope decided | Standalone classification-only package (free/disposable/relay/unknown); network tier deferred; neev takes no dependency on it. |
+| [RFC 004 — Device Authorization Grant](./rfcs/004-device-authorization-grant.md) | Proposed | RFC 8628 for TVs/consoles/kiosks/CLIs: device shows a code, user approves on their phone through the full neev auth stack, device polls for a normal neev token. |
+| [RFC 005 — OAuth 2.1 Authorization Server](./rfcs/005-oauth-authorization-server.md) | Proposed (gated behind RFC 004) | Neev as identity provider: auth-code + mandatory PKCE, refresh rotation, client credentials — scopes on neev's own tokens; build-vs-Passport analysis included. |
 
 ---
 
