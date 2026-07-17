@@ -16,7 +16,7 @@ return new class () extends Migration {
             $table->foreignId('tenant_id')->nullable()->constrained('tenants')->nullOnDelete();
             $table->string('token')->unique();
             $table->string('channel')->default('web');
-            $table->string('meta_data')->nullable();
+            $table->json('meta_data')->nullable();
             $table->text('user_agent')->nullable();
             $table->string('created_ip')->nullable();
             $table->timestamp('expires_at');

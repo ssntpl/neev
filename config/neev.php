@@ -165,11 +165,8 @@ return [
     | Magic Link (Passwordless) Authentication
     |--------------------------------------------------------------------------
     |
-    | Neev ships two magic-link drivers:
-    |   - 'signed_url' : Laravel temporary signed URLs (stateless, legacy default).
-    |                    Links remain valid until they expire and are replayable.
-    |   - 'stateful'   : Server-side, single-use, revocable opaque tokens with
-    |                    optional browser binding and confirmation-required flows.
+    | Magic links are server-side, single-use, revocable opaque tokens, stored
+    | hashed and invalidated on redemption.
     |
     | Neev is UI-agnostic: it manages token lifecycle, validation and security
     | policy only. Host applications own all routing, deep-link and UI concerns.
@@ -180,9 +177,28 @@ return [
         // Minutes before a magic link expires. Recommended: 5-15 minutes.
         'expires_in' => env('NEEV_MAGIC_LINK_EXPIRY', 10),
 
-        'bind_to_browser' => false,
+        // Bind a link to the browser/device that requested it. The binding
+        // source is context['binding'], the `binding` request field, the
+        // X-Device-Id header, or the web session id — in that order. Enabling
+        // this makes generation FAIL when no source is available.
+        'bind_to_browser' => env('NEEV_MAGIC_LINK_BIND_TO_BROWSER', false),
 
-        'require_confirmation' => false,
+        // Require an explicit POST confirmation before a link is consumed.
+        //
+        // Keep this enabled unless you are certain your users are not behind a
+        // scanning mail gateway. Corporate scanners (Outlook SafeLinks,
+        // Mimecast) prefetch GET links; because links are single-use, a
+        // prefetch would consume the link before the user ever clicks it and
+        // lock them out. With confirmation on, GET only ever validates.
+        'require_confirmation' => env('NEEV_MAGIC_LINK_CONFIRMATION', true),
+
+        // Whether a user whose email is unverified may use magic links.
+        //
+        // Following a link proves control of the inbox, so when this is on,
+        // redeeming one also marks the email verified. When off, sending to an
+        // unverified address is refused outright (MagicLinkUnverifiedException)
+        // rather than mailing a link that redemption would always reject.
+        'allow_unverified_users' => env('NEEV_MAGIC_LINK_ALLOW_UNVERIFIED', false),
 
         // Channel-aware link generation. Neev builds the URL; it never renders
         // UI or handles deep-link routing — the host app does.

@@ -12,9 +12,7 @@ class CleanExpiredMagicLinks extends Command
 
     public function handle(): int
     {
-        // Consumed/superseded tokens are deleted on use, so only expired rows
-        // can linger.
-        $count = MagicLinkToken::query()
+        $count = MagicLinkToken::withoutTenantScope()
             ->where('expires_at', '<', now())
             ->delete();
 

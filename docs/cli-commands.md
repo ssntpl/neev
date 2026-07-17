@@ -87,6 +87,12 @@ deleted on use, so only expired rows can linger.)
 php artisan neev:clean-magic-links
 ```
 
+Expired is expired: this purges every expired token regardless of tenancy
+config, since it is a maintenance sweep rather than a request. Expired tokens
+cannot be redeemed in any case — the point is to stop the table growing without
+bound and to honour retention, as each row holds the requesting IP and user
+agent.
+
 Schedule it alongside the other maintenance commands:
 
 ```php

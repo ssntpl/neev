@@ -4,9 +4,11 @@ namespace Ssntpl\Neev\Services\MagicLink;
 
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
-use Ssntpl\Neev\Events\MagicLink\MagicLinkConsumed;
-use Ssntpl\Neev\Events\MagicLink\MagicLinkGenerated;
-use Ssntpl\Neev\Events\MagicLink\MagicLinkRejected;
+use Ssntpl\Neev\Events\MagicLinkConsumed;
+use Ssntpl\Neev\Events\MagicLinkGenerated;
+use Ssntpl\Neev\Events\MagicLinkRejected;
+use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
+use Ssntpl\Neev\Exceptions\MagicLinkUnverifiedException;
 use Ssntpl\Neev\Models\MagicLinkToken;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
@@ -62,12 +64,22 @@ class MagicLinkManager
      *
      * @param  array<string, mixed>  $context
      * @return array<string, mixed>  ['url', 'token', 'channel', 'expires_at', 'expires_in', 'model']
+     *
+     * @throws MagicLinkBindingException     When binding is enabled but the
+     *                                       request carries no binding source.
+     * @throws MagicLinkUnverifiedException  When the user's email is unverified
+     *                                       and the unverified policy forbids it.
      */
     public function generate(object $user, string $channel = 'web', array $context = []): array
     {
         $channel = $this->normalizeChannel($channel);
         $context = $this->withRequest($context);
         $request = $context['request'] ?? null;
+
+        // Both checks run before invalidating: a refused send must not cost the
+        // user the link they already have.
+        $this->assertUserMayReceiveLink($user);
+        $metaData = $this->buildMetaData($request, $context);
 
         $this->invalidatePrevious($user->id, $channel);
 
@@ -77,7 +89,7 @@ class MagicLinkManager
             'user_id' => $user->id,
             'token' => MagicLinkToken::hashToken($plain),
             'channel' => $channel,
-            'meta_data' => $this->buildMetaData($request, $context),
+            'meta_data' => $metaData,
             'user_agent' => $request?->userAgent(),
             'created_ip' => $request?->ip(),
             'expires_at' => now()->addMinutes($this->expiryMinutes()),
@@ -86,6 +98,32 @@ class MagicLinkManager
         MagicLinkGenerated::dispatch($user, $token);
 
         return $this->linkPayload($token, $plain);
+    }
+
+    /**
+     * Refuse to issue a link the recipient could never use.
+     *
+     * Without this the link is mailed, and every redemption of it fails as
+     * "invalid or expired" — a dead end the user cannot get out of.
+     *
+     * @throws MagicLinkUnverifiedException
+     */
+    protected function assertUserMayReceiveLink(object $user): void
+    {
+        if (!$user->hasVerifiedEmail() && !$this->allowsUnverifiedUsers()) {
+            throw MagicLinkUnverifiedException::forEmail($user->email);
+        }
+    }
+
+    /**
+     * Whether users with an unverified email may use magic links at all.
+     *
+     * When enabled, redeeming a link also marks the email verified — following
+     * the link is itself proof of control over the inbox.
+     */
+    protected function allowsUnverifiedUsers(): bool
+    {
+        return (bool) config('neev.magic_link.allow_unverified_users', false);
     }
 
     /**
@@ -111,14 +149,33 @@ class MagicLinkManager
      * Build the JSON-able metadata stored on a token (currently the binding
      * fingerprint), or null when there's nothing to store.
      *
+     * When binding is enabled this throws rather than returning null: a token
+     * stored without a fingerprint can never pass the redemption check, so
+     * failing here surfaces the misconfiguration at send time instead of
+     * locking the user out of a link that was dead when it was minted.
+     *
      * @param  array<string, mixed>  $context
      * @return array<string, mixed>|null
+     *
+     * @throws MagicLinkBindingException
      */
     protected function buildMetaData(?Request $request, array $context): ?array
     {
         $fingerprint = $request ? $this->fingerprint($request, $context) : null;
 
+        if ($fingerprint === null && $this->bindingEnabled()) {
+            throw new MagicLinkBindingException();
+        }
+
         return $fingerprint !== null ? ['fingerprint' => $fingerprint] : null;
+    }
+
+    /**
+     * Whether links are bound to the browser/device that requested them.
+     */
+    protected function bindingEnabled(): bool
+    {
+        return (bool) config('neev.magic_link.bind_to_browser', false);
     }
 
     /**
@@ -178,8 +235,17 @@ class MagicLinkManager
         // Single-use: deleting the row prevents any replay.
         $result->token?->delete();
 
-        $final = MagicLinkResult::valid($result->user, $result->channel, $result->token);
-        MagicLinkConsumed::dispatch($result->user, $final);
+        $user = $result->user;
+
+        // The click proved control of the inbox, so redeeming doubles as email
+        // verification. Only reachable when the unverified policy allows it —
+        // resolve() rejects unverified users otherwise.
+        if (!$user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+        }
+
+        $final = MagicLinkResult::valid($user, $result->channel, $result->token);
+        MagicLinkConsumed::dispatch($user, $final);
 
         return $final;
     }
@@ -207,7 +273,7 @@ class MagicLinkManager
             return MagicLinkResult::failure(MagicLinkResult::EXPIRED, $channel, $record);
         }
 
-        if (config('neev.magic_link.bind_to_browser', false)
+        if ($this->bindingEnabled()
             && !$this->bindingMatches($record->fingerprint(), $request, $context)) {
             return MagicLinkResult::failure(MagicLinkResult::BINDING_MISMATCH, $channel, $record);
         }
@@ -229,7 +295,10 @@ class MagicLinkManager
     }
 
     /**
-     * Resolve an eligible user (exists + verified email) or null.
+     * Resolve an eligible user, or null.
+     *
+     * An unverified user is only eligible when the unverified policy allows it,
+     * in which case consume() marks the email verified on redemption.
      */
     protected function resolveUser(int|string|null $userId): ?object
     {
@@ -239,7 +308,11 @@ class MagicLinkManager
 
         $user = User::model()->find($userId);
 
-        if (!$user || !$user->hasVerifiedEmail()) {
+        if (!$user) {
+            return null;
+        }
+
+        if (!$user->hasVerifiedEmail() && !$this->allowsUnverifiedUsers()) {
             return null;
         }
 
@@ -253,12 +326,15 @@ class MagicLinkManager
     protected function extractToken(Request $request, array $context = []): ?string
     {
         if (!empty($context['token'])) {
-            return (string) $context['token'];
+            return is_scalar($context['token']) ? (string) $context['token'] : null;
         }
 
         $token = $request->input('token');
 
-        return $token === null ? null : (string) $token;
+        // Client-controlled input: `?token[]=a&token[]=b` arrives as an array,
+        // and casting that to string raises "Array to string conversion" — a
+        // 500 where a plain rejection belongs.
+        return is_scalar($token) ? (string) $token : null;
     }
 
     // -----------------------------------------------------------------
@@ -286,6 +362,9 @@ class MagicLinkManager
      */
     protected function bindingMatches(?string $storedFingerprint, Request $request, array $context = []): bool
     {
+        // Fail closed. Safe because generation refuses to mint an unbound token
+        // while binding is on: a null fingerprint here means the link predates
+        // the setting, and those links should not bypass the check.
         if ($storedFingerprint === null) {
             return false;
         }
@@ -355,10 +434,40 @@ class MagicLinkManager
         }
 
         // Web-style channels: base URL + path.
-        $base = rtrim((string) ($config['base_url'] ?? config('app.url')), '/');
+        $base = rtrim($this->webBaseUrl($config), '/');
         $path = (string) ($config['path'] ?? '/login-link');
 
         return $base . '/' . ltrim($path, '/');
+    }
+
+    /**
+     * Host for a web-style channel link.
+     *
+     * In tenant mode a tenant is reached at its own host (subdomain or custom
+     * domain), and the token is stored tenant-scoped. A link must therefore be
+     * redeemed on the tenant's host — on any other host the tenant scope hides
+     * the token and redemption fails as "invalid or expired". The current
+     * request already arrived on that host, so it is the authoritative base;
+     * the static `base_url` config cannot represent more than one tenant.
+     *
+     * Falls back to the configured `base_url` (or app.url) in shared mode and
+     * whenever there is no request (CLI / queued generation).
+     *
+     * @param  array<string, mixed>  $config
+     */
+    protected function webBaseUrl(array $config): string
+    {
+        if (config('neev.tenant', false)) {
+            $request = $this->container->bound('request')
+                ? $this->container->make('request')
+                : null;
+
+            if ($request instanceof Request && $request->getHost() !== '') {
+                return $request->getSchemeAndHttpHost();
+            }
+        }
+
+        return (string) ($config['base_url'] ?? config('app.url'));
     }
 
     /**

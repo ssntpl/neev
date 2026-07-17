@@ -194,12 +194,26 @@ curl -X POST https://yourapp.com/neev/sendLoginLink \
 **Use Link:**
 
 ```bash
+# Opening the link only validates it — the response asks for confirmation.
 curl -X GET "https://yourapp.com/neev/loginUsingLink?token=THE_OPAQUE_TOKEN"
+# => {"auth_state": "confirmation_required", "channel": "web", ...}
+
+# The user's explicit confirm consumes the link and logs them in.
+curl -X POST "https://yourapp.com/neev/loginUsingLink" \
+  -H "Content-Type: application/json" \
+  -d '{"token": "THE_OPAQUE_TOKEN"}'
+# => {"auth_state": "authenticated", "token": "...", ...}
 ```
 
-Login and the (optional) confirmation step share one route: `GET` opens the link,
-`POST` is the explicit confirm. `GET|POST /neev/loginUsingLink/validate` checks a
-token without consuming it. Redemption is rate-limited (`throttle:10,1`).
+Login and the confirmation step share one route: `GET` opens the link, `POST` is
+the explicit confirm. `GET|POST /neev/loginUsingLink/validate` checks a token
+without consuming it. Redemption is rate-limited (`throttle:10,1`).
+
+A `GET` never consumes a link while `require_confirmation` is on (the default),
+and that matters because links are single-use: scanning mail gateways (Outlook
+SafeLinks, Mimecast) prefetch `GET` links, so a consuming `GET` would let the
+scanner burn the link before the user clicks it. Your frontend should treat
+`confirmation_required` as "render a confirm button that POSTs the token back".
 
 ### Channels
 
@@ -213,9 +227,10 @@ Configured under `magic_link` in `config/neev.php`:
 
 ```php
 'magic_link' => [
-    'expires_in' => 10,              // minutes a link stays valid
-    'bind_to_browser' => false,      // restrict redemption to the originating browser/device
-    'require_confirmation' => false, // require an explicit confirm step (defeats email scanners)
+    'expires_in' => 10,             // minutes a link stays valid
+    'bind_to_browser' => false,        // restrict redemption to the originating browser/device
+    'require_confirmation' => true,    // explicit confirm step; a GET never consumes the link
+    'allow_unverified_users' => false, // unverified users may use links; redeeming verifies the email
     'channels' => [ /* web, mobile, ... */ ],
 ],
 ```
@@ -229,14 +244,27 @@ Inject the `MagicLinkManager` service (there is no facade):
 ```php
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
 
-$link = $magicLink->forWeb($user);   // ['url', 'token', 'expires_in', 'channel', 'model']
+$link = $magicLink->forWeb($user);   // ['url', 'token', 'channel', 'expires_at', 'expires_in', 'model']
 $result = $magicLink->consume($request);
 if ($result->isValid()) { /* $result->user is authenticated */ }
 ```
 
-Lifecycle events `MagicLinkGenerated`, `MagicLinkConsumed`, and `MagicLinkRejected`
-are fired for auditing/notifications. Prune expired tokens with
-`php artisan neev:clean-magic-links`.
+`forWeb()`/`forMobile()`/`generate()` refuse rather than mint a link the
+recipient could never use. Both checks run **before** the previous link is
+invalidated, so a refused send never costs the user the link already in their
+inbox:
+
+| Exception | Thrown when |
+|---|---|
+| `MagicLinkBindingException` | `bind_to_browser` is on but the request has no binding source (`X-Device-Id`, `binding`, or session). |
+| `MagicLinkUnverifiedException` | The user's email is unverified and `allow_unverified_users` is off. The API surfaces this as `403`. |
+
+With `allow_unverified_users` on, redeeming a link marks the email verified and
+fires `EmailVerified`: following the link is itself proof of inbox control.
+
+Lifecycle events `MagicLinkGenerated` (`Ssntpl\Neev\Events\`), `MagicLinkConsumed`,
+and `MagicLinkRejected` are fired for auditing/notifications. Prune expired tokens
+with `php artisan neev:clean-magic-links`.
 
 ---
 

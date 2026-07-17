@@ -14,6 +14,8 @@ use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
+use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
+use Ssntpl\Neev\Exceptions\MagicLinkUnverifiedException;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
@@ -368,6 +370,11 @@ class UserAuthApiController extends Controller
 
     public function sendLoginLink(Request $request, MagicLinkManager $magicLink)
     {
+        $request->validate([
+            'email' => ['required', 'string', 'email'],
+            'channel' => ['sometimes', 'string'],
+        ]);
+
         $user = User::findByEmail($request->email);
         if (!$user) {
             return response()->json([
@@ -377,7 +384,21 @@ class UserAuthApiController extends Controller
 
         $channel = (string) $request->input('channel', 'web');
 
-        $link = $magicLink->generate($user, $channel, ['request' => $request]);
+        try {
+            $link = $magicLink->generate($user, $channel, ['request' => $request]);
+        } catch (MagicLinkUnverifiedException $e) {
+            Log::warning($e);
+
+            return response()->json([
+                'message' => 'Please verify your email address before using a login link.',
+            ], 403);
+        } catch (MagicLinkBindingException $e) {
+            Log::warning($e);
+
+            return response()->json([
+                'message' => 'Unable to send a login link for this request.',
+            ], 422);
+        }
 
         Mail::to($user->email)->send(new LoginUsingLink($link['url'], $link['expires_in']));
 

@@ -254,7 +254,7 @@ Table magic_link_tokens {
   tenant_id bigint [null, ref: > tenants.id]
   token varchar [unique, note: 'SHA-256 hash of the opaque token']
   channel varchar [default: 'web', note: 'web / mobile / custom']
-  meta_data varchar [null, note: 'JSON; holds the browser/device binding fingerprint']
+  meta_data json [null, note: 'Holds the browser/device binding fingerprint']
   user_agent text [null]
   created_ip varchar [null]
   expires_at timestamp

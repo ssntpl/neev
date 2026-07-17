@@ -1,6 +1,6 @@
 <?php
 
-namespace Ssntpl\Neev\Events\MagicLink;
+namespace Ssntpl\Neev\Events;
 
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;

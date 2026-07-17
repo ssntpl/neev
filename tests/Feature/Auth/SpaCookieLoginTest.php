@@ -87,8 +87,10 @@ class SpaCookieLoginTest extends TestCase
         $user = User::factory()->create(['email_verified_at' => now()]);
         $link = app(MagicLinkManager::class)->forWeb($user);
 
+        // POST is the confirmation step that actually consumes the link; a GET
+        // only validates it, so no session is established and no cookie issued.
         $response = $this->withHeader('Origin', 'https://app.example.com')
-            ->getJson('/neev/loginUsingLink?token=' . $link['token']);
+            ->postJson('/neev/loginUsingLink', ['token' => $link['token']]);
 
         $response->assertOk();
         $response->assertJsonMissingPath('token');

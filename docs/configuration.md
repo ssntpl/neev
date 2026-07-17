@@ -211,11 +211,18 @@ Stateful, single-use passwordless login. See
     // Minutes a link stays valid (recommended 5–15).
     'expires_in' => env('NEEV_MAGIC_LINK_EXPIRY', 10),
 
-    // Restrict redemption to the browser/device that requested it.
-    'bind_to_browser' => false,
+    // Restrict redemption to the browser/device that requested it. Generation
+    // fails when there is no binding source, rather than minting a dead link.
+    'bind_to_browser' => env('NEEV_MAGIC_LINK_BIND_TO_BROWSER', false),
 
-    // Require an explicit confirm step before consuming (defeats email scanners).
-    'require_confirmation' => false,
+    // Require an explicit confirm step before consuming, so a GET never uses up
+    // a single-use link. Keep on unless your users are not behind a mail scanner.
+    'require_confirmation' => env('NEEV_MAGIC_LINK_CONFIRMATION', true),
+
+    // May unverified users use magic links? When on, redeeming a link also
+    // verifies the email (the click proves inbox control). When off, sending
+    // to an unverified address is refused outright.
+    'allow_unverified_users' => env('NEEV_MAGIC_LINK_ALLOW_UNVERIFIED', false),
 
     // Channel-aware URL building. Add your own channels (e.g. 'desktop') here
     // with no code change. A channel with a 'scheme'/'universal_link' is built
@@ -237,11 +244,15 @@ Stateful, single-use passwordless login. See
 |---|---|---|
 | `expires_in` | `10` | Minutes a link is valid. |
 | `bind_to_browser` | `false` | Only redeem from the originating browser/device. |
-| `require_confirmation` | `false` | Add an explicit confirm step. |
+| `require_confirmation` | `true` | Require an explicit `POST` confirm; a `GET` never consumes. |
+| `allow_unverified_users` | `false` | Let unverified users request links; redeeming then verifies the email. |
 | `channels` | web + mobile | Per-channel URL building (extensible). |
 
 Notes:
 - Tokens are single-use (deleted on redemption); a new link invalidates the previous one.
+- Because links are single-use, **`require_confirmation` should stay on** for any app whose users may sit behind a scanning mail gateway (Outlook SafeLinks, Mimecast). Those gateways prefetch `GET` links, which would consume the link before the user ever clicks it and lock them out. With confirmation on, a `GET` only ever validates.
+- With `bind_to_browser` on, generation throws `MagicLinkBindingException` if the request has no binding source (`X-Device-Id` header, `binding` field, or session). Session-less API clients must send `X-Device-Id`.
+- With `allow_unverified_users` off (the default), generation throws `MagicLinkUnverifiedException` for an unverified address and the API returns `403`. Otherwise the link would be mailed and every redemption of it would fail as "invalid or expired". Turning it on lets those users in and marks the email verified on redemption. Both refusals happen **before** the previous link is invalidated, so a rejected send never costs the user the link already in their inbox.
 - A magic link does **not** enforce MFA (by design).
 - Prune expired rows with `php artisan neev:clean-magic-links`.
 

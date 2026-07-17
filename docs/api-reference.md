@@ -151,14 +151,28 @@ Returns `401` for an unknown email.
 
 ### Login Using Link
 
-Redeem a magic link. Login and the optional confirmation step share this route:
-`GET` opens the link, `POST` is the explicit confirm. When
-`magic_link.require_confirmation` is on, a `GET` only validates and returns
-`{"auth_state": "confirmation_required"}` without logging in.
+Redeem a magic link. Login and the confirmation step share this route: `GET`
+opens the link, `POST` is the explicit confirm. While
+`magic_link.require_confirmation` is on (the default), a `GET` only validates
+and returns `{"auth_state": "confirmation_required"}` without logging in — this
+keeps a scanning mail gateway's prefetch from consuming the single-use link.
+Rate-limited (`throttle:10,1`).
 
 ```http
 GET|POST /neev/loginUsingLink?token={token}
 ```
+
+**Response (confirmation required):**
+
+```json
+{
+    "auth_state": "confirmation_required",
+    "channel": "web",
+    "message": "Please confirm this login to continue."
+}
+```
+
+Render a confirm control and `POST` the same token back to complete login.
 
 **Response (success):**
 
