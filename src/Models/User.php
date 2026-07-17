@@ -34,6 +34,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
  * @property-read \Illuminate\Database\Eloquent\Collection<int, RecoveryCode> $recoveryCodes
  * @property-read \Illuminate\Database\Eloquent\Collection<int, LoginAttempt> $loginAttempts
  * @property-read \Illuminate\Database\Eloquent\Collection<int, AccessToken> $accessTokens
+ * @property-read \Illuminate\Database\Eloquent\Collection<int, MagicLinkToken> $magicLinkTokens
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $teams
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $allTeams
  * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $ownedTeams
@@ -158,5 +159,10 @@ class User extends Authenticatable
     {
         $this->active = false;
         return $this->save();
+    }
+
+    public function magicLinkTokens()
+    {
+        return $this->hasMany(MagicLinkToken::class, 'user_id');
     }
 }

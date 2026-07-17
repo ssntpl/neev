@@ -248,5 +248,24 @@ Table tenant_auth_settings {
   updated_at timestamp
 }
 
+Table magic_link_tokens {
+  id bigint [pk, increment]
+  user_id bigint [ref: > users.id]
+  tenant_id bigint [null, ref: > tenants.id]
+  token varchar [unique, note: 'SHA-256 hash of the opaque token']
+  channel varchar [default: 'web', note: 'web / mobile / custom']
+  meta_data json [null, note: 'Holds the browser/device binding fingerprint']
+  user_agent text [null]
+  created_ip varchar [null]
+  expires_at timestamp
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    user_id
+    (user_id, channel)
+  }
+}
+
 // Cross-table refs that can't be inline
 Ref: users.default_team_id > teams.id

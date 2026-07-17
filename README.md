@@ -176,12 +176,12 @@ curl -X POST https://yourapp.com/neev/login \
 ### Magic Link (Passwordless)
 
 ```bash
-# Send login link
+# Send login link (single-use token; optional channel, default "web")
 curl -X POST https://yourapp.com/neev/sendLoginLink \
-  -d '{"email": "john@example.com"}'
+  -d '{"email": "john@example.com", "channel": "web"}'
 
-# Login via link
-curl -X GET "https://yourapp.com/neev/loginUsingLink?id=1&signature=..."
+# Login via link (opaque token from the email URL)
+curl -X GET "https://yourapp.com/neev/loginUsingLink?token=THE_OPAQUE_TOKEN"
 ```
 
 ### Passkey / WebAuthn
@@ -227,7 +227,8 @@ All API routes are prefixed with `/neev` — the prefix is configurable via `rou
 | POST | `/neev/register` | Register new user | No |
 | POST | `/neev/login` | Login with credentials | No |
 | POST | `/neev/sendLoginLink` | Send magic link | No |
-| GET | `/neev/loginUsingLink` | Login via magic link | No |
+| GET / POST | `/neev/loginUsingLink` | Redeem magic link (GET opens, POST confirms) | No |
+| GET / POST | `/neev/loginUsingLink/validate` | Validate a magic-link token without using it | No |
 | POST | `/neev/logout` | Logout current session | Yes |
 | POST | `/neev/logoutAll` | Logout all other sessions | Yes |
 | POST | `/neev/forgotPassword` | Send password reset link | No |
@@ -346,7 +347,7 @@ The Blade page routes below (everything except the OAuth/SSO endpoints) register
 | PUT | `/login` | `login.password` | Show password form |
 | POST | `/login` | - | Process login |
 | POST | `/login/link` | `login.link.send` | Send magic link |
-| GET | `/login/{id}` | `login.link` | Login via magic link |
+| GET / POST | `/login-link/verify` | `login.link.verify` | Redeem magic link (GET opens, POST confirms) |
 | GET | `/forgot-password` | `password.request` | Forgot password form |
 | POST | `/forgot-password` | `password.email` | Send reset link |
 | GET | `/update-password/{id}/{hash}` | `reset.request` | Reset password form |
@@ -669,7 +670,8 @@ Email verification is enforced by applying the opt-in `neev:verified-email` midd
 ```php
 'login_token_expiry_minutes' => 1440,  // Login access tokens
 'mfa_jwt_expiry_minutes' => 30,        // Temporary MFA JWTs
-'url_expiry_time' => 60,               // Magic links, reset links
+'url_expiry_time' => 60,               // Password-reset & email-verification links
+'magic_link' => ['expires_in' => 10],  // Magic links (single-use, stateful)
 'otp_expiry_time' => 15,               // OTP codes
 ```
 

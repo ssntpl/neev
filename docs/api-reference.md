@@ -117,7 +117,9 @@ When `auth_state` is `mfa_required`, the token is a short-lived JWT (type `mfa`)
 
 ### Send Login Link
 
-Send a magic link to the user's email for passwordless login.
+Send a magic link to the user's email for passwordless login. Issues a
+single-use token (stored hashed) and invalidates the user's previous link for
+the channel.
 
 ```http
 POST /neev/sendLoginLink
@@ -127,9 +129,13 @@ POST /neev/sendLoginLink
 
 ```json
 {
-    "email": "john@example.com"
+    "email": "john@example.com",
+    "channel": "web"
 }
 ```
+
+`channel` is optional (default `web`); it must be a channel defined in
+`magic_link.channels`.
 
 **Response:**
 
@@ -139,26 +145,77 @@ POST /neev/sendLoginLink
 }
 ```
 
+Returns `401` for an unknown email.
+
 ---
 
 ### Login Using Link
 
-Authenticate using a magic link.
+Redeem a magic link. Login and the confirmation step share this route: `GET`
+opens the link, `POST` is the explicit confirm. While
+`magic_link.require_confirmation` is on (the default), a `GET` only validates
+and returns `{"auth_state": "confirmation_required"}` without logging in — this
+keeps a scanning mail gateway's prefetch from consuming the single-use link.
+Rate-limited (`throttle:10,1`).
 
 ```http
-GET /neev/loginUsingLink?id={email_id}&signature={signature}&expires={timestamp}
+GET|POST /neev/loginUsingLink?token={token}
 ```
 
-**Response:**
+**Response (confirmation required):**
+
+```json
+{
+    "auth_state": "confirmation_required",
+    "channel": "web",
+    "message": "Please confirm this login to continue."
+}
+```
+
+Render a confirm control and `POST` the same token back to complete login.
+
+**Response (success):**
 
 ```json
 {
     "auth_state": "authenticated",
     "token": "1|abc123...",
     "expires_in": 1440,
+    "mfa_options": null,
     "email_verified": true
 }
 ```
+
+- `403 { "message": "Invalid or expired verification link." }` — invalid, expired, replayed, or binding-mismatch token.
+- `422` with an `email` validation error — the account is deactivated.
+
+The token is single-use: the row is deleted on success, so replays return `403`.
+
+---
+
+### Validate Login Link
+
+Check a magic-link token **without** consuming it (e.g. to render a
+confirmation screen). Never authenticates.
+
+```http
+GET|POST /neev/loginUsingLink/validate?token={token}
+```
+
+**Response:**
+
+```json
+{
+    "status": "pending_confirmation",
+    "valid": false,
+    "requires_confirmation": true,
+    "channel": "web",
+    "email_verified": true
+}
+```
+
+`status` is one of `valid`, `invalid`, `expired`, `binding_mismatch`,
+`pending_confirmation`, `inactive_user`.
 
 ---
 

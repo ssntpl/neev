@@ -177,6 +177,9 @@ Neev fires Laravel's native auth events where semantics match, and its own event
 | `LoggedOut` | `$user` | User logs out |
 | `PasswordChanged` | `$user` | Password changes (including resets) |
 | `EmailVerified` | `$user` | Email is verified for the first time |
+| `MagicLinkGenerated` | `$user, $token` | A magic link is issued (previous link for that channel is invalidated) |
+| `MagicLinkConsumed` | `$user, $result` | A magic link is successfully redeemed (token deleted) |
+| `MagicLinkRejected` | `$result` | A magic link is refused (expired, invalid, binding mismatch, inactive user) |
 | `MfaMethodAdded` | `$user, $method` | An MFA method is configured |
 | `MfaMethodRemoved` | `$user, $method` | An MFA method is removed |
 | `RecoveryCodesGenerated` | `$user` | Recovery codes are (re)generated |

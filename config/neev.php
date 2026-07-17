@@ -151,7 +151,7 @@ return [
     // Secret key for signing MFA JWTs. Falls back to APP_KEY if not set.
     'jwt_secret' => env('NEEV_JWT_SECRET'),
 
-    // Minutes before magic links, password reset links expire.
+    // Minutes before password reset links expire.
     'url_expiry_time' => 60,
 
     // Minutes before email OTP codes expire.
@@ -159,6 +159,70 @@ return [
 
     // Days before password expires. 0 = disabled.
     'password_expiry_days' => 90,
+
+    /*
+    |--------------------------------------------------------------------------
+    | Magic Link (Passwordless) Authentication
+    |--------------------------------------------------------------------------
+    |
+    | Magic links are server-side, single-use, revocable opaque tokens, stored
+    | hashed and invalidated on redemption.
+    |
+    | Neev is UI-agnostic: it manages token lifecycle, validation and security
+    | policy only. Host applications own all routing, deep-link and UI concerns.
+    |
+    */
+
+    'magic_link' => [
+        // Minutes before a magic link expires. Recommended: 5-15 minutes.
+        'expires_in' => env('NEEV_MAGIC_LINK_EXPIRY', 10),
+
+        // Bind a link to the browser/device that requested it. The binding
+        // source is context['binding'], the `binding` request field, the
+        // X-Device-Id header, or the web session id — in that order. Enabling
+        // this makes generation FAIL when no source is available.
+        'bind_to_browser' => env('NEEV_MAGIC_LINK_BIND_TO_BROWSER', false),
+
+        // Require an explicit POST confirmation before a link is consumed.
+        //
+        // Keep this enabled unless you are certain your users are not behind a
+        // scanning mail gateway. Corporate scanners (Outlook SafeLinks,
+        // Mimecast) prefetch GET links; because links are single-use, a
+        // prefetch would consume the link before the user ever clicks it and
+        // lock them out. With confirmation on, GET only ever validates.
+        'require_confirmation' => env('NEEV_MAGIC_LINK_CONFIRMATION', true),
+
+        // Whether a user whose email is unverified may use magic links.
+        //
+        // Following a link proves control of the inbox, so when this is on,
+        // redeeming one also marks the email verified. When off, sending to an
+        // unverified address is refused outright (MagicLinkUnverifiedException)
+        // rather than mailing a link that redemption would always reject.
+        'allow_unverified_users' => env('NEEV_MAGIC_LINK_ALLOW_UNVERIFIED', false),
+
+        // Channel-aware link generation. Neev builds the URL; it never renders
+        // UI or handles deep-link routing — the host app does.
+        //
+        // Add your own channels here (e.g. 'desktop') — no code changes needed.
+        // A channel with a 'scheme'/'universal_link' is built as a deep link;
+        // otherwise it is a web URL built from 'base_url' + 'path'.
+        'channels' => [
+            'web' => [
+                'base_url' => env('APP_URL'),
+                // Path appended to base_url for the redemption link.
+                'path' => '/login-link',
+            ],
+            'mobile' => [
+                // Custom URL scheme for native deep links (e.g. "myapp://login").
+                'scheme' => env('NEEV_MOBILE_SCHEME'),
+                // HTTPS universal/app link fallback.
+                'universal_link' => env('NEEV_MOBILE_UNIVERSAL_LINK'),
+            ],
+            // 'desktop' => [
+            //     'scheme' => env('NEEV_DESKTOP_SCHEME'), // e.g. "myapp-desktop://login"
+            // ],
+        ],
+    ],
 
     /*
     |--------------------------------------------------------------------------

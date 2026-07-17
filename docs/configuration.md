@@ -198,7 +198,63 @@ Secret key for signing MFA JWTs. Falls back to `APP_KEY` if not set.
 'url_expiry_time' => 60,
 ```
 
-Minutes before magic links and password reset links expire.
+Minutes before password-reset and email-verification links expire. (Magic links
+use their own `magic_link.expires_in` — see [Magic Link](#magic-link) below.)
+
+### Magic Link
+
+Stateful, single-use passwordless login. See
+[authentication.md](./authentication.md#magic-link-authentication) for the flow.
+
+```php
+'magic_link' => [
+    // Minutes a link stays valid (recommended 5–15).
+    'expires_in' => env('NEEV_MAGIC_LINK_EXPIRY', 10),
+
+    // Restrict redemption to the browser/device that requested it. Generation
+    // fails when there is no binding source, rather than minting a dead link.
+    'bind_to_browser' => env('NEEV_MAGIC_LINK_BIND_TO_BROWSER', false),
+
+    // Require an explicit confirm step before consuming, so a GET never uses up
+    // a single-use link. Keep on unless your users are not behind a mail scanner.
+    'require_confirmation' => env('NEEV_MAGIC_LINK_CONFIRMATION', true),
+
+    // May unverified users use magic links? When on, redeeming a link also
+    // verifies the email (the click proves inbox control). When off, sending
+    // to an unverified address is refused outright.
+    'allow_unverified_users' => env('NEEV_MAGIC_LINK_ALLOW_UNVERIFIED', false),
+
+    // Channel-aware URL building. Add your own channels (e.g. 'desktop') here
+    // with no code change. A channel with a 'scheme'/'universal_link' is built
+    // as a deep link; otherwise a web URL from 'base_url' + 'path'.
+    'channels' => [
+        'web' => [
+            'base_url' => env('APP_URL'),   // point at your frontend for a decoupled SPA
+            'path' => '/login-link',
+        ],
+        'mobile' => [
+            'scheme' => env('NEEV_MOBILE_SCHEME'),           // e.g. myapp://login
+            'universal_link' => env('NEEV_MOBILE_UNIVERSAL_LINK'),
+        ],
+    ],
+],
+```
+
+| Key | Default | Purpose |
+|---|---|---|
+| `expires_in` | `10` | Minutes a link is valid. |
+| `bind_to_browser` | `false` | Only redeem from the originating browser/device. |
+| `require_confirmation` | `true` | Require an explicit `POST` confirm; a `GET` never consumes. |
+| `allow_unverified_users` | `false` | Let unverified users request links; redeeming then verifies the email. |
+| `channels` | web + mobile | Per-channel URL building (extensible). |
+
+Notes:
+- Tokens are single-use (deleted on redemption); a new link invalidates the previous one.
+- Because links are single-use, **`require_confirmation` should stay on** for any app whose users may sit behind a scanning mail gateway (Outlook SafeLinks, Mimecast). Those gateways prefetch `GET` links, which would consume the link before the user ever clicks it and lock them out. With confirmation on, a `GET` only ever validates.
+- With `bind_to_browser` on, generation throws `MagicLinkBindingException` if the request has no binding source (`X-Device-Id` header, `binding` field, or session). Session-less API clients must send `X-Device-Id`.
+- With `allow_unverified_users` off (the default), generation throws `MagicLinkUnverifiedException` for an unverified address and the API returns `403`. Otherwise the link would be mailed and every redemption of it would fail as "invalid or expired". Turning it on lets those users in and marks the email verified on redemption. Both refusals happen **before** the previous link is invalidated, so a rejected send never costs the user the link already in their inbox.
+- A magic link does **not** enforce MFA (by design).
+- Prune expired rows with `php artisan neev:clean-magic-links`.
 
 ### OTP Expiry
 
