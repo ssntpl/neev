@@ -91,4 +91,43 @@ class WebLoginTest extends TestCase
 
         $response->assertRedirect(route('verification.notice'));
     }
+
+    /**
+     * Verification is checked before the intended destination is honoured, so
+     * an unverified account cannot use `redirect` to skip past the notice.
+     */
+    public function test_verification_notice_wins_over_an_intended_redirect(): void
+    {
+        $user = User::factory()->create();
+        $user->forceFill(['email_verified_at' => null])->save();
+
+        $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'password',
+            'redirect' => '/settings',
+        ])->assertRedirect(route('verification.notice'));
+    }
+
+    public function test_a_verified_user_is_sent_to_the_intended_redirect(): void
+    {
+        $user = User::factory()->create();
+
+        $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'password',
+            'redirect' => '/settings',
+        ])->assertRedirect('/settings');
+    }
+
+    /** An off-site `redirect` is ignored in favour of the configured home. */
+    public function test_an_absolute_redirect_is_not_followed(): void
+    {
+        $user = User::factory()->create();
+
+        $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'password',
+            'redirect' => 'https://evil.example.com/steal',
+        ])->assertRedirect(config('neev.home'));
+    }
 }

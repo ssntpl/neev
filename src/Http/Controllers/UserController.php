@@ -172,6 +172,9 @@ class UserController extends Controller
         if (!$res) {
             return back()->withErrors(['message' => 'Auth was not added.']);
         }
+        if (($res['status'] ?? null) === 'Error') {
+            return back()->withErrors(['message' => $res['message'] ?? 'Auth was not added.']);
+        }
         return back()->with($res);
     }
 

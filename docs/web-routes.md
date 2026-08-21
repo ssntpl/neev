@@ -109,6 +109,14 @@ These routes also live under the configurable route prefix and are always regist
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
 | GET | `/email/verify/{id}/{hash}` | `verification.verify` | Verify email address |
+| GET | `/email/change/verify/{id}` | `email.change.verify` | Confirm a new email address |
+
+Both are signed and **unauthenticated by design**. A mail client opens the
+link in whichever browser it likes, rarely the one holding the session, so the
+signature is what authorises the action — the link acts on the account it was
+minted for, not on whoever is signed in. A second click on an
+already-verified address is not an error. See
+[Email Links](./email-links.md) for where these point and how to change it.
 
 ---
 
@@ -289,7 +297,7 @@ Applied to authenticated web routes. Resolves the tenant and team context, then 
 3. MFA is completed (if enabled)
 4. User is a member of the resolved tenant (when `tenant` is enabled)
 
-Email verification is enforced separately via the `neev:verified-email` middleware alias.
+Email verification is enforced separately via the `neev-verified-email` middleware alias.
 
 ### neev:tenant
 

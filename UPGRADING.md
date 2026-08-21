@@ -13,6 +13,119 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.5.0 → Unreleased
 
+**Middleware aliases renamed (action required if you use them).**
+The opt-in alias middleware now use a hyphen instead of a colon:
+
+| Old | New |
+|-----|-----|
+| `neev:verified-email` | `neev-verified-email` |
+| `neev:password-not-expired` | `neev-password-not-expired` |
+| `neev:active-team` | `neev-active-team` |
+| `neev:active-tenant` | `neev-active-tenant` |
+| `neev:tenant-member` | `neev-tenant-member` |
+| `neev:resolve-team` | `neev-resolve-team` |
+| `neev:ensure-sso` | `neev-ensure-sso` |
+
+A colon is Laravel's separator between a middleware name and its
+parameters, so `neev:verified-email` resolved as the `neev` middleware
+taking a `verified-email` argument rather than as its own alias. Search
+your routes for the colon form and rename. The middleware **groups**
+(`neev:web`, `neev:api`, `neev:login`, `neev:tenant`) are unchanged —
+group names are looked up separately and take no parameters. Earlier
+sections of this file still show the colon form; they described the
+release they belong to.
+
+**Emailed links now work without a session (action required for
+headless frontends).**
+`GET {prefix}/email/verify` moved out of the authenticated route group,
+and `{prefix}/email/change/verify` now answers `GET` as well as `POST`.
+The signature is the credential, so:
+
+- Stop sending `Authorization: Bearer …` to these endpoints — you may,
+  but it is no longer needed and no longer influences the result.
+- A verification link acts on the account it was minted for, not on
+  whoever is signed in. If your frontend relied on the old behaviour of
+  refusing a link that did not match the current session, that check is
+  gone.
+- These endpoints answer JSON only when the request asks for it
+  (`Accept: application/json`). A plain browser GET gets a redirect —
+  to `neev.home` on success, or to `login` with an error bag for a
+  failed email change.
+
+**Where emailed links point is now `EmailLinks` (action required only
+if you patched it).**
+Link building moved out of the controllers into
+`Ssntpl\Neev\Services\EmailLinks`. If you were overriding controllers
+or filtering mail to rewrite URLs, replace that with a subclass:
+
+```php
+// app/Providers/AppServiceProvider.php — register()
+$this->app->bind(
+    \Ssntpl\Neev\Services\EmailLinks::class,
+    \App\Services\AppEmailLinks::class,
+);
+```
+
+One default changed: the headless **verification** link used to point at
+`{app.url}/verify-email?…` and now points straight at the API route that
+performs the verification, because that flow finishes on the click and
+needs no page of yours. If you want it back on your page, override
+`verificationUrl()` — see [docs/email-links.md](./docs/email-links.md).
+Password-reset, magic-link, and invitation links still land on your
+frontend as before.
+
+**Verification is now inferred from other proofs (behaviour change, no
+action required).**
+An unverified address is marked verified when the user signs in through
+OAuth, follows a magic link, or registers through a team invitation —
+each demonstrates control of the inbox. Previously these paths refused
+the user instead. The OAuth case carries a trade-off worth reading:
+[docs/security.md](./docs/security.md#oauth-and-email-verification).
+
+Relatedly, an **unverified address can now request and use a password
+reset link**. If your app depended on reset being unavailable to
+unverified users, add that check in your own layer.
+
+**Email OTP now requires a verified address (behaviour change).**
+`POST {prefix}/mfa/add` with `auth_method: email` answers `422
+Email is not verified.` for an unverified account instead of enrolling
+the factor. Note also that **every** failure from this endpoint is now
+`422` rather than a `200` carrying an error message — including
+`Email already Configured.`, which used to return `200`. Clients that
+branched on the message inside a `200` need updating.
+
+**Team actions are authorised by membership (behaviour change).**
+Team update, domain listing, join-request handling, member removal, the
+Blade team pages, and role changes now require the caller to be a joined
+member and answer `403 You cannot perform this action on this team.`
+Two things follow:
+
+- A team that does not exist is refused the same way as one that is not
+  yours. Endpoints that used to answer `400 Team not found` now answer
+  `403`, deliberately — they no longer confirm which team ids exist.
+- Owning a team and belonging to it are separate records. Every path
+  that creates a team attaches the creator as a member, but if you
+  created teams directly in your own code, backfill the pivot:
+
+  ```php
+  Team::whereDoesntHave('allUsers', fn ($q) => $q->whereColumn('users.id', 'teams.user_id'))
+      ->each(fn ($team) => $team->addMember($team->owner));
+  ```
+
+**`VerifyUserEmail` constructor changed (action required if you send it
+yourself).**
+`$expiry` split into `$link_expiry` and `$otp_expiry`, because the link
+and the code expire on different clocks. The new signature is
+`(url, username, purpose, link_expiry, otp_expiry, otp)`. If you ejected
+the `email-verify` template before this release, `{{ $expiry }}` no
+longer resolves — use `{{ $link_expiry }}` and `{{ $otp_expiry }}`.
+
+**`User` casts moved to a `casts()` method (no action required).**
+Declared as a method rather than a `$casts` property, so a subclass
+declaring its own `$casts` no longer silently replaces neev's. If you
+had been re-declaring neev's casts in your subclass to work around this,
+you can drop them.
+
 **Email verification code (additive; one schema note).**
 Verification emails now carry a numeric code alongside the signed link,
 verifiable via `POST {prefix}/email/verify-otp` or the Blade kit's

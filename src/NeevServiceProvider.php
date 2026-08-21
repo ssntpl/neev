@@ -38,6 +38,7 @@ use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
 use Ssntpl\Neev\Http\Middleware\ResolveTeamMiddleware;
 use Ssntpl\Neev\Http\Middleware\TenantMiddleware;
 use Ssntpl\Neev\Services\ContextManager;
+use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Services\TenantSSOManager;
 
@@ -95,13 +96,13 @@ class NeevServiceProvider extends ServiceProvider
             BindContextMiddleware::class,
         ]);
 
-        Route::aliasMiddleware('neev:active-team', EnsureTeamIsActive::class);
-        Route::aliasMiddleware('neev:active-tenant', EnsureTenantIsActive::class);
-        Route::aliasMiddleware('neev:tenant-member', EnsureTenantMembership::class);
-        Route::aliasMiddleware('neev:resolve-team', ResolveTeamMiddleware::class);
-        Route::aliasMiddleware('neev:ensure-sso', EnsureContextSSO::class);
-        Route::aliasMiddleware('neev:password-not-expired', EnsurePasswordNotExpired::class);
-        Route::aliasMiddleware('neev:verified-email', EnsureEmailIsVerified::class);
+        Route::aliasMiddleware('neev-active-team', EnsureTeamIsActive::class);
+        Route::aliasMiddleware('neev-active-tenant', EnsureTenantIsActive::class);
+        Route::aliasMiddleware('neev-tenant-member', EnsureTenantMembership::class);
+        Route::aliasMiddleware('neev-resolve-team', ResolveTeamMiddleware::class);
+        Route::aliasMiddleware('neev-ensure-sso', EnsureContextSSO::class);
+        Route::aliasMiddleware('neev-password-not-expired', EnsurePasswordNotExpired::class);
+        Route::aliasMiddleware('neev-verified-email', EnsureEmailIsVerified::class);
 
         $this->publishes([
             __DIR__.'/../config/neev.php' => config_path('neev.php'),
@@ -174,6 +175,7 @@ class NeevServiceProvider extends ServiceProvider
         $this->app->scoped(ContextManager::class);
         $this->app->scoped(TenantResolver::class);
         $this->app->singleton(TenantSSOManager::class);
+        $this->app->singleton(EmailLinks::class);
 
         $this->commands([
             InstallNeev::class,

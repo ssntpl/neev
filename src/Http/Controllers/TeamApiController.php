@@ -6,19 +6,19 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\EmailLinks;
 
 class TeamApiController extends Controller
 {
     public function getInvitations(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
@@ -46,7 +46,7 @@ class TeamApiController extends Controller
 
     public function setDefaultTeam(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
@@ -54,7 +54,7 @@ class TeamApiController extends Controller
             ], 400);
         }
 
-        /** @var \Ssntpl\Neev\Models\Team|null $team */
+        /** @var Team|null $team */
         $team = Team::model()->find($request->team_id);
         if (!$team || !$team->hasUser($user)) {
             return response()->json([
@@ -74,7 +74,7 @@ class TeamApiController extends Controller
 
     public function teams(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         $teams = $user?->teams?->load('owner');
 
@@ -85,7 +85,7 @@ class TeamApiController extends Controller
 
     public function getTeam(Request $request, $id)
     {
-        /** @var \Ssntpl\Neev\Models\Team|null $team */
+        /** @var Team|null $team */
         $team = Team::model()->find($id);
         if (!$team) {
             return response()->json([
@@ -110,7 +110,7 @@ class TeamApiController extends Controller
     {
         $user = $request->user();
         try {
-            /** @var \Ssntpl\Neev\Models\User|null $user */
+            /** @var User|null $user */
             $user = User::model()->find($user?->id);
             if (!$user) {
                 return response()->json([
@@ -139,14 +139,15 @@ class TeamApiController extends Controller
 
     public function updateTeam(Request $request)
     {
+        $actor = User::model()->find($request->user()?->id);
+        $team = Team::model()->find($request->team_id);
+        if (!$team || !$actor || !$team->hasMember($actor)) {
+            return response()->json([
+                'message' => 'You cannot perform this action on this team.',
+            ], 403);
+        }
+
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
-            $team = Team::model()->find($request->team_id);
-            if (!$team) {
-                return response()->json([
-                    'message' => 'Team not found',
-                ], 400);
-            }
             if (isset($request->name)) {
                 $team->name = $request->name;
             }
@@ -169,10 +170,10 @@ class TeamApiController extends Controller
 
     public function deleteTeam(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
+            /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
             if ($user->id != $team->user_id || count($user->ownedTeams) < 2) {
                 return response()->json([
@@ -195,12 +196,12 @@ class TeamApiController extends Controller
 
     public function changeTeamOwner(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
+            /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
-            /** @var \Ssntpl\Neev\Models\User|null $member */
+            /** @var User|null $member */
             $member = User::model()->find($request->user_id);
             if (!$user || !$team || !$member) {
                 return response()->json([
@@ -233,10 +234,10 @@ class TeamApiController extends Controller
 
     public function inviteMember(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
+            /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
             if ($user->id != $team->user_id || ($team->domain?->enforce && $team->domain?->verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->domain?->domain)))) {
                 return response()->json([
@@ -255,20 +256,7 @@ class TeamApiController extends Controller
                 $invitation->role = $request->role;
                 $invitation->save();
 
-                if (config('neev.ui') === 'blade') {
-                    $signedUrl = URL::temporarySignedRoute(
-                        'register',
-                        $expiry,
-                        ['id' => $invitation->id, 'hash' => sha1($request->email)]
-                    );
-                } else {
-                    // Headless: link to the app's register page; the SPA
-                    // forwards invitation_id + hash to POST register.
-                    $signedUrl = config('app.url') . '/register?' . http_build_query([
-                        'invitation_id' => $invitation->id,
-                        'hash' => sha1($request->email),
-                    ]);
-                }
+                $signedUrl = app(EmailLinks::class)->invitationUrl($invitation->id, $request->email, $expiry);
 
                 Mail::to($request->email)->send(new TeamInvitation($team->name, 'there', $signedUrl, $expiry, false));
                 return response()->json([
@@ -307,7 +295,7 @@ class TeamApiController extends Controller
 
     public function inviteAction(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
             if ($request->invitation_id) {
@@ -339,7 +327,7 @@ class TeamApiController extends Controller
                     ]);
                 }
             } else {
-                /** @var \Ssntpl\Neev\Models\Team|null $team */
+                /** @var Team|null $team */
                 $team = Team::model()->find($request->team_id);
                 if ($request->action == 'reject') {
                     $team->allUsers()->detach($user);
@@ -375,27 +363,55 @@ class TeamApiController extends Controller
 
     public function leave(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
-        $user = User::model()->find($request->user_id ?? $request->user()?->id);
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
+            /** @var User|null $user */
+            $user = User::model()->find($request->user_id ?? $request->user()?->id);
+            /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
-            if ($request->has('invitation_id')) {
-                $invitation = $team->invitations()->find($request->invitation_id);
-                if ($invitation) {
-                    $invitation->delete();
-                    return response()->json([
-                        'message' => 'Invitation Revoked Successfully',
-                    ]);
-                }
+            /** @var User|null $actor */
+            $actor = User::model()->find($request->user()?->id);
+
+            if (!$team || !$user || !$actor) {
                 return response()->json([
-                    'message' => 'Invitation not found.',
-                ], 400);
+                    'message' => 'You cannot perform this action on this team.',
+                ], 403);
             }
-            if ($user->id == $team->user_id) {
+
+            // Revoking an invitation is its own action: the invitee has not
+            // joined, and the subject is the invitation rather than a member,
+            // so the membership and owner rules below do not apply to it.
+            if ($request->has('invitation_id')) {
+                $invitation = $team->invitations()->whereKey($request->invitation_id)->first();
+                if (!$invitation) {
+                    return response()->json([
+                        'message' => 'Invitation not found.',
+                    ], 400);
+                }
+
+                // A member of the team may revoke it; the invitee may decline
+                // their own. Holding an id is not enough for anyone else.
+                $isMember = $team->hasMember($actor);
+                $isInvitee = hash_equals((string) $invitation->email, (string) $actor->email);
+
+                if (!$isMember && !$isInvitee) {
+                    return response()->json([
+                        'message' => 'You cannot perform this action on this team.',
+                    ], 403);
+                }
+
+                $invitation->delete();
+
                 return response()->json([
-                    'message' => 'You cannot leave from this team.',
-                ], 400);
+                    'message' => 'Invitation Revoked Successfully',
+                ]);
+            }
+
+            // Leaving, or removing someone. The owner holds the team, so they
+            // are not a member who can be taken out of it.
+            if ($user->id == $team->user_id || !$team->hasMember($actor)) {
+                return response()->json([
+                    'message' => 'You cannot perform this action on this team.',
+                ], 403);
             }
 
             if ($team->domain?->verified_at && str_ends_with(strtolower($user->email), '@' . strtolower($team->domain?->domain))) {
@@ -428,10 +444,10 @@ class TeamApiController extends Controller
 
     public function request(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
+            /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
             $team?->loadMissing('owner');
             if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
@@ -464,13 +480,20 @@ class TeamApiController extends Controller
 
     public function requestAction(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
-        $user = User::model()->find($request->user()?->id);
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
+            /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
-            /** @var \Ssntpl\Neev\Models\User|null $member */
+            /** @var User|null $member */
             $member = User::model()->find($request->user_id);
+            /** @var User|null $actor */
+            $actor = User::model()->find($request->user()?->id);
+
+            if (!$team || !$member || !$actor || !$team->hasMember($actor)) {
+                return response()->json([
+                    'message' => 'You cannot perform this action on this team.',
+                ], 403);
+            }
+
             if ($request->action == 'reject') {
                 $team->allUsers()->detach($member);
 
@@ -508,12 +531,19 @@ class TeamApiController extends Controller
 
     public function getDomains(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\Team|null $team */
+        /** @var Team|null $team */
         $team = Team::model()->find($request->team_id);
         if (!$team) {
             return response()->json([
                 'message' => 'Team not found.',
             ], 400);
+        }
+
+        $actor = User::model()->find($request->user()?->id);
+        if (!$actor || !$team->hasMember($actor)) {
+            return response()->json([
+                'message' => 'You cannot perform this action on this team.',
+            ], 403);
         }
 
         $domains = $team->domains->load('rules');
@@ -541,9 +571,9 @@ class TeamApiController extends Controller
 
     public function domainFederate(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
-        /** @var \Ssntpl\Neev\Models\Team|null $team */
+        /** @var Team|null $team */
         $team = Team::model()->find($request->team_id);
         if (!$user || !$team) {
             return response()->json([
@@ -581,7 +611,7 @@ class TeamApiController extends Controller
 
     public function updateDomain(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
         if (!$domain || !$user || $domain->owner?->user_id !== $user->id) {
@@ -640,7 +670,7 @@ class TeamApiController extends Controller
 
     public function deleteDomain(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
         if (!$domain || !$user || $domain->owner?->user_id !== $user->id) {
@@ -665,7 +695,7 @@ class TeamApiController extends Controller
 
     public function updateDomainRule(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
         if (!$user || !$domain || $domain->owner?->user_id !== $user->id) {
@@ -695,7 +725,7 @@ class TeamApiController extends Controller
 
     public function getDomainRule(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
         if (!$domain || !$user || !$domain->owner?->users->contains($user)) {
@@ -711,7 +741,7 @@ class TeamApiController extends Controller
 
     public function primaryDomain(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
         if (!$user || !$domain || !$domain->verified_at || !$domain->owner?->users->contains($user)) {

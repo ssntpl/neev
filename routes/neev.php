@@ -225,7 +225,9 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
     });
     Route::get('/loginUsingLink', [UserAuthApiController::class, 'loginUsingLink'])->name('loginUsingLink');
     Route::post('/resetPassword', [UserAuthApiController::class, 'resetPassword'])->middleware('throttle:10,1')->name('neev.resetPassword');
-    Route::post('/email/change/verify', [UserAuthApiController::class, 'verifyEmailChange'])->middleware('throttle:10,1')->name('neev.email.change.verify');
+    // GET so a clicked link reaches it; POST retained for SPAs that forward the signed query.
+    Route::match(['get', 'post'], '/email/change/verify', [UserAuthApiController::class, 'verifyEmailChange'])->middleware('throttle:10,1')->name('neev.email.change.verify');
+    Route::get('/email/verify', [UserAuthApiController::class, 'emailVerify'])->middleware('throttle:10,1')->name('mail.verify');
 
     Route::middleware(['neev:login', 'throttle:5,1'])->group(function () {
         Route::post('/mfa/otp/verify', [UserAuthApiController::class, 'verifyMFAOTP']);
@@ -236,7 +238,6 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
         Route::post('/logoutAll', [UserAuthApiController::class, 'logoutAll']);
 
         Route::post('/email/send', [UserAuthApiController::class, 'sendMailVerificationLink']);
-        Route::get('/email/verify', [UserAuthApiController::class, 'emailVerify'])->name('mail.verify');
         Route::post('/email/verify-otp', [UserAuthApiController::class, 'verifyEmailOtp'])->middleware('throttle:5,1');
         Route::post('/email/change', [UserAuthApiController::class, 'requestEmailChange']);
         Route::get('/mfa', [UserApiController::class, 'getMFAMethods']);

@@ -108,23 +108,8 @@ class AuthService
     {
         $expiryMinutes = config('neev.url_expiry_time', 60);
 
-        if (config('neev.ui') === 'blade') {
-            $url = URL::temporarySignedRoute(
-                'verification.verify',
-                now()->addMinutes($expiryMinutes),
-                ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
-            );
-        } else {
-            // Headless: the Blade page routes are not registered. Link to
-            // the app's frontend, carrying the signature for the API
-            // verification endpoint (route 'mail.verify').
-            $signedUrl = URL::temporarySignedRoute(
-                'mail.verify',
-                now()->addMinutes($expiryMinutes),
-                ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
-            );
-            $url = config('app.url') . '/verify-email?' . parse_url($signedUrl, PHP_URL_QUERY);
-        }
+        // Where the link points is the app's decision, not this service's.
+        $url = app(EmailLinks::class)->verificationUrl($user, now()->addMinutes($expiryMinutes));
 
         // Both proofs travel in one email; the app-owned template decides
         // which to show. The code lets the user complete verification on
@@ -132,7 +117,7 @@ class AuthService
         // mangled links); either proof invalidates the other on success.
         $otp = $this->createEmailVerificationOtp($user);
 
-        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', $expiryMinutes, $otp));
+        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', $expiryMinutes, config('neev.otp_expiry_time', 15), $otp));
     }
 
     /**
@@ -199,13 +184,11 @@ class AuthService
     public function sendEmailChangeVerification(User $user, string $newEmail, string $routeName = 'neev.email.change.verify'): void
     {
         $expiryMinutes = config('neev.url_expiry_time', 60);
-        $signedUrl = URL::temporarySignedRoute(
-            $routeName,
-            now()->addMinutes($expiryMinutes),
-            ['id' => $user->id, 'email' => $newEmail]
-        );
 
-        Mail::to($newEmail)->send(new VerifyUserEmail($signedUrl, $user->name, 'Verify Email Change', $expiryMinutes));
+        // Where the link points is the app's decision, not this service's.
+        $url = app(EmailLinks::class)->emailChangeUrl($user, $newEmail, now()->addMinutes($expiryMinutes));
+
+        Mail::to($newEmail)->send(new VerifyUserEmail($url, $user->name, 'Verify Email Change', $expiryMinutes));
     }
 
     /**

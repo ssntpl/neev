@@ -213,6 +213,9 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
         return $this->morphMany(Domain::class, 'owner')->whereNotNull('verified_at');
     }
 
+    /**
+     * @return HasMany<TeamInvitation, $this>
+     */
     public function invitations(): HasMany
     {
         return $this->hasMany(TeamInvitation::class);

@@ -417,13 +417,13 @@ This section summarizes the middleware from a tenancy perspective. The authorita
 
 | Alias | Middleware |
 |-------|------------|
-| `neev:active-team` | `EnsureTeamIsActive` |
-| `neev:active-tenant` | `EnsureTenantIsActive` |
-| `neev:tenant-member` | `EnsureTenantMembership` |
-| `neev:resolve-team` | `ResolveTeamMiddleware` |
-| `neev:ensure-sso` | `EnsureContextSSO` |
-| `neev:password-not-expired` | `EnsurePasswordNotExpired` |
-| `neev:verified-email` | `EnsureEmailIsVerified` |
+| `neev-active-team` | `EnsureTeamIsActive` |
+| `neev-active-tenant` | `EnsureTenantIsActive` |
+| `neev-tenant-member` | `EnsureTenantMembership` |
+| `neev-resolve-team` | `ResolveTeamMiddleware` |
+| `neev-ensure-sso` | `EnsureContextSSO` |
+| `neev-password-not-expired` | `EnsurePasswordNotExpired` |
+| `neev-verified-email` | `EnsureEmailIsVerified` |
 
 ### Using Middleware
 

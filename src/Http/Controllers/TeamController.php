@@ -6,7 +6,6 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Mail\TeamInvitation;
@@ -14,6 +13,7 @@ use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\EmailLinks;
 
 class TeamController extends Controller
 {
@@ -27,10 +27,10 @@ class TeamController extends Controller
 
     public function members(Request $request, Team $team)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
-        if (!$user->allTeams->find($team->id)) {
-            return back()->withErrors(['message' => 'You do not have the required permissions to view members.']);
+        if (!$user || !$team->hasMember($user)) {
+            return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
         }
         return view('neev::team.members', [
             'user' => $user,
@@ -41,10 +41,10 @@ class TeamController extends Controller
 
     public function domain(Request $request, Team $team)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
-        if (!$user->allTeams->find($team->id) || $team->user_id !== $user->id) {
-            return back()->withErrors(['message' => 'You do not have the required permissions to view domain federation.']);
+        if (!$user || !$team->hasMember($user)) {
+            return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
         }
 
         $domains = $team->domains;
@@ -71,10 +71,10 @@ class TeamController extends Controller
 
     public function settings(Request $request, Team $team)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
-        if (!$user->allTeams->find($team->id)) {
-            return back()->withErrors(['message' => 'You do not have the required permissions to view settings.']);
+        if (!$user || !$team->hasMember($user)) {
+            return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
         }
         return view('neev::team.settings', [
             'user' => $user,
@@ -96,7 +96,7 @@ class TeamController extends Controller
     {
         $user = $request->user();
         try {
-            /** @var \Ssntpl\Neev\Models\User|null $user */
+            /** @var User|null $user */
             $user = User::model()->find($user->id);
             $team = $user->ownedTeams()->forceCreate([
                 'name' => $request->name,
@@ -114,9 +114,15 @@ class TeamController extends Controller
 
     public function update(Request $request)
     {
+        /** @var Team|null $team */
+        $team = Team::model()->find($request->team_id);
+        /** @var User|null $actor */
+        $actor = User::model()->find($request->user()?->id);
+        if (!$team || !$actor || !$team->hasMember($actor)) {
+            return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
+        }
+
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
-            $team = Team::model()->find($request->team_id);
             $team->name = $request->name;
             $team->is_public = (bool) $request->public;
             $team->save();
@@ -130,10 +136,10 @@ class TeamController extends Controller
 
     public function delete(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
+            /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
             if ($user->id != $team->user_id || count($user->ownedTeams) < 2) {
                 return back()->withErrors(['message' => 'You cannot delete this team.']);
@@ -150,10 +156,10 @@ class TeamController extends Controller
 
     public function inviteMember(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
+            /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
             if ($user->id != $team->user_id) {
                 return back()->withErrors(['message' => 'You cannot invite member in this team.']);
@@ -173,11 +179,7 @@ class TeamController extends Controller
                 $invitation->role = $request->role;
                 $invitation->save();
 
-                $signedUrl = URL::temporarySignedRoute(
-                    'register',
-                    $expiry,
-                    ['id' => $invitation->id, 'hash' => sha1($request->email)]
-                );
+                $signedUrl = app(EmailLinks::class)->invitationUrl($invitation->id, $request->email, $expiry);
 
                 Mail::to($request->email)->send(new TeamInvitation($team->name, 'there', $signedUrl, $expiry, false));
                 return back()->with('status', 'Invite link sent successfully.');
@@ -207,11 +209,12 @@ class TeamController extends Controller
 
     public function leave(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user_id ?? $request->user()?->id);
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
+            /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
+
             if ($request->has('invitation_id')) {
                 $invitation = $team->invitations()->find($request->invitation_id);
                 if ($invitation) {
@@ -249,11 +252,14 @@ class TeamController extends Controller
 
     public function inviteAction(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
             if ($request->invitation_id) {
                 $invitation = \Ssntpl\Neev\Models\TeamInvitation::find($request->invitation_id);
+                if (!$invitation || !$user || $user->email !== $invitation->email) {
+                    return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
+                }
                 $team = $invitation->team;
                 if ($request->action == 'reject') {
                     $invitation->delete();
@@ -272,7 +278,7 @@ class TeamController extends Controller
                     return back()->with('status', 'Invitation Accepted');
                 }
             } else {
-                /** @var \Ssntpl\Neev\Models\Team|null $team */
+                /** @var Team|null $team */
                 $team = Team::model()->find($request->team_id);
                 if ($request->action == 'reject') {
                     $team->allUsers()->detach($user);
@@ -295,12 +301,12 @@ class TeamController extends Controller
 
     public function request(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
             $owner = User::findByEmail($request->email);
             if ($owner) {
-                /** @var \Ssntpl\Neev\Models\Team|null $team */
+                /** @var Team|null $team */
                 $team = Team::model()->where(['name' => $request->team, 'user_id' => $owner->id])->first();
                 if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
                     if ($team->users->contains($user)) {
@@ -326,13 +332,17 @@ class TeamController extends Controller
 
     public function requestAction(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
+            /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
-            /** @var \Ssntpl\Neev\Models\User|null $member */
+            /** @var User|null $member */
             $member = User::model()->find($request->user_id);
+            if (!$member || !$team->hasMember($user)) {
+                return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
+            }
+
             if ($request->action == 'reject') {
                 $team->allUsers()->detach($member);
                 return back()->with('status', 'Rejected Successfully');
@@ -359,13 +369,16 @@ class TeamController extends Controller
 
     public function ownerChange(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
-            /** @var \Ssntpl\Neev\Models\Team|null $team */
+            /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
-            /** @var \Ssntpl\Neev\Models\User|null $member */
+            /** @var User|null $member */
             $member = User::model()->find($request->user_id);
+            if (!$member || !$team->hasUser($member)) {
+                return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
+            }
             if ($team->owner->id === $user->id) {
                 $team->user_id = $member->id;
                 $team->save();
@@ -381,7 +394,7 @@ class TeamController extends Controller
 
     public function federateDomain(Request $request, Team $team)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         if (!$user || $team->user_id !== $user->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to federate domain.']);
@@ -405,7 +418,7 @@ class TeamController extends Controller
 
     public function updateDomain(Request $request, Domain $domain)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         if (!$user || $domain->owner?->user_id !== $user->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to update domain.']);
@@ -443,7 +456,7 @@ class TeamController extends Controller
 
     public function deleteDomain(Request $request, Domain $domain)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         if (!$user || $domain->owner?->user_id !== $user->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to delete domain.']);
@@ -460,7 +473,7 @@ class TeamController extends Controller
 
     public function updateDomainRule(Request $request, Domain $domain)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         if (!$user || $domain->owner?->user_id !== $user->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to update domain.']);
@@ -480,7 +493,7 @@ class TeamController extends Controller
 
     public function primaryDomain(Request $request)
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         $domain = Domain::find($request->domain_id);
         if (!$user || !$domain || !$domain->verified_at || !$domain->owner?->users->contains($user)) {

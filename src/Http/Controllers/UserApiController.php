@@ -41,6 +41,11 @@ class UserApiController extends Controller
                 'message' => 'Auth was not added.',
             ], 400);
         }
+        if (($res['status'] ?? null) === 'Error') {
+            return response()->json([
+                'message' => $res['message'] ?? 'Auth was not added.',
+            ], 422);
+        }
         return response()->json($res);
     }
 

@@ -157,7 +157,7 @@ Configure password aging:
 'password_expiry_days' => 90,  // Days before password expires. 0 = disabled.
 ```
 
-Enforcement is opt-in: apply the `neev:password-not-expired` middleware alias (`EnsurePasswordNotExpired`) to routes that should reject users with expired passwords. Helpers are available on the user: `passwordExpiresAt()`, `isPasswordExpired()`, `isPasswordExpiringSoon()`.
+Enforcement is opt-in: apply the `neev-password-not-expired` middleware alias (`EnsurePasswordNotExpired`) to routes that should reject users with expired passwords. Helpers are available on the user: `passwordExpiresAt()`, `isPasswordExpired()`, `isPasswordExpiringSoon()`.
 
 ---
 
@@ -172,6 +172,18 @@ Passwordless login via secure email links. Always available — no config toggle
 3. Receives email with secure link
 4. Clicks link to authenticate
 5. Automatically logged in
+
+Following the link also **marks an unverified address verified**: the link was
+mailed to that address and came back signed, which proves inbox control just
+as the verification mail would. An unverified account is therefore not turned
+away from its own magic link.
+
+Where the link points depends on the frontend. Under the Blade kit it goes
+straight to `login.link`. Headless, following it mints an access token — and a
+token must not travel in a URL — so the link lands on your `/login-link` page
+carrying the signed query, which your page forwards to
+`GET {prefix}/loginUsingLink` to exchange for the token. Both are controlled
+by [`EmailLinks`](./email-links.md).
 
 ### API Example
 
@@ -376,10 +388,19 @@ GOOGLE_REDIRECT_URI="${APP_URL}/neev/oauth/google/callback"
 
 **What this means for enterprise policy:** if your compliance posture requires MFA for all users (or organization-controlled credentials), enabling app-wide OAuth providers undermines that guarantee — every enabled provider is an alternate front door that skips your MFA and password controls.
 
+> **A previously unverified address is adopted, not refused.** When the
+> provider returns an address that matches an existing account whose email was
+> never verified, the callback marks it verified and signs the user in. The
+> reasoning is that the provider authenticated the address, which is the same
+> claim our own verification mail makes. The consequence is that anyone who
+> can register an account at your app with an address they do not control, and
+> who later controls that address at the provider, reaches the account — so
+> keep the `oauth` list to providers whose email claims you trust.
+
 **Mitigations:**
 
 - **Limit or empty the `oauth` providers list** in `config/neev.php`. Providers not in the list 404 on both redirect and callback, so this fully disables the path.
-- **Use tenant SSO instead for organizations that need enforced IdP login.** Tenant/team SSO is database-configured per organization, and the `neev:ensure-sso` middleware rejects (API) or redirects (web) any authenticated session that was not established via SSO — including sessions created through app-wide OAuth. See [Multi-Tenancy → Enterprise SSO](./multi-tenancy.md#enterprise-sso).
+- **Use tenant SSO instead for organizations that need enforced IdP login.** Tenant/team SSO is database-configured per organization, and the `neev-ensure-sso` middleware rejects (API) or redirects (web) any authenticated session that was not established via SSO — including sessions created through app-wide OAuth. See [Multi-Tenancy → Enterprise SSO](./multi-tenancy.md#enterprise-sso).
 - **Add an application-level step-up check** after login if MFA must be universal regardless of login method (Neev does not provide this out of the box).
 
 ### Flow
@@ -390,7 +411,18 @@ GOOGLE_REDIRECT_URI="${APP_URL}/neev/oauth/google/callback"
 4. Redirected back with auth code
 5. System exchanges code for user info
 6. User is created or matched
-7. Logged in and redirected (MFA is skipped)
+7. If the matched account's address was not yet verified, it is marked verified — the provider authenticated it
+8. Logged in and redirected (MFA is skipped)
+
+### Accounts the provider names poorly
+
+Some providers return no display name — GitHub does so whenever the account
+has no name set, which is the common case. Registration falls back in order:
+
+1. the provider's `name`, if it is more than whitespace;
+2. the provider's nickname/handle;
+3. the local part of the email address, with `.`, `_`, and `-` turned into
+   spaces and title-cased — `ada.lovelace@example.com` becomes `Ada Lovelace`.
 
 ### URLs
 
@@ -467,10 +499,10 @@ Returns tenant auth configuration:
 
 ### Enforcing Verification
 
-Verification emails are always sent on registration. Enforcement is opt-in: apply the `neev:verified-email` middleware alias (`EnsureEmailIsVerified`) to routes that should require a verified email — there is no config toggle.
+Verification emails are always sent on registration. Enforcement is opt-in: apply the `neev-verified-email` middleware alias (`EnsureEmailIsVerified`) to routes that should require a verified email — there is no config toggle.
 
 ```php
-Route::middleware(['neev:api', 'neev:verified-email'])->group(function () {
+Route::middleware(['neev:api', 'neev-verified-email'])->group(function () {
     // Routes that require a verified email
 });
 ```
@@ -478,10 +510,46 @@ Route::middleware(['neev:api', 'neev:verified-email'])->group(function () {
 ### Flow
 
 1. User registers or changes email
-2. Verification email is sent automatically
-3. User clicks verification link
-4. Email is marked as verified
-5. User can access routes protected by `neev:verified-email`
+2. Verification email is sent automatically, carrying **both** a signed link and a numeric code
+3. User clicks the link, or types the code into the session that is waiting
+4. Email is marked as verified; whichever proof was used invalidates the other
+5. User can access routes protected by `neev-verified-email`
+
+### The link is the credential
+
+A verification link is opened by whichever browser the mail client hands it
+to, which is rarely the one holding the session. So:
+
+- **No login is required** to spend the link. `GET {prefix}/email/verify` and
+  the Blade kit's `/email/verify/{id}/{hash}` both accept an anonymous
+  request; the signature is what authorises the action.
+- **The link verifies the account it was minted for**, not whoever happens to
+  be signed in. Opening someone else's link while logged in verifies *their*
+  address, not yours.
+- **A second click is not an error.** Mail scanners routinely fetch links
+  before the recipient sees them, so an already-verified address answers
+  `Email verification already done.` with a 200.
+
+The `hash` is bound to the address the link was mailed to, so a link minted
+before an address change cannot verify the new one.
+
+Where these links point, and what they answer, is controlled by
+[`EmailLinks`](./email-links.md).
+
+### Other ways an address becomes verified
+
+Verification mail is not the only proof of inbox control, and the package
+accepts the equivalents rather than sending a redundant email:
+
+| Event | Why it counts |
+|-------|---------------|
+| OAuth / social login | The provider authenticated the address |
+| Following a magic link | The link was mailed to the address and came back signed |
+| Registering through a team invitation | The invitation reached that inbox |
+
+In each case an unverified address is marked verified rather than the user
+being turned away. Note the security trade-off this implies for OAuth: see
+[Security](./security.md#oauth-and-email-verification).
 
 ### Resend Verification
 
@@ -506,6 +574,19 @@ Content-Type: application/x-www-form-urlencoded
 
 email=newemail@example.com
 ```
+
+A confirmation link is mailed to the **new** address; nothing changes on the
+account until it is followed. The API confirmation route answers both verbs:
+
+```http
+GET  /neev/email/change/verify?id=…&email=…&signature=…   # a clicked link
+POST /neev/email/change/verify?id=…&email=…&signature=…   # an SPA forwarding the query
+```
+
+Like verification, the signature is the credential — no session is needed. If
+somebody else claims the address between the request and the click, the
+confirmation answers `409 This email address is already in use.` and the
+account keeps its original address.
 
 ---
 
@@ -674,8 +755,8 @@ class LogSuccessfulLogout
 
 1. **Enable MFA** for all users, especially administrators
 2. **Use HTTPS** in production
-3. **Apply `neev:password-not-expired` middleware** if password aging is a compliance requirement
-4. **Apply `neev:verified-email` middleware** to prevent unverified accounts from accessing sensitive routes
+3. **Apply `neev-password-not-expired` middleware** if password aging is a compliance requirement
+4. **Apply `neev-verified-email` middleware** to prevent unverified accounts from accessing sensitive routes
 5. **Monitor login attempts** for suspicious activity
 6. **Use session database** driver for logout-all-devices functionality
 7. **Keep GeoIP database** updated for accurate location tracking

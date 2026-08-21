@@ -197,6 +197,47 @@ Roles are not stored on the pivot — they are managed by `ssntpl/laravel-acl` v
 - `request_to_user` - Team invited the user
 - `request_from_user` - User requested to join
 
+### Membership is what authorises a team action
+
+Every team endpoint asks the same question first: **is the caller a joined
+member of this team?** Being signed in is not enough, and neither is knowing a
+team id.
+
+```php
+$team->hasMember($user);   // joined === true in team_user
+```
+
+Owning a team and belonging to it are separate records, so every path that
+creates a team also attaches the creator as a member — `POST /neev/teams`,
+the Blade create form, and the team auto-created at registration all do.
+
+Refusals answer `403 You cannot perform this action on this team.` on the API,
+or redirect back with that message in the error bag on the web. **A team that
+does not exist is refused the same way as one that is not yours**, so the
+endpoints never confirm which team ids are real.
+
+| Endpoint | Who may call it |
+|----------|-----------------|
+| `PUT /neev/teams` (update) | any member |
+| `GET /neev/domains` | any member |
+| `PUT /neev/teams/request` (accept/reject a join request) | any member |
+| `PUT /neev/teams/leave` (remove a member) | any member; the owner cannot be removed |
+| `PUT /neev/teams/leave` (revoke an invitation) | any member (the owner included), or the invitee declining their own |
+| `PUT /neev/teams/inviteUser` | the owner |
+| `DELETE /neev/teams` | the owner, and only when they own another team |
+| `PUT /neev/teams/owner/change` | the owner, and only to an existing member |
+| `PUT /neev/role/change` | a member, and only for another member of the same team |
+| domain federate / update / delete | the owner |
+
+A role scoped to a team is meaningless for somebody outside it, so
+`PUT /neev/role/change` checks **both** sides: the caller must belong to the
+team, and so must the user whose role is changing.
+
+Invitations are addressed to one inbox, so only the account holding that
+address may accept or reject one. Cancelling an invitation is a separate
+question: a member of the team may revoke it, and the invitee may decline it,
+but knowing an invitation id is not by itself authority to cancel it.
+
 ---
 
 ## Inviting Members
@@ -310,7 +351,9 @@ curl -X PUT https://yourapp.com/neev/teams/leave \
 
 ### Note: Owners Cannot Leave
 
-Team owners cannot leave their team. They must transfer ownership first.
+Team owners cannot leave their team, and cannot be removed by another member.
+They must transfer ownership first. The attempt answers
+`403 You cannot perform this action on this team.`
 
 ---
 
@@ -491,7 +534,7 @@ if ($team->isActive()) {
 $reason = $team->inactive_reason;  // Why it's inactive
 ```
 
-Teams auto-created at registration are activated immediately. Enforcement is opt-in: apply the `neev:active-team` middleware alias (`EnsureTeamIsActive`) to routes that should reject inactive teams. Teams can also be activated from the CLI:
+Teams auto-created at registration are activated immediately. Enforcement is opt-in: apply the `neev-active-team` middleware alias (`EnsureTeamIsActive`) to routes that should reject inactive teams. Teams can also be activated from the CLI:
 
 ```bash
 php artisan neev:team:activate {team}

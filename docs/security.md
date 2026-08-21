@@ -118,10 +118,10 @@ $user->isPasswordExpired();          // bool
 $user->isPasswordExpiringSoon(7);    // bool — expiring within the given days
 ```
 
-Enforcement ships as middleware, registered under the `neev:password-not-expired` alias (`Ssntpl\Neev\Http\Middleware\EnsurePasswordNotExpired`). Apply it to routes that should be blocked once the password expires:
+Enforcement ships as middleware, registered under the `neev-password-not-expired` alias (`Ssntpl\Neev\Http\Middleware\EnsurePasswordNotExpired`). Apply it to routes that should be blocked once the password expires:
 
 ```php
-Route::middleware(['neev:api', 'neev:password-not-expired'])->group(function () {
+Route::middleware(['neev:api', 'neev-password-not-expired'])->group(function () {
     // Protected routes
 });
 ```
@@ -147,7 +147,7 @@ Unauthenticated requests pass through unchanged. Set `password_expiry_days` to `
 If MFA or organization-controlled credentials are a compliance requirement:
 
 - **Keep the `oauth` list empty or minimal.** Providers not in the list return 404 on both the redirect and callback routes, which fully disables the path.
-- **For per-organization enforcement, use tenant/team SSO with the `neev:ensure-sso` middleware.** It rejects (API) or redirects (web) any authenticated session that was not established via SSO, closing the OAuth side door for that organization.
+- **For per-organization enforcement, use tenant/team SSO with the `neev-ensure-sso` middleware.** It rejects (API) or redirects (web) any authenticated session that was not established via SSO, closing the OAuth side door for that organization.
 - **If MFA must be universal across all login methods**, implement an application-level step-up check after login — Neev does not provide one for OAuth sessions.
 
 See [Authentication → OAuth / Social Login](./authentication.md#security-warning-oauth-bypasses-mfa-and-password-policies) for details.
@@ -412,10 +412,10 @@ The API middleware provides:
 
 ### Email Verification Enforcement
 
-Email verification is enforced by a dedicated middleware, registered under the `neev:verified-email` alias (`Ssntpl\Neev\Http\Middleware\EnsureEmailIsVerified`):
+Email verification is enforced by a dedicated middleware, registered under the `neev-verified-email` alias (`Ssntpl\Neev\Http\Middleware\EnsureEmailIsVerified`):
 
 ```php
-Route::middleware(['neev:api', 'neev:verified-email'])->group(function () {
+Route::middleware(['neev:api', 'neev-verified-email'])->group(function () {
     // Routes requiring a verified email
 });
 ```
@@ -537,6 +537,56 @@ The email must be verified before full access is granted:
 $user->email_verified_at;  // Null if unverified
 ```
 
+<a id="oauth-and-email-verification"></a>
+
+#### What counts as proof of the address
+
+Verification mail is not the only way an address becomes verified. Anything
+that demonstrates control of the inbox is accepted, and the package marks the
+address verified rather than sending a redundant email:
+
+| Event | Proof |
+|-------|-------|
+| Following the verification link or entering the code | Direct |
+| Following a magic login link | The link was mailed there and came back signed |
+| Registering through a team invitation | The invitation reached that inbox |
+| Signing in through OAuth | The provider authenticated the address |
+
+**The OAuth case is the one with a trade-off.** When a provider returns an
+address that matches an existing account whose email was never verified, the
+callback marks it verified and signs the user in — it does not turn them away.
+So an account registered with an address the registrant did not control
+becomes reachable by whoever later controls that address at the provider.
+Keep the `oauth` list to providers whose email claims you trust, and prefer
+tenant SSO with `neev-ensure-sso` where an organization needs enforcement.
+
+#### What verification is *not* required for
+
+- **Password reset.** A forgotten password is exactly the case where the user
+  may never have finished verifying, so requiring it first would strand them.
+  Both requesting and using a reset link work on an unverified address.
+- **Enrolling an authenticator app.** A TOTP device proves possession of a
+  device, not of an inbox.
+
+Verification **is** required to enrol email OTP as a second factor: that
+factor is only as trustworthy as the inbox the code lands in.
+
+#### Links carry their own authority
+
+Emailed links are signed and time-limited, and the signature — not a session —
+is what authorises the action. Verification and email-change links therefore
+work without being logged in, which is necessary because a mail client opens
+them in whichever browser it likes. Consequences worth knowing:
+
+- A link acts on the account it was minted for, not on whoever is signed in.
+- The verification `hash` is bound to the address the link was mailed to, so a
+  link minted before an address change cannot verify the new one.
+- A second click is not an error; mail scanners routinely fetch links first.
+- Expiry comes from `url_expiry_time` (60 minutes by default).
+
+See [Email Links](./email-links.md) for where these links point and how to
+change it.
+
 ---
 
 ## Audit Logging
@@ -614,7 +664,7 @@ public function handle($request, Closure $next)
 Apply the enforcement middleware to protected routes:
 
 ```php
-Route::middleware(['neev:api', 'neev:verified-email', 'neev:password-not-expired'])->group(function () {
+Route::middleware(['neev:api', 'neev-verified-email', 'neev-password-not-expired'])->group(function () {
     // ...
 });
 ```

@@ -232,6 +232,17 @@ POST /neev/forgotPassword
 }
 ```
 
+An **unverified** address can request and use a reset link. A forgotten
+password is exactly the case where the user may never have finished
+verifying, so requiring verification first would strand them. `404 User not
+registered or wrong email.` is returned only when no account holds the
+address.
+
+Where the link lands is controlled by [`EmailLinks`](./email-links.md):
+the Blade kit sends it to its own `reset.request` form, while a headless
+install sends it to `{app.url}/reset-password` carrying the signed query for
+your page to forward here.
+
 ---
 
 ### Reset Password
@@ -292,18 +303,44 @@ Authorization: Bearer {token}
 GET /neev/email/verify?id={user_id}&hash={email_hash}&signature={signature}&expires={timestamp}
 ```
 
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
+**No authentication required.** The signature is the credential. A mail client
+hands the link to whichever browser it likes — rarely the one holding the
+session — so requiring a token here would break most real clicks. The link
+verifies the account it was minted for, regardless of who is signed in.
+Throttled to 10 requests/minute.
 
-**Response:**
+**Response (`200`):**
 
 ```json
 {
     "message": "Email verification done."
 }
 ```
+
+**Response (`200`, already verified):**
+
+```json
+{
+    "message": "Email verification already done."
+}
+```
+
+A second click is not an error — mail scanners routinely fetch links before
+the recipient does.
+
+**Response (`403`)** — bad or expired signature, unknown user, or a `hash`
+that no longer matches the account's address:
+
+```json
+{
+    "message": "Invalid or expired verification link."
+}
+```
+
+If the caller does not send `Accept: application/json`, these answer with a
+redirect instead (to `neev.home` on success, with an error bag on failure).
+Both the URL and the response are controlled by
+[`EmailLinks`](./email-links.md).
 
 ---
 
@@ -368,9 +405,15 @@ Authorization: Bearer {token}
 
 ### Verify Email Change
 
-Verify the email change using the signed URL sent to the new email address. The frontend receives the signed URL parameters and forwards them to this endpoint.
+Verify the email change using the signed URL sent to the new email address.
+
+The route answers **both** verbs. `GET` is what a clicked link issues; `POST`
+is retained for SPAs that receive the signed URL parameters on their own page
+and forward them here. Like verification, no authentication is required — the
+signature is the credential. Throttled to 10 requests/minute.
 
 ```http
+GET  /neev/email/change/verify?id={user_id}&email={new_email}&signature={signature}&expires={timestamp}
 POST /neev/email/change/verify?id={user_id}&email={new_email}&signature={signature}&expires={timestamp}
 ```
 
@@ -424,6 +467,20 @@ Authorization: Bearer {token}
 ```
 
 The authenticator method is created in a **pending** state and is not enforced at login until activated via [Verify MFA Setup](#verify-mfa-setup). The email method is created active immediately.
+
+**Response (`422`)** — the request could not be satisfied. The body carries the
+reason:
+
+```json
+{
+    "message": "Email is not verified."
+}
+```
+
+An email factor is only as trustworthy as the inbox it is sent to, so an
+unverified address cannot be enrolled. `Email already Configured.` comes back
+the same way when the factor already exists. A `400` still means the method
+name itself is not one neev supports.
 
 **Response (email):**
 

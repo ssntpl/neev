@@ -52,13 +52,15 @@ class OAuthController extends Controller
 
         $user = User::findByEmail($oauthUser->email);
         if ($user) {
+            // The provider authenticated this address, which is proof of
+            // ownership just as strong as our own verification mail.
             if (!$user->hasVerifiedEmail()) {
-                return redirect(route('login'));
+                $user->markEmailAsVerified();
             }
         } else {
             try {
                 $user = app(RegistrationService::class)
-                    ->registerViaOAuth($oauthUser->name, $oauthUser->email);
+                    ->registerViaOAuth($oauthUser->name ?: $oauthUser->getNickname(), $oauthUser->email);
             } catch (Exception $e) {
                 Log::error($e);
                 return redirect(route('register'));

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Laravel\Socialite\Facades\Socialite;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\RegistrationService;
@@ -28,7 +29,7 @@ class OAuthApiController extends Controller
             $params['login_hint'] = $request->email;
         }
 
-        $redirectUrl = config('app.url') . '/' . trim(config('neev.route_prefix', 'neev'), '/') . '/oauth/' . $service . '/callback';
+        $redirectUrl = app(EmailLinks::class)->oauthCallbackUrl($service);
 
         /** @var \Laravel\Socialite\Two\AbstractProvider $driver */
         $driver = Socialite::driver($service);
@@ -59,7 +60,7 @@ class OAuthApiController extends Controller
         }
 
         try {
-            $redirectUrl = config('app.url') . '/' . trim(config('neev.route_prefix', 'neev'), '/') . '/oauth/' . $service . '/callback';
+            $redirectUrl = app(EmailLinks::class)->oauthCallbackUrl($service);
 
             /** @var \Laravel\Socialite\Two\AbstractProvider $driver */
             $driver = Socialite::driver($service);
@@ -71,14 +72,14 @@ class OAuthApiController extends Controller
             /** @var \Laravel\Socialite\Two\User $oauthUser */
             $user = User::findByEmail($oauthUser->email);
             if ($user) {
+                // The provider authenticated this address, which is proof of
+                // ownership just as strong as our own verification mail.
                 if (!$user->hasVerifiedEmail()) {
-                    return response()->json([
-                        'message' => 'Account not found or email not verified.',
-                    ], 401);
+                    $user->markEmailAsVerified();
                 }
             } else {
                 $user = app(RegistrationService::class)
-                    ->registerViaOAuth($oauthUser->name, $oauthUser->email);
+                    ->registerViaOAuth($oauthUser->name ?: $oauthUser->getNickname(), $oauthUser->email);
             }
 
             $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);

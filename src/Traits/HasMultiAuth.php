@@ -83,6 +83,16 @@ trait HasMultiAuth
                 ];
 
             case 'email':
+                // Email OTP is only as trustworthy as the address it is
+                // sent to, so an unverified address cannot become a factor.
+                if (!$this->hasVerifiedEmail()) {
+                    return [
+                        'status' => 'Error',
+                        'method' => $method,
+                        'message' => 'Email is not verified.'
+                    ];
+                }
+
                 $auth = $this->multiFactorAuth($method);
                 if ($auth) {
                     return [
@@ -92,8 +102,8 @@ trait HasMultiAuth
                     ];
                 }
 
-                // The account email is already verified, so email OTP is
-                // active immediately.
+                // The account email is verified, so email OTP is active
+                // immediately.
                 $this->multiFactorAuths()->create([
                     'method' => $method,
                     'status' => MultiFactorAuth::STATUS_ACTIVE,

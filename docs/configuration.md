@@ -162,7 +162,7 @@ Days to keep unverified (pending) MFA setups before the `neev:clean-pending-mfa-
 
 Length of one-time password codes: 4, 6, or 8 digits (used for MFA email OTP). Replaces the old `otp_min` / `otp_max` range keys.
 
-> **Email verification:** there is no `email_verified` toggle anymore. The verification flow (signed links) is always available, and enforcement is opt-in via the `neev:verified-email` middleware alias (`EnsureEmailIsVerified`) — apply it to the routes you want to protect.
+> **Email verification:** there is no `email_verified` toggle anymore. The verification flow (signed links) is always available, and enforcement is opt-in via the `neev-verified-email` middleware alias (`EnsureEmailIsVerified`) — apply it to the routes you want to protect.
 
 ---
 
@@ -198,7 +198,12 @@ Secret key for signing MFA JWTs. Falls back to `APP_KEY` if not set.
 'url_expiry_time' => 60,
 ```
 
-Minutes before magic links and password reset links expire.
+Minutes before every emailed link expires — magic links, password reset,
+email verification, email change, and team invitations.
+
+Where those links *point* is not configuration: it is decided by the
+`EmailLinks` service, which you subclass and bind when you want them on your
+own pages. See [Email Links](./email-links.md).
 
 ### OTP Expiry
 
@@ -216,7 +221,7 @@ Minutes before email OTP codes expire.
 
 Days before a password expires. Set to `0` to disable. Replaces the old `password_soft_expiry_days` / `password_hard_expiry_days` pair — the warning period is now the app's UI concern via the user helper methods (`passwordExpiresAt()`, `isPasswordExpired()`, `isPasswordExpiringSoon($days)`).
 
-Enforcement is opt-in: apply the `neev:password-not-expired` middleware alias (`EnsurePasswordNotExpired`) to protected routes. It returns a 403 with a `password_expired` error for expired passwords.
+Enforcement is opt-in: apply the `neev-password-not-expired` middleware alias (`EnsurePasswordNotExpired`) to protected routes. It returns a 403 with a `password_expired` error for expired passwords.
 
 ---
 
@@ -489,13 +494,13 @@ The following keys no longer exist in `config/neev.php`. Where behaviour moved, 
 |-------------|-------------|
 | `identity_strategy`, `tenant_isolation`, `tenant_isolation_options` | Single `tenant` flag; domain resolution via `domains` table |
 | `tenant_auth`, `tenant_auth_options` | Per-entity settings in `tenant_auth_settings` / `team_auth_settings` DB tables |
-| `email_verified` | Opt-in `neev:verified-email` middleware alias (`EnsureEmailIsVerified`) |
+| `email_verified` | Opt-in `neev-verified-email` middleware alias (`EnsureEmailIsVerified`) |
 | `require_company_email`, `free_email_domains`, `domain_federation` | Removed from Neev (app-level or separate package concern) |
 | `magicauth` | Removed — magic link login is always available |
 | `dashboard_url`, `frontend_url` | `home` (path only, Blade flows) |
 | `otp_min` / `otp_max` | `otp_length` |
 | `login_soft_attempts` / `login_hard_attempts` / `login_block_minutes` | `login_throttle` progressive delay |
-| `password_soft_expiry_days` / `password_hard_expiry_days` | `password_expiry_days` + `neev:password-not-expired` middleware alias (`EnsurePasswordNotExpired`) |
+| `password_soft_expiry_days` / `password_hard_expiry_days` | `password_expiry_days` + `neev-password-not-expired` middleware alias (`EnsurePasswordNotExpired`) |
 | `record_failed_login_attempts` | `log_failed_logins` |
 | `last_login_attempts_in_days` | `login_history_retention_days` |
 | `geo_ip_db`, `edition`, `maxmind_license_key` | `maxmind.db_path`, `maxmind.edition`, `maxmind.license_key` |

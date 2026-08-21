@@ -183,6 +183,8 @@ class TeamCRUDTest extends TestCase
 
         $team = TeamFactory::new()->create(['user_id' => $user->id, 'name' => 'Old Name']);
 
+        $team->addMember($user);
+
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/teams', [
                 'team_id' => $team->id,
@@ -204,6 +206,8 @@ class TeamCRUDTest extends TestCase
 
         $team = TeamFactory::new()->create(['user_id' => $user->id, 'is_public' => false]);
 
+        $team->addMember($user);
+
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/teams', [
                 'team_id' => $team->id,
@@ -214,6 +218,11 @@ class TeamCRUDTest extends TestCase
             ->assertJsonPath('data.is_public', true);
     }
 
+    /**
+     * The authorisation check runs first and answers the same way whether the
+     * team is missing or simply not yours, so the endpoint never confirms
+     * that a team id exists.
+     */
     public function test_update_nonexistent_team_returns_error(): void
     {
         [$user, $token] = $this->authenticatedUser();
@@ -224,7 +233,7 @@ class TeamCRUDTest extends TestCase
                 'name' => 'Whatever',
             ]);
 
-        $response->assertStatus(400);
+        $response->assertStatus(403);
     }
 
     // -----------------------------------------------------------------

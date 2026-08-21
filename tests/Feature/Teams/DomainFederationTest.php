@@ -107,6 +107,7 @@ class DomainFederationTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
 
         DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'alpha.com']);
         DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'beta.com']);

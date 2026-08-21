@@ -80,13 +80,23 @@ class User extends Authenticatable
         'remember_token',
     ];
 
-    protected $casts = [
-        'active' => 'boolean',
-        'email_verified_at' => 'datetime',
-        'password' => 'hashed',
-        'password_history' => 'array',
-        'password_changed_at' => 'datetime',
-    ];
+    /**
+     * Declared as a method, not a $casts property: Eloquent merges casts()
+     * into $casts, so a project subclass that declares its own $casts keeps
+     * neev's instead of silently replacing them.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'active' => 'boolean',
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'password_history' => 'array',
+            'password_changed_at' => 'datetime',
+        ];
+    }
 
     public function getProfilePhotoUrlAttribute()
     {

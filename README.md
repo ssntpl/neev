@@ -563,13 +563,13 @@ Response:
 
 | Alias | Description |
 |-------|-------------|
-| `neev:active-team` | Blocks access when team is inactive/waitlisted |
-| `neev:active-tenant` | Blocks access when tenant is inactive |
-| `neev:tenant-member` | Ensures user is a member of the current tenant |
-| `neev:resolve-team` | Resolves team from route parameter |
-| `neev:ensure-sso` | Enforces SSO-only access for the current context |
-| `neev:password-not-expired` | Forces password change when password has expired |
-| `neev:verified-email` | Requires a verified email address |
+| `neev-active-team` | Blocks access when team is inactive/waitlisted |
+| `neev-active-tenant` | Blocks access when tenant is inactive |
+| `neev-tenant-member` | Ensures user is a member of the current tenant |
+| `neev-resolve-team` | Resolves team from route parameter |
+| `neev-ensure-sso` | Enforces SSO-only access for the current context |
+| `neev-password-not-expired` | Forces password change when password has expired |
+| `neev-verified-email` | Requires a verified email address |
 
 ---
 
@@ -601,7 +601,7 @@ Progressive exponential backoff — there is no hard lockout:
 'password_expiry_days' => 90,  // 0 = disabled
 ```
 
-Password expiry is enforced by applying the opt-in `neev:password-not-expired` middleware alias to your routes.
+Password expiry is enforced by applying the opt-in `neev-password-not-expired` middleware alias to your routes.
 
 ### Login Tracking
 
@@ -636,7 +636,7 @@ php artisan neev:download-geoip
 'support_username' => false,  // Username login
 ```
 
-Email verification is enforced by applying the opt-in `neev:verified-email` middleware alias to your routes.
+Email verification is enforced by applying the opt-in `neev-verified-email` middleware alias to your routes.
 
 ### Post-Auth Redirect
 

@@ -25,10 +25,10 @@ use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Services\AuthService;
+use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\TenantResolver;
-use Illuminate\Support\Facades\URL;
 
 class UserAuthController extends Controller
 {
@@ -168,13 +168,9 @@ class UserAuthController extends Controller
         }
 
         $expiryMinutes = config('neev.url_expiry_time', 60);
-        $signedUrl = URL::temporarySignedRoute(
-            'login.link',
-            now()->addMinutes($expiryMinutes),
-            ['id' => $user->id]
-        );
+        $url = app(EmailLinks::class)->magicLinkUrl($user, now()->addMinutes($expiryMinutes));
 
-        Mail::to($user->email)->send(new LoginUsingLink($signedUrl, $expiryMinutes));
+        Mail::to($user->email)->send(new LoginUsingLink($url, $expiryMinutes));
 
         return back()->with('status', 'Login link has been sent.');
     }
@@ -189,8 +185,14 @@ class UserAuthController extends Controller
         }
 
         $user = User::model()->find($id);
-        if (!$user || !$user->hasVerifiedEmail()) {
+        if (!$user) {
             return redirect(route('login'));
+        }
+
+        // The link was mailed to this address and came back signed, which
+        // proves inbox control just as the verification mail would.
+        if (!$user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
         }
 
         $this->auth->login($request, $geoIP, $user, LoginAttempt::MagicAuth);
@@ -229,13 +231,14 @@ class UserAuthController extends Controller
             return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method));
         }
 
+        if (!$user->hasVerifiedEmail()) {
+            return redirect(route('verification.notice'));
+        }
+
         if ($request->redirect && $request->redirect != '/' && str_starts_with($request->redirect, '/')) {
             return redirect($request->redirect);
         }
 
-        if (!$user->hasVerifiedEmail()) {
-            return redirect(route('verification.notice'));
-        }
         return redirect(config('neev.home'));
     }
 
@@ -259,21 +262,20 @@ class UserAuthController extends Controller
             'email' => 'required|string|email|max:255|',
         ]);
 
+        // A forgotten password is exactly the case where the user may
+        // never have completed verification, so an unverified address
+        // must still be able to receive a reset link.
         $user = User::findByEmail($request->email);
-        if (!$user || !$user->hasVerifiedEmail()) {
+        if (!$user) {
             return back()->withErrors([
                 'message' => __('User not registered or wrong email.'),
             ]);
         }
 
         $expiryMinutes = config('neev.url_expiry_time', 60);
-        $signedUrl = URL::temporarySignedRoute(
-            'reset.request',
-            now()->addMinutes($expiryMinutes),
-            ['id' => $user->id, 'hash' => hash('sha256', $user->email)]
-        );
+        $url = app(EmailLinks::class)->passwordResetUrl($user, now()->addMinutes($expiryMinutes));
 
-        Mail::to($user->email)->send(new VerifyUserEmail($signedUrl, $user->name, 'Forgot Password', $expiryMinutes));
+        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Forgot Password', $expiryMinutes));
         return back()->with('status', __('Link has been sent to your email address.'));
     }
 
@@ -288,7 +290,7 @@ class UserAuthController extends Controller
             return redirect(route('password.request'))->withErrors(['message' => 'Invalid verification link.']);
         }
 
-        if (!hash_equals(hash('sha256', $user->email), $hash) || !$user->hasVerifiedEmail()) {
+        if (!hash_equals(hash('sha256', $user->email), $hash)) {
             return redirect(route('password.request'))->withErrors(['message' => 'Invalid verification link.']);
         }
 
@@ -313,7 +315,7 @@ class UserAuthController extends Controller
         }
 
         $user = User::findByEmail($request->email);
-        if (!$user || !$user->hasVerifiedEmail()) {
+        if (!$user) {
             return back()->withErrors(['message' => 'Failed to update password.']);
         }
         $this->auth->changePassword($user, $request->password);
@@ -384,18 +386,22 @@ class UserAuthController extends Controller
 
     public function emailVerifyStore(Request $request, $id, $hash)
     {
-        $user = User::model()->findOrFail($id);
-        $loggedInUser = User::model()->find($request->user()?->id);
-        if (!$loggedInUser || $loggedInUser->id != $user->id) {
-            return redirect(route('login') . '?redirect=' . urlencode($request->fullUrl()))->withErrors(['message' => __('Please login first to verify your email.')]);
+        $links = app(EmailLinks::class);
+        $user = User::model()->find($id);
+
+        if (!$user
+            || !$request->hasValidSignature()
+            || !hash_equals(hash('sha256', $user->email), (string) $hash)) {
+            return $links->verificationFailed($request);
         }
 
-        if (hash_equals(hash('sha256', $user->email), $hash) && $request->hasValidSignature()) {
-            $user->markEmailAsVerified();
-            return redirect(config('neev.home'));
+        if ($user->hasVerifiedEmail()) {
+            return $links->alreadyVerified($request, $user);
         }
 
-        return redirect(config('neev.home'))->withErrors(['message' => __('Invalid or expired verification link.')]);
+        $user->markEmailAsVerified();
+
+        return $links->verified($request, $user);
     }
 
     public function emailChangeCreate(Request $request)
@@ -436,25 +442,19 @@ class UserAuthController extends Controller
 
     public function emailChangeVerify(Request $request, $id)
     {
-        if (!$request->hasValidSignature()) {
-            return redirect(route('login'))->withErrors(['message' => 'Invalid or expired verification link.']);
-        }
-
+        $links = app(EmailLinks::class);
         $user = User::model()->find($id);
-        if (!$user) {
-            return redirect(route('login'))->withErrors(['message' => 'Invalid or expired verification link.']);
-        }
-
         $newEmail = $request->email;
-        if (!$newEmail) {
-            return redirect(route('login'))->withErrors(['message' => 'Invalid or expired verification link.']);
+
+        if (!$request->hasValidSignature() || !$user || !$newEmail) {
+            return $links->emailChangeFailed($request);
         }
 
         if (!$this->auth->applyEmailChange($user, $newEmail)) {
-            return redirect(config('neev.home'))->withErrors(['message' => 'This email address is already in use.']);
+            return $links->emailInUse($request, $user);
         }
 
-        return redirect(config('neev.home'))->with('status', __('Email address has been updated and verified.'));
+        return $links->emailChanged($request, $user);
     }
 
     /**

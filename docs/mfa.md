@@ -185,7 +185,29 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 3. Receives confirmation email with code
 4. MFA is enabled
 
-Unlike the authenticator method, email OTP requires no verification step — the account email is already verified, so the method is created **active** immediately.
+Unlike the authenticator method, email OTP requires no verification step of its
+own — the address has already been verified, so the method is created
+**active** immediately.
+
+### The address must be verified first
+
+An email OTP is only as trustworthy as the inbox it lands in, so an unverified
+address cannot become a second factor:
+
+```json
+{
+  "status": "Error",
+  "method": "email",
+  "message": "Email is not verified."
+}
+```
+
+The API returns this with `422`; the Blade kit redirects back with the message
+in the error bag. Verify the address first (see
+[Authentication → Email Verification](./authentication.md#email-verification)),
+then enable the factor. This gate applies only to the email method — an
+authenticator app proves possession of a device, not of an inbox, so it can be
+enrolled on an unverified account.
 
 ### API: Enable Email OTP
 

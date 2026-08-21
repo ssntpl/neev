@@ -163,6 +163,7 @@ class TeamApiControllerTest extends TestCase
     {
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        $team->addMember($user);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/teams', [
@@ -181,6 +182,11 @@ class TeamApiControllerTest extends TestCase
         ]);
     }
 
+    /**
+     * The authorisation check runs first and answers the same way whether the
+     * team is missing or simply not yours, so the endpoint never confirms
+     * that a team id exists.
+     */
     public function test_update_nonexistent_team_returns_error(): void
     {
         [$user, $token] = $this->authenticatedUser();
@@ -191,8 +197,8 @@ class TeamApiControllerTest extends TestCase
                 'name' => 'Updated Team Name'
             ]);
 
-        $response->assertStatus(400)
-            ->assertJsonPath('message', 'Team not found');
+        $response->assertStatus(403)
+            ->assertJsonPath('message', 'You cannot perform this action on this team.');
     }
 
     // -----------------------------------------------------------------
@@ -298,6 +304,7 @@ class TeamApiControllerTest extends TestCase
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        $team->addMember($user);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/domains?team_id=' . $team->id);
@@ -520,4 +527,107 @@ class TeamApiControllerTest extends TestCase
         $response->assertStatus(400)
             ->assertJsonPath('message', 'You do not have the required permissions to change primary domain.');
     }
+    // =================================================================
+    // Membership is what authorises a team action
+    // =================================================================
+
+    public function test_non_member_cannot_update_a_team(): void
+    {
+        [$outsider, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['name' => 'Untouched']);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams', [
+                'team_id' => $team->id,
+                'name' => 'Hijacked',
+            ])
+            ->assertStatus(403)
+            ->assertJsonPath('message', 'You cannot perform this action on this team.');
+
+        $this->assertSame('Untouched', $team->refresh()->name);
+    }
+
+    public function test_non_member_cannot_list_a_teams_domains(): void
+    {
+        $this->enableDomainFederation();
+
+        [$outsider, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/domains?team_id=' . $team->id)
+            ->assertStatus(403)
+            ->assertJsonPath('message', 'You cannot perform this action on this team.');
+    }
+
+    public function test_non_member_cannot_act_on_a_join_request(): void
+    {
+        [$outsider, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create();
+
+        $requester = User::factory()->create();
+        $team->allUsers()->attach($requester, [
+            'joined' => false,
+            'action' => 'request_from_user',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/request', [
+                'team_id' => $team->id,
+                'user_id' => $requester->id,
+                'action' => 'accept',
+            ])
+            ->assertStatus(403);
+
+        $this->assertDatabaseHas('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $requester->id,
+            'joined' => false,
+        ]);
+    }
+
+    public function test_non_member_cannot_remove_a_member(): void
+    {
+        [$outsider, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create();
+
+        $member = User::factory()->create();
+        $team->addMember($member);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/leave', [
+                'team_id' => $team->id,
+                'user_id' => $member->id,
+            ])
+            ->assertStatus(403);
+
+        $this->assertTrue($team->refresh()->hasMember($member));
+    }
+
+    /**
+     * The authorisation check answers the same way for a team that does not
+     * exist as for one that is not yours, so the endpoint never confirms
+     * which team ids are real.
+     */
+    public function test_a_missing_team_is_refused_the_same_way_as_someone_elses(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $mine = TeamFactory::new()->create();
+
+        $missing = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams', ['team_id' => 99999, 'name' => 'X']);
+
+        $theirs = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams', ['team_id' => $mine->id, 'name' => 'X']);
+
+        $missing->assertStatus(403);
+        $theirs->assertStatus(403);
+        $this->assertSame(
+            $missing->json('message'),
+            $theirs->json('message'),
+            'The refusal must not distinguish a missing team from an inaccessible one.'
+        );
+    }
+
 }

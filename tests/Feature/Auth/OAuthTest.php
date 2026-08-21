@@ -58,13 +58,13 @@ class OAuthTest extends TestCase
             ->andReturn($provider);
     }
 
-    private function mockSocialiteUser(string $email, string $name = 'Test User'): void
+    private function mockSocialiteUser(string $email, ?string $name = 'Test User', ?string $nickname = null): void
     {
         $socialiteUser = Mockery::mock(SocialiteUser::class);
         $socialiteUser->email = $email;
         $socialiteUser->name = $name;
         $socialiteUser->shouldReceive('getId')->andReturn('oauth-123');
-        $socialiteUser->shouldReceive('getNickname')->andReturn(null);
+        $socialiteUser->shouldReceive('getNickname')->andReturn($nickname);
         $socialiteUser->shouldReceive('getAvatar')->andReturn(null);
 
         $provider = Mockery::mock(Provider::class);
@@ -183,15 +183,22 @@ class OAuthTest extends TestCase
         $response->assertRedirect(route('login'));
     }
 
-    public function test_callback_redirects_to_login_for_unverified_email(): void
+    public function test_callback_verifies_and_logs_in_a_previously_unverified_email(): void
     {
+        // The provider authenticated the address, which is proof of ownership
+        // as strong as our own verification mail, so the callback adopts it
+        // rather than turning the user away.
         $user = User::factory()->unverified()->create();
 
         $this->mockSocialiteUser($user->email);
 
         $response = $this->get('/neev/oauth/google/callback?code=test-auth-code');
 
-        $response->assertRedirect(route('login'));
+        $response->assertRedirect(config('neev.home'));
+
+        $user->refresh();
+        $this->assertNotNull($user->email_verified_at);
+        $this->assertAuthenticatedAs($user);
     }
 
     public function test_callback_creates_team_when_teams_enabled(): void
@@ -261,6 +268,52 @@ class OAuthTest extends TestCase
 
         // User should have their own team since their domain is not verified
         $this->assertEquals(1, Team::where('user_id', $user->id)->count());
+    }
+
+    // -----------------------------------------------------------------
+    // Providers that supply no display name
+    // -----------------------------------------------------------------
+
+    /**
+     * GitHub returns a null name whenever the account has no display name
+     * set, which is the common case, so registration falls back to the
+     * provider's handle.
+     */
+    public function test_callback_falls_back_to_the_provider_nickname_when_no_name_is_given(): void
+    {
+        $this->mockSocialiteUser('nameless@example.com', null, 'octocat');
+
+        $this->get('/neev/oauth/google/callback?code=test-auth-code');
+
+        $this->assertSame('octocat', User::where('email', 'nameless@example.com')->first()->name);
+    }
+
+    /** With neither a name nor a handle, the address's local part is used. */
+    public function test_callback_derives_a_name_from_the_email_when_the_provider_gives_nothing(): void
+    {
+        $this->mockSocialiteUser('ada.lovelace@example.com', null, null);
+
+        $this->get('/neev/oauth/google/callback?code=test-auth-code');
+
+        $this->assertSame('Ada Lovelace', User::where('email', 'ada.lovelace@example.com')->first()->name);
+    }
+
+    public function test_callback_treats_a_blank_name_the_same_as_a_missing_one(): void
+    {
+        $this->mockSocialiteUser('blank_name@example.com', '   ', null);
+
+        $this->get('/neev/oauth/google/callback?code=test-auth-code');
+
+        $this->assertSame('Blank Name', User::where('email', 'blank_name@example.com')->first()->name);
+    }
+
+    public function test_callback_keeps_the_provider_name_when_one_is_given(): void
+    {
+        $this->mockSocialiteUser('named@example.com', 'Grace Hopper', 'ghopper');
+
+        $this->get('/neev/oauth/google/callback?code=test-auth-code');
+
+        $this->assertSame('Grace Hopper', User::where('email', 'named@example.com')->first()->name);
     }
 
 }
