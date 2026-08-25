@@ -299,6 +299,13 @@ Applied to authenticated web routes. Resolves the tenant and team context, then 
 
 Email verification is enforced separately via the `neev-verified-email` middleware alias.
 
+Verification is never a precondition for *reaching* a login method. The
+password page offers OAuth, the magic link, and passkeys to verified and
+unverified accounts alike — each of those flows proves control of the address
+on its own and marks it verified. Password login is the one path that still
+sends an unverified account to `verification.notice`, because a password
+proves nothing about the inbox.
+
 ### neev:tenant
 
 For multi-tenant routes. Requires a tenant to be resolved (from the X-Tenant header, subdomain, or custom domain) — returns 404 when no tenant is found. Also resolves the current team and binds the request context. Does not require authentication.
@@ -317,7 +324,7 @@ php artisan neev:ui blade
 |------|-------------|
 | `auth/register.blade.php` | Registration form |
 | `auth/login.blade.php` | Login form |
-| `auth/login-password.blade.php` | Password entry after email |
+| `auth/login-password.blade.php` | Password entry after email, plus the passwordless options (OAuth, magic link, passkey) |
 | `auth/forgot-password.blade.php` | Password reset request |
 | `auth/reset-password.blade.php` | New password form |
 | `auth/verify-email.blade.php` | Verification pending |

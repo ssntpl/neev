@@ -75,6 +75,26 @@ class OAuthTest extends TestCase
             ->andReturn($provider);
     }
 
+    /** The API flow drives the provider statelessly with its own redirect URL. */
+    private function mockStatelessSocialiteUser(string $email, ?string $name = 'Test User'): void
+    {
+        $socialiteUser = Mockery::mock(SocialiteUser::class);
+        $socialiteUser->email = $email;
+        $socialiteUser->name = $name;
+        $socialiteUser->shouldReceive('getId')->andReturn('oauth-123');
+        $socialiteUser->shouldReceive('getNickname')->andReturn(null);
+        $socialiteUser->shouldReceive('getAvatar')->andReturn(null);
+
+        $provider = Mockery::mock(Provider::class);
+        $provider->shouldReceive('stateless')->andReturnSelf();
+        $provider->shouldReceive('redirectUrl')->andReturnSelf();
+        $provider->shouldReceive('user')->andReturn($socialiteUser);
+
+        Socialite::shouldReceive('driver')
+            ->with('google')
+            ->andReturn($provider);
+    }
+
     // -----------------------------------------------------------------
     // GET /oauth/{service} — redirect to provider
     // -----------------------------------------------------------------
@@ -199,6 +219,43 @@ class OAuthTest extends TestCase
         $user->refresh();
         $this->assertNotNull($user->email_verified_at);
         $this->assertAuthenticatedAs($user);
+    }
+
+    // -----------------------------------------------------------------
+    // POST /neev/oauth/{service}/callback — API flow
+    // -----------------------------------------------------------------
+
+    public function test_api_callback_verifies_and_issues_a_token_for_a_previously_unverified_email(): void
+    {
+        $user = User::factory()->unverified()->create();
+
+        $this->mockStatelessSocialiteUser($user->email);
+
+        $response = $this->postJson('/neev/oauth/google/callback', ['code' => 'test-auth-code']);
+
+        $response->assertOk();
+        $response->assertJson([
+            'auth_state' => 'authenticated',
+            'email_verified' => true,
+        ]);
+        $this->assertNotEmpty($response->json('token'));
+        $this->assertNotNull($user->refresh()->email_verified_at);
+    }
+
+    /** The issued token is usable straight away — no verification step in between. */
+    public function test_api_callback_token_authenticates_an_unverified_account_immediately(): void
+    {
+        $user = User::factory()->unverified()->create();
+
+        $this->mockStatelessSocialiteUser($user->email);
+
+        $token = $this->postJson('/neev/oauth/google/callback', ['code' => 'test-auth-code'])
+            ->assertOk()
+            ->json('token');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/users')
+            ->assertOk();
     }
 
     public function test_callback_creates_team_when_teams_enabled(): void

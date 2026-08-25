@@ -414,6 +414,10 @@ GOOGLE_REDIRECT_URI="${APP_URL}/neev/oauth/google/callback"
 7. If the matched account's address was not yet verified, it is marked verified — the provider authenticated it
 8. Logged in and redirected (MFA is skipped)
 
+The provider buttons are offered to unverified accounts too, on the Blade
+password page and through `GET {prefix}/oauth/{service}/redirect` for headless
+frontends. Step 7 is why: an unverified address is adopted, not refused.
+
 ### Accounts the provider names poorly
 
 Some providers return no display name — GitHub does so whenever the account
@@ -550,6 +554,25 @@ accepts the equivalents rather than sending a redundant email:
 In each case an unverified address is marked verified rather than the user
 being turned away. Note the security trade-off this implies for OAuth: see
 [Security](./security.md#oauth-and-email-verification).
+
+This holds on both surfaces, and it applies to *offering* the method as well
+as to accepting it:
+
+- **API** — `POST {prefix}/sendLoginLink`, `GET {prefix}/loginUsingLink`,
+  `GET {prefix}/oauth/{service}/redirect` and
+  `POST {prefix}/oauth/{service}/callback` never inspect
+  `email_verified_at`. The callback and the magic-link exchange return
+  `"email_verified": true` because completing them verified the address, and
+  the token they issue is a full login token, not a restricted one.
+- **Web** — the Blade kit's password page (`auth/login-password.blade.php`)
+  shows the OAuth buttons, "Login Via Link" and the passkey button whatever
+  the account's verification state, so an unverified user is not left with
+  only the password they may not have. The `login.link` and
+  `oauth.callback` routes sign the user straight in and land on
+  `neev.home`, not on `verification.notice`.
+
+Only password login still stops at the verification notice — a password says
+nothing about who controls the inbox, so it cannot stand in for verification.
 
 ### Resend Verification
 

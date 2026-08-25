@@ -232,4 +232,51 @@ class MagicLinkTest extends TestCase
         $this->assertAuthenticatedAs($user);
     }
 
+    /**
+     * Sending the link is what lets an unverified account prove ownership,
+     * so it must not itself require a verified address.
+     */
+    public function test_send_login_link_is_available_to_an_unverified_email(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->unverified()->create();
+
+        $this->postJson('/neev/sendLoginLink', ['email' => $user->email])
+            ->assertOk()
+            ->assertJson(['message' => 'Login link has been sent.']);
+
+        Mail::assertSent(LoginUsingLink::class, fn (LoginUsingLink $mail) => $mail->hasTo($user->email));
+    }
+
+    public function test_web_send_login_link_is_available_to_an_unverified_email(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->unverified()->create();
+
+        $this->post('/login/link', ['email' => $user->email])
+            ->assertRedirect()
+            ->assertSessionHas('status', 'Login link has been sent.');
+
+        Mail::assertSent(LoginUsingLink::class, fn (LoginUsingLink $mail) => $mail->hasTo($user->email));
+    }
+
+    /** The magic-link session is a full login, not one parked at the notice. */
+    public function test_web_login_link_reaches_home_and_not_the_verification_notice(): void
+    {
+        $user = User::factory()->unverified()->create();
+
+        $url = URL::temporarySignedRoute(
+            'login.link',
+            now()->addMinutes(60),
+            ['id' => $user->id]
+        );
+
+        $this->get($url)->assertRedirect(config('neev.home'));
+
+        // The now-verified session passes the email-verification gate.
+        $this->get(route('verification.notice'))->assertRedirect(config('neev.home'));
+    }
+
 }

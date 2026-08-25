@@ -130,4 +130,40 @@ class WebLoginTest extends TestCase
             'redirect' => 'https://evil.example.com/steal',
         ])->assertRedirect(config('neev.home'));
     }
+
+    // -----------------------------------------------------------------
+    // Passwordless options on the password page
+    // -----------------------------------------------------------------
+
+    /**
+     * A magic link and an OAuth provider each prove control of the address,
+     * so the page offers them to an unverified account too — otherwise the
+     * only way out of "unverified" would be the password the user may not
+     * have.
+     */
+    public function test_password_page_offers_magic_link_and_oauth_to_an_unverified_account(): void
+    {
+        config(['neev.oauth' => ['google']]);
+
+        $user = User::factory()->unverified()->create();
+
+        $response = $this->put('/login', ['email' => $user->email]);
+
+        $response->assertOk();
+        $response->assertSee(route('login.link.send'), false);
+        $response->assertSee(route('oauth.redirect', 'google'), false);
+    }
+
+    public function test_password_page_offers_magic_link_and_oauth_to_a_verified_account(): void
+    {
+        config(['neev.oauth' => ['google']]);
+
+        $user = User::factory()->create();
+
+        $response = $this->put('/login', ['email' => $user->email]);
+
+        $response->assertOk();
+        $response->assertSee(route('login.link.send'), false);
+        $response->assertSee(route('oauth.redirect', 'google'), false);
+    }
 }

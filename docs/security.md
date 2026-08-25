@@ -531,11 +531,15 @@ $user->email;         // User's email address
 
 ### Email Verification
 
-The email must be verified before full access is granted:
-
 ```php
 $user->email_verified_at;  // Null if unverified
 ```
+
+Verification gates the routes you choose to protect with the
+`neev-verified-email` middleware — it never gates the act of logging in. Every
+passwordless method (magic link, OAuth, passkey) stays available to an
+unverified account on both the API and the Blade kit, because each of them
+establishes the same proof the verification mail would.
 
 <a id="oauth-and-email-verification"></a>
 
