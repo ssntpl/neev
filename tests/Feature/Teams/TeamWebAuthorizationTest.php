@@ -3,7 +3,9 @@
 namespace Ssntpl\Neev\Tests\Feature\Teams;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
@@ -273,5 +275,246 @@ class TeamWebAuthorizationTest extends TestCase
 
         $this->assertSame($user->id, $team->user_id);
         $this->assertTrue($team->hasMember($user));
+    }
+
+    // -----------------------------------------------------------------
+    // Acting on a join request is the owner's call
+    // -----------------------------------------------------------------
+
+    /**
+     * Accepting a request admits someone to the team and may hand them a
+     * role, which is exactly what inviting does — so it is held to the same
+     * bar. Being a member is no longer enough.
+     */
+    public function test_a_plain_member_cannot_accept_a_join_request(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+
+        $member = User::factory()->create();
+        $team->addMember($member);
+
+        $requester = User::factory()->create();
+        $team->allUsers()->attach($requester, [
+            'joined' => false,
+            'action' => Membership::REQUEST_FROM_USER,
+        ]);
+
+        $this->actingAs($member)
+            ->from(config('neev.home'))
+            ->put(route('teams.request.action'), [
+                'team_id' => $team->id,
+                'user_id' => $requester->id,
+                'action' => 'accept',
+            ])
+            ->assertSessionHasErrors('message');
+
+        $this->assertFalse($team->refresh()->hasMember($requester));
+    }
+
+    public function test_a_plain_member_cannot_reject_a_join_request(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+
+        $member = User::factory()->create();
+        $team->addMember($member);
+
+        $requester = User::factory()->create();
+        $team->allUsers()->attach($requester, [
+            'joined' => false,
+            'action' => Membership::REQUEST_FROM_USER,
+        ]);
+
+        $this->actingAs($member)
+            ->from(config('neev.home'))
+            ->put(route('teams.request.action'), [
+                'team_id' => $team->id,
+                'user_id' => $requester->id,
+                'action' => 'reject',
+            ])
+            ->assertSessionHasErrors('message');
+
+        $this->assertDatabaseHas('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $requester->id,
+            'joined' => false,
+        ]);
+    }
+
+    /** A team id that does not exist is refused rather than blowing up. */
+    public function test_acting_on_a_request_for_a_missing_team_is_refused(): void
+    {
+        $user = User::factory()->create();
+        $requester = User::factory()->create();
+
+        $this->actingAs($user)
+            ->from(config('neev.home'))
+            ->put(route('teams.request.action'), [
+                'team_id' => 99999,
+                'user_id' => $requester->id,
+                'action' => 'accept',
+            ])
+            ->assertRedirect(config('neev.home'))
+            ->assertSessionHasErrors('message');
+    }
+
+    // -----------------------------------------------------------------
+    // POST /neev/teams/members/request — naming the team
+    // -----------------------------------------------------------------
+
+    public function test_a_join_request_can_name_the_team_by_id(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $outsider = User::factory()->create();
+
+        $this->actingAs($outsider)
+            ->from(config('neev.home'))
+            ->post(route('teams.request'), ['team_id' => $team->id])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $outsider->id,
+            'joined' => false,
+            'action' => Membership::REQUEST_FROM_USER,
+        ]);
+    }
+
+    public function test_a_join_request_can_name_the_team_by_slug(): void
+    {
+        $owner = User::factory()->create();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'slug' => 'open-team']);
+        $team->addMember($owner);
+        $outsider = User::factory()->create();
+
+        $this->actingAs($outsider)
+            ->from(config('neev.home'))
+            ->post(route('teams.request'), ['slug' => 'open-team'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $outsider->id,
+            'joined' => false,
+            'action' => Membership::REQUEST_FROM_USER,
+        ]);
+    }
+
+    /**
+     * The owner-email plus team-name pair is still accepted, so forms built
+     * against the older shape keep working.
+     */
+    public function test_a_join_request_can_still_name_the_owner_and_team_name(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $outsider = User::factory()->create();
+
+        $this->actingAs($outsider)
+            ->from(config('neev.home'))
+            ->post(route('teams.request'), [
+                'email' => $owner->email,
+                'team' => $team->name,
+            ])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $outsider->id,
+            'joined' => false,
+        ]);
+    }
+
+    public function test_a_join_request_naming_no_team_is_refused(): void
+    {
+        $outsider = User::factory()->create();
+
+        $this->actingAs($outsider)
+            ->from(config('neev.home'))
+            ->post(route('teams.request'), [])
+            ->assertSessionHasErrors('message');
+
+        $this->assertDatabaseCount('team_user', 0);
+    }
+
+    // -----------------------------------------------------------------
+    // PUT /neev/teams/members/invite — role failures roll back
+    // -----------------------------------------------------------------
+
+    /**
+     * Attaching the member and granting the role are one unit of work, so a
+     * role name that does not resolve leaves no half-built membership behind
+     * and sends no "you're in" mail.
+     */
+    public function test_inviting_with_an_unknown_role_leaves_no_membership(): void
+    {
+        Mail::fake();
+
+        [$team, $owner] = $this->teamWithOwner();
+        $invitee = User::factory()->create();
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->put(route('teams.invite'), [
+                'team_id' => $team->id,
+                'email' => $invitee->email,
+                'role' => 'no-such-role',
+            ])
+            ->assertSessionHasErrors('message');
+
+        $this->assertDatabaseMissing('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $invitee->id,
+        ]);
+        Mail::assertNothingSent();
+    }
+
+    // -----------------------------------------------------------------
+    // The team profile page offers a way in
+    // -----------------------------------------------------------------
+
+    /**
+     * The profile page is the one team page an outsider can open, so it is
+     * where the request-to-join action belongs.
+     */
+    public function test_the_profile_page_offers_an_outsider_a_way_to_request_to_join(): void
+    {
+        [$team] = $this->teamWithOwner();
+        $outsider = User::factory()->create();
+
+        $this->actingAs($outsider)
+            ->get(route('teams.profile', ['team' => $team->id]))
+            ->assertOk()
+            ->assertSee('Request to join');
+    }
+
+    public function test_the_profile_page_reports_a_request_already_sent(): void
+    {
+        [$team] = $this->teamWithOwner();
+        $requester = User::factory()->create();
+        $team->allUsers()->attach($requester, [
+            'joined' => false,
+            'action' => Membership::REQUEST_FROM_USER,
+        ]);
+
+        $response = $this->actingAs($requester)
+            ->get(route('teams.profile', ['team' => $team->id]))
+            ->assertOk();
+
+        $response->assertSee('Request pending');
+        $response->assertDontSee('Request to join');
+    }
+
+    /** A member is already in, so neither the button nor the notice appears. */
+    public function test_the_profile_page_shows_no_join_action_to_a_member(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $member = User::factory()->create();
+        $team->addMember($member);
+
+        $response = $this->actingAs($member)
+            ->get(route('teams.profile', ['team' => $team->id]))
+            ->assertOk();
+
+        $response->assertDontSee('Request to join');
+        $response->assertDontSee('Request pending');
     }
 }

@@ -1230,6 +1230,37 @@ Authorization: Bearer {token}
 }
 ```
 
+**Errors:**
+
+| Status | Message | When |
+| --- | --- | --- |
+| `400` | `Team not found` | The team does not exist, **or** the caller is not one of its members |
+
+A team the caller does not belong to is reported as missing rather than
+forbidden, so the endpoint cannot be used to probe which team ids exist.
+
+---
+
+### Get Team Details by Slug
+
+```http
+GET /neev/teams/slug/{slug}
+```
+
+Looks a team up by its slug instead of its id, for clients that route on a
+readable team handle (`/t/acme-labs`) and never see the id. Slugs are unique
+across the whole installation, so no tenant needs naming.
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Response:** identical to `GET /neev/teams/{id}`.
+
+**Errors:** identical to `GET /neev/teams/{id}` — membership is required, and
+an unknown slug and someone else's team give the same `400 Team not found`.
+
 ---
 
 ### Create Team
@@ -1319,6 +1350,18 @@ Authorization: Bearer {token}
 }
 ```
 
+**Errors:**
+
+| Status | Message | When |
+| --- | --- | --- |
+| `400` | `Role not found.` | `role` names a role that does not resolve for this team |
+| `400` | `User already added.` | The address already belongs to a joined member |
+
+Attaching the member and granting the role are one transaction: if the role
+cannot be resolved the membership is rolled back and no invitation mail is
+sent, so a bad role name cannot leave a member behind with no permissions.
+The same applies to accepting an invitation via `PUT /neev/teams/inviteUser`.
+
 ---
 
 ### Accept/Reject Invitation
@@ -1384,13 +1427,27 @@ POST /neev/teams/request
 Authorization: Bearer {token}
 ```
 
-**Request Body:**
+**Request Body:** name the team by id **or** by slug.
 
 ```json
 {
     "team_id": 1
 }
 ```
+
+```json
+{
+    "slug": "acme-labs"
+}
+```
+
+`team_id` wins if both are sent. A body naming neither is refused with `400`,
+as is a slug that matches no team.
+
+The request is recorded as a pending membership with
+`action = request_from_user`, and the team owner is emailed. A team whose
+domain federation is enforced or verified does not accept join requests —
+membership there follows from the verified domain.
 
 ---
 

@@ -37,6 +37,8 @@ use Ssntpl\Neev\Http\Middleware\NeevAPIMiddleware;
 use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
 use Ssntpl\Neev\Http\Middleware\ResolveTeamMiddleware;
 use Ssntpl\Neev\Http\Middleware\TenantMiddleware;
+use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Services\ContextManager;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\TenantResolver;
@@ -57,8 +59,8 @@ class NeevServiceProvider extends ServiceProvider
         ]);
 
         Relation::morphMap([
-            'team' => \Ssntpl\Neev\Models\Team::getClass(),
-            'tenant' => \Ssntpl\Neev\Models\Tenant::getClass(),
+            'team' => Team::getClass(),
+            'tenant' => Tenant::getClass(),
         ]);
 
         Route::middlewareGroup('neev:web', [

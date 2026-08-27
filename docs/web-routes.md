@@ -33,7 +33,22 @@ These routes are accessible without authentication.
 | POST | `/login` | - | Process login |
 
 **Query Parameters:**
-- `redirect` - URL to redirect after login
+- `redirect` - Where to send the user after login
+
+`redirect` is a same-site path and nothing else. It is accepted only when it
+starts with a single `/`, and is discarded — falling back to
+`config('neev.home')` — when it is absolute (`https://evil.example/`),
+protocol-relative (`//evil.example`, which a browser reads as a full URL),
+starts with `/\` (browsers normalise the backslash into the authority), is
+bare `/`, or is not a string at all. That keeps `redirect` from acting as an
+open redirect — a link to your own login page that lands the user on someone
+else's site with your domain in the referrer. See
+[security.md](./security.md#open-redirect-protection).
+
+When the account has a second factor, the destination is parked in the
+session as `mfa_redirect` and honoured after the code is verified, then
+cleared. A login that carries no `redirect` clears any parked one, so a
+destination cannot leak from an earlier attempt.
 
 ---
 
@@ -249,9 +264,18 @@ All prefixed with `/teams`.
 | PUT | `/teams/members/invite/action` | `teams.invite.action` | Accept/reject invitation |
 | DELETE | `/teams/members/leave` | `teams.leave` | Leave team |
 | POST | `/teams/members/request` | `teams.request` | Request to join team |
-| PUT | `/teams/members/request/action` | `teams.request.action` | Accept/reject request |
+| PUT | `/teams/members/request/action` | `teams.request.action` | Accept/reject request (owner only) |
 | PUT | `/teams/owner/change` | `teams.owner.change` | Transfer ownership |
 | PUT | `/teams/roles/change` | `teams.roles.change` | Change member role |
+
+`teams.request` names the team by `team_id`, by `slug`, or by an `email` (the
+owner's) and `team` (the team name) pair. `team_id` is tried first, then
+`slug`, then the pair.
+
+`teams.request.action` is the owner's call: accepting a request admits someone
+to the team and may hand them a role, which is what inviting does. The API
+counterpart (`PUT /neev/teams/request`) allows any member — see
+[teams.md](./teams.md#membership-is-what-authorises-a-team-action).
 
 ---
 

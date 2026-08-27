@@ -6,10 +6,12 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\AbstractProvider;
+use Laravel\Socialite\Two\User as SocialiteUser;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\User;
-use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\AuthService;
+use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\SpaCookieResponder;
@@ -31,7 +33,7 @@ class OAuthApiController extends Controller
 
         $redirectUrl = app(EmailLinks::class)->oauthCallbackUrl($service);
 
-        /** @var \Laravel\Socialite\Two\AbstractProvider $driver */
+        /** @var AbstractProvider $driver */
         $driver = Socialite::driver($service);
         $url = $driver
             ->stateless()
@@ -62,14 +64,14 @@ class OAuthApiController extends Controller
         try {
             $redirectUrl = app(EmailLinks::class)->oauthCallbackUrl($service);
 
-            /** @var \Laravel\Socialite\Two\AbstractProvider $driver */
+            /** @var AbstractProvider $driver */
             $driver = Socialite::driver($service);
             $oauthUser = $driver
                 ->stateless()
                 ->redirectUrl($redirectUrl)
                 ->user();
 
-            /** @var \Laravel\Socialite\Two\User $oauthUser */
+            /** @var SocialiteUser $oauthUser */
             $user = User::findByEmail($oauthUser->email);
             if ($user) {
                 // The provider authenticated this address, which is proof of

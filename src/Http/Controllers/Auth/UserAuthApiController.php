@@ -4,16 +4,17 @@ namespace Ssntpl\Neev\Http\Controllers\Auth;
 
 use Exception;
 use Firebase\JWT\JWT;
+use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Auth\Events\PasswordReset;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
 use Ssntpl\Neev\Http\Controllers\Controller;
+use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\AccessToken;
@@ -182,7 +183,7 @@ class UserAuthApiController extends Controller
         $auth->otp = $otp;
         $auth->expires_at = now()->addMinutes($expiryMinutes);
         $auth->save();
-        Mail::to($user->email)->send(new \Ssntpl\Neev\Mail\EmailOTP($user->name, $otp, $expiryMinutes));
+        Mail::to($user->email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
     }
 
     public function sendMailVerificationLink(Request $request)

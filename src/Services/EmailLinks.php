@@ -189,6 +189,12 @@ class EmailLinks
             return response()->json(['message' => $message], $status);
         }
 
+        // On success, send an already-signed-in user back to the page that
+        // bounced them here rather than dropping them on the home page.
+        if ($redirect === null && !$error && $request->user()) {
+            $redirect = app(AuthService::class)->intendedUrl();
+        }
+
         $response = redirect($redirect ?? config('neev.home'));
 
         return $error ? $response->withErrors(['message' => $message]) : $response;

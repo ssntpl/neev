@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Relations\Pivot;
 
 /**
@@ -10,11 +11,17 @@ use Illuminate\Database\Eloquent\Relations\Pivot;
  * @property int $user_id
  * @property bool $joined
  * @property string $action
- * @property \Carbon\Carbon|null $created_at
- * @property \Carbon\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 class Membership extends Pivot
 {
+    /** The team invited the user, who has yet to accept. */
+    public const REQUEST_TO_USER = 'request_to_user';
+
+    /** The user asked to join, and the owner has yet to approve. */
+    public const REQUEST_FROM_USER = 'request_from_user';
+
     protected $table = 'team_user';
 
     public $incrementing = true;

@@ -136,6 +136,83 @@ Apps that ejected the `email-verify` template before this release
 won't show the code until they add the `$otp` block (see the stub
 template) — everything else works regardless.
 
+**`AccessToken::mfa_token` removed (action required only if you
+reference it).**
+`NeevAPIMiddleware` used to confine a token of that type to the MFA
+endpoints by matching the request path against the configured route
+prefix. Nothing in the package ever minted one — the API MFA step-up is
+a short-lived JWT guarded by the `neev:login` group — so the type was
+dead weight and the path check a second, weaker copy of a rule the
+route groups already enforce. A token is now judged on its hash and its
+expiry alone.
+
+Grep your app for `AccessToken::mfa_token` and `AccessTokenFactory::mfa()`
+(also removed) and drop the references; the constant no longer exists,
+so a reference is a fatal error rather than a silent no-op. Any rows
+already stored with `token_type = 'mfa_token'` keep working — the column
+is a plain string and the type is no longer consulted — but they are now
+accepted on every API route, so delete them if that matters:
+
+```php
+AccessToken::where('token_type', 'mfa_token')->delete();
+```
+
+**Team name uniqueness scoped to the tenant (schema change).**
+`teams` swaps `unique(['name', 'user_id'])` and
+`unique(['tenant_id', 'slug'])` for a single
+`unique(['tenant_id', 'name', 'user_id'])`. Two tenants can now each
+hold an owner's "Acme"; slug uniqueness is unchanged, carried by the
+`slug` column's own installation-wide unique index (stricter than the
+per-tenant one that was dropped, and what lets slug lookups skip the
+tenant filter).
+
+The package edits its migration in place, so existing installs make the
+swap themselves:
+
+```php
+Schema::table('teams', function (Blueprint $table) {
+    $table->dropUnique(['name', 'user_id']);
+    $table->dropUnique(['tenant_id', 'slug']);
+    $table->unique(['tenant_id', 'name', 'user_id']);
+});
+```
+
+Deduplicate first if any `(tenant_id, name, user_id)` triple repeats, or
+the index will not build.
+
+> **Caveat:** SQL treats `NULL`s as distinct in a unique index, so on
+> installs running without tenants (`tenant_id IS NULL` on every row)
+> the new index does not fire and one owner *can* hold two teams with
+> the same name — the old `(name, user_id)` index blocked that. If that
+> matters to you, enforce it in validation or add a partial index for
+> `tenant_id IS NULL`.
+
+**Acting on a join request from the Blade form is owner-only (action
+required if you relied on members doing it).**
+`PUT {prefix}/teams/members/request/action` now refuses anyone but the
+team owner. Accepting a request admits someone to the team and can hand
+them a role, which is what inviting does, and inviting is owner-only.
+The API counterpart (`PUT {prefix}/teams/request`) is unchanged and
+still allows any member.
+
+**Login `redirect` is validated (action required only if you passed
+absolute URLs).**
+The Blade login form's `redirect` now has to be a same-site path.
+Absolute (`https://…`), protocol-relative (`//host`), `/\host`, bare
+`/`, and non-string values fall back to `config('neev.home')`. If you
+were passing an absolute URL to send users to another host after login,
+that no longer works — it was an open redirect. See
+[docs/security.md](./docs/security.md#open-redirect-protection).
+
+**Passkey and SSO columns narrowed to `string` (no action required in
+most cases).**
+`passkeys.public_key`, `passkeys.aaguid`, `passkeys.transports` and
+`sso_client_id` on both auth-settings tables moved from `text` to
+`string`, which caps them at 255 characters. Existing rows are
+untouched. If your provider issues a client id — or your authenticators
+a public key — longer than 255 characters, keep those columns as `text`
+in your own migration.
+
 ## 0.4.5 → 0.5.0
 
 **The package is now headless by default (RFC 002, action required for

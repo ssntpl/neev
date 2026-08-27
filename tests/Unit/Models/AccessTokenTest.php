@@ -24,11 +24,6 @@ class AccessTokenTest extends TestCase
         $this->assertSame('api_token', AccessToken::api_token);
     }
 
-    public function test_mfa_token_constant(): void
-    {
-        $this->assertSame('mfa_token', AccessToken::mfa_token);
-    }
-
     public function test_login_constant(): void
     {
         $this->assertSame('login', AccessToken::login);

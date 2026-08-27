@@ -6,17 +6,18 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedIn;
 use Ssntpl\Neev\Events\PasswordChanged;
-use Illuminate\Support\Facades\Hash;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\OTP;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Rules\PasswordHistory;
 
 class AuthService
 {
@@ -242,6 +243,82 @@ class AuthService
     }
 
     /**
+     * Resolve where to send the user once authentication is complete.
+     *
+     * Order of preference:
+     *  1. An explicit `redirect` value carried through the login forms.
+     *  2. The URL the guest was trying to reach when the auth middleware
+     *     bounced them to the login page (stored by `redirect()->guest()`).
+     *  3. The application home.
+     *
+     * The intended URL is always pulled from the session, so a stale value
+     * never leaks into a later login.
+     */
+    public function intendedUrl(mixed $redirect = null): string
+    {
+        $intended = session()->pull('url.intended');
+
+        return $this->safeRedirect($redirect)
+            ?? $this->safeRedirect($intended)
+            ?? config('neev.home');
+    }
+
+    /**
+     * Normalise a post-login target, rejecting anything that could send the
+     * user off-site or straight back into the auth flow.
+     */
+    public function safeRedirect(mixed $redirect): ?string
+    {
+        if (!is_string($redirect) || trim($redirect) === '') {
+            return null;
+        }
+
+        $redirect = trim($redirect);
+
+        // Reject protocol-relative and backslash tricks outright.
+        if (str_starts_with($redirect, '//') || str_starts_with($redirect, '/\\')) {
+            return null;
+        }
+
+        if (!str_starts_with($redirect, '/')) {
+            // Absolute URLs are only honoured for the current host.
+            $host = parse_url($redirect, PHP_URL_HOST);
+            if (!$host || strcasecmp($host, request()->getHost()) !== 0) {
+                return null;
+            }
+        }
+
+        $path = '/' . trim((string) parse_url($redirect, PHP_URL_PATH), '/');
+
+        if ($path === '/' || $this->isAuthPath($path)) {
+            return null;
+        }
+
+        return $redirect;
+    }
+
+    /**
+     * Auth pages are never a useful destination after logging in — sending a
+     * user back to /login would just bounce them around.
+     */
+    protected function isAuthPath(string $path): bool
+    {
+        $routes = ['login', 'register', 'logout', 'verification.notice', 'password.request'];
+
+        foreach ($routes as $name) {
+            if (!app('router')->has($name)) {
+                continue;
+            }
+            $routePath = '/' . trim((string) parse_url(route($name), PHP_URL_PATH), '/');
+            if (strcasecmp($routePath, $path) === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Get the password history limit from config.
      */
     protected function getPasswordHistoryLimit(): int
@@ -251,7 +328,7 @@ class AuthService
             return 5;
         }
         foreach ($passwordRules as $rule) {
-            if ($rule instanceof \Ssntpl\Neev\Rules\PasswordHistory) {
+            if ($rule instanceof PasswordHistory) {
                 return $rule->getCount();
             }
         }

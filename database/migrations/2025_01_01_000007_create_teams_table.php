@@ -20,8 +20,7 @@ return new class () extends Migration {
             $table->timestamp('activated_at')->nullable();
             $table->string('inactive_reason')->nullable();
             $table->timestamps();
-            $table->unique(['name', 'user_id']);
-            $table->unique(['tenant_id', 'slug']);
+            $table->unique(['tenant_id', 'name', 'user_id']);
             $table->index('slug');
         });
 

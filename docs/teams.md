@@ -194,8 +194,42 @@ Roles are not stored on the pivot — they are managed by `ssntpl/laravel-acl` v
 
 ### Actions
 
-- `request_to_user` - Team invited the user
-- `request_from_user` - User requested to join
+A pending membership is a `team_user` row with `joined = false`. `action`
+records which way it faces, and the two values are constants on the model
+rather than bare strings:
+
+| Constant | Stored value | Meaning |
+|----------|--------------|---------|
+| `Membership::REQUEST_TO_USER` | `request_to_user` | The team invited the user, who has yet to accept |
+| `Membership::REQUEST_FROM_USER` | `request_from_user` | The user asked to join, and the owner has yet to approve |
+
+Which side a pending row faces is what sorts it into a relation:
+`$team->invitedUsers` and `$user->teamRequests` read `REQUEST_TO_USER`;
+`$team->joinRequests` and `$user->sendRequests` read `REQUEST_FROM_USER`.
+
+### Attaching a member
+
+`addMember()` writes the pivot row and fires `MemberAdded`:
+
+```php
+$team->addMember($user);                   // a joined member
+$team->addMember($user, 'admin');          // …and grant a team-scoped role
+
+// A pending row instead — an invitation the user has yet to accept:
+$team->addMember($user, joined: false);
+
+// …or a request still awaiting the owner:
+$team->addMember($user, joined: false, action: Membership::REQUEST_FROM_USER);
+```
+
+The call is a no-op when the user is already attached in any state, so it will
+not upgrade a pending row to a joined one — accept the invitation or the
+request through its own endpoint for that.
+
+> **Note:** `MemberAdded` fires and any `$role` is granted for pending
+> memberships too, so listeners run and team-scoped permissions take effect
+> before the user has actually joined. Check `$team->hasMember($user)` in a
+> listener that should only act on real members.
 
 ### Membership is what authorises a team action
 
@@ -221,6 +255,7 @@ endpoints never confirm which team ids are real.
 | `PUT /neev/teams` (update) | any member |
 | `GET /neev/domains` | any member |
 | `PUT /neev/teams/request` (accept/reject a join request) | any member |
+| `PUT {prefix}/teams/members/request/action` (the Blade form) | the owner |
 | `PUT /neev/teams/leave` (remove a member) | any member; the owner cannot be removed |
 | `PUT /neev/teams/leave` (revoke an invitation) | any member (the owner included), or the invitee declining their own |
 | `PUT /neev/teams/inviteUser` | the owner |
@@ -228,6 +263,12 @@ endpoints never confirm which team ids are real.
 | `PUT /neev/teams/owner/change` | the owner, and only to an existing member |
 | `PUT /neev/role/change` | a member, and only for another member of the same team |
 | domain federate / update / delete | the owner |
+
+> **Known asymmetry:** acting on a join request is owner-only on the Blade
+> route and open to any member on the API route. Accepting a request admits
+> someone to the team and can hand them a role, which is what inviting does,
+> and inviting is owner-only — so the Blade rule is the defensible one. Pick
+> one before relying on either.
 
 A role scoped to a team is meaningless for somebody outside it, so
 `PUT /neev/role/change` checks **both** sides: the caller must belong to the
@@ -315,6 +356,27 @@ curl -X POST https://yourapp.com/neev/teams/request \
   -H "Authorization: Bearer {token}" \
   -d '{"team_id": 1}'
 ```
+
+The team can be named by `slug` instead, for clients that only ever see the
+readable handle:
+
+```bash
+curl -X POST https://yourapp.com/neev/teams/request \
+  -H "Authorization: Bearer {token}" \
+  -d '{"slug": "acme-labs"}'
+```
+
+`team_id` wins if both are sent; a body naming neither is refused. The Blade
+route (`POST {prefix}/teams/members/request`) accepts the same two, plus an
+`email` (the owner's) and `team` (the team name) pair. It tries `team_id`
+first, then `slug`, then the pair.
+
+A team whose domain federation is enforced or verified does not take join
+requests — membership there follows from the verified domain instead.
+
+The Blade team profile page is the one team page an outsider can open, so it
+carries the **Request to join** button, and shows **Request pending** once a
+request is in.
 
 ### Accept/Reject Request (Owner)
 
@@ -498,6 +560,11 @@ curl -X GET "https://yourapp.com/neev/domains/rules?domain_id=1" \
   -H "Authorization: Bearer {token}"
 ```
 
+A `domain_id` matching no domain answers `400 Domain not found.`; a domain
+owned by a team you are not in answers `400 You do not have the required
+permissions to get domain rules.` The two are told apart because a caller can
+act on the first (fix the id) but not the second.
+
 ### Update Rules
 
 ```bash
@@ -552,6 +619,7 @@ php artisan neev:team:activate {team}
 | GET | `/neev/teams/invitations` | Get user's invitations and join requests |
 | PUT | `/neev/teams/default` | Set the user's default team |
 | GET | `/neev/teams/{id}` | Get team details |
+| GET | `/neev/teams/slug/{slug}` | Get team details by slug |
 | POST | `/neev/teams` | Create team |
 | PUT | `/neev/teams` | Update team |
 | DELETE | `/neev/teams` | Delete team |
@@ -598,6 +666,23 @@ php artisan neev:team:activate {team}
 | inactive_reason | string | Why team is inactive |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
+
+**Uniqueness:**
+
+- `slug` is unique across the whole installation. That is what lets
+  `Team::resolveBySlug()` and `GET /neev/teams/slug/{slug}` find a team
+  without being told which tenant to look in.
+- `(tenant_id, name, user_id)` is unique, so one owner cannot hold two teams
+  of the same name inside a tenant. Scoping it to the tenant means the same
+  owner may reuse a team name in a different tenant — names only have to be
+  distinct within the tenant that sees them.
+
+> **Caveat:** SQL treats `NULL`s as distinct in a unique index, so when
+> `tenant_id` is `NULL` — every install running without tenants — the
+> `(tenant_id, name, user_id)` index does not fire, and an owner *can* hold
+> two teams with the same name. If uniqueness matters to you outside tenant
+> mode, enforce it in validation or add a partial index for
+> `tenant_id IS NULL`.
 
 ### team_user Table (Memberships)
 

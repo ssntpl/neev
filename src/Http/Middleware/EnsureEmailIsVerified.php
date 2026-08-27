@@ -11,7 +11,7 @@ class EnsureEmailIsVerified
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  \Closure(Request): (Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -24,7 +24,8 @@ class EnsureEmailIsVerified
                 ], 403);
             }
 
-            return redirect(route('verification.notice'));
+            // Remember the page they were after so verifying returns them to it.
+            return redirect()->guest(route('verification.notice'));
         }
 
         return $next($request);

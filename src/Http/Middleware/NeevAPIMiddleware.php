@@ -16,7 +16,7 @@ class NeevAPIMiddleware
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  \Closure(Request): (Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -31,9 +31,7 @@ class NeevAPIMiddleware
         [$id, $token] = explode('|', $token, 2);
         $accessToken = AccessToken::with('attempt')->find($id);
 
-        $prefix = trim(config('neev.route_prefix', 'neev'), '/');
-
-        if (!$accessToken || !Hash::check($token, $accessToken->token) || ($accessToken->token_type == AccessToken::mfa_token && !$request->is(["{$prefix}/mfa/otp/verify", "{$prefix}/mfa"]))) {
+        if (!$accessToken || !Hash::check($token, $accessToken->token)) {
             return response()->json([
                 'message' => 'Invalid or expired token'
             ], 401);

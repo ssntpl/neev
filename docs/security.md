@@ -154,6 +154,47 @@ See [Authentication → OAuth / Social Login](./authentication.md#security-warni
 
 ---
 
+## Open Redirect Protection
+
+A guest who hits a protected page is bounced to login with the page they
+wanted stored in the session (`url.intended`), and the Blade login form also
+takes an explicit `redirect` parameter — either way the user lands back where
+they were going. Anything reachable that way is attacker
+controlled: a link to *your* login page, carrying *their* destination, is a
+phishing primitive — it wears your domain, and your site appears in the
+referrer of whatever it lands on.
+
+A destination is accepted only when it is on this site:
+
+| Value | Followed | Why |
+|-------|----------|-----|
+| `/settings` | yes | A path on this site |
+| `https://this-site.example/settings` | yes | Absolute, but on the current host — this is the shape the auth middleware stores |
+| `https://evil.example/x` | no | Another host |
+| `//evil.example` | no | Protocol-relative — a browser resolves it to `https://evil.example` |
+| `/\evil.example` | no | Browsers normalise `\` to `/` in the authority, so this is the case above |
+| `/` | no | Nothing to return to; `neev.home` is the better answer |
+| `/login`, `/register`, `/logout`, the verification notice, the reset request | no | Auth pages are not a destination — landing there would bounce the user in a circle |
+| `''`, an array, any non-string | no | Not a destination |
+
+Anything rejected falls back to `config('neev.home')`. The check lives in
+`AuthService::safeRedirect()`, and `AuthService::intendedUrl()` applies it to
+both the form value and the stored destination.
+
+Password login is not the only step that can interrupt the journey:
+
+- **Email verification wins over the destination.** An unverified account is
+  sent to `verification.notice`, so `redirect` cannot be used to step past it.
+  The stored destination survives the detour and is applied once the address
+  is verified.
+- **MFA parks the destination.** The password step redirects to the challenge,
+  so the destination is stored in the session as `mfa_redirect` and applied
+  after the code is verified, then cleared. It is re-validated on the way out,
+  and a login carrying no `redirect` clears any parked value — a destination
+  never survives into a later, unrelated login.
+
+---
+
 ## Login Tracking
 
 ### Tracked Information
@@ -401,7 +442,11 @@ The API middleware provides:
 2. **Token Validation:**
    - Looks up the token by ID and verifies the plaintext against the stored hash (`Hash::check`)
    - Checks expiry — expired tokens are deleted and rejected with `401`
-   - Restricts `mfa_token` type tokens to the MFA verification endpoints only
+
+   A token's `token_type` does not restrict which paths it may reach — a
+   token is judged on its hash and its expiry alone. Which endpoints a caller
+   can reach is decided by the route groups. The MFA step-up is carried by a
+   short-lived JWT rather than an `AccessToken`; see [MFA](./mfa.md).
 
 3. **Account Status:**
    - Rejects deactivated users with `403` ("Your account is deactivated.")

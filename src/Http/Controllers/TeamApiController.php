@@ -4,13 +4,17 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Models\TeamInvitation as TeamInvitationModel;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\EmailLinks;
 
@@ -27,7 +31,7 @@ class TeamApiController extends Controller
         }
 
         // Get pending invitations sent to user's email
-        $invitations = \Ssntpl\Neev\Models\TeamInvitation::where('email', $user->email)
+        $invitations = TeamInvitationModel::where('email', $user->email)
             ->with('team')
             ->get();
 
@@ -87,13 +91,27 @@ class TeamApiController extends Controller
     {
         /** @var Team|null $team */
         $team = Team::model()->find($id);
-        if (!$team) {
-            return response()->json([
-                'message' => 'Team not found',
-            ], 400);
-        }
 
-        if (!$team->hasUser($request->user())) {
+        return $this->teamResponse($request, $team);
+    }
+
+    public function getTeamBySlug(Request $request, string $slug)
+    {
+        /** @var Team|null $team */
+        $team = Team::model()->where('slug', $slug)->first();
+
+        return $this->teamResponse($request, $team);
+    }
+
+    /**
+     * Return a team the caller belongs to.
+     *
+     * A team the caller is not a member of is reported as missing rather than
+     * forbidden, so the endpoint cannot be used to probe which teams exist.
+     */
+    private function teamResponse(Request $request, ?Team $team)
+    {
+        if (!$team || !$team->hasUser($request->user())) {
             return response()->json([
                 'message' => 'Team not found',
             ], 400);
@@ -268,18 +286,29 @@ class TeamApiController extends Controller
                 return response()->json([
                     'message' => 'User already added.',
                 ], 400);
-            } elseif (!$team->allUsers->contains($member)) {
-                $team->users()->attach($member);
-                if ($request->role) {
-                    $member->assignRole($request->role, $team);
-                }
             }
 
-            $invitation = $team->invitations()->where('email', $request->email)->first();
-            if ($invitation) {
-                $invitation->delete();
+            try {
+                DB::transaction(function () use ($team, $member, $request) {
+                    if (!$team->allUsers->contains($member)) {
+                        $team->users()->attach($member);
+                        if ($request->role) {
+                            $member->assignRole($request->role, $team);
+                        }
+                    }
+
+                    $invitation = $team->invitations()->where('email', $request->email)->first();
+                    if ($invitation) {
+                        $invitation->delete();
+                    }
+                });
+            } catch (InvalidArgumentException $e) {
+                return response()->json([
+                    'message' => 'Role not found.',
+                ], 400);
             }
 
+            // Only announce the membership once it is actually committed.
             Mail::to($member->email)->send(new TeamInvitation($team->name, $member->name));
 
             return response()->json([
@@ -299,7 +328,7 @@ class TeamApiController extends Controller
         $user = User::model()->find($request->user()?->id);
         try {
             if ($request->invitation_id) {
-                $invitation = \Ssntpl\Neev\Models\TeamInvitation::find($request->invitation_id);
+                $invitation = TeamInvitationModel::find($request->invitation_id);
                 if (!$invitation || $user->email !== $invitation->email) {
                     return response()->json([
                         'message' => 'Invitation not found',
@@ -315,13 +344,23 @@ class TeamApiController extends Controller
                     if ($team->users->contains($user)) {
                         return response()->json(['message' => 'Already Added.'], 400);
                     }
-                    if (!$team->allUsers->contains($user)) {
-                        $team->allUsers()->attach($user, ['joined' => true]);
-                        if ($invitation->role) {
-                            $user->assignRole($invitation->role, $team);
-                        }
+
+                    try {
+                        DB::transaction(function () use ($team, $user, $invitation) {
+                            if (!$team->allUsers->contains($user)) {
+                                $team->allUsers()->attach($user, ['joined' => true]);
+                                if ($invitation->role) {
+                                    $user->assignRole($invitation->role, $team);
+                                }
+                            }
+                            $invitation->delete();
+                        });
+                    } catch (InvalidArgumentException $e) {
+                        return response()->json([
+                            'message' => 'Role not found.',
+                        ], 400);
                     }
-                    $invitation->delete();
+
                     return response()->json([
                         'message' => 'Invitation Accepted Successfully',
                     ]);
@@ -447,8 +486,7 @@ class TeamApiController extends Controller
         /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
-            /** @var Team|null $team */
-            $team = Team::model()->find($request->team_id);
+            $team = $this->requestedTeam($request);
             $team?->loadMissing('owner');
             if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
                 if ($team->users->contains($user)) {
@@ -457,7 +495,7 @@ class TeamApiController extends Controller
                     ], 400);
                 }
                 if (!$team->allUsers->contains($user)) {
-                    $team->allUsers()->attach($user, ['action' => 'request_from_user']);
+                    $team->allUsers()->attach($user, ['action' => Membership::REQUEST_FROM_USER]);
                 }
 
                 Mail::to($team->owner->email)->send(new TeamJoinRequest($team->name, $user->name, $team->owner->name, $team->id));
@@ -476,6 +514,24 @@ class TeamApiController extends Controller
         return response()->json([
             'message' => 'Team not found.',
         ], 400);
+    }
+
+    /**
+     * Find the team a join request names, by team_id or by slug.
+     */
+    private function requestedTeam(Request $request): ?Team
+    {
+        if ($request->team_id) {
+            /** @var Team|null */
+            return Team::model()->find($request->team_id);
+        }
+
+        if ($request->slug) {
+            /** @var Team|null */
+            return Team::model()->where('slug', $request->slug)->first();
+        }
+
+        return null;
     }
 
     public function requestAction(Request $request)
@@ -727,8 +783,15 @@ class TeamApiController extends Controller
     {
         /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
+
         $domain = Domain::find($request->domain_id);
-        if (!$domain || !$user || !$domain->owner?->users->contains($user)) {
+        if (!$domain) {
+            return response()->json([
+                'message' => 'Domain not found.',
+            ], 400);
+        }
+
+        if (!$user || !$domain->owner?->users->contains($user)) {
             return response()->json([
                 'message' => 'You do not have the required permissions to get domain rules.',
             ], 400);

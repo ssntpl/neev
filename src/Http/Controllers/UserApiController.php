@@ -6,6 +6,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 
@@ -216,7 +217,7 @@ class UserApiController extends Controller
             return response()->json([
                 'message' => 'Password has been successfully updated.',
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             throw $e;
         } catch (Exception $e) {
             Log::error($e);

@@ -19,7 +19,6 @@ use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
-use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
@@ -84,7 +83,7 @@ class UserAuthController extends Controller
                 return redirect(route('verification.notice'));
             }
 
-            return redirect(config('neev.home'));
+            return redirect($this->auth->intendedUrl($request->redirect));
         } catch (InvalidInvitationException $e) {
             return back()->withErrors(['message' => $e->getMessage()]);
         } catch (Exception $e) {
@@ -102,7 +101,7 @@ class UserAuthController extends Controller
     public function loginCreate(Request $request)
     {
         if ($request->user()?->id) {
-            return redirect(config('neev.home'));
+            return redirect($this->auth->intendedUrl($request->redirect));
         }
 
         // Check if tenant requires SSO authentication
@@ -138,8 +137,6 @@ class UserAuthController extends Controller
             ]);
         }
 
-        $isDomainFederated = config('neev.team') && Domain::isVerifiedForEmail($request->email);
-
         $loginOptions = [];
         if (count($user->passkeys) > 0) {
             $loginOptions[] = 'passkey';
@@ -147,7 +144,6 @@ class UserAuthController extends Controller
 
         $viewData = [
             'email' => $request->email,
-            'isDomainFederated' => $isDomainFederated,
             'redirect' => $request->redirect,
             'email_verified' => $user->hasVerifiedEmail(),
             'login_options' => $loginOptions
@@ -197,7 +193,7 @@ class UserAuthController extends Controller
 
         $this->auth->login($request, $geoIP, $user, LoginAttempt::MagicAuth);
 
-        return redirect(config('neev.home'));
+        return redirect($this->auth->intendedUrl($request->redirect));
     }
 
     /**
@@ -228,6 +224,17 @@ class UserAuthController extends Controller
 
         if (count($user->activeMultiFactorAuths) > 0) {
             session(['email' => $user->email]);
+
+            // Carry the explicit redirect across the MFA step. Any URL the
+            // auth middleware stashed in `url.intended` stays in the session
+            // and is picked up once MFA succeeds.
+            $redirect = $this->auth->safeRedirect($request->redirect);
+            if ($redirect) {
+                session(['mfa_redirect' => $redirect]);
+            } else {
+                session()->forget('mfa_redirect');
+            }
+
             return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method));
         }
 
@@ -235,11 +242,7 @@ class UserAuthController extends Controller
             return redirect(route('verification.notice'));
         }
 
-        if ($request->redirect && $request->redirect != '/' && str_starts_with($request->redirect, '/')) {
-            return redirect($request->redirect);
-        }
-
-        return redirect(config('neev.home'));
+        return redirect($this->auth->intendedUrl($request->redirect));
     }
 
     /**
@@ -367,7 +370,7 @@ class UserAuthController extends Controller
             return back()->withErrors(['otp' => 'Code verification failed.']);
         }
 
-        return redirect(config('neev.home'))->with('status', __('Email verified.'));
+        return redirect($this->auth->intendedUrl())->with('status', __('Email verified.'));
     }
 
     public function emailVerifySend(Request $request)
@@ -589,7 +592,8 @@ class UserAuthController extends Controller
 
         if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
             $this->auth->login($request, $geoIP, $user, LoginAttempt::Password, $request->auth_method, $attempt ?? null);
-            return redirect(config('neev.home'));
+
+            return redirect($this->auth->intendedUrl(session()->pull('mfa_redirect')));
         }
 
         return back()->withErrors(['message' => 'Code is invalid']);

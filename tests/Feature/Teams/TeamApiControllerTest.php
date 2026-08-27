@@ -3,8 +3,10 @@
 namespace Ssntpl\Neev\Tests\Feature\Teams;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -630,4 +632,190 @@ class TeamApiControllerTest extends TestCase
         );
     }
 
+    // -----------------------------------------------------------------
+    // GET /neev/teams/slug/{slug} — get team by slug
+    // -----------------------------------------------------------------
+
+    public function test_get_team_by_slug_returns_team_details(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id, 'slug' => 'acme-labs']);
+        $team->addMember($user);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/teams/slug/acme-labs')
+            ->assertOk()
+            ->assertJsonPath('data.id', $team->id);
+    }
+
+    /**
+     * The slug lookup is gated on membership exactly as the id lookup is, and
+     * answers "Team not found" either way — so a slug cannot be used to probe
+     * which teams exist.
+     */
+    public function test_get_team_by_slug_hides_a_team_the_caller_is_not_in(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        TeamFactory::new()->create(['slug' => 'secret-team']);
+
+        $theirs = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/teams/slug/secret-team');
+
+        $missing = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/teams/slug/no-such-team');
+
+        $theirs->assertStatus(400)->assertJsonPath('message', 'Team not found');
+        $missing->assertStatus(400)->assertJsonPath('message', 'Team not found');
+    }
+
+    /**
+     * `slug/{slug}` is declared before `{id}`, so a numeric-looking slug still
+     * reaches the slug handler rather than being read as an id.
+     */
+    public function test_the_slug_route_is_not_shadowed_by_the_id_route(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id, 'slug' => 'slug']);
+        $team->addMember($user);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/teams/slug/slug')
+            ->assertOk()
+            ->assertJsonPath('data.id', $team->id);
+    }
+
+    // -----------------------------------------------------------------
+    // POST /neev/teams/request — ask to join, by id or slug
+    // -----------------------------------------------------------------
+
+    public function test_a_join_request_can_name_the_team_by_slug(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['slug' => 'open-team']);
+        $team->addMember($team->owner);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/teams/request', ['slug' => 'open-team'])
+            ->assertOk();
+
+        $this->assertDatabaseHas('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'joined' => false,
+            'action' => Membership::REQUEST_FROM_USER,
+        ]);
+    }
+
+    public function test_a_join_request_can_still_name_the_team_by_id(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create();
+        $team->addMember($team->owner);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/teams/request', ['team_id' => $team->id])
+            ->assertOk();
+
+        $this->assertDatabaseHas('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'joined' => false,
+            'action' => Membership::REQUEST_FROM_USER,
+        ]);
+    }
+
+    public function test_a_join_request_naming_no_team_is_refused(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/teams/request', [])
+            ->assertStatus(400);
+
+        $this->assertDatabaseCount('team_user', 0);
+    }
+
+    public function test_a_join_request_naming_an_unknown_slug_is_refused(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/teams/request', ['slug' => 'no-such-team'])
+            ->assertStatus(400);
+
+        $this->assertDatabaseCount('team_user', 0);
+    }
+
+    // -----------------------------------------------------------------
+    // POST /neev/teams/inviteUser — an unresolvable role rolls the whole
+    // invitation back
+    // -----------------------------------------------------------------
+
+    /**
+     * Attaching the member and granting the role are one unit of work: if the
+     * role name does not resolve, the caller gets an error and no half-built
+     * membership is left behind — and no "you're in" mail goes out.
+     */
+    public function test_inviting_with_an_unknown_role_leaves_no_membership(): void
+    {
+        Mail::fake();
+
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
+        $invitee = User::factory()->create();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/teams/inviteUser', [
+                'team_id' => $team->id,
+                'email' => $invitee->email,
+                'role' => 'no-such-role',
+            ])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Role not found.');
+
+        $this->assertDatabaseMissing('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $invitee->id,
+        ]);
+        Mail::assertNothingSent();
+    }
+
+    // -----------------------------------------------------------------
+    // GET /neev/domains/rules — a missing domain says so
+    // -----------------------------------------------------------------
+
+    /**
+     * A domain that does not exist is reported as missing rather than as a
+     * permissions failure, which is what the caller can actually act on.
+     */
+    public function test_getting_rules_for_a_missing_domain_says_it_is_missing(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/domains/rules?domain_id=99999')
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Domain not found.');
+    }
+
+    public function test_getting_rules_for_someone_elses_domain_is_a_permissions_error(): void
+    {
+        $this->enableDomainFederation();
+
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create();
+        $domain = DomainFactory::new()->verified()->create([
+            'owner_type' => 'team',
+            'owner_id' => $team->id,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/domains/rules?domain_id=' . $domain->id)
+            ->assertStatus(400)
+            ->assertJsonPath(
+                'message',
+                'You do not have the required permissions to get domain rules.'
+            );
+    }
 }

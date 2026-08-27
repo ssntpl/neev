@@ -43,7 +43,7 @@
                     @csrf
                     <div>
                         <input type="hidden" name="email" value="{{$email}}" required />
-                        <input type="hidden" name="redirect" value={{$redirect}} />
+                        <input type="hidden" name="redirect" value="{{ $redirect }}" />
                         @if (config('neev.support_username') && ($username ?? false))
                             <input type="hidden" name="username" value="{{$username}}" required />
                         @endif

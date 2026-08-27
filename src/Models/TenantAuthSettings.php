@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Facades\Cache;
@@ -17,8 +18,8 @@ use Illuminate\Support\Facades\Cache;
  * @property array<string, mixed>|null $sso_extra_config
  * @property bool $auto_provision
  * @property string|null $auto_provision_role
- * @property \Carbon\Carbon|null $created_at
- * @property \Carbon\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read Tenant|null $tenant
  */
 class TenantAuthSettings extends Model

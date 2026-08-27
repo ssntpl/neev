@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Ssntpl\Neev\Traits\BelongsToTenant;
 
@@ -14,17 +15,16 @@ use Ssntpl\Neev\Traits\BelongsToTenant;
  * @property string $token
  * @property string $token_type
  * @property array<int, string>|null $permissions
- * @property \Carbon\Carbon|null $last_used_at
- * @property \Carbon\Carbon|null $expires_at
- * @property \Carbon\Carbon|null $created_at
- * @property \Carbon\Carbon|null $updated_at
+ * @property Carbon|null $last_used_at
+ * @property Carbon|null $expires_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 class AccessToken extends Model
 {
     use BelongsToTenant;
 
     public const api_token = 'api_token';
-    public const mfa_token = 'mfa_token';
     public const login = 'login';
 
     protected $fillable = [

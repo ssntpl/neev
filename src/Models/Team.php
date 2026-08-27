@@ -2,7 +2,9 @@
 
 namespace Ssntpl\Neev\Models;
 
+use Carbon\Carbon;
 use Exception;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -18,6 +20,7 @@ use Ssntpl\Neev\Events\MemberAdded;
 use Ssntpl\Neev\Events\MemberRemoved;
 use Ssntpl\Neev\Events\TeamCreated;
 use Ssntpl\Neev\Events\TeamDeleted;
+use Ssntpl\Neev\Scopes\TenantScope;
 use Ssntpl\Neev\Support\SlugHelper;
 use Ssntpl\Neev\Traits\HasTenantAuth;
 
@@ -28,18 +31,18 @@ use Ssntpl\Neev\Traits\HasTenantAuth;
  * @property string $name
  * @property string|null $slug
  * @property bool $is_public
- * @property \Carbon\Carbon|null $activated_at
+ * @property Carbon|null $activated_at
  * @property string|null $inactive_reason
- * @property \Carbon\Carbon|null $created_at
- * @property \Carbon\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read User|null $owner
  * @property-read Domain|null $primaryDomain
  * @property-read Domain|null $domain
  * @property-read TeamAuthSettings|null $authSettings
  * @property-read Tenant|null $tenant
  * @property-read string|null $webDomain
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Domain> $domains
- * @property-read \Illuminate\Database\Eloquent\Collection<int, TeamInvitation> $invitations
+ * @property-read Collection<int, Domain> $domains
+ * @property-read Collection<int, TeamInvitation> $invitations
  */
 class Team extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
@@ -156,7 +159,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
             ->withPivot(['joined', 'action'])
             ->withTimestamps()
             ->as('membership')
-            ->where(['joined' => false, 'action' => 'request_from_user']);
+            ->where(['joined' => false, 'action' => Membership::REQUEST_FROM_USER]);
     }
 
     public function invitedUsers(): BelongsToMany
@@ -165,7 +168,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
             ->withPivot(['joined', 'action'])
             ->withTimestamps()
             ->as('membership')
-            ->where(['joined' => false, 'action' => 'request_to_user']);
+            ->where(['joined' => false, 'action' => Membership::REQUEST_TO_USER]);
     }
 
     public function removeUser($user): void
@@ -223,7 +226,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
 
     public function hasUser($user): bool
     {
-        return $this->users()->withoutGlobalScope(\Ssntpl\Neev\Scopes\TenantScope::class)->where('users.id', $user->id)->exists();
+        return $this->users()->withoutGlobalScope(TenantScope::class)->where('users.id', $user->id)->exists();
     }
 
     public function tenant(): BelongsTo
@@ -264,10 +267,23 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
         return $this->hasUser($user);
     }
 
-    public function addMember($user, ?string $role = null): void
+    /**
+     * Attach a user to the team.
+     *
+     * Defaults to a full membership. Pass joined: false to record a pending one
+     * instead — an invitation the user has still to accept, or a request still
+     * awaiting the owner, told apart by $action.
+     *
+     * Note that MemberAdded fires and any $role is granted for pending members
+     * too, so listeners and permissions take effect before the user has joined.
+     */
+    public function addMember($user, ?string $role = null, bool $joined = true, string $action = Membership::REQUEST_TO_USER): void
     {
         if (! $this->allUsers()->where('users.id', $user->id)->exists()) {
-            $this->allUsers()->attach($user, ['joined' => true]);
+            $this->allUsers()->attach($user, [
+                'joined' => $joined,
+                'action' => $action,
+            ]);
 
             event(new MemberAdded($this, $user));
         }

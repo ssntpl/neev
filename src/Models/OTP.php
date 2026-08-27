@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
@@ -11,9 +12,9 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
  * @property string $owner_type
  * @property string $otp
  * @property int $attempts
- * @property \Carbon\Carbon|null $expires_at
- * @property \Carbon\Carbon|null $created_at
- * @property \Carbon\Carbon|null $updated_at
+ * @property Carbon|null $expires_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 class OTP extends Model
 {

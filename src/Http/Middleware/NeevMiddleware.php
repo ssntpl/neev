@@ -13,7 +13,7 @@ class NeevMiddleware
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  \Closure(Request): (Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -69,10 +69,12 @@ class NeevMiddleware
             return response()->json(['message' => $message], $status);
         }
 
+        // `guest()` stores the URL the user was trying to reach in the
+        // session (`url.intended`) so the login flow can send them back.
         if ($status === 403) {
-            return redirect(route('login'))->withErrors(['message' => $message]);
+            return redirect()->guest(route('login'))->withErrors(['message' => $message]);
         }
 
-        return redirect(route('login'));
+        return redirect()->guest(route('login'));
     }
 }

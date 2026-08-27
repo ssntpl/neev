@@ -4,14 +4,18 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Models\TeamInvitation as TeamInvitationModel;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\EmailLinks;
 
@@ -186,16 +190,25 @@ class TeamController extends Controller
             }
             if ($team->users->contains($member)) {
                 return back()->with(['status' => 'User already added.']);
-            } elseif (!$team->allUsers->contains($member)) {
-                $team->users()->attach($member);
-                if ($request->role) {
-                    $member->assignRole($request->role, $team);
-                }
             }
 
-            $invitation = $team->invitations()->where('email', $request->email)->first();
-            if ($invitation) {
-                $invitation->delete();
+            try {
+                DB::transaction(function () use ($team, $member, $request) {
+                    if (!$team->allUsers->contains($member)) {
+                        $team->users()->attach($member);
+                        if ($request->role) {
+                            $member->assignRole($request->role, $team);
+                        }
+                    }
+
+                    $invitation = $team->invitations()->where('email', $request->email)->first();
+                    if ($invitation) {
+                        $invitation->delete();
+                    }
+                });
+            } catch (InvalidArgumentException $e) {
+                // assignRole() throws this when the role name does not resolve.
+                return back()->withErrors(['message' => 'Role not found.']);
             }
 
             Mail::to($member->email)->send(new TeamInvitation($team->name, $member->name));
@@ -256,7 +269,7 @@ class TeamController extends Controller
         $user = User::model()->find($request->user()?->id);
         try {
             if ($request->invitation_id) {
-                $invitation = \Ssntpl\Neev\Models\TeamInvitation::find($request->invitation_id);
+                $invitation = TeamInvitationModel::find($request->invitation_id);
                 if (!$invitation || !$user || $user->email !== $invitation->email) {
                     return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
                 }
@@ -268,13 +281,21 @@ class TeamController extends Controller
                     if ($team->users->contains($user)) {
                         return back()->with('status', 'Already Added.');
                     }
-                    if (!$team->allUsers->contains($user)) {
-                        $team->allUsers()->attach($user, ['joined' => true]);
-                        if ($invitation->role) {
-                            $user->assignRole($invitation->role, $team);
-                        }
+
+                    try {
+                        DB::transaction(function () use ($team, $user, $invitation) {
+                            if (!$team->allUsers->contains($user)) {
+                                $team->allUsers()->attach($user, ['joined' => true]);
+                                if ($invitation->role) {
+                                    $user->assignRole($invitation->role, $team);
+                                }
+                            }
+                            $invitation->delete();
+                        });
+                    } catch (InvalidArgumentException $e) {
+                        return back()->withErrors(['message' => 'Role not found.']);
                     }
-                    $invitation->delete();
+
                     return back()->with('status', 'Invitation Accepted');
                 }
             } else {
@@ -304,30 +325,57 @@ class TeamController extends Controller
         /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         try {
-            $owner = User::findByEmail($request->email);
-            if ($owner) {
-                /** @var Team|null $team */
-                $team = Team::model()->where(['name' => $request->team, 'user_id' => $owner->id])->first();
-                if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
-                    if ($team->users->contains($user)) {
-                        return back()->with('status', 'Already Added.');
-                    }
-                    if (!$team->allUsers->contains($user)) {
-                        $team->allUsers()->attach($user, ['action' => 'request_from_user']);
-                    }
+            $team = $this->requestedTeam($request);
 
-                    Mail::to($owner->email)->send(new TeamJoinRequest($team->name, $user->name, $owner->name, $team->id));
-
-                    return back()->with('status', 'Request has been sent.');
+            if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
+                $owner = $team->owner;
+                if ($team->users->contains($user)) {
+                    return back()->with('status', 'Already Added.');
                 }
-            }
+                if (!$team->allUsers->contains($user)) {
+                    $team->allUsers()->attach($user, ['action' => Membership::REQUEST_FROM_USER]);
+                }
 
+                Mail::to($owner->email)->send(new TeamJoinRequest($team->name, $user->name, $owner->name, $team->id));
+
+                return back()->with('status', 'Request has been sent.');
+            }
         } catch (Exception $e) {
             Log::error($e);
             return back()->withErrors(['message' => 'Failed to Send Request.']);
         }
 
         return back()->withErrors(['message' => 'Team not found.']);
+    }
+
+    /**
+     * Find the team a join request names.
+     *
+     * Accepts a team_id or a slug; the older owner-email plus team-name pair is
+     * still honoured for callers that only know the team that way.
+     */
+    private function requestedTeam(Request $request): ?Team
+    {
+        if ($request->team_id) {
+            /** @var Team|null */
+            return Team::model()->find($request->team_id);
+        }
+
+        if ($request->slug) {
+            /** @var Team|null */
+            return Team::model()->where('slug', $request->slug)->first();
+        }
+
+        if ($request->email && $request->team) {
+            $owner = User::findByEmail($request->email);
+
+            /** @var Team|null */
+            return $owner
+                ? Team::model()->where(['name' => $request->team, 'user_id' => $owner->id])->first()
+                : null;
+        }
+
+        return null;
     }
 
     public function requestAction(Request $request)
@@ -339,7 +387,9 @@ class TeamController extends Controller
             $team = Team::model()->find($request->team_id);
             /** @var User|null $member */
             $member = User::model()->find($request->user_id);
-            if (!$member || !$team->hasMember($user)) {
+            // Acting on a join request admits someone to the team, and may hand
+            // them a role, so it is reserved to the owner exactly as inviting is.
+            if (!$team || !$member || !$user || $team->user_id !== $user->id) {
                 return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
             }
 

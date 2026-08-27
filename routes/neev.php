@@ -237,14 +237,20 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
         Route::post('/logout', [UserAuthApiController::class, 'logout']);
         Route::post('/logoutAll', [UserAuthApiController::class, 'logoutAll']);
 
-        Route::post('/email/send', [UserAuthApiController::class, 'sendMailVerificationLink']);
-        Route::post('/email/verify-otp', [UserAuthApiController::class, 'verifyEmailOtp'])->middleware('throttle:5,1');
-        Route::post('/email/change', [UserAuthApiController::class, 'requestEmailChange']);
-        Route::get('/mfa', [UserApiController::class, 'getMFAMethods']);
-        Route::post('/mfa/add', [UserApiController::class, 'addMultiFactorAuthentication']);
-        Route::post('/mfa/setup/verify', [UserApiController::class, 'verifyMfaSetup']);
-        Route::put('/mfa/preferred', [UserApiController::class, 'setPreferredMFA']);
-        Route::delete('/mfa/delete', [UserApiController::class, 'deleteMultiFactorAuthentication']);
+        Route::prefix('/email')->group(function () {
+            Route::post('/send', [UserAuthApiController::class, 'sendMailVerificationLink']);
+            Route::post('/verify-otp', [UserAuthApiController::class, 'verifyEmailOtp'])->middleware('throttle:5,1');
+            Route::post('/change', [UserAuthApiController::class, 'requestEmailChange']);
+        });
+
+        Route::prefix('/mfa')->group(function () {
+            Route::get('/', [UserApiController::class, 'getMFAMethods']);
+            Route::post('/add', [UserApiController::class, 'addMultiFactorAuthentication']);
+            Route::post('/setup/verify', [UserApiController::class, 'verifyMfaSetup']);
+            Route::put('/preferred', [UserApiController::class, 'setPreferredMFA']);
+            Route::delete('/delete', [UserApiController::class, 'deleteMultiFactorAuthentication']);
+        });
+
         Route::post('/recoveryCodes', [UserApiController::class, 'generateRecoveryCodes']);
 
         Route::get('/users', [UserApiController::class, 'getUser']);
@@ -255,39 +261,49 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
         Route::get('/loginAttempts', [UserApiController::class, 'loginAttempts']);
         Route::put('/changePassword', [UserApiController::class, 'changePassword']);
 
-        Route::get('/passkeys', [PasskeyController::class,'getPasskeys']);
-        Route::get('/passkeys/register/options', [PasskeyController::class,'generateRegistrationOptions']);
-        Route::post('/passkeys/register', [PasskeyController::class,'registerViaAPI']);
-        Route::delete('/passkeys', [PasskeyController::class,'deletePasskeyViaAPI']);
-        Route::put('/passkeys', [PasskeyController::class,'updatePasskeyName']);
+        Route::prefix('/passkeys')->group(function () {
+            Route::get('/', [PasskeyController::class,'getPasskeys']);
+            Route::get('/register/options', [PasskeyController::class,'generateRegistrationOptions']);
+            Route::post('/register', [PasskeyController::class,'registerViaAPI']);
+            Route::delete('/', [PasskeyController::class,'deletePasskeyViaAPI']);
+            Route::put('/', [PasskeyController::class,'updatePasskeyName']);
+        });
 
-        Route::get('/apiTokens', [UserApiController::class, 'getApiTokens']);
-        Route::post('/apiTokens', [UserApiController::class, 'addApiTokens']);
-        Route::put('/apiTokens', [UserApiController::class, 'updateApiTokens']);
-        Route::delete('/apiTokens', [UserApiController::class, 'deleteApiTokens']);
-        Route::delete('/apiTokens/deleteAll', [UserApiController::class, 'deleteAllApiTokens']);
+        Route::prefix('/apiTokens')->group(function () {
+            Route::get('/', [UserApiController::class, 'getApiTokens']);
+            Route::post('/', [UserApiController::class, 'addApiTokens']);
+            Route::put('/', [UserApiController::class, 'updateApiTokens']);
+            Route::delete('/', [UserApiController::class, 'deleteApiTokens']);
+            Route::delete('/deleteAll', [UserApiController::class, 'deleteAllApiTokens']);
+        });
 
-        Route::get('/teams', [TeamApiController::class, 'teams']);
-        Route::get('/teams/invitations', [TeamApiController::class, 'getInvitations']);
-        Route::put('/teams/default', [TeamApiController::class, 'setDefaultTeam']);
-        Route::get('/teams/{id}', [TeamApiController::class, 'getTeam']);
-        Route::post('/teams', [TeamApiController::class, 'createTeam']);
-        Route::put('/teams', [TeamApiController::class, 'updateTeam']);
-        Route::delete('/teams', [TeamApiController::class, 'deleteTeam']);
+        Route::prefix('/teams')->group(function () {
+            Route::get('/', [TeamApiController::class, 'teams']);
+            Route::get('/invitations', [TeamApiController::class, 'getInvitations']);
+            Route::put('/default', [TeamApiController::class, 'setDefaultTeam']);
+            Route::get('/slug/{slug}', [TeamApiController::class, 'getTeamBySlug']);
+            Route::get('/{id}', [TeamApiController::class, 'getTeam']);
+            Route::post('/', [TeamApiController::class, 'createTeam']);
+            Route::put('/', [TeamApiController::class, 'updateTeam']);
+            Route::delete('/', [TeamApiController::class, 'deleteTeam']);
+            Route::post('/inviteUser', [TeamApiController::class, 'inviteMember']);
+            Route::put('/inviteUser', [TeamApiController::class, 'inviteAction']);
+            Route::put('/leave', [TeamApiController::class, 'leave']);
+            Route::post('/request', [TeamApiController::class, 'request']);
+            Route::put('/request', [TeamApiController::class, 'requestAction']);
+        });
+
         Route::post('/changeTeamOwner', [TeamApiController::class, 'changeTeamOwner']);
-        Route::post('/teams/inviteUser', [TeamApiController::class, 'inviteMember']);
-        Route::put('/teams/inviteUser', [TeamApiController::class, 'inviteAction']);
-        Route::put('/teams/leave', [TeamApiController::class, 'leave']);
-        Route::post('/teams/request', [TeamApiController::class, 'request']);
-        Route::put('/teams/request', [TeamApiController::class, 'requestAction']);
 
-        Route::get('/domains', [TeamApiController::class, 'getDomains']);
-        Route::post('/domains', [TeamApiController::class, 'domainFederate']);
-        Route::put('/domains', [TeamApiController::class, 'updateDomain']);
-        Route::delete('/domains', [TeamApiController::class, 'deleteDomain']);
-        Route::put('/domains/rules', [TeamApiController::class, 'updateDomainRule']);
-        Route::get('/domains/rules', [TeamApiController::class, 'getDomainRule']);
-        Route::put('/domains/primary', [TeamApiController::class, 'primaryDomain']);
+        Route::prefix('/domains')->group(function () {
+            Route::get('/', [TeamApiController::class, 'getDomains']);
+            Route::post('/', [TeamApiController::class, 'domainFederate']);
+            Route::put('/', [TeamApiController::class, 'updateDomain']);
+            Route::delete('/', [TeamApiController::class, 'deleteDomain']);
+            Route::put('/rules', [TeamApiController::class, 'updateDomainRule']);
+            Route::get('/rules', [TeamApiController::class, 'getDomainRule']);
+            Route::put('/primary', [TeamApiController::class, 'primaryDomain']);
+        });
 
         Route::put('/role/change', [RoleController::class, 'roleChangeViaAPI']);
 

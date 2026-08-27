@@ -5,6 +5,8 @@ namespace Ssntpl\Neev\Http\Controllers\Auth;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Ssntpl\Neev\Contracts\ContextContainerInterface;
+use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Services\AuthService;
@@ -122,7 +124,7 @@ class TenantSSOController extends Controller
      * Validate that the redirect_uri belongs to the tenant's domains.
      */
     /**
-     * @param \Ssntpl\Neev\Contracts\ContextContainerInterface&\Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface $tenant
+     * @param ContextContainerInterface&IdentityProviderOwnerInterface $tenant
      */
     protected function isValidRedirectUri($tenant, string $redirectUri): bool
     {
@@ -225,7 +227,7 @@ class TenantSSOController extends Controller
             $this->authService->login($request, $geoIP, $user, LoginAttempt::SSO);
 
             // Mark session as SSO-authenticated for EnsureContextSSO middleware
-            session(['auth_method' => 'sso']);
+            session(['auth_method' => LoginAttempt::SSO]);
 
             return redirect()->intended(config('neev.home'));
         } catch (Exception $e) {

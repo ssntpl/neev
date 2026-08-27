@@ -69,7 +69,7 @@ class OAuthController extends Controller
 
         $this->auth->login($request, $geoIP, $user, $service);
 
-        $response = redirect(config('neev.home'));
+        $response = redirect($this->auth->intendedUrl());
 
         // Same-origin SPA monolith: also issue a login token in the
         // HttpOnly cookie so the SPA is authenticated for API calls when

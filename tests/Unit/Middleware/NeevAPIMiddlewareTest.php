@@ -69,34 +69,6 @@ class NeevAPIMiddlewareTest extends TestCase
         ];
     }
 
-    /**
-     * Create a user with a raw-plaintext token of a specific type.
-     * Returns the full "{id}|{plaintext}" string and the DB token record.
-     *
-     * @return array{user: User, fullToken: string, accessToken: AccessToken}
-     */
-    private function createUserWithToken(string $tokenType, array $userState = [], ?string $expiresAt = null): array
-    {
-        $user = User::factory()->create($userState);
-        $plainText = Str::random(40);
-        $attrs = [
-            'name' => $tokenType,
-            'token' => $plainText,
-            'token_type' => $tokenType,
-            'permissions' => [],
-        ];
-        if ($expiresAt) {
-            $attrs['expires_at'] = $expiresAt;
-        }
-        $token = $user->accessTokens()->create($attrs);
-
-        return [
-            'user' => $user,
-            'fullToken' => $token->id . '|' . $plainText,
-            'accessToken' => $token,
-        ];
-    }
-
     // -----------------------------------------------------------------
     // Missing / malformed token
     // -----------------------------------------------------------------
@@ -147,34 +119,6 @@ class NeevAPIMiddlewareTest extends TestCase
 
         $this->assertEquals(401, $response->getStatusCode());
         $this->assertStringContainsString('Invalid or expired token', $response->getContent());
-    }
-
-    // -----------------------------------------------------------------
-    // MFA token on non-MFA path
-    // -----------------------------------------------------------------
-
-    public function test_returns_401_for_mfa_token_on_non_mfa_path(): void
-    {
-        $data = $this->createUserWithToken(AccessToken::mfa_token);
-
-        // Request path is NOT neev/mfa/otp/verify
-        $request = $this->buildRequest('/api/some-other-path', $data['fullToken']);
-
-        $response = $this->middleware->handle($request, $this->passThrough());
-
-        $this->assertEquals(401, $response->getStatusCode());
-        $this->assertStringContainsString('Invalid or expired token', $response->getContent());
-    }
-
-    public function test_allows_mfa_token_on_mfa_verify_path(): void
-    {
-        $data = $this->createUserWithToken(AccessToken::mfa_token);
-
-        $request = $this->buildRequest('/neev/mfa/otp/verify', $data['fullToken']);
-
-        $response = $this->middleware->handle($request, $this->passThrough());
-
-        $this->assertEquals(200, $response->getStatusCode());
     }
 
     // -----------------------------------------------------------------
@@ -321,5 +265,51 @@ class NeevAPIMiddlewareTest extends TestCase
         $response = $this->middleware->handle($request, $this->passThrough());
 
         $this->assertEquals(200, $response->getStatusCode());
+    }
+
+    // -----------------------------------------------------------------
+    // Token type no longer gates the path
+    // -----------------------------------------------------------------
+
+    /**
+     * The middleware used to refuse an `mfa_token` anywhere but the two MFA
+     * paths, matched by string against the configured route prefix. The API
+     * MFA challenge is carried by a short-lived JWT instead, so that token
+     * type is gone and with it the path matching: a token now stands or falls
+     * on its hash and its expiry alone.
+     */
+    public function test_token_type_does_not_restrict_which_paths_a_token_reaches(): void
+    {
+        $user = User::factory()->create();
+        $plainText = Str::random(40);
+        $token = $user->accessTokens()->create([
+            'name' => 'login token',
+            'token' => $plainText,
+            'token_type' => AccessToken::login,
+            'permissions' => [],
+        ]);
+        $fullToken = $token->id . '|' . $plainText;
+
+        foreach (['/neev/mfa', '/neev/users', '/api/anything-at-all'] as $path) {
+            $response = $this->middleware->handle(
+                $this->buildRequest($path, $fullToken),
+                $this->passThrough()
+            );
+
+            $this->assertEquals(
+                200,
+                $response->getStatusCode(),
+                "A valid token should reach {$path}."
+            );
+        }
+    }
+
+    /** The retired `mfa_token` type is not referenced anywhere any more. */
+    public function test_the_mfa_token_type_constant_is_gone(): void
+    {
+        $this->assertFalse(
+            defined(AccessToken::class . '::mfa_token'),
+            'AccessToken::mfa_token was retired with the path-matching gate.'
+        );
     }
 }

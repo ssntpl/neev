@@ -6,6 +6,8 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
+use Ssntpl\Neev\Contracts\HasMembersInterface;
+use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Team;
@@ -241,11 +243,11 @@ class TenantResolver
      *
      * Both Team and Tenant implement all four context interfaces.
      *
-     * @return (ContextContainerInterface&\Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface&\Ssntpl\Neev\Contracts\HasMembersInterface)|null
+     * @return (ContextContainerInterface&IdentityProviderOwnerInterface&HasMembersInterface)|null
      */
     public function resolvedContext(): ?ContextContainerInterface
     {
-        /** @var (ContextContainerInterface&\Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface&\Ssntpl\Neev\Contracts\HasMembersInterface)|null */
+        /** @var (ContextContainerInterface&IdentityProviderOwnerInterface&HasMembersInterface)|null */
         return $this->resolvedContext;
     }
 
