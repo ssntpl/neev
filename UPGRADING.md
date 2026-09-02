@@ -213,6 +213,94 @@ untouched. If your provider issues a client id — or your authenticators
 a public key — longer than 255 characters, keep those columns as `text`
 in your own migration.
 
+**Remember-me removed (action required only if you relied on it).**
+The login page's checkbox, the `remember` flag `LoginRequest` passed to
+`Auth::login()`, and `remember_token` in `User::$hidden` are gone. A
+remembered session outlives the session lifetime, MFA and
+password-expiry policies neev exists to enforce, and nothing in the
+package ever issued or cleared the cookie beyond passing that flag. The
+`remember_token` column is untouched, so if you want the behaviour back,
+call `Auth::login($user, true)` from your own login path. A submitted
+`remember` field is now simply ignored.
+
+**Import the password rule from neev (action required if you published
+`config/neev.php`).**
+`php artisan config:cache` fails on a published config that imports
+`Illuminate\Validation\Rules\Password` — the cache is written with
+`var_export()` and read back with `require`, and an object without
+`__set_state()` makes that file fatal on load. This is what Laravel
+reports as a non-serializable config value. Change the import at the top
+of your `config/neev.php`:
+
+```php
+-use Illuminate\Validation\Rules\Password;
++use Ssntpl\Neev\Rules\Password;
+```
+
+`Ssntpl\Neev\Rules\Password` extends Illuminate's rule and adds only
+that method, so `Password::min(8)->symbols()` reads and behaves exactly
+as before. If you would rather not edit the file, run the rule list
+through `Ssntpl\Neev\Rules\Password::upgrade()` where you build it.
+`PasswordHistory` and `PasswordUserData` gained the same method in the
+package, so they need no change.
+
+**Team routes are registered only when `team => true` (action required
+if you run without teams and linked to them).**
+The web `/teams/*` group, the `/account/teams` page, and the API
+`teams`, `domains` and `changeTeamOwner` blocks used to register
+regardless of the `team` config value, exposing endpoints whose
+controllers assume a team context. With `'team' => false` those paths
+now answer `404` and `route('teams.create')` throws a
+`RouteNotFoundException` — wrap any link to them in
+`@if (config('neev.team'))`. Installs with teams on are unaffected.
+
+**`GET {prefix}/tenant-domains/current` response shape (action required
+only if you read `team`).**
+The endpoint returned the resolved context under a `team` key whatever
+that context actually was, and resolution from the request host or the
+`X-Tenant` header always yields a `Tenant`. It now reports:
+
+```json
+{ "data": { "type": "tenant", "context": {…}, "domain": {…}, "team": null } }
+```
+
+`team` is kept for older callers but is populated only when `type` is
+`team` — that is, only when the application made a Team the context
+itself via `TenantResolver::setCurrentTenant()`. Read `context` and
+branch on `type`.
+
+**Accounts without a password (behaviour change, no action required).**
+Accounts created through OAuth, tenant SSO, a magic link or a passkey
+hold `users.password = null`, and `Hash::check()` against a null hash
+can never succeed — so those accounts could not be deleted, and their
+password and email could not be changed. Now:
+
+- `DELETE {prefix}/deleteUser` and the Blade delete dialog require
+  `password` only when the account has one; otherwise the authenticated
+  session is the confirmation and the body may be empty. Clients that
+  always sent a password are unaffected.
+- Change-password answers `403 Your account has no password yet. Use
+  the emailed link to set one.`, and it now answers `404 User not
+  found.` where it previously dereferenced a missing user.
+- Changing the address still costs a password — it is what owns the
+  account — and answers `403 Set a password on your account before
+  changing your email address.` until one is set.
+- The link to set one is the new `POST /account/password/reset-link`
+  (Blade kit, 5 requests per minute). Headless frontends build the same
+  link with `EmailLinks::passwordResetUrl()`. If you render your own
+  security page, branch on `$user->password` the way the ejected stub
+  now does. See
+  [docs/authentication.md](./docs/authentication.md#accounts-without-a-password).
+
+**Teams now record their tenant on create (behaviour change).**
+In isolated mode a `Team` created while a tenant context is resolved
+gets that tenant's id, which it previously did not — `Team` does not use
+`BelongsToTenant` (its global scope would break the resolution that
+reads Teams), and the assignment that trait provides was missing with
+it. An explicit `tenant_id` still wins, and in shared mode nothing is
+assigned. Teams created before this release keep `tenant_id = NULL`;
+backfill them if your queries depend on it.
+
 ## 0.4.5 → 0.5.0
 
 **The package is now headless by default (RFC 002, action required for
