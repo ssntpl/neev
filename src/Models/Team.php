@@ -21,6 +21,7 @@ use Ssntpl\Neev\Events\MemberRemoved;
 use Ssntpl\Neev\Events\TeamCreated;
 use Ssntpl\Neev\Events\TeamDeleted;
 use Ssntpl\Neev\Scopes\TenantScope;
+use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Support\SlugHelper;
 use Ssntpl\Neev\Traits\HasTenantAuth;
 
@@ -54,6 +55,24 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
         static::creating(function (Team $team) {
             if (empty($team->slug)) {
                 $team->slug = SlugHelper::generate($team->name);
+            }
+        });
+
+        // Teams sit inside a tenant, but Team deliberately does not use
+        // BelongsToTenant — its global scope would break tenant resolution,
+        // which resolves Teams. So the tenant_id assignment that trait
+        // provides has to be done here instead.
+        static::creating(function (Team $team) {
+            if ($team->tenant_id !== null || !app()->bound(TenantResolver::class)) {
+                return;
+            }
+
+            $context = app(TenantResolver::class)->resolvedContext();
+
+            // Only in isolated mode. In shared mode the resolved context is
+            // itself a Team, which must never become a team's parent.
+            if ($context && $context->getContextType() === 'tenant') {
+                $team->tenant_id = $context->getContextId();
             }
         });
 

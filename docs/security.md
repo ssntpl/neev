@@ -556,11 +556,16 @@ Deactivated users cannot log in.
 ### Account Deletion
 
 ```php
-// Requires password confirmation
 $user->delete();
 ```
 
 All related data is cascade deleted.
+
+The endpoints in front of it — `DELETE /account/accountDelete` and
+`DELETE /neev/users` — ask for the current password when the account has one.
+An account created through OAuth has no password, so
+the authenticated session is the confirmation and `password` is not required.
+See [Accounts Without a Password](./authentication.md#accounts-without-a-password).
 
 ---
 

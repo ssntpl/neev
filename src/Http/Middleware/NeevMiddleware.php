@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Http\Request;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\ContextManager;
+use Ssntpl\Neev\Services\EmailLinks;
 use Symfony\Component\HttpFoundation\Response;
 
 class NeevMiddleware
@@ -72,9 +73,9 @@ class NeevMiddleware
         // `guest()` stores the URL the user was trying to reach in the
         // session (`url.intended`) so the login flow can send them back.
         if ($status === 403) {
-            return redirect()->guest(route('login'))->withErrors(['message' => $message]);
+            return redirect()->guest(app(EmailLinks::class)->loginUrl())->withErrors(['message' => $message]);
         }
 
-        return redirect()->guest(route('login'));
+        return redirect()->guest(app(EmailLinks::class)->loginUrl());
     }
 }

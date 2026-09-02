@@ -10,6 +10,7 @@ use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Services\AuthService;
+use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\SpaCookieResponder;
 use Ssntpl\Neev\Services\StatefulOriginResolver;
@@ -84,7 +85,7 @@ class TenantSSOController extends Controller
 
         // Ensure tenant requires SSO
         if (!$tenant->requiresSSO()) {
-            return redirect()->route('login');
+            return redirect(app(EmailLinks::class)->loginUrl());
         }
 
         // Ensure SSO is properly configured
@@ -180,7 +181,7 @@ class TenantSSOController extends Controller
 
         // Check for authorization code
         if (!$request->code) {
-            return redirect()->route('login');
+            return redirect(app(EmailLinks::class)->loginUrl());
         }
 
         try {
@@ -252,7 +253,7 @@ class TenantSSOController extends Controller
             ], 400);
         }
 
-        return redirect()->route('login')
+        return redirect(app(EmailLinks::class)->loginUrl())
             ->withErrors(['sso' => $message]);
     }
 }

@@ -54,7 +54,7 @@ class LoginRequest extends FormRequest
             ]);
         }
 
-        Auth::login($user, $this->boolean('remember'));
+        Auth::login($user);
         Cache::forget($this->throttleKey() . ':attempts');
         RateLimiter::clear($this->throttleKey());
     }

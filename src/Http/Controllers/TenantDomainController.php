@@ -340,10 +340,10 @@ class TenantDomainController extends Controller
      */
     public function currentTenant(Request $request)
     {
-        $tenant = $this->tenantResolver->current();
+        $context = $this->tenantResolver->resolvedContext();
         $tenantDomain = $this->tenantResolver->currentDomain();
 
-        if (!$tenant) {
+        if (!$context) {
             return response()->json([
                 'message' => 'No tenant context.',
             ], 400);
@@ -351,8 +351,12 @@ class TenantDomainController extends Controller
 
         return response()->json([
             'data' => [
-                'team' => $tenant,
+                'type' => $context->getContextType(),
+                'context' => $context,
                 'domain' => $tenantDomain,
+                // Kept for callers written before tenant isolation, when the
+                // context could only ever be a Team.
+                'team' => $context->getContextType() === 'team' ? $context : null,
             ],
         ]);
     }

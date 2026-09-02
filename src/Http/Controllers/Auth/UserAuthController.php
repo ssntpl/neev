@@ -177,12 +177,12 @@ class UserAuthController extends Controller
             return redirect(config('neev.home'));
         }
         if (! $request->hasValidSignature()) {
-            return redirect(route('login'))->withErrors(['message' => 'Invalid or expired login link.']);
+            return redirect(app(EmailLinks::class)->loginUrl())->withErrors(['message' => 'Invalid or expired login link.']);
         }
 
         $user = User::model()->find($id);
         if (!$user) {
-            return redirect(route('login'));
+            return redirect(app(EmailLinks::class)->loginUrl());
         }
 
         // The link was mailed to this address and came back signed, which
@@ -284,7 +284,10 @@ class UserAuthController extends Controller
 
     public function updatePasswordCreate(Request $request, $id, $hash)
     {
-        if ($request->user()?->id) {
+        // A signed-in user may still be here on purpose: the security page
+        // offers this link to anyone who cannot recall their password. Only
+        // send them away if the link belongs to somebody else.
+        if ($request->user()?->id && (string) $request->user()->id !== (string) $id) {
             return redirect(config('neev.home'));
         }
         $user = User::model()->findOrFail($id);
@@ -325,6 +328,10 @@ class UserAuthController extends Controller
 
         event(new PasswordReset($user));
 
+        if ($request->user()?->id === $user->id) {
+            return redirect(route('account.security'))->with('status', __('Password has been successfully updated.'));
+        }
+
         return redirect('login');
     }
 
@@ -337,7 +344,7 @@ class UserAuthController extends Controller
         $user = User::model()->find($userId);
 
         if (!$user) {
-            return redirect(route('login'));
+            return redirect(app(EmailLinks::class)->loginUrl());
         }
 
         if ($user->hasVerifiedEmail()) {
@@ -411,11 +418,12 @@ class UserAuthController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
-            return redirect(route('login'));
+            return redirect(app(EmailLinks::class)->loginUrl());
         }
 
         return view('neev::auth.change-email', [
             'email' => $user->email,
+            'has_password' => $user->password !== null,
         ]);
     }
 
@@ -429,6 +437,13 @@ class UserAuthController extends Controller
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return back()->withErrors(['message' => 'User not found.']);
+        }
+
+        // Changing the address that owns the account always costs a password.
+        // An account without one must set a password first.
+        if ($user->password === null) {
+            return redirect(route('account.security'))
+                ->withErrors(['message' => __('Set a password on your account before changing your email address.')]);
         }
 
         if (!Hash::check($request->password, $user->password)) {
@@ -467,7 +482,7 @@ class UserAuthController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
-            return redirect(route('login'));
+            return redirect(app(EmailLinks::class)->loginUrl());
         }
         Auth::logoutCurrentDevice();
 
@@ -475,14 +490,14 @@ class UserAuthController extends Controller
 
         event(new LoggedOut($user));
 
-        return redirect(route('login'));
+        return redirect(app(EmailLinks::class)->loginUrl());
     }
 
     public function destroyAll(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
-            return redirect(route('login'));
+            return redirect(app(EmailLinks::class)->loginUrl());
         }
         if (!$request->session_id) {
             if (! Hash::check($request->password, $user->password)) {

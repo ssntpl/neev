@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\EmailLinks;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureTeamIsActive
@@ -25,7 +26,7 @@ class EnsureTeamIsActive
             if ($request->expectsJson()) {
                 return response()->json(['message' => 'Unauthenticated.'], 401);
             }
-            return redirect()->route('login');
+            return redirect(app(EmailLinks::class)->loginUrl());
         }
 
         $team = $user->defaultTeam ?? $user->teams->first();

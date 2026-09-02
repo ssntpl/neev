@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Tests\TestCase;
@@ -396,17 +397,51 @@ class TenantDomainTest extends TestCase
     {
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        // The resolved context is the one EnsureTenantMembership checks against.
+        $team->allUsers()->attach($user, ['joined' => true]);
 
         $resolver = Mockery::mock(TenantResolver::class)->shouldIgnoreMissing();
-        $resolver->shouldReceive('current')->andReturn($team);
+        $resolver->shouldReceive('resolvedContext')->andReturn($team);
         $resolver->shouldReceive('currentDomain')->andReturn(null);
+        // TenantMiddleware resolves through this instance before the
+        // controller runs; shouldIgnoreMissing() would hand it a truthy stub
+        // with an unverified domain and turn the request into a 403.
+        $resolver->shouldReceive('resolve')->andReturn($team);
+        $resolver->shouldReceive('isResolvedDomainVerified')->andReturn(true);
         $this->app->instance(TenantResolver::class, $resolver);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/tenant-domains/current');
 
         $response->assertOk()
+            ->assertJsonPath('data.type', 'team')
+            ->assertJsonPath('data.context.id', $team->id)
+            // Still filled in for callers written before tenant isolation.
             ->assertJsonPath('data.team.id', $team->id);
+    }
+
+    public function test_current_tenant_returns_a_tenant_context_and_leaves_team_null(): void
+    {
+        // Under isolation the resolved context is a Tenant, not a Team, so
+        // `team` has nothing to report and callers must read `context`.
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme-' . uniqid()]);
+
+        $resolver = Mockery::mock(TenantResolver::class)->shouldIgnoreMissing();
+        $resolver->shouldReceive('resolvedContext')->andReturn($tenant);
+        $resolver->shouldReceive('currentDomain')->andReturn(null);
+        $resolver->shouldReceive('resolve')->andReturn($tenant);
+        $resolver->shouldReceive('isResolvedDomainVerified')->andReturn(true);
+        $this->app->instance(TenantResolver::class, $resolver);
+
+        $user = User::factory()->create(['tenant_id' => $tenant->id]);
+        $token = $user->createLoginToken(60)->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/tenant-domains/current')
+            ->assertOk()
+            ->assertJsonPath('data.type', 'tenant')
+            ->assertJsonPath('data.context.id', $tenant->id)
+            ->assertJsonPath('data.team', null);
     }
 
     public function test_current_tenant_returns_error_when_no_context(): void
@@ -414,8 +449,9 @@ class TenantDomainTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $resolver = Mockery::mock(TenantResolver::class)->shouldIgnoreMissing();
-        $resolver->shouldReceive('current')->andReturn(null);
+        $resolver->shouldReceive('resolvedContext')->andReturn(null);
         $resolver->shouldReceive('currentDomain')->andReturn(null);
+        $resolver->shouldReceive('resolve')->andReturn(null);
         $this->app->instance(TenantResolver::class, $resolver);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)

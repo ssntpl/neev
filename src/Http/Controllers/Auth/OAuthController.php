@@ -9,6 +9,7 @@ use Laravel\Socialite\Facades\Socialite;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
+use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\SpaCookieResponder;
@@ -45,7 +46,7 @@ class OAuthController extends Controller
         }
 
         if (!$request->code) {
-            return redirect(route('login'));
+            return redirect(app(EmailLinks::class)->loginUrl());
         }
 
         $oauthUser = Socialite::driver($service)->user();

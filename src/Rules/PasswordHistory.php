@@ -6,9 +6,12 @@ use Closure;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Support\ExportsState;
 
 class PasswordHistory implements ValidationRule
 {
+    use ExportsState;
+
     public function __construct(
         protected int $count = 5,
     ) {

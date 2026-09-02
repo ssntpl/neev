@@ -123,6 +123,25 @@ class EmailLinks
         return $this->base() . '/' . trim(config('neev.route_prefix', 'neev'), '/') . '/oauth/' . $service . '/callback';
     }
 
+    /**
+     * Where to send a browser that has to sign in before it can go on —
+     * a failed SSO callback, an expired session, a team it may not reach.
+     *
+     * The Blade kit registers the page; headless installs have no `login`
+     * route, so this lands on /login under your base URL. Override if
+     * yours lives elsewhere.
+     */
+    public function loginUrl(): string
+    {
+        return $this->blade() ? route('login') : $this->base() . '/login';
+    }
+
+    /** Where to send a browser whose email is not verified yet. */
+    public function verifyEmailUrl(): string
+    {
+        return $this->blade() ? route('verification.notice') : $this->base() . '/verify-email';
+    }
+
     public function verified(Request $request, User $user): Response
     {
         return $this->response($request, __('Email verification done.'));
@@ -156,7 +175,7 @@ class EmailLinks
             $request,
             __('Invalid or expired verification link.'),
             403,
-            redirect: route('login'),
+            redirect: $this->loginUrl(),
             error: true,
         );
     }

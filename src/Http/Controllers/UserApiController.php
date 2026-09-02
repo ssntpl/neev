@@ -122,15 +122,25 @@ class UserApiController extends Controller
 
     public function deleteUser(Request $request)
     {
-        $request->validate([
-            'password' => ['required'],
-        ]);
-
         $user = User::model()->find($request->user()?->id);
-        if (!Hash::check($request->password, $user->password)) {
+        if (!$user) {
             return response()->json([
                 'message' => 'Password is Wrong.',
             ], 403);
+        }
+
+        // See UserController::accountDelete — OAuth accounts hold no password,
+        // so requiring one locked them out of deleting their account.
+        if ($user->password !== null) {
+            $request->validate([
+                'password' => ['required'],
+            ]);
+
+            if (!Hash::check($request->password, $user->password)) {
+                return response()->json([
+                    'message' => 'Password is Wrong.',
+                ], 403);
+            }
         }
 
         $user->delete();
@@ -206,6 +216,18 @@ class UserApiController extends Controller
             ]);
 
             $user = User::model()->find($request->user()->id);
+            if (!$user) {
+                return response()->json([
+                    'message' => 'User not found.',
+                ], 404);
+            }
+
+            if ($user->password === null) {
+                return response()->json([
+                    'message' => 'Your account has no password yet. Use the emailed link to set one.',
+                ], 403);
+            }
+
             if (!Hash::check($request->current_password, $user->password)) {
                 return response()->json([
                     'message' => 'Current Password is Wrong.',

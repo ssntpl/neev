@@ -45,9 +45,19 @@ ships the pages that a headless install has to provide itself.
 | Magic link | `login.link` (signed) | `{base}/login-link?{signed query}` |
 | Team invitation | `register` (signed) | `{base}/register?invitation_id=…&hash=…` |
 | OAuth callback | `{base}/{route_prefix}/oauth/{service}/callback` | same |
+| Sign-in page | `login` | `{base}/login` |
+| Verify-email page | `verification.notice` | `{base}/verify-email` |
 
 `{base}` is `EmailLinks::base()`, which defaults to `config('app.url')` with
 any trailing slash removed.
+
+The last two rows are not emailed — they are where the package sends a browser
+that cannot go on: an expired session, an unverified address, a failed SSO
+callback, a team the user may not reach, a spent magic link. Only the Blade kit
+registers `login` and `verification.notice`, so these live here alongside the
+emailed links: everything that has to name one of your pages asks `EmailLinks`,
+and a headless install overrides `base()` — or the two methods — instead of
+registering routes under names the package expects.
 
 > **Note on the invitation link.** The headless invitation URL carries no
 > signature — only `invitation_id` and `sha1(email)` — yet holding it is
@@ -139,6 +149,8 @@ class AppEmailLinks extends EmailLinks
 | `magicLinkUrl()` | `(User $user, DateTimeInterface $expiresAt): string` |
 | `invitationUrl()` | `(int\|string $invitationId, string $email, DateTimeInterface $expiresAt): string` |
 | `oauthCallbackUrl()` | `(string $service): string` |
+| `loginUrl()` | `(): string` |
+| `verifyEmailUrl()` | `(): string` |
 
 Expiry is passed in, not decided here — callers derive it from
 `config('neev.url_expiry_time')` (60 minutes by default).
@@ -157,7 +169,7 @@ answer JSON when `$request->expectsJson()` and redirect otherwise.
 | `verificationFailed($request)` | `Invalid or expired verification link.` | 403 |
 | `emailChanged($request, $user)` | `Email address has been updated and verified.` | 200 |
 | `emailInUse($request, $user)` | `This email address is already in use.` | 409 |
-| `emailChangeFailed($request)` | `Invalid or expired verification link.`, redirects to `login` | 403 |
+| `emailChangeFailed($request)` | `Invalid or expired verification link.`, redirects to `loginUrl()` | 403 |
 
 `alreadyVerified` is deliberately not an error. A second click, or a mail
 scanner that reaches the link before the recipient does, is a normal thing to

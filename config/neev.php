@@ -1,6 +1,6 @@
 <?php
 
-use Illuminate\Validation\Rules\Password;
+use Ssntpl\Neev\Rules\Password;
 use Ssntpl\Neev\Rules\PasswordHistory;
 use Ssntpl\Neev\Rules\PasswordUserData;
 

@@ -440,6 +440,14 @@ class UserAuthApiController extends Controller
                 ], 404);
             }
 
+            // Changing the address that owns the account always costs a
+            // password. An account without one must set a password first.
+            if ($user->password === null) {
+                return response()->json([
+                    'message' => 'Set a password on your account before changing your email address.',
+                ], 403);
+            }
+
             if (!Hash::check($request->password, $user->password)) {
                 return response()->json([
                     'message' => 'Password is incorrect.',

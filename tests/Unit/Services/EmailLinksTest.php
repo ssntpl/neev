@@ -322,6 +322,55 @@ class EmailLinksTest extends TestCase
     }
 
     // =================================================================
+    // loginUrl() / verifyEmailUrl()
+    // =================================================================
+
+    public function test_login_url_uses_the_blade_kit_route_when_the_kit_is_installed(): void
+    {
+        $this->assertSame(route('login'), $this->links->loginUrl());
+    }
+
+    public function test_login_url_falls_back_to_the_base_url_when_headless(): void
+    {
+        // A headless install registers no `login` route, so route('login')
+        // would throw; the base URL is the only thing that can be offered.
+        $this->headless();
+
+        $this->assertSame($this->links->base() . '/login', $this->links->loginUrl());
+    }
+
+    public function test_verify_email_url_uses_the_blade_kit_route_when_the_kit_is_installed(): void
+    {
+        $this->assertSame(route('verification.notice'), $this->links->verifyEmailUrl());
+    }
+
+    public function test_verify_email_url_falls_back_to_the_base_url_when_headless(): void
+    {
+        $this->headless();
+
+        $this->assertSame($this->links->base() . '/verify-email', $this->links->verifyEmailUrl());
+    }
+
+    public function test_an_app_subclass_moves_the_page_urls_onto_its_own_host(): void
+    {
+        $this->headless();
+
+        $links = new AppEmailLinks();
+
+        $this->assertSame('https://app.example.com/login', $links->loginUrl());
+        $this->assertSame('https://app.example.com/verify-email', $links->verifyEmailUrl());
+    }
+
+    public function test_a_failed_email_change_points_at_the_login_url(): void
+    {
+        $this->headless();
+
+        $response = $this->links->emailChangeFailed($this->browserRequest());
+
+        $this->assertSame($this->links->base() . '/login', $response->headers->get('Location'));
+    }
+
+    // =================================================================
     // Overriding
     // =================================================================
 

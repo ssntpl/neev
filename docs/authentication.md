@@ -159,6 +159,49 @@ Configure password aging:
 
 Enforcement is opt-in: apply the `neev-password-not-expired` middleware alias (`EnsurePasswordNotExpired`) to routes that should reject users with expired passwords. Helpers are available on the user: `passwordExpiresAt()`, `isPasswordExpired()`, `isPasswordExpiringSoon()`.
 
+### Accounts Without a Password
+
+An account created through OAuth never sets a
+password: `users.password` is `null`. That is a normal, fully usable account —
+it simply has nothing to check a typed password against, so every flow that
+would ordinarily ask for one has to decide what to do instead.
+
+| Action | Account with a password | Account without one |
+|--------|-------------------------|---------------------|
+| Change password | Current password required | Refused — offered an emailed link instead |
+| Set a password | — | `POST /account/password/reset-link` mails a signed link |
+| Change email address | Current password required | Refused until a password is set |
+| Delete account | Current password required | The signed-in session is the confirmation |
+
+**Setting the first password.** There is nothing to prove ownership with except
+the address on the account, so the only route is the link:
+
+```http
+POST /account/password/reset-link
+```
+
+It mails the same signed link the forgot-password flow sends, is rate limited to
+5 requests per minute, and lands on the ordinary reset form. Following it while
+still signed in returns to `/account/security` with the password set. The
+security page offers the same button to anyone who has simply forgotten their
+current password, so a reset never means signing out first.
+
+The Blade security page reads `$user->password` and shows **Set Password** with
+the emailed-link button, or **Change Password** with the current-password form
+plus a *Don't remember your current password?* link. If you build your own
+frontend, branch on the same value.
+
+**Changing the address.** The address is what owns the account — it is where
+every reset and confirmation goes — so changing it always costs a password.
+An account without one is sent to `/account/security` to set a password first;
+the API answers `403` with *Set a password on your account before changing your
+email address.* The Blade change-email page hides the form and links to the
+security page rather than showing a field that cannot be submitted.
+
+**Deleting the account.** Where there is no password to check, the authenticated
+session is the confirmation, and the `password` field is not required. The
+confirmation dialog drops the password input and asks for a plain yes.
+
 ---
 
 ## Magic Link Authentication
@@ -240,6 +283,44 @@ For multi-origin setups (e.g. apex domain plus subdomains, or staging plus produ
     'https://admin.example.com',
 ],
 ```
+
+### Supported Domains
+
+> **Passkeys are not supported on tenant custom domains.**
+
+`relying_party_id` is a single application-wide value. WebAuthn requires the relying party ID to be
+the request origin's host or a registrable suffix of it, so passkeys work only on:
+
+- the configured domain itself — `example.com`
+- any subdomain of it — `acme.example.com`, `admin.example.com`
+
+They do **not** work on a tenant's own domain (`acme.com`), even when that domain is DNS-verified and
+resolves the tenant correctly for every other purpose. The browser refuses the ceremony before the
+request reaches the server: `navigator.credentials.create()` / `.get()` rejects with a
+`SecurityError`, and nothing is logged server-side because nothing arrives.
+
+Adding the custom domain to `allowed_origins` does not help. That list is checked server-side, after
+the browser has already declined. It widens which origins may *complete* a ceremony under the
+configured relying party ID; it cannot change which relying party ID a browser will accept.
+
+**Offer another factor to tenants on custom domains** — magic link, OAuth, or password with MFA. Gate
+the passkey option on the request host so those users are not shown a control that cannot work:
+
+```php
+$rpId = config('neev.relying_party_id');
+$host = request()->getHost();
+
+$passkeysAvailable = $host === $rpId || str_ends_with($host, '.' . $rpId);
+```
+
+Subdomain tenants need one piece of configuration: `CheckAllowedOrigins` is constructed without
+subdomain matching, so every tenant subdomain that serves passkeys must appear in `allowed_origins`
+verbatim. A wildcard is not accepted.
+
+Supporting custom domains would mean deriving the relying party ID per request and recording it
+against each credential, since a passkey is cryptographically bound to exactly one relying party ID
+for its lifetime — a user would hold a separate passkey per domain. The `passkeys` table has no
+column for it today.
 
 ### Registration Flow
 
@@ -597,6 +678,10 @@ Content-Type: application/x-www-form-urlencoded
 
 email=newemail@example.com
 ```
+
+The current password is required: the address is what owns the account, so
+changing it is a password-grade action. An account that has no password (OAuth,
+magic link, passkey) must [set one first](#accounts-without-a-password).
 
 A confirmation link is mailed to the **new** address; nothing changes on the
 account until it is followed. The API confirmation route answers both verbs:

@@ -40,7 +40,13 @@
                 <div id="userInfo" class="flex flex-col gap-4">
                     <div class="flex justify-between items-center">
                         <label class="font-medium">Email</label>
-                        <p data-field="email">{{ $user->email }}</p>
+                        <div class="flex items-center gap-3">
+                            <p data-field="email">{{ $user->email }}</p>
+                            <a href="{{ route('email.change') }}"
+                               class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                                {{ __('Change') }}
+                            </a>
+                        </div>
                     </div>
                     <div class="flex justify-between items-center">
                         <label class="font-medium">Name</label>

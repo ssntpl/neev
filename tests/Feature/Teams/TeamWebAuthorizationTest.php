@@ -21,10 +21,19 @@ class TeamWebAuthorizationTest extends TestCase
     use RefreshDatabase;
     use WithNeevConfig;
 
+    protected function defineEnvironment($app): void
+    {
+        parent::defineEnvironment($app);
+
+        // The team routes are registered only when `neev.team` is on, and that
+        // happens while the providers boot — before setUp() runs. Enabling
+        // teams from setUp() would set the config too late for the routes.
+        $app['config']->set('neev.team', true);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
-        $this->enableTeams();
         $this->loadMigrationsFrom(
             dirname(__DIR__, 3) . '/vendor/ssntpl/laravel-acl/database/migrations'
         );

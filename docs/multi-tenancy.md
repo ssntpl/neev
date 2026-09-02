@@ -117,6 +117,34 @@ The `tenant` config key controls the **infrastructure**: tenant resolver, middle
 
 The `BelongsToTenant` trait controls **per-model scoping**. Adding the trait to a model opts that model into automatic query scoping and `tenant_id` auto-assignment — regardless of the `tenant` config value. This means you can use `BelongsToTenant` on your own models even in simpler setups where you manage the tenant context manually via `TenantResolver::setCurrentTenant()`.
 
+### Teams Inside a Tenant
+
+The `teams` table has a `tenant_id` column, but `Team` does not use
+`BelongsToTenant` — the trait's global scope would run during tenant
+resolution, which itself reads Teams. The `tenant_id` the trait would assign is
+therefore stamped on in `Team::booted()` instead.
+
+A new team takes its `tenant_id` from the resolved context, and only when that
+context is a Tenant. With `tenant => true` that is what the request resolves to,
+so teams created during a request land under the right tenant automatically.
+`tenant_id` stays `NULL` when:
+
+- nothing is resolved — which is every request when `tenant => false`, since
+  the resolver short-circuits and never sets a context; or
+- the application has set a **Team** as the context itself (via
+  `TenantResolver::setCurrentTenant()`). A Team is never another team's parent,
+  so that context is ignored here.
+
+A `tenant_id` you set yourself before saving is always kept — the hook only
+fills in a `NULL` one. Note it is not fillable, so mass assignment will not
+carry it:
+
+```php
+$team = new Team(['name' => 'Platform', 'user_id' => $user->id]);
+$team->tenant_id = $tenant->id;   // tenant_id is not fillable
+$team->save();
+```
+
 ---
 
 ## Tenant Resolution
@@ -181,6 +209,12 @@ $resolver->runInContext($tenant, function () {
 5. Tenant context is set for the request
 
 Subdomains are not derived from slugs at request time — every host (subdomain or custom domain) must exist as a verified `Domain` record. Subdomains added via the tenant-domains API with `type: subdomain` are auto-verified; custom domains require DNS verification.
+
+> **Passkeys do not work on custom domains.** WebAuthn binds credentials to the single
+> `relying_party_id` from `config/neev.php`, which a tenant's own domain cannot satisfy — the browser
+> refuses the ceremony client-side. Subdomains of the configured domain are fine. Tenants on custom
+> domains need magic link, OAuth, or password with MFA instead. See
+> [Supported Domains](./authentication.md#supported-domains).
 
 ### Tenant & Team Slugs
 
@@ -719,6 +753,32 @@ $ssoManager->ensureMembership($user, $tenant);
 | POST | `/neev/tenant-domains/{id}/verify` | Verify domain |
 | POST | `/neev/tenant-domains/{id}/regenerate-token` | New verification token |
 | POST | `/neev/tenant-domains/{id}/primary` | Set as primary |
+| GET | `/neev/tenant-domains/current` | The resolved context and its domain |
+
+`current` reports the context the resolver settled on for this request. With
+`tenant => true` that is the Tenant named by the `X-Tenant` header or the
+request host — a team-owned domain resolves up to that team's tenant — so
+`type` is `tenant`:
+
+```json
+{
+  "data": {
+    "type": "tenant",
+    "context": { "id": 1, "name": "Acme", "slug": "acme" },
+    "domain": { "id": 4, "domain": "acme.example.com", "is_primary": true },
+    "team": null
+  }
+}
+```
+
+`context` is that record, and `type` says what it is. `type` is `team` only when
+the application has made a Team the context itself via
+`TenantResolver::setCurrentTenant()`; `team` then repeats `context`, for callers
+written before tenant isolation existed, and is `null` otherwise. Read `context`
+and branch on `type`.
+
+With nothing resolved the endpoint answers `400 No tenant context.` — including
+on every request when `tenant => false`, where the resolver never runs.
 
 ### Tenant Auth
 
@@ -732,6 +792,16 @@ $ssoManager->ensureMembership($user, $tenant);
 |--------|----------|-------------|
 | GET | `/neev/sso/redirect` | Initiate SSO flow |
 | GET | `/neev/sso/callback` | Handle SSO callback |
+
+All of the SSO and tenant-auth routes above run `TenantMiddleware` before their
+controller, so the context is resolved by the time the controller asks for it —
+including `GET /neev/tenant/auth`, which an SPA reads to decide which sign-in
+buttons to show.
+
+That middleware is a no-op when `tenant => false`: it passes the request
+straight through, the controllers see no context, and `/neev/tenant/auth`
+answers with its default of `auth_method: password`, `sso_enabled: false`.
+Tenant-driven SSO needs `tenant => true`.
 
 > The `/neev` prefix on these endpoints is configurable via `route_prefix` in `config/neev.php` (env `NEEV_ROUTE_PREFIX`).
 

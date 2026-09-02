@@ -25,6 +25,12 @@ Neev's team system allows users to:
 'team' => true,
 ```
 
+This is what registers the team routes — `/teams/*` and `/account/teams` on the
+web, `/neev/teams/*`, `/neev/domains/*` and `/neev/changeTeamOwner` on the API.
+With `'team' => false` they are not registered at all, so the paths answer 404
+and `route('teams.create')` throws; guard any link with
+`@if (config('neev.team'))`.
+
 ### Team Slugs
 
 ```php

@@ -375,6 +375,11 @@ Authorization: Bearer {token}
 
 Request to change the authenticated user's email address. Sends a verification link to the new email. Requires current password for security.
 
+An account created through OAuth has no password, so
+there is nothing to check: the request is refused with `403` and *Set a password
+on your account before changing your email address.* until one is set. See
+[Accounts Without a Password](./authentication.md#accounts-without-a-password).
+
 ```http
 POST /neev/email/change
 ```
@@ -868,6 +873,10 @@ Authorization: Bearer {token}
 }
 ```
 
+`password` is required — and checked — only when the account has one. An account
+created through OAuth has no password, so the bearer
+token is the confirmation and the body may be empty.
+
 **Response:**
 
 ```json
@@ -875,6 +884,13 @@ Authorization: Bearer {token}
     "message": "Account has been deleted."
 }
 ```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 422 | Validation error — `password` missing on an account that has one |
+| 403 | `Password is Wrong.` |
 
 ---
 
@@ -906,6 +922,20 @@ Authorization: Bearer {token}
     "message": "Password has been successfully updated."
 }
 ```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 403 | `Current Password is Wrong.` |
+| 403 | `Your account has no password yet. Use the emailed link to set one.` |
+| 404 | `User not found.` |
+
+An account with no password cannot use this endpoint — there is no current
+password to check. It sets its first one through the emailed link:
+`POST /account/password/reset-link` under the Blade kit, or your own page
+calling `EmailLinks::passwordResetUrl()`. See
+[Accounts Without a Password](./authentication.md#accounts-without-a-password).
 
 ---
 
@@ -1135,6 +1165,10 @@ Authorization: Bearer {token}
 ---
 
 ## Team Management
+
+> These endpoints, and the [Domain Federation](#domain-federation) ones, are
+> registered only when `'team' => true` in `config/neev.php`. With teams off
+> they answer 404.
 
 ### Get User's Teams
 
@@ -1659,6 +1693,52 @@ POST /neev/tenant-domains/{id}/verify
 ```http
 POST /neev/tenant-domains/{id}/primary
 ```
+
+---
+
+### Get Current Tenant
+
+Reports the context the resolver settled on for this request, and the domain it
+was resolved from. Requires `tenant => true`: with tenant isolation off the
+resolver never runs and this always answers 400.
+
+```http
+GET /neev/tenant-domains/current
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Response:**
+
+```json
+{
+    "data": {
+        "type": "tenant",
+        "context": { "id": 1, "name": "Acme", "slug": "acme" },
+        "domain": { "id": 4, "domain": "acme.example.com", "is_primary": true },
+        "team": null
+    }
+}
+```
+
+`context` is that record and `type` says what it is. Resolution from the
+`X-Tenant` header or the request host always yields a `Tenant` (a team-owned
+domain resolves up to that team's tenant), so `type` is normally `tenant`. It is
+`team` only when the application has made a Team the context itself via
+`TenantResolver::setCurrentTenant()`.
+
+`team` repeats `context` when the type is `team`, and is `null` otherwise — kept
+for callers written before tenant isolation, when the context could only ever be
+a Team. New code should read `context` and branch on `type`.
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 400 | `No tenant context.` |
 
 ---
 

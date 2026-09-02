@@ -127,6 +127,8 @@ class TenantSSOManager
             'password_changed_at' => now(),
         ]);
 
+        $user = User::model()->find($user->id);
+
         event(new Registered($user));
         event(new SsoUserProvisioned($user, $owner));
 

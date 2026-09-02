@@ -21,7 +21,11 @@ php artisan neev:install
 php artisan neev:install yes no blade
 ```
 
-Prompts for: multi-tenant isolation (`yes`/`no`), team support (`yes`/`no`), and the frontend starter kit (`blade`/`none`, default `blade`). Publishes the config file, sets the `tenant` and `team` options accordingly, and calls `neev:ui` to eject the chosen kit (and, always, the email templates). Only runs on a fresh installation (fails if the `users` table has records).
+Prompts for: multi-tenant isolation (`yes`/`no`), team support (`yes`/`no`), and the frontend starter kit (`blade`/`none`, default `blade`). Publishes the config file, sets the `tenant` and `team` options accordingly, and calls `neev:ui` to eject the chosen kit (and, always, the email templates). Only runs on a fresh installation: it fails if the `users` table has records. If
+the database cannot be reached it warns that the check was skipped and carries
+on — nothing the command does touches the database, and it is documented to run
+before `php artisan migrate`, which repeats the check and refuses where it
+matters.
 
 ### `neev:ui`
 

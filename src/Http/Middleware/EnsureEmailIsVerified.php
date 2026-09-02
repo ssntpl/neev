@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Ssntpl\Neev\Services\EmailLinks;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureEmailIsVerified
@@ -25,7 +26,7 @@ class EnsureEmailIsVerified
             }
 
             // Remember the page they were after so verifying returns them to it.
-            return redirect()->guest(route('verification.notice'));
+            return redirect()->guest(app(EmailLinks::class)->verifyEmailUrl());
         }
 
         return $next($request);

@@ -119,8 +119,10 @@ if (config('neev.ui') === 'blade') {
                     ->name('account.security');
                 Route::get('/tokens', [UserController::class, 'tokens'])
                     ->name('account.tokens');
-                Route::get('/teams', [UserController::class, 'teams'])
-                    ->name('account.teams');
+                if (config('neev.team')) {
+                    Route::get('/teams', [UserController::class, 'teams'])
+                        ->name('account.teams');
+                }
                 Route::get('/sessions', [UserController::class, 'sessions'])
                     ->name('account.sessions');
                 Route::get('/loginAttempts', [UserController::class, 'loginAttempts'])
@@ -146,6 +148,9 @@ if (config('neev.ui') === 'blade') {
                     ->name('profile.update');
                 Route::post('/change-password', [UserController::class, 'changePassword'])
                     ->name('password.change');
+                Route::post('/password/reset-link', [UserController::class, 'sendPasswordResetLink'])
+                    ->middleware('throttle:5,1')
+                    ->name('password.reset.link');
                 Route::delete('/accountDelete', [UserController::class, 'accountDelete'])
                     ->name('account.delete');
                 Route::post('/logoutSessions', [UserAuthController::class, 'destroyAll'])
@@ -160,48 +165,50 @@ if (config('neev.ui') === 'blade') {
                     ->name('tokens.update');
             });
 
-            Route::prefix('teams')->group(function () {
-                Route::get('/{team}/profile', [TeamController::class, 'profile'])
-                    ->name('teams.profile');
-                Route::put('/switch', [TeamController::class, 'switch'])
-                    ->name('teams.switch');
-                Route::get('/create', [TeamController::class, 'create'])
-                    ->name('teams.create');
-                Route::get('/{team}/members', [TeamController::class, 'members'])
-                    ->name('teams.members');
-                Route::get('/{team}/domain', [TeamController::class, 'domain'])
-                    ->name('teams.domain');
-                Route::get('/{team}/settings', [TeamController::class, 'settings'])
-                    ->name('teams.settings');
+            if (config('neev.team')) {
+                Route::prefix('teams')->group(function () {
+                    Route::get('/{team}/profile', [TeamController::class, 'profile'])
+                        ->name('teams.profile');
+                    Route::put('/switch', [TeamController::class, 'switch'])
+                        ->name('teams.switch');
+                    Route::get('/create', [TeamController::class, 'create'])
+                        ->name('teams.create');
+                    Route::get('/{team}/members', [TeamController::class, 'members'])
+                        ->name('teams.members');
+                    Route::get('/{team}/domain', [TeamController::class, 'domain'])
+                        ->name('teams.domain');
+                    Route::get('/{team}/settings', [TeamController::class, 'settings'])
+                        ->name('teams.settings');
 
-                Route::post('/create', [TeamController::class, 'store'])
-                    ->name('teams.store');
-                Route::put('/update', [TeamController::class, 'update'])
-                    ->name('teams.update');
-                Route::delete('/delete', [TeamController::class, 'delete'])
-                    ->name('teams.delete');
-                Route::put('/members/invite', [TeamController::class, 'inviteMember'])
-                    ->name('teams.invite');
-                Route::delete('/members/leave', [TeamController::class, 'leave'])
-                    ->name('teams.leave');
-                Route::put('/roles/change', [RoleController::class, 'roleChange'])
-                    ->name('teams.roles.change');
-                Route::put('/members/invite/action', [TeamController::class, 'inviteAction'])
-                    ->name('teams.invite.action');
-                Route::post('/members/request', [TeamController::class, 'request'])
-                    ->name('teams.request');
-                Route::put('/members/request/action', [TeamController::class, 'requestAction'])
-                    ->name('teams.request.action');
-                Route::put('/owner/change', [TeamController::class, 'ownerChange'])
-                    ->name('teams.owner.change');
-                Route::post('/{team}/domain', [TeamController::class, 'federateDomain']);
-                Route::put('/{domain}/domain', [TeamController::class, 'updateDomain']);
-                Route::delete('/{domain}/domain', [TeamController::class, 'deleteDomain']);
-                Route::put('/{domain}/domain/rules', [TeamController::class, 'updateDomainRule'])
-                    ->name('domain.rules');
-                Route::put('/domain/primary', [TeamController::class, 'primaryDomain'])
-                    ->name('domain.primary');
-            });
+                    Route::post('/create', [TeamController::class, 'store'])
+                        ->name('teams.store');
+                    Route::put('/update', [TeamController::class, 'update'])
+                        ->name('teams.update');
+                    Route::delete('/delete', [TeamController::class, 'delete'])
+                        ->name('teams.delete');
+                    Route::put('/members/invite', [TeamController::class, 'inviteMember'])
+                        ->name('teams.invite');
+                    Route::delete('/members/leave', [TeamController::class, 'leave'])
+                        ->name('teams.leave');
+                    Route::put('/roles/change', [RoleController::class, 'roleChange'])
+                        ->name('teams.roles.change');
+                    Route::put('/members/invite/action', [TeamController::class, 'inviteAction'])
+                        ->name('teams.invite.action');
+                    Route::post('/members/request', [TeamController::class, 'request'])
+                        ->name('teams.request');
+                    Route::put('/members/request/action', [TeamController::class, 'requestAction'])
+                        ->name('teams.request.action');
+                    Route::put('/owner/change', [TeamController::class, 'ownerChange'])
+                        ->name('teams.owner.change');
+                    Route::post('/{team}/domain', [TeamController::class, 'federateDomain']);
+                    Route::put('/{domain}/domain', [TeamController::class, 'updateDomain']);
+                    Route::delete('/{domain}/domain', [TeamController::class, 'deleteDomain']);
+                    Route::put('/{domain}/domain/rules', [TeamController::class, 'updateDomainRule'])
+                        ->name('domain.rules');
+                    Route::put('/domain/primary', [TeamController::class, 'primaryDomain'])
+                        ->name('domain.primary');
+                });
+            }
         });
     });
 }
@@ -277,33 +284,35 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
             Route::delete('/deleteAll', [UserApiController::class, 'deleteAllApiTokens']);
         });
 
-        Route::prefix('/teams')->group(function () {
-            Route::get('/', [TeamApiController::class, 'teams']);
-            Route::get('/invitations', [TeamApiController::class, 'getInvitations']);
-            Route::put('/default', [TeamApiController::class, 'setDefaultTeam']);
-            Route::get('/slug/{slug}', [TeamApiController::class, 'getTeamBySlug']);
-            Route::get('/{id}', [TeamApiController::class, 'getTeam']);
-            Route::post('/', [TeamApiController::class, 'createTeam']);
-            Route::put('/', [TeamApiController::class, 'updateTeam']);
-            Route::delete('/', [TeamApiController::class, 'deleteTeam']);
-            Route::post('/inviteUser', [TeamApiController::class, 'inviteMember']);
-            Route::put('/inviteUser', [TeamApiController::class, 'inviteAction']);
-            Route::put('/leave', [TeamApiController::class, 'leave']);
-            Route::post('/request', [TeamApiController::class, 'request']);
-            Route::put('/request', [TeamApiController::class, 'requestAction']);
-        });
+        if (config('neev.team')) {
+            Route::prefix('/teams')->group(function () {
+                Route::get('/', [TeamApiController::class, 'teams']);
+                Route::get('/invitations', [TeamApiController::class, 'getInvitations']);
+                Route::put('/default', [TeamApiController::class, 'setDefaultTeam']);
+                Route::get('/slug/{slug}', [TeamApiController::class, 'getTeamBySlug']);
+                Route::get('/{id}', [TeamApiController::class, 'getTeam']);
+                Route::post('/', [TeamApiController::class, 'createTeam']);
+                Route::put('/', [TeamApiController::class, 'updateTeam']);
+                Route::delete('/', [TeamApiController::class, 'deleteTeam']);
+                Route::post('/inviteUser', [TeamApiController::class, 'inviteMember']);
+                Route::put('/inviteUser', [TeamApiController::class, 'inviteAction']);
+                Route::put('/leave', [TeamApiController::class, 'leave']);
+                Route::post('/request', [TeamApiController::class, 'request']);
+                Route::put('/request', [TeamApiController::class, 'requestAction']);
+            });
 
-        Route::post('/changeTeamOwner', [TeamApiController::class, 'changeTeamOwner']);
+            Route::post('/changeTeamOwner', [TeamApiController::class, 'changeTeamOwner']);
 
-        Route::prefix('/domains')->group(function () {
-            Route::get('/', [TeamApiController::class, 'getDomains']);
-            Route::post('/', [TeamApiController::class, 'domainFederate']);
-            Route::put('/', [TeamApiController::class, 'updateDomain']);
-            Route::delete('/', [TeamApiController::class, 'deleteDomain']);
-            Route::put('/rules', [TeamApiController::class, 'updateDomainRule']);
-            Route::get('/rules', [TeamApiController::class, 'getDomainRule']);
-            Route::put('/primary', [TeamApiController::class, 'primaryDomain']);
-        });
+            Route::prefix('/domains')->group(function () {
+                Route::get('/', [TeamApiController::class, 'getDomains']);
+                Route::post('/', [TeamApiController::class, 'domainFederate']);
+                Route::put('/', [TeamApiController::class, 'updateDomain']);
+                Route::delete('/', [TeamApiController::class, 'deleteDomain']);
+                Route::put('/rules', [TeamApiController::class, 'updateDomainRule']);
+                Route::get('/rules', [TeamApiController::class, 'getDomainRule']);
+                Route::put('/primary', [TeamApiController::class, 'primaryDomain']);
+            });
+        }
 
         Route::put('/role/change', [RoleController::class, 'roleChangeViaAPI']);
 

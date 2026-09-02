@@ -169,7 +169,7 @@ All prefixed with `/account`.
 | GET | `/account/profile` | `account.profile` | Show profile page |
 | GET | `/account/security` | `account.security` | Show security settings |
 | GET | `/account/tokens` | `account.tokens` | Show API tokens |
-| GET | `/account/teams` | `account.teams` | Show teams list |
+| GET | `/account/teams` | `account.teams` | Show teams list (teams only) |
 | GET | `/account/sessions` | `account.sessions` | Show active sessions |
 | GET | `/account/loginAttempts` | `account.loginAttempts` | Show login history |
 
@@ -181,6 +181,7 @@ All prefixed with `/account`.
 |--------|-------|------|-------------|
 | PUT | `/account/profileUpdate` | `profile.update` | Update profile |
 | POST | `/account/change-password` | `password.change` | Change password |
+| POST | `/account/password/reset-link` | `password.reset.link` | Email a link to set or reset the password |
 | DELETE | `/account/accountDelete` | `account.delete` | Delete account |
 
 ---
@@ -231,7 +232,10 @@ All prefixed with `/account`.
 
 ## Team Routes
 
-All prefixed with `/teams`.
+All prefixed with `/teams`. These, and `account.teams` above, register only when
+`'team' => true` in `config/neev.php`. With teams switched off the routes do not
+exist at all, so `route('teams.create')` throws and the paths answer 404 — guard
+any link to them with `@if (config('neev.team'))`.
 
 ### Team Views
 

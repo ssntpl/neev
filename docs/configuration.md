@@ -28,6 +28,12 @@ Enable team/organization sub-grouping. Teams are optional in both tenant and non
 - Team invitations are available
 - Team switching is enabled
 - Requires `teams`, `memberships`, `team_invitations` tables
+- The team routes are registered — `/teams/*` and `/account/teams` on the web,
+  `/neev/teams/*`, `/neev/domains/*` and `/neev/changeTeamOwner` on the API
+
+With `team => false` those routes are never registered, so the paths answer 404
+and `route('teams.create')` throws. Wrap any link to them in
+`@if (config('neev.team'))`. See [Web Routes](./web-routes.md#team-routes).
 
 The two flags combine into four valid modes:
 
@@ -109,7 +115,7 @@ App-wide social login providers. Uncomment providers you want to enable. Each re
 'relying_party_id' => parse_url(config('app.url'), PHP_URL_HOST),
 ```
 
-The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host of `app.url`.
+The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host of `app.url`. This is a single application-wide value: passkeys work on this domain and its subdomains only, never on a tenant's custom domain. See [Supported Domains](./authentication.md#supported-domains).
 
 ### WebAuthn Allowed Origins
 
@@ -119,7 +125,7 @@ The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host
 ],
 ```
 
-Origins permitted to complete WebAuthn ceremonies. List every allowed origin for multi-origin setups (e.g. app served from multiple domains).
+Origins permitted to complete WebAuthn ceremonies **under the relying party ID above**. List every allowed origin for multi-origin setups (e.g. app served from multiple domains), including each subdomain — subdomain matching is off, so a wildcard is not accepted. Listing an origin the relying party ID does not cover has no effect; the browser rejects those ceremonies before the server sees them.
 
 ---
 
@@ -295,6 +301,10 @@ Path users are redirected to after login, logout-adjacent flows, and email actio
 ## Password Validation
 
 ```php
+use Ssntpl\Neev\Rules\Password;
+use Ssntpl\Neev\Rules\PasswordHistory;
+use Ssntpl\Neev\Rules\PasswordUserData;
+
 'password' => [
     'required',
     'confirmed',
@@ -303,6 +313,18 @@ Path users are redirected to after login, logout-adjacent flows, and email actio
     PasswordUserData::notContain(['name', 'email']),
 ],
 ```
+
+`Ssntpl\Neev\Rules\Password` is Laravel's `Illuminate\Validation\Rules\Password`
+with one addition: a `__set_state()` method. `php artisan config:cache` writes
+the config with `var_export()` and reads it back with `require`, and an object
+without `__set_state()` makes that cache file fatal on load — which is what
+Laravel reports as a non-serializable config value. The fluent builder is
+unchanged and every method returns the same class, so
+`Password::min(8)->symbols()` reads and behaves exactly as before while
+surviving a cached config. `PasswordHistory` and `PasswordUserData` carry the
+same trait.
+
+Import the rule from `Ssntpl\Neev\Rules` in your published `config/neev.php`.
 
 | Rule | Description |
 |------|-------------|
