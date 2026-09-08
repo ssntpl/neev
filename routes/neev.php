@@ -24,7 +24,7 @@ Route::bind('team', fn ($value) => Team::model()->findOrFail($value));
 // Machine-facing web routes — always registered, kit or not. The OAuth
 // redirect/callback need the web middleware (Socialite session state) and
 // their URLs are registered as redirect URIs at the identity providers.
-Route::middleware(['web', TenantMiddleware::class])
+Route::middleware([TenantMiddleware::class, 'web'])
     ->prefix(config('neev.route_prefix', 'neev'))
     ->group(function () {
         Route::get('/oauth/{service}', [OAuthController::class, 'redirect'])
@@ -37,7 +37,7 @@ Route::middleware(['web', TenantMiddleware::class])
 // installed (config('neev.ui') === 'blade'). Headless installs use the
 // API flows below and build their own frontend.
 if (config('neev.ui') === 'blade') {
-    Route::middleware(['web', TenantMiddleware::class])->group(function () {
+    Route::middleware([TenantMiddleware::class, 'web'])->group(function () {
         Route::get('/register', [UserAuthController::class, 'registerCreate'])
             ->name('register');
 

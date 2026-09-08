@@ -124,7 +124,7 @@ class TenantResolver
 
         /** @var array{context_type: string, context_id: int}|null $cachedContext */
         $cachedContext = Cache::remember("neev:domain:{$host}", 300, function () use ($host, $isIsolated): ?array {
-            $domain = Domain::findByHost($host);
+            $domain = $this->domainForMode($host, $isIsolated);
             $owner = $domain ? $this->domainOwner($domain) : null;
 
             if (! $owner) {
@@ -160,13 +160,29 @@ class TenantResolver
 
             if ($context) {
                 // Fetch the domain record for the customDomain reference
-                $domain = Domain::findByHost($host);
+                $domain = $this->domainForMode($host, $isIsolated);
 
                 return ['context' => $context, 'via' => 'custom', 'domain' => $host, 'customDomain' => $domain];
             }
         }
 
         return null;
+    }
+
+    /**
+     * The verified domain row this host resolves through, chosen by the owner
+     * kind the active mode routes on rather than by row order: shared mode
+     * only ever routes a team, and isolated mode takes a tenant's own claim
+     * ahead of a team's, which it has to route through that team's tenant.
+     */
+    protected function domainForMode(string $host, bool $isIsolated): ?Domain
+    {
+        if (! $isIsolated) {
+            return Domain::findByHostForOwnerType($host, 'team');
+        }
+
+        return Domain::findByHostForOwnerType($host, 'tenant')
+            ?? Domain::findByHostForOwnerType($host, 'team');
     }
 
     /**

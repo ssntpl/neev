@@ -500,7 +500,7 @@ class UserAuthController extends Controller
             return redirect(app(EmailLinks::class)->loginUrl());
         }
         if (!$request->session_id) {
-            if (! Hash::check($request->password, $user->password)) {
+            if ($user->password !== null && ! Hash::check($request->password, $user->password)) {
                 return back()->withErrors([
                     'password' => __('The password is incorrect.'),
                 ]);
