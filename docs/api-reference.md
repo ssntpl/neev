@@ -307,6 +307,31 @@ Authorization: Bearer {token}
 
 ---
 
+### Verify Email via Code
+
+The verification email also carries a numeric code, so the session that is waiting (cross-device signup, TVs, environments where security scanners consume links) can complete verification in place. Codes expire after `otp_expiry_time` minutes and are invalidated after 5 wrong attempts or once the link is used. Throttled to 5 requests/minute.
+
+```http
+POST /neev/email/verify-otp
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Request Body:**
+
+```json
+{
+    "otp": "123456"
+}
+```
+
+**Response:** `200` with `{"message": "Email verification done."}` — or `400` (`Code verification failed.` / `Email already verified.`).
+
+---
+
 ## Email Change
 
 ### Request Email Change

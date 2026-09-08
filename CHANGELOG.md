@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Email verification code alongside the link** — the verification email now carries both a signed link and a numeric code (`$otp` added to the app-owned `email-verify` template's variable contract). The code lets the *waiting* session complete verification in place — cross-device signups, TVs, and environments where security scanners consume single-use links. New endpoints: `POST {prefix}/email/verify-otp` (API) and the Verify form on the Blade kit's verification page. Codes are stored hashed, expire after `otp_expiry_time`, die after 5 wrong attempts, and either proof invalidates the other. Which proofs to show is the app's choice — via its owned email template and UI, not a config toggle. The API resend endpoint now delegates to `AuthService::sendEmailVerification()` (deduplicated)
+
 ### Fixed
 - **`PasswordHistory` rule blocked first-time registration** — with the default `neev.password` rules, `PasswordHistory::notReused()` failed with "Unable to verify password history." whenever no user could be resolved, which is exactly the first-time-signup case (no authenticated user; the submitted email belongs to nobody yet). The rule now passes vacuously when there is no user — there is no history to reuse. Reported by a consuming-app developer
 

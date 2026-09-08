@@ -347,6 +347,27 @@ class UserAuthController extends Controller
     /**
      * Show the verify email send.
     */
+    public function emailVerifyOtpStore(Request $request)
+    {
+        $request->validate([
+            'otp' => ['required'],
+        ]);
+
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return back()->withErrors(['message' => 'User not found.']);
+        }
+        if ($user->hasVerifiedEmail()) {
+            return redirect(config('neev.home'));
+        }
+
+        if (!$this->auth->verifyEmailOtp($user, (string) $request->otp)) {
+            return back()->withErrors(['otp' => 'Code verification failed.']);
+        }
+
+        return redirect(config('neev.home'))->with('status', __('Email verified.'));
+    }
+
     public function emailVerifySend(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
