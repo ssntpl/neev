@@ -80,7 +80,8 @@ class TeamApiController extends Controller
     {
         /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
-        $teams = $user?->teams?->load('owner');
+
+        $teams = $user?->teams()->with('owner')->get();
 
         return response()->json([
             'data' => $teams,
@@ -551,7 +552,12 @@ class TeamApiController extends Controller
             }
 
             if ($request->action == 'reject') {
-                $team->allUsers()->detach($member);
+                // Rejecting also removes an already-joined member, so the
+                // team-scoped role has to go with the membership.
+                DB::transaction(function () use ($team, $member) {
+                    $team->allUsers()->detach($member);
+                    $member->removeRole($team);
+                });
 
                 return response()->json([
                     'message' => 'Rejected Successfully',
@@ -643,6 +649,15 @@ class TeamApiController extends Controller
                 'message' => 'You do not have the required permissions to federate domain.',
             ], 400);
         }
+
+        $held = $team->domains()->where('domain', $request->domain)->exists();
+
+        if (!$held && !Domain::isAvailable($request->domain, 'team')) {
+            return response()->json([
+                'message' => 'This domain is already verified by another team.',
+            ], 400);
+        }
+
         try {
             $token = Str::random(32);
             $team->domains()->updateOrCreate([

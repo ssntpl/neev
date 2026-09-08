@@ -40,6 +40,54 @@ class TenantResolverTest extends TestCase
         $this->assertNull($this->resolver->resolve($request));
     }
 
+    public function test_resolve_returns_null_when_neither_tenants_nor_teams_are_enabled(): void
+    {
+        config(['neev.tenant' => false, 'neev.team' => false]);
+
+        $team = TeamFactory::new()->create(['slug' => 'acme']);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.test.com',
+        ]);
+
+        $this->assertNull($this->resolver->resolve(Request::create('http://acme.test.com/dashboard')));
+    }
+
+    // ---------------------------------------------------------------
+    // resolve() -- shared mode resolves a Team, which is what makes
+    // per-team SSO reachable
+    // ---------------------------------------------------------------
+
+    public function test_shared_mode_resolves_the_team_that_owns_the_domain(): void
+    {
+        config(['neev.tenant' => false, 'neev.team' => true]);
+
+        $team = TeamFactory::new()->create(['slug' => 'acme']);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.test.com',
+        ]);
+
+        $context = $this->resolver->resolve(Request::create('http://acme.test.com/neev/sso/redirect'));
+
+        $this->assertNotNull($context);
+        $this->assertSame('team', $context->getContextType());
+        $this->assertSame($team->id, $context->getContextId());
+    }
+
+    public function test_shared_mode_ignores_an_unverified_team_domain(): void
+    {
+        config(['neev.tenant' => false, 'neev.team' => true]);
+
+        $team = TeamFactory::new()->create(['slug' => 'acme']);
+        DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'unverified.test.com',
+        ]);
+
+        $this->assertNull($this->resolver->resolve(Request::create('http://unverified.test.com/')));
+    }
+
     // ---------------------------------------------------------------
     // resolve() -- X-Tenant header
     // ---------------------------------------------------------------

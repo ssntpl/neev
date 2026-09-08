@@ -52,17 +52,30 @@ class TeamController extends Controller
         }
 
         $domains = $team->domains;
-        $outsideMembers = [];
-        foreach ($domains as $domain) {
-            $count = 0;
-            if ($domain->enforce && $domain->verified_at) {
-                foreach ($team->users as $member) {
-                    if (!str_ends_with(strtolower($member->email), '@' . strtolower($domain->domain))) {
-                        $count++;
-                    }
+
+        // A team can federate several domains, and a member on any verified one
+        // of them is inside the team's boundary. Counting per domain in
+        // isolation flagged those members on every other domain, so the warning
+        // fired for people who were never outside.
+        $verified = $domains->filter(fn ($domain) => $domain->verified_at !== null)
+            ->map(fn ($domain) => '@' . strtolower($domain->domain))
+            ->all();
+
+        $outside = $team->users->filter(function ($member) use ($verified) {
+            foreach ($verified as $suffix) {
+                if (str_ends_with(strtolower($member->email), $suffix)) {
+                    return false;
                 }
             }
-            $outsideMembers[$domain->id] = $count;
+
+            return true;
+        })->count();
+
+        $outsideMembers = [];
+        foreach ($domains as $domain) {
+            $outsideMembers[$domain->id] = $domain->enforce && $domain->verified_at
+                ? $outside
+                : 0;
         }
 
         return view('neev::team.domain-federation', [
@@ -394,7 +407,12 @@ class TeamController extends Controller
             }
 
             if ($request->action == 'reject') {
-                $team->allUsers()->detach($member);
+                // Rejecting also removes an already-joined member, so the
+                // team-scoped role has to go with the membership.
+                DB::transaction(function () use ($team, $member) {
+                    $team->allUsers()->detach($member);
+                    $member->removeRole($team);
+                });
                 return back()->with('status', 'Rejected Successfully');
             } elseif ($request->action == 'accept') {
                 $joinRequest = $team->joinRequests->where('id', $member->id)->first();
@@ -449,6 +467,13 @@ class TeamController extends Controller
         if (!$user || $team->user_id !== $user->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to federate domain.']);
         }
+
+        $held = $team->domains()->where('domain', $request->domain)->exists();
+
+        if (!$held && !Domain::isAvailable($request->domain, 'team')) {
+            return back()->withErrors(['message' => 'This domain is already verified by another team.']);
+        }
+
         try {
             $token = Str::random(32);
             $team->domains()->updateOrCreate([

@@ -105,6 +105,17 @@ class Domain extends Model
     }
 
     /**
+     * Find a verified domain by host, among one kind of owner.
+     */
+    public static function findByHostForOwnerType(string $host, string $ownerType): ?self
+    {
+        return static::where('domain', $host)
+            ->where('owner_type', $ownerType)
+            ->whereNotNull('verified_at')
+            ->first();
+    }
+
+    /**
      * Find the primary verified domain by host.
      */
     public static function findPrimaryByHost(string $host): ?self
@@ -113,6 +124,20 @@ class Domain extends Model
             ->whereNotNull('verified_at')
             ->where('is_primary', true)
             ->first();
+    }
+
+    /**
+     * Only a *verified* claim reserves a domain, and only against its own kind
+     * of owner: a tenant and a team may both federate the same company domain,
+     * while a second team cannot take a domain another team has proved it
+     * controls. An unverified row proves nothing and blocks nobody.
+     */
+    public static function isAvailable(string $domain, string $ownerType): bool
+    {
+        return ! static::where('domain', $domain)
+            ->where('owner_type', $ownerType)
+            ->whereNotNull('verified_at')
+            ->exists();
     }
 
     /**

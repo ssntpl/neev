@@ -5,14 +5,13 @@ namespace Ssntpl\Neev\Http\Controllers\Auth;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
-use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\AbstractProvider;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
-use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\OAuthClients;
 use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\SpaCookieResponder;
 
@@ -26,15 +25,28 @@ class OAuthApiController extends Controller
             ], 404);
         }
 
+        $platform = $request->input('platform');
+        $clients = app(OAuthClients::class);
+
+        // One provider, one client per platform: an Android build cannot use
+        // the web client_id. Without a platform the default client is used,
+        // exactly as before.
+        if ($platform && !$clients->has($service, $platform)) {
+            return response()->json([
+                'message' => 'OAuth client not configured for this platform.',
+                'platforms' => $clients->platforms($service),
+            ], 404);
+        }
+
         $params = [];
         if ($request->email) {
             $params['login_hint'] = $request->email;
         }
 
-        $redirectUrl = app(EmailLinks::class)->oauthCallbackUrl($service);
+        $redirectUrl = $clients->redirectUrl($service, $platform);
 
         /** @var AbstractProvider $driver */
-        $driver = Socialite::driver($service);
+        $driver = $clients->driver($service, $platform);
         $url = $driver
             ->stateless()
             ->with($params)
@@ -61,11 +73,23 @@ class OAuthApiController extends Controller
             ], 400);
         }
 
+        $platform = $request->input('platform');
+        $clients = app(OAuthClients::class);
+
+        // The code was issued to one client, so it has to be exchanged with
+        // the same one — the platform must match the redirect request.
+        if ($platform && !$clients->has($service, $platform)) {
+            return response()->json([
+                'message' => 'OAuth client not configured for this platform.',
+                'platforms' => $clients->platforms($service),
+            ], 404);
+        }
+
         try {
-            $redirectUrl = app(EmailLinks::class)->oauthCallbackUrl($service);
+            $redirectUrl = $clients->redirectUrl($service, $platform);
 
             /** @var AbstractProvider $driver */
-            $driver = Socialite::driver($service);
+            $driver = $clients->driver($service, $platform);
             $oauthUser = $driver
                 ->stateless()
                 ->redirectUrl($redirectUrl)

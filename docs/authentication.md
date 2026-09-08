@@ -459,6 +459,51 @@ GOOGLE_CLIENT_SECRET=your-client-secret
 GOOGLE_REDIRECT_URI="${APP_URL}/neev/oauth/google/callback"
 ```
 
+### Per-platform clients (web, Android, iOS)
+
+Identity providers issue a **separate client per platform** — Google will not accept a web
+`client_id` from an Android app, and a native client redirects to a custom scheme or app
+link rather than to your callback URL. Extra clients live under a `clients` key inside the
+provider's existing `config/services.php` block:
+
+```php
+'google' => [
+    // The default client, used when no platform is given. Unchanged.
+    'client_id' => env('GOOGLE_CLIENT_ID'),
+    'client_secret' => env('GOOGLE_CLIENT_SECRET'),
+    'redirect' => env('GOOGLE_REDIRECT_URI'),
+
+    'clients' => [
+        'android' => [
+            'client_id' => env('GOOGLE_ANDROID_CLIENT_ID'),
+            'client_secret' => env('GOOGLE_ANDROID_CLIENT_SECRET'),
+            'redirect' => env('GOOGLE_ANDROID_REDIRECT_URI'),   // e.g. com.acme.app:/oauth
+        ],
+        'ios' => [ /* ... */ ],
+    ],
+],
+```
+
+A platform block inherits everything it does not override (scopes, guzzle options), so it
+usually carries only the credentials that differ. Platform names are yours to choose.
+
+Clients are selected with a `platform` parameter on the API endpoints:
+
+```
+GET  {prefix}/oauth/google/redirect?platform=android
+POST {prefix}/oauth/google/callback     { "code": "...", "platform": "android" }
+```
+
+The callback takes it too, because the authorization code was issued to one client and
+must be exchanged with that same client and redirect URI. Requesting a platform that is
+not configured returns **404** with the list of platforms that are, rather than silently
+falling back to the web client and failing at the provider. Omitting `platform` behaves
+exactly as before.
+
+The top-level block is optional: an installation that configures only platform clients
+(a mobile-only app) resolves too. The browser flow (`GET {prefix}/oauth/{service}`) always
+uses the default client.
+
 ### Security Warning: OAuth Bypasses MFA and Password Policies
 
 > **Warning — OAuth is a complete authentication path that skips the MFA gate.**

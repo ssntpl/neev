@@ -6,11 +6,13 @@ use Exception;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
+use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
@@ -336,6 +338,23 @@ class TeamTest extends TestCase
         $this->assertCount(0, $team->users);
     }
 
+    public function test_remove_user_also_removes_the_team_role(): void
+    {
+        $owner = User::factory()->create();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        Role::create(['name' => 'editor', 'resource_type' => Team::class]);
+
+        $member = User::factory()->create();
+        $team->addMember($member, 'editor');
+        $this->assertTrue($member->hasRole('editor', $team));
+
+        $team->removeUser($member);
+
+        // Left behind, the role would come back if the user rejoined.
+        $this->assertFalse($member->fresh()->hasRole('editor', $team));
+    }
+
     public function test_remove_user_throws_for_owner(): void
     {
         $owner = User::factory()->create();
@@ -497,6 +516,37 @@ class TeamTest extends TestCase
     public function test_resolve_by_domain_returns_null_when_not_found(): void
     {
         $this->assertNull(Team::resolveByDomain('nonexistent.com'));
+    }
+
+    public function test_resolve_by_domain_ignores_a_tenant_owned_host(): void
+    {
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme']);
+
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
+            'domain' => 'acme.example.com',
+        ]);
+
+        // Returning the Tenant here would break the ?static contract.
+        $this->assertNull(Team::resolveByDomain('acme.example.com'));
+    }
+
+    public function test_resolve_by_domain_finds_the_team_row_behind_a_tenant_row(): void
+    {
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme']);
+        $team = TeamFactory::new()->create();
+
+        // Tenant row first: an unfiltered lookup would shadow the team's.
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
+            'domain' => 'shared.example.com',
+        ]);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'shared.example.com',
+        ]);
+
+        $this->assertTrue(Team::resolveByDomain('shared.example.com')?->is($team));
     }
 
     // -----------------------------------------------------------------

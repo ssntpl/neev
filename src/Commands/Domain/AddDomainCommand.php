@@ -7,6 +7,7 @@ use Illuminate\Contracts\Console\PromptsForMissingInput;
 use Ssntpl\Neev\Commands\Concerns\ResolvesTenantContext;
 use Ssntpl\Neev\Models\Domain;
 
+use function Laravel\Prompts\select;
 use function Laravel\Prompts\text;
 
 class AddDomainCommand extends Command implements PromptsForMissingInput
@@ -25,8 +26,8 @@ class AddDomainCommand extends Command implements PromptsForMissingInput
     public function handle(): int
     {
         $domainName = $this->argument('domain');
-        $ownerType = $this->option('owner-type');
-        $ownerId = $this->option('owner-id');
+        $ownerType = $this->option('owner-type') ?: $this->askOwnerType();
+        $ownerId = $this->option('owner-id') ?: $this->askOwnerId($ownerType);
 
         if (! $ownerType || ! $ownerId) {
             $this->error('You must specify --owner-type and --owner-id.');
@@ -34,23 +35,31 @@ class AddDomainCommand extends Command implements PromptsForMissingInput
             return self::FAILURE;
         }
 
-        if (! in_array($ownerType, ['team', 'tenant'])) {
+        if (! in_array($ownerType, ['team', 'tenant'], true)) {
             $this->error('--owner-type must be "team" or "tenant".');
 
             return self::FAILURE;
         }
 
-        // Validate owner exists
-        if ($ownerType === 'tenant') {
-            $this->resolveTenant((string) $ownerId);
-        } else {
-            $this->resolveTeam((string) $ownerId);
+        // Resolve the owner, which also accepts a slug — the row has to store
+        // the key, not whatever was typed.
+        $owner = $ownerType === 'tenant'
+            ? $this->resolveTenant((string) $ownerId)
+            : $this->resolveTeam((string) $ownerId);
+
+        // A second row for the same owner says nothing new.
+        if (Domain::where('domain', $domainName)
+            ->where('owner_type', $ownerType)
+            ->where('owner_id', $owner->getKey())
+            ->exists()) {
+            $this->error("Domain already added for this {$ownerType}: {$domainName}");
+
+            return self::FAILURE;
         }
 
-        // Check if domain already exists
-        $existing = Domain::where('domain', $domainName)->first();
-        if ($existing) {
-            $this->error("Domain already exists: {$domainName}");
+        // Taken only once another owner of this kind has verified it.
+        if (! Domain::isAvailable($domainName, $ownerType)) {
+            $this->error("Domain already verified by another {$ownerType}: {$domainName}");
 
             return self::FAILURE;
         }
@@ -60,7 +69,7 @@ class AddDomainCommand extends Command implements PromptsForMissingInput
         $domain = Domain::create([
             'domain' => $domainName,
             'owner_type' => $ownerType,
-            'owner_id' => $ownerId,
+            'owner_id' => $owner->getKey(),
             'is_primary' => (bool) $this->option('primary'),
             'enforce' => (bool) $this->option('enforce'),
             'verified_at' => $autoVerify ? now() : null,
@@ -84,6 +93,40 @@ class AddDomainCommand extends Command implements PromptsForMissingInput
         }
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Ask what kind of thing owns the domain, when --owner-type was omitted.
+     */
+    protected function askOwnerType(): ?string
+    {
+        if (! $this->input->isInteractive()) {
+            return null;
+        }
+
+        return select(
+            label: 'What owns this domain?',
+            options: [
+                'tenant' => 'A tenant',
+                'team' => 'A team',
+            ],
+            default: $this->isIsolated() ? 'tenant' : 'team',
+        );
+    }
+
+    /**
+     * Ask which one, when --owner-id was omitted.
+     */
+    protected function askOwnerId(?string $ownerType): ?string
+    {
+        if ($ownerType === null || ! $this->input->isInteractive()) {
+            return null;
+        }
+
+        return text(
+            label: "Which {$ownerType} owns it? (ID or slug)",
+            required: true,
+        );
     }
 
     protected function promptForMissingArgumentsUsing(): array

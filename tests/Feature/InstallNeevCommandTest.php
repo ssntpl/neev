@@ -28,6 +28,39 @@ class InstallNeevCommandTest extends TestCase
         parent::tearDown();
     }
 
+    // -----------------------------------------------------------------
+    // Arguments are checked before anything is published or edited
+    // -----------------------------------------------------------------
+
+    public function test_install_rejects_a_flag_that_is_not_yes_or_no(): void
+    {
+        // 'y' used to be read as "no", silently installing without tenancy.
+        $this->artisan('neev:install', ['tenant' => 'y', 'teams' => 'yes', 'kit' => 'blade'])
+            ->expectsOutputToContain('Installation aborted')
+            ->expectsOutputToContain('tenant: [y] is not valid.')
+            ->assertFailed();
+    }
+
+    public function test_install_rejects_an_unknown_kit_before_publishing(): void
+    {
+        // The kit used to be validated inside neev:ui, by which point the
+        // config had already been published and rewritten.
+        $this->artisan('neev:install', ['tenant' => 'no', 'teams' => 'yes', 'kit' => 'vue'])
+            ->expectsOutputToContain('kit: [vue] is not valid.')
+            ->assertFailed();
+
+        $this->assertFileDoesNotExist(config_path('neev.php'));
+    }
+
+    public function test_install_reports_every_bad_argument_at_once(): void
+    {
+        $this->artisan('neev:install', ['tenant' => 'maybe', 'teams' => 'nope', 'kit' => 'react'])
+            ->expectsOutputToContain('tenant: [maybe] is not valid.')
+            ->expectsOutputToContain('teams: [nope] is not valid.')
+            ->expectsOutputToContain('kit: [react] is not valid.')
+            ->assertFailed();
+    }
+
     public function test_install_succeeds_on_a_fresh_database(): void
     {
         $this->artisan('neev:install', ['tenant' => 'no', 'teams' => 'no', 'kit' => 'none'])

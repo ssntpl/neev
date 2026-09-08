@@ -152,7 +152,30 @@ trait HasMultiAuth
         $auth->activate();
         $this->load('multiFactorAuths');
 
+        $this->enrolEmailFactor();
+
         return true;
+    }
+
+    /**
+     * Turn email OTP on alongside a setup that was just verified.
+     *
+     * Proving one factor enables email as a second one, so losing the
+     * authenticator app does not lock the account out. Skipped silently when
+     * email is already configured, is not an enabled method, or the address is
+     * unverified — none of those should undo the verification that succeeded.
+     */
+    protected function enrolEmailFactor(): void
+    {
+        if (!in_array('email', (array) config('neev.multi_factor_auth', []), true)) {
+            return;
+        }
+
+        if ($this->multiFactorAuth('email')) {
+            return;
+        }
+
+        $this->addMultiFactorAuth('email');
     }
 
     /**

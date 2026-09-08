@@ -54,7 +54,11 @@ class TenantResolver
      */
     public function resolve(Request $request): ?ContextContainerInterface
     {
-        if (!config('neev.tenant', false)) {
+        // Isolated mode resolves a Tenant; shared mode resolves the Team that
+        // owns the domain, which is what makes per-team SSO reachable — a team
+        // carries its own auth settings and is an identity provider owner just
+        // as a tenant is.
+        if (!$this->isEnabled() && !config('neev.team', false)) {
             return null;
         }
 
@@ -121,24 +125,25 @@ class TenantResolver
         /** @var array{context_type: string, context_id: int}|null $cachedContext */
         $cachedContext = Cache::remember("neev:domain:{$host}", 300, function () use ($host, $isIsolated): ?array {
             $domain = Domain::findByHost($host);
+            $owner = $domain ? $this->domainOwner($domain) : null;
 
-            if (! $domain || ! $domain->owner) {
+            if (! $owner) {
                 return null;
             }
 
             if ($isIsolated) {
                 if ($domain->owner_type === 'tenant') {
-                    return ['context_type' => 'tenant', 'context_id' => $domain->owner->getKey()];
+                    return ['context_type' => 'tenant', 'context_id' => $owner->getKey()];
                 }
 
                 // Domain owned by a team — resolve the team's tenant
-                $tenant = $domain->owner->tenant ?? null;
+                $tenant = $owner->tenant ?? null;
                 if ($tenant) {
                     return ['context_type' => 'tenant', 'context_id' => $tenant->getKey()];
                 }
             } else {
                 if ($domain->owner_type === 'team') {
-                    return ['context_type' => 'team', 'context_id' => $domain->owner->getKey()];
+                    return ['context_type' => 'team', 'context_id' => $owner->getKey()];
                 }
             }
 
@@ -162,6 +167,21 @@ class TenantResolver
         }
 
         return null;
+    }
+
+    /**
+     * The model owning a domain.
+     *
+     * A team owner is read without the team tenant scope: this runs while
+     * resolving the tenant, so there is no resolved tenant yet to match.
+     */
+    protected function domainOwner(Domain $domain)
+    {
+        if ($domain->owner_type === 'team') {
+            return Team::getClass()::withoutTenantScope()->find($domain->owner_id);
+        }
+
+        return $domain->owner;
     }
 
     /**

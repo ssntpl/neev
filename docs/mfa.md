@@ -47,7 +47,7 @@ Neev supports multiple MFA methods that provide an extra layer of security beyon
 
 ```php
 // config/neev.php
-'mfa_pending_setup_retention_days' => 2,  // Days before unverified setups are deleted
+'mfa_pending_setup_retention_days' => 2,  // Days before unverified setups are deleted (0 disables the cleanup)
 ```
 
 Authenticator setups that are started but never verified remain in a `pending` state. The `neev:clean-pending-mfa-setups` command deletes pending setups older than this many days — see [CLI Commands](./cli-commands.md).
@@ -188,6 +188,23 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 Unlike the authenticator method, email OTP requires no verification step of its
 own — the address has already been verified, so the method is created
 **active** immediately.
+
+### Enabled automatically alongside another factor
+
+Verifying any MFA setup also enrols email OTP, so a user always keeps a second
+way in and losing the authenticator app does not lock them out. It happens only
+on **successful** verification (`verifyMfaSetup()`), never for a setup that is
+still pending or one whose code was wrong, and it is skipped silently when email
+OTP is already configured, when `email` is not in `neev.multi_factor_auth`, or
+when the account's address is unverified.
+
+The factor being verified keeps the `preferred` flag, so the user's own choice
+stays their default challenge; email is added as a secondary. After enrolling an
+authenticator, `mfa_options` on the next login therefore reads
+`["authenticator", "email"]`.
+
+Removing the authenticator later leaves the email factor in place — the account
+stays in MFA rather than dropping out of it.
 
 ### The address must be verified first
 

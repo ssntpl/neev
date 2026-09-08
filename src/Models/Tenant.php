@@ -17,6 +17,7 @@ use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Events\TenantCreated;
+use Ssntpl\Neev\Scopes\TeamTenantScope;
 
 /**
  * @property int $id
@@ -73,7 +74,7 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
 
     public function teams(): HasMany
     {
-        return $this->hasMany(Team::getClass());
+        return $this->hasMany(Team::getClass())->withoutGlobalScope(TeamTenantScope::class);
     }
 
     public function authSettings(): HasOne
@@ -228,13 +229,9 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
 
     public static function resolveByDomain(string $domain): ?static
     {
-        $domainRecord = Domain::findByHost($domain);
+        $domainRecord = Domain::findByHostForOwnerType($domain, 'tenant');
 
-        if ($domainRecord && $domainRecord->owner_type === 'tenant') {
-            /** @var static|null */
-            return $domainRecord->owner;
-        }
-
-        return null;
+        /** @var static|null */
+        return $domainRecord?->owner;
     }
 }

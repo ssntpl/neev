@@ -12,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
 use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
@@ -20,6 +21,7 @@ use Ssntpl\Neev\Events\MemberAdded;
 use Ssntpl\Neev\Events\MemberRemoved;
 use Ssntpl\Neev\Events\TeamCreated;
 use Ssntpl\Neev\Events\TeamDeleted;
+use Ssntpl\Neev\Scopes\TeamTenantScope;
 use Ssntpl\Neev\Scopes\TenantScope;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Support\SlugHelper;
@@ -51,6 +53,8 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
 
     protected static function booted()
     {
+        static::addGlobalScope(new TeamTenantScope());
+
         // Auto-generate slug if not provided
         static::creating(function (Team $team) {
             if (empty($team->slug)) {
@@ -58,10 +62,9 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
             }
         });
 
-        // Teams sit inside a tenant, but Team deliberately does not use
-        // BelongsToTenant — its global scope would break tenant resolution,
-        // which resolves Teams. So the tenant_id assignment that trait
-        // provides has to be done here instead.
+        // Team does not use the BelongsToTenant trait: its creating hook would
+        // stamp the resolved context's id blindly, and in shared mode that
+        // context is a Team. So the tenant_id assignment is done here instead.
         static::creating(function (Team $team) {
             if ($team->tenant_id !== null || !app()->bound(TenantResolver::class)) {
                 return;
@@ -196,7 +199,12 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
             throw new Exception('cannot remove owner.');
         }
 
-        $this->users()->detach($user);
+        // The role is scoped to this team, so it goes with the membership.
+        // Left behind, it would silently come back if the user rejoins.
+        DB::transaction(function () use ($user) {
+            $this->users()->detach($user);
+            $user->removeRole($this);
+        });
 
         event(new MemberRemoved($this, $user));
     }
@@ -251,6 +259,27 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::getClass());
+    }
+
+    /**
+     * The column TenantScope filters on.
+     */
+    public function getTenantIdColumn(): string
+    {
+        return 'tenant_id';
+    }
+
+    public function getQualifiedTenantIdColumn(): string
+    {
+        return $this->qualifyColumn($this->getTenantIdColumn());
+    }
+
+    /**
+     * Query teams across every tenant — for platform-level code only.
+     */
+    public static function withoutTenantScope()
+    {
+        return static::query()->withoutGlobalScope(TeamTenantScope::class);
     }
 
     // -----------------------------------------------------------------
@@ -323,7 +352,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
 
     public static function resolveByDomain(string $domain): ?static
     {
-        $domainRecord = Domain::findByHost($domain);
+        $domainRecord = Domain::findByHostForOwnerType($domain, 'team');
 
         /** @var static|null */
         return $domainRecord?->owner;

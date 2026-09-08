@@ -156,6 +156,8 @@ Number of single-use recovery codes generated per user.
 
 Days to keep unverified (pending) MFA setups before the `neev:clean-pending-mfa-setups` command deletes them.
 
+Set it to `0` (or any value below 1) to **disable** the cleanup. Zero does not mean "delete everything": a retention of zero would be "older than right now", which would wipe setups a user was still in the middle of, so the command skips the deletion and reports that it is disabled — the same convention `login_history_retention_days` follows.
+
 ---
 
 ## Verification

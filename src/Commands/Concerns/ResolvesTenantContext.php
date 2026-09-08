@@ -13,13 +13,20 @@ trait ResolvesTenantContext
         return config('neev.tenant', false);
     }
 
+    protected function teamsEnabled(): bool
+    {
+        return config('neev.team', false);
+    }
+
     protected function resolveTeam(string $identifier): Team
     {
         $class = Team::getClass();
 
+        // Console commands run outside a resolved tenant, so they look teams
+        // up across every tenant.
         $team = ctype_digit($identifier)
-            ? $class::find((int) $identifier)
-            : $class::where('slug', $identifier)->first();
+            ? $class::withoutTenantScope()->find((int) $identifier)
+            : $class::withoutTenantScope()->where('slug', $identifier)->first();
 
         if (! $team) {
             $this->fail("Team not found: {$identifier}");

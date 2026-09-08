@@ -497,6 +497,16 @@ On the web, `PUT /teams/switch` (route `teams.switch`) simply redirects to the s
 
 Automatically associate users with teams based on email domain. Available whenever teams are enabled (`'team' => true`) — there is no separate config toggle.
 
+### Who may claim a domain
+
+A domain belongs to **one team and one tenant** — never to two teams, or two tenants. A tenant and one of its teams may both federate the same company domain; a second team may not take a domain another team holds.
+
+A claim only reserves the domain once it has been **verified**. An unverified row proves nothing and blocks nobody, so several teams may hold pending claims on the same domain and whichever verifies first wins. The same team cannot register the same domain twice — re-submitting it updates the existing row (rotating the verification token) instead of adding another.
+
+### Members across several federated domains
+
+When a team federates more than one domain, the "outside members" warning on the domain page counts a member as outside only if their address matches **none** of the team's verified domains. A member on `@acme.io` is not flagged against `@acme.com` when the team federates both.
+
 ### Add Domain to Team
 
 ```bash

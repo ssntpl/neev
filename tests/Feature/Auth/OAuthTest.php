@@ -136,6 +136,60 @@ class OAuthTest extends TestCase
     }
 
     // -----------------------------------------------------------------
+    // GET /oauth/{service}/redirect — per-platform clients
+    // -----------------------------------------------------------------
+
+    public function test_api_redirect_uses_the_default_client_without_a_platform(): void
+    {
+        $response = $this->getJson('/neev/oauth/google/redirect');
+
+        $response->assertOk();
+        $this->assertStringContainsString('client_id=test-client-id', $response->json('url'));
+    }
+
+    public function test_api_redirect_uses_the_platform_client_and_its_redirect(): void
+    {
+        // Google will not accept a web client_id from an Android app, and a
+        // native client redirects to its own scheme.
+        config(['services.google.clients.android' => [
+            'client_id' => 'android-client-id',
+            'client_secret' => 'android-secret',
+            'redirect' => 'com.acme.app:/oauth',
+        ]]);
+
+        $response = $this->getJson('/neev/oauth/google/redirect?platform=android');
+
+        $response->assertOk();
+        $this->assertStringContainsString('client_id=android-client-id', $response->json('url'));
+        $this->assertStringContainsString(urlencode('com.acme.app:/oauth'), $response->json('url'));
+    }
+
+    public function test_api_redirect_404s_for_a_platform_that_is_not_configured(): void
+    {
+        config(['services.google.clients.android' => [
+            'client_id' => 'android-client-id',
+            'client_secret' => 'android-secret',
+            'redirect' => 'com.acme.app:/oauth',
+        ]]);
+
+        $response = $this->getJson('/neev/oauth/google/redirect?platform=ios');
+
+        $response->assertStatus(404)
+            ->assertJsonPath('platforms', ['android']);
+    }
+
+    public function test_api_callback_404s_for_a_platform_that_is_not_configured(): void
+    {
+        // The code was issued to one client and must be exchanged with it.
+        $response = $this->postJson('/neev/oauth/google/callback', [
+            'code' => 'abc',
+            'platform' => 'ios',
+        ]);
+
+        $response->assertStatus(404);
+    }
+
+    // -----------------------------------------------------------------
     // GET /oauth/{service}/callback — handle callback
     // -----------------------------------------------------------------
 

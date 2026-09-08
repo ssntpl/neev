@@ -114,6 +114,28 @@ class TeamApiControllerTest extends TestCase
         $response->assertOk();
     }
 
+    public function test_get_teams_returns_only_the_resolved_tenants_teams(): void
+    {
+        $this->enableTenantIsolation();
+
+        [$user, $token] = $this->authenticatedUser();
+
+        $mine = TeamFactory::new()->create(['user_id' => $user->id]);
+        $mine->users()->attach($user, ['joined' => true]);
+
+        // A team the user also belongs to, but in another tenant.
+        $elsewhere = TeamFactory::new()->create(['user_id' => $user->id]);
+        $elsewhere->tenant_id = 99;
+        $elsewhere->save();
+        $elsewhere->users()->attach($user, ['joined' => true]);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/teams');
+
+        $response->assertOk();
+        $this->assertSame([$mine->id], array_column($response->json('data'), 'id'));
+    }
+
     // -----------------------------------------------------------------
     // GET /neev/teams/{id} — get team details
     // -----------------------------------------------------------------

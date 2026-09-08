@@ -1201,6 +1201,8 @@ Authorization: Bearer {token}
 }
 ```
 
+Under tenant isolation the list holds only teams in the tenant the request resolved to. A user who belongs to teams in several tenants sees each tenant's teams on that tenant's domain, never a merged list.
+
 ---
 
 ### Set Default Team

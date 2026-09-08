@@ -33,6 +33,13 @@ class InstallNeev extends Command implements PromptsForMissingInput
      */
     public function handle()
     {
+        // Every argument is checked before anything is published or edited:
+        // a typo used to be read as "no" for the flags, or to fail inside
+        // neev:ui once the config had already been written.
+        if (! $this->validateArguments()) {
+            return self::FAILURE;
+        }
+
         $this->info('Installing Neev...');
 
         // Nothing below this point touches the database — the check is an early
@@ -66,6 +73,39 @@ class InstallNeev extends Command implements PromptsForMissingInput
         $this->call('neev:ui', ['kit' => $this->argument('kit')]);
 
         $this->info('Neev installed successfully!');
+    }
+
+    /**
+     * Check every argument up front, reporting all bad values at once.
+     */
+    protected function validateArguments(): bool
+    {
+        $allowed = [
+            'tenant' => ['yes', 'no'],
+            'teams' => ['yes', 'no'],
+            'kit' => ['blade', 'none'],
+        ];
+
+        $errors = [];
+
+        foreach ($allowed as $argument => $values) {
+            $given = $this->argument($argument);
+
+            if (! in_array($given, $values, true)) {
+                $errors[] = "  {$argument}: [{$given}] is not valid. Expected " . implode(' or ', $values) . '.';
+            }
+        }
+
+        if ($errors === []) {
+            return true;
+        }
+
+        $this->error('Installation aborted — nothing was changed:');
+        foreach ($errors as $error) {
+            $this->line($error);
+        }
+
+        return false;
     }
 
     /**

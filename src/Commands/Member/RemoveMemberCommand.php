@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Commands\Member;
 
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\PromptsForMissingInput;
+use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Commands\Concerns\ResolvesTenantContext;
 
 use function Laravel\Prompts\confirm;
@@ -58,7 +59,12 @@ class RemoveMemberCommand extends Command implements PromptsForMissingInput
             }
         }
 
-        $team->allUsers()->detach($user->id);
+        // Drop the team-scoped role along with the membership, or it would be
+        // waiting for the user if they are ever added back.
+        DB::transaction(function () use ($team, $user) {
+            $team->allUsers()->detach($user->id);
+            $user->removeRole($team);
+        });
 
         $this->info("Removed {$user->name} from {$team->name}.");
 
