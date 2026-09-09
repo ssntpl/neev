@@ -22,8 +22,6 @@ class RemoveMemberCommand extends Command implements PromptsForMissingInput
 
     public function handle(): int
     {
-        $user = $this->resolveUserByEmail($this->argument('email'));
-
         if (! $this->option('team')) {
             $this->error('You must specify --team.');
 
@@ -31,6 +29,10 @@ class RemoveMemberCommand extends Command implements PromptsForMissingInput
         }
 
         $team = $this->resolveTeam($this->option('team'));
+
+        // Resolve the team first: it supplies the context the user is looked
+        // up in, so the tenant scope finds that tenant's user.
+        $user = $this->resolveUserByEmail($this->argument('email'), $this->contextForTeam($team));
 
         // Prevent removing owner
         if ($team->user_id === $user->id) {

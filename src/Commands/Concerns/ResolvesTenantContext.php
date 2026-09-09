@@ -2,9 +2,11 @@
 
 namespace Ssntpl\Neev\Commands\Concerns;
 
+use Ssntpl\Neev\Contracts\ContextContainerInterface;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\TenantResolver;
 
 trait ResolvesTenantContext
 {
@@ -50,15 +52,35 @@ trait ResolvesTenantContext
         return $tenant;
     }
 
-    protected function resolveUserByEmail(string $email): User
+    /**
+     * Console commands run outside a resolved tenant, so TenantScope would
+     * narrow the lookup to platform users and hide every tenant's user. Resolve
+     * the user inside the context the command is acting on instead, so the
+     * scope does the filtering it was written to do.
+     */
+    protected function resolveUserByEmail(string $email, ?ContextContainerInterface $context = null): User
     {
-        $user = User::findByEmail($email);
+        $user = $context
+            ? app(TenantResolver::class)->runInContext($context, fn () => User::findByEmail($email))
+            : User::findByEmail($email);
 
         if (! $user) {
             $this->fail("No user found with email: {$email}");
         }
 
         return $user;
+    }
+
+    /**
+     * The context a team's members live in: the owning tenant under isolation,
+     * the team itself in shared mode. Null when there is nothing to scope to,
+     * which leaves the lookup on platform users.
+     */
+    protected function contextForTeam(Team $team): ?ContextContainerInterface
+    {
+        // A belongsTo with a null key resolves to null on its own, which is
+        // the platform-team case.
+        return $this->isIsolated() ? $team->tenant : $team;
     }
 
     protected function getStrategyLabel(): string

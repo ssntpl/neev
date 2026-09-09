@@ -22,12 +22,14 @@ class AddMemberCommand extends Command implements PromptsForMissingInput
 
     public function handle(): int
     {
-        $user = $this->resolveUserByEmail($this->argument('email'));
-
         $team = $this->resolveTargetTeam();
         if (! $team) {
             return self::FAILURE;
         }
+
+        // Resolve the team first: it supplies the context the user is looked
+        // up in, so the tenant scope finds that tenant's user.
+        $user = $this->resolveUserByEmail($this->argument('email'), $this->contextForTeam($team));
 
         // Under isolation a team belongs to one tenant, and so does a user.
         // Adding across that line would put someone in a team their tenant
