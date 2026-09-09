@@ -284,10 +284,13 @@ class SpaCookieModeTest extends TestCase
         config(['neev.login_token_max_lifetime_minutes' => 43200]);
 
         $data = $this->createAuthenticatedUser();
+        $token = $data['user']->accessTokens()->latest('id')->first();
 
-        // Keep it alive across the whole 30 days, then step past.
+        // Keep it alive across the whole 30 days, then step past. Each visit
+        // is anchored a minute inside the current deadline: arriving exactly
+        // on it is a coin toss the wall clock, not the sliding, decides.
         for ($day = 1; $day <= 30; $day++) {
-            $this->travelTo(now()->startOfSecond()->addDay());
+            $this->travelTo($token->refresh()->expires_at->copy()->subMinute());
 
             $this->withCredentials()->withHeader('Origin', 'https://app.example.com')
                 ->withUnencryptedCookie('neev_session', $data['plainTextToken'])
@@ -295,7 +298,7 @@ class SpaCookieModeTest extends TestCase
                 ->assertOk();
         }
 
-        $this->travelTo(now()->addDay());
+        $this->travelTo($token->refresh()->expires_at->copy()->addMinute());
 
         $this->withCredentials()->withHeader('Origin', 'https://app.example.com')
             ->withUnencryptedCookie('neev_session', $data['plainTextToken'])
