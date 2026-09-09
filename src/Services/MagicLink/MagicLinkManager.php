@@ -4,13 +4,16 @@ namespace Ssntpl\Neev\Services\MagicLink;
 
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Events\MagicLinkConsumed;
 use Ssntpl\Neev\Events\MagicLinkGenerated;
 use Ssntpl\Neev\Events\MagicLinkRejected;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
 use Ssntpl\Neev\Exceptions\MagicLinkUnverifiedException;
+use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\MagicLinkToken;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
 
 /**
@@ -81,19 +84,27 @@ class MagicLinkManager
         $this->assertUserMayReceiveLink($user);
         $metaData = $this->buildMetaData($request, $context);
 
-        $this->invalidatePrevious($user->id, $channel);
-
         $plain = MagicLinkToken::generateToken();
 
-        $token = MagicLinkToken::create([
-            'user_id' => $user->id,
-            'token' => MagicLinkToken::hashToken($plain),
-            'channel' => $channel,
-            'meta_data' => $metaData,
-            'user_agent' => $request?->userAgent(),
-            'created_ip' => $request?->ip(),
-            'expires_at' => now()->addMinutes($this->expiryMinutes()),
-        ]);
+        // Replacement must be atomic: without serialization two concurrent
+        // sends both invalidate before either inserts, leaving two live links
+        // for the same user and channel. Locking the user row makes the
+        // delete-then-insert pair mutually exclusive per user.
+        $token = DB::transaction(function () use ($user, $channel, $metaData, $request, $plain) {
+            User::model()->lockForUpdate()->find($user->id);
+
+            $this->invalidatePrevious($user->id, $channel);
+
+            return MagicLinkToken::create([
+                'user_id' => $user->id,
+                'token' => MagicLinkToken::hashToken($plain),
+                'channel' => $channel,
+                'meta_data' => $metaData,
+                'user_agent' => $request?->userAgent(),
+                'created_ip' => $request?->ip(),
+                'expires_at' => now()->addMinutes($this->expiryMinutes()),
+            ]);
+        });
 
         MagicLinkGenerated::dispatch($user, $token);
 
@@ -232,8 +243,20 @@ class MagicLinkManager
             return $result;
         }
 
-        // Single-use: deleting the row prevents any replay.
-        $result->token?->delete();
+        // Single-use: claim the row with a conditional delete. Two requests can
+        // resolve the same token concurrently, so only the one whose delete
+        // actually removed a row may proceed — the loser is treated as a replay.
+        if (!$this->claim($result->token)) {
+            $rejected = MagicLinkResult::failure(
+                MagicLinkResult::INVALID,
+                $result->channel,
+                $result->token,
+                $result->user,
+            );
+            MagicLinkRejected::dispatch($rejected);
+
+            return $rejected;
+        }
 
         $user = $result->user;
 
@@ -248,6 +271,22 @@ class MagicLinkManager
         MagicLinkConsumed::dispatch($user, $final);
 
         return $final;
+    }
+
+    /**
+     * Atomically claim a resolved token for this request.
+     *
+     * The delete is conditional on the row still existing, and only the caller
+     * whose statement removed exactly one row owns the redemption; every other
+     * concurrent request sees zero affected rows and must not authenticate.
+     */
+    protected function claim(?MagicLinkToken $token): bool
+    {
+        if ($token === null) {
+            return false;
+        }
+
+        return MagicLinkToken::query()->whereKey($token->getKey())->delete() === 1;
     }
 
     /**
@@ -444,30 +483,69 @@ class MagicLinkManager
      * Host for a web-style channel link.
      *
      * In tenant mode a tenant is reached at its own host (subdomain or custom
-     * domain), and the token is stored tenant-scoped. A link must therefore be
-     * redeemed on the tenant's host — on any other host the tenant scope hides
-     * the token and redemption fails as "invalid or expired". The current
-     * request already arrived on that host, so it is the authoritative base;
-     * the static `base_url` config cannot represent more than one tenant.
+     * domain), and the token is stored tenant-scoped, so the link must point at
+     * a host that belongs to the tenant. The host is taken from the tenant's
+     * own verified domain records — never from the request. A request can name
+     * its tenant with the X-Tenant header while carrying an attacker-controlled
+     * Host, and trusting that header would mail the bearer token to a host the
+     * attacker controls.
      *
-     * Falls back to the configured `base_url` (or app.url) in shared mode and
-     * whenever there is no request (CLI / queued generation).
+     * Falls back to the configured `base_url` (or app.url) in shared mode, when
+     * the tenant has no verified domain, and whenever there is no resolved
+     * tenant (CLI / queued generation).
      *
      * @param  array<string, mixed>  $config
      */
     protected function webBaseUrl(array $config): string
     {
-        if (config('neev.tenant', false)) {
-            $request = $this->container->bound('request')
-                ? $this->container->make('request')
-                : null;
+        $fallback = (string) ($config['base_url'] ?? config('app.url'));
 
-            if ($request instanceof Request && $request->getHost() !== '') {
-                return $request->getSchemeAndHttpHost();
-            }
+        if (!config('neev.tenant', false)) {
+            return $fallback;
         }
 
-        return (string) ($config['base_url'] ?? config('app.url'));
+        $host = $this->verifiedTenantHost();
+
+        return $host === null ? $fallback : $this->schemeFor($fallback) . '://' . $host;
+    }
+
+    /**
+     * The current tenant's own verified host, preferring its primary domain.
+     *
+     * Only DNS-verified domains owned by the resolved tenant qualify: those are
+     * the hosts the tenant has proven control of.
+     */
+    protected function verifiedTenantHost(): ?string
+    {
+        if (!$this->container->bound(TenantResolver::class)) {
+            return null;
+        }
+
+        $context = $this->container->make(TenantResolver::class)->resolvedContext();
+
+        if ($context === null) {
+            return null;
+        }
+
+        $domain = Domain::query()
+            ->where('owner_type', $context->getContextType())
+            ->where('owner_id', $context->getContextId())
+            ->whereNotNull('verified_at')
+            ->orderByDesc('is_primary')
+            ->orderBy('id')
+            ->first();
+
+        return $domain?->domain;
+    }
+
+    /**
+     * URL scheme to use for a tenant host, taken from the configured base URL.
+     */
+    protected function schemeFor(string $base): string
+    {
+        $scheme = parse_url($base, PHP_URL_SCHEME);
+
+        return is_string($scheme) && $scheme !== '' ? $scheme : 'https';
     }
 
     /**
