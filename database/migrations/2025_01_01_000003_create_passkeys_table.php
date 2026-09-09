@@ -18,9 +18,9 @@ return new class () extends Migration {
             $table->string('ip')->nullable();
             $table->text('location')->nullable();
             $table->timestamp('last_used')->nullable();
-            $table->string('public_key');
-            $table->string('aaguid');
-            $table->string('transports')->nullable();
+            $table->text('public_key');
+            $table->text('aaguid');
+            $table->text('transports')->nullable();
             $table->timestamps();
         });
     }
