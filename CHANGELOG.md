@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Security
+
+- **The Blade MFA challenge no longer trusts the request body** (`POST {prefix}/otp/mfa`) — the route sits outside the authenticated group, as a login challenge must, and it resolved the account from `email` in the request before calling `AuthService::login()` without `viaRequestAuth`, i.e. a bare `Auth::login()` with no credential check. Anyone holding one second factor for an address could sign in as its owner with no password; because `verifyMFAOTP()` skips the enrolled-factor check for the `recovery` method, a single backup code was a complete standalone credential. The account now comes from `session('email')`, set by the password step, and `auth_method` must name a factor the account has enrolled
+- **A rejected MFA code no longer opens the gate** — `verifyMFAOTPStore()` stamped `login_attempts.multi_factor_method` before verifying the code and left it set on failure. `NeevMiddleware` reads exactly that column as proof the challenge was answered, so a password-only attacker submitting one deliberately wrong code reached every protected route. The attempt is stamped after verification succeeds, and its id is taken from the session rather than the request
+- **`X-Team` requires membership** — `ResolveTeamMiddleware` accepted the header on every route in the neev groups and made the named team the request context without checking whether the caller belonged to it; `TeamScope` then scoped every team-owned model to it, so any signed-in user could read another team's records by setting one header. No package model uses `BelongsToTeam`, so the exposure fell entirely on consuming applications' own models. Enforced in `BindContextMiddleware`, which runs after the authenticating middleware. A team resolved from the host is unaffected, and a team named by a route parameter is still the controller's to authorize — the team profile page stays open to outsiders so they can ask to join
+- **The Blade `leave` action is gated on membership** (`DELETE {prefix}/teams/members/leave`) — it took both the team and the subject from the request and checked neither against the caller, so any signed-in user could remove a member from a team they had nothing to do with, revoke that team's invitations, or deactivate an account outright through the domain-federation branch. `TeamApiController::leave()` was already fixed in 0.6.0; the web twin was missed and now carries the same rules
+
 ## [0.6.0] - 2026-09-08
 
 ### Added
