@@ -536,6 +536,14 @@ class UserAuthController extends Controller
         $email = session('email');
         $attemptID = session('attempt_id');
 
+        // The page is reachable directly — a bookmark, a back button, or a
+        // session that lapsed while the code was being fetched. Without a
+        // challenge in progress there is no account to show it for.
+        if (!$email) {
+            return redirect(route('login'))
+                ->withErrors(['message' => __('Your sign-in session has expired. Please sign in again.')]);
+        }
+
         if ($method === 'email') {
             $user = User::findByEmail($email);
             $auth = $user?->multiFactorAuth($method);

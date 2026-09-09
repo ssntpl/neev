@@ -336,4 +336,46 @@ class AuthServiceTest extends TestCase
         $sessionAfter = $request->session()->getId();
         $this->assertNotSame($sessionBefore, $sessionAfter);
     }
+
+    // ---------------------------------------------------------------
+    // Attempt handling — the $mfa / $attempt slots
+    // ---------------------------------------------------------------
+
+    /**
+     * A login that already has an attempt row must settle that row rather than
+     * open a second one. PasskeyController::loginViaWeb used to pass its
+     * attempt positionally into the $mfa slot, which left the real attempt
+     * orphaned as a failure, created a duplicate, and — because a non-null
+     * multi_factor_method is what NeevMiddleware reads as proof the MFA
+     * challenge was answered — quietly satisfied that gate.
+     *
+     * Nothing errored at the time because Eloquent's Model::__toString()
+     * JSON-encodes, so the model coerced happily into the string slot. This
+     * asserts the behaviour instead, which is the part that actually matters.
+     */
+    public function test_an_existing_attempt_is_settled_rather_than_duplicated(): void
+    {
+        $user = User::factory()->create();
+        $attempt = $user->loginAttempts()->create([
+            'method' => LoginAttempt::Passkey,
+            'is_success' => false,
+        ]);
+
+        app(AuthService::class)->login(
+            $this->makeRequestWithSession(),
+            app(GeoIP::class),
+            $user,
+            LoginAttempt::Passkey,
+            attempt: $attempt,
+        );
+
+        $rows = $user->loginAttempts()->get();
+
+        $this->assertCount(1, $rows, 'A second attempt row means the passed attempt was ignored.');
+        $this->assertTrue((bool) $rows->first()->is_success);
+        $this->assertNull(
+            $rows->first()->multi_factor_method,
+            'A passkey login answers no MFA challenge, so it must not stamp the gate column.',
+        );
+    }
 }
