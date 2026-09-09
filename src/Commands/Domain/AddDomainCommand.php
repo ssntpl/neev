@@ -58,7 +58,7 @@ class AddDomainCommand extends Command implements PromptsForMissingInput
         }
 
         // Taken only once another owner of this kind has verified it.
-        if (! Domain::isAvailable($domainName, $ownerType)) {
+        if (Domain::findByHostForOwnerType($domainName, $ownerType)) {
             $this->error("Domain already verified by another {$ownerType}: {$domainName}");
 
             return self::FAILURE;

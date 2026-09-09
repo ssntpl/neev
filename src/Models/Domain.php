@@ -127,20 +127,6 @@ class Domain extends Model
     }
 
     /**
-     * Only a *verified* claim reserves a domain, and only against its own kind
-     * of owner: a tenant and a team may both federate the same company domain,
-     * while a second team cannot take a domain another team has proved it
-     * controls. An unverified row proves nothing and blocks nobody.
-     */
-    public static function isAvailable(string $domain, string $ownerType): bool
-    {
-        return ! static::where('domain', $domain)
-            ->where('owner_type', $ownerType)
-            ->whereNotNull('verified_at')
-            ->exists();
-    }
-
-    /**
      * Find a verified domain by host for a specific owner.
      */
     public static function findByHostForOwner(string $host, string $ownerType, int $ownerId): ?self

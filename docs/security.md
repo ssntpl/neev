@@ -406,8 +406,17 @@ Tokens are formatted as `{id}|{token}`:
 
 ### Token Expiry
 
+Login tokens carry an **idle** window rather than a fixed lifetime: each
+authenticated request past the half-way point of the window slides the
+deadline forward, and `neev.login_token_max_lifetime_minutes` caps how
+far it can be slid from the moment the token was issued. An active user
+is not signed out mid-session; an idle or stolen token still dies on
+schedule. API tokens do not slide.
+
 ```php
-// Login tokens (configured in neev.login_token_expiry_minutes)
+// Login tokens (idle window, slid on use; configured in
+// neev.login_token_expiry_minutes and capped by
+// neev.login_token_max_lifetime_minutes)
 $token = $user->createLoginToken(config('neev.login_token_expiry_minutes', 1440));
 
 // MFA JWTs (configured in neev.mfa_jwt_expiry_minutes)

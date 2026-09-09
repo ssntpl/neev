@@ -91,7 +91,7 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
             // clash to look for is another owner of that same kind.
             $ownerType = $this->isIsolated() ? 'tenant' : 'team';
 
-            if (! Domain::isAvailable($domain, $ownerType)) {
+            if (Domain::findByHostForOwnerType($domain, $ownerType)) {
                 $errors[] = "Domain already verified by another {$ownerType}: {$domain}";
             }
         }

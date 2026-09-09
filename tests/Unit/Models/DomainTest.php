@@ -34,48 +34,45 @@ class DomainTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // isAvailable() — only a verified claim reserves a domain, and only
-    // against its own kind of owner
+    // findByHostForOwnerType() — also the availability check for a claim:
+    // only a verified claim reserves a domain, and only against its own
+    // kind of owner, so a null return means the domain is free
     // -----------------------------------------------------------------
 
-    public function test_is_available_returns_true_for_an_unclaimed_domain(): void
+    public function test_an_unclaimed_domain_is_free(): void
     {
-        $this->assertTrue(Domain::isAvailable('acme.test', 'team'));
+        $this->assertNull(Domain::findByHostForOwnerType('acme.test', 'team'));
     }
 
-    public function test_is_available_ignores_an_unverified_claim(): void
+    public function test_an_unverified_claim_reserves_nothing(): void
     {
         DomainFactory::new()->create(['domain' => 'acme.test', 'owner_type' => 'team', 'owner_id' => 1]);
 
-        $this->assertTrue(Domain::isAvailable('acme.test', 'team'));
+        $this->assertNull(Domain::findByHostForOwnerType('acme.test', 'team'));
     }
 
-    public function test_is_available_returns_false_once_a_team_has_verified_it(): void
+    public function test_a_verified_claim_reserves_the_domain_for_that_owner_type(): void
     {
         DomainFactory::new()->verified()->create(['domain' => 'acme.test', 'owner_type' => 'team', 'owner_id' => 1]);
 
         // Not free for another team, nor for the team that already holds it.
-        $this->assertFalse(Domain::isAvailable('acme.test', 'team'));
+        $this->assertNotNull(Domain::findByHostForOwnerType('acme.test', 'team'));
     }
 
-    public function test_is_available_is_scoped_to_the_owner_type(): void
+    public function test_a_claim_is_scoped_to_the_owner_type(): void
     {
         DomainFactory::new()->verified()->create(['domain' => 'acme.test', 'owner_type' => 'team', 'owner_id' => 1]);
 
         // A tenant may federate the same company domain a team has verified.
-        $this->assertTrue(Domain::isAvailable('acme.test', 'tenant'));
+        $this->assertNull(Domain::findByHostForOwnerType('acme.test', 'tenant'));
     }
 
-    public function test_is_available_returns_false_for_a_second_tenant(): void
+    public function test_a_verified_tenant_claim_blocks_a_second_tenant(): void
     {
         DomainFactory::new()->verified()->create(['domain' => 'acme.test', 'owner_type' => 'tenant', 'owner_id' => 1]);
 
-        $this->assertFalse(Domain::isAvailable('acme.test', 'tenant'));
+        $this->assertNotNull(Domain::findByHostForOwnerType('acme.test', 'tenant'));
     }
-
-    // -----------------------------------------------------------------
-    // findByHostForOwnerType()
-    // -----------------------------------------------------------------
 
     public function test_find_by_host_for_owner_type_finds_the_requested_kind(): void
     {

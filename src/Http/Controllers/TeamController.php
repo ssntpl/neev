@@ -470,7 +470,7 @@ class TeamController extends Controller
 
         $held = $team->domains()->where('domain', $request->domain)->exists();
 
-        if (!$held && !Domain::isAvailable($request->domain, 'team')) {
+        if (!$held && Domain::findByHostForOwnerType($request->domain, 'team')) {
             return back()->withErrors(['message' => 'This domain is already verified by another team.']);
         }
 

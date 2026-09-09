@@ -111,7 +111,13 @@ POST /neev/login
 ```
 
 When `auth_state` is `mfa_required`, the token is a short-lived JWT (type `mfa`) that can only be used to verify MFA. Complete MFA verification to get a full access token.
-`expires_in` is returned in minutes.
+`expires_in` is returned in minutes. For a login token it is an **idle**
+window: an authenticated request past the half-way point of the window
+slides the deadline forward (capped by
+`login_token_max_lifetime_minutes`, default 30 days from issue), so a
+client in active use is not signed out when `expires_in` elapses. An
+expired token answers `401` with `"code": "token_expired"`. API tokens
+do not slide.
 
 ---
 

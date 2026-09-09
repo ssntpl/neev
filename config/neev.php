@@ -142,8 +142,16 @@ return [
     |--------------------------------------------------------------------------
     */
 
-    // Minutes before login access tokens expire.
+    // Idle window for login access tokens: minutes of inactivity before
+    // the token expires. Each authenticated request slides it forward, so
+    // an active session is not cut off mid-use.
     'login_token_expiry_minutes' => 1440,
+
+    // Hard ceiling on a login session, measured from when the token was
+    // issued. The idle window never slides a token past this, so a stolen
+    // token cannot be kept alive indefinitely by using it. 0 disables the
+    // cap (sliding expiry only).
+    'login_token_max_lifetime_minutes' => (int) env('NEEV_LOGIN_TOKEN_MAX_LIFETIME_MINUTES', 43200),
 
     // Minutes before MFA JWT (temporary) tokens expire.
     'mfa_jwt_expiry_minutes' => 30,

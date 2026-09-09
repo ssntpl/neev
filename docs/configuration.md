@@ -180,9 +180,24 @@ Length of one-time password codes: 4, 6, or 8 digits (used for MFA email OTP). R
 
 ```php
 'login_token_expiry_minutes' => 1440,
+'login_token_max_lifetime_minutes' => (int) env('NEEV_LOGIN_TOKEN_MAX_LIFETIME_MINUTES', 43200),
 ```
 
-Minutes before login access tokens expire.
+`login_token_expiry_minutes` is an **idle** window: minutes of inactivity
+before a login token expires. Every authenticated request past the
+half-way point of that window slides the deadline forward, so a session
+in active use is never cut off mid-work. In SPA cookie mode the auth
+cookie is re-issued with the same deadline, so the browser's copy tracks
+the token's.
+
+`login_token_max_lifetime_minutes` caps a session's total life, measured
+from when the token was issued (default 30 days). The idle window never
+slides a token past this ceiling, so a stolen token cannot be kept alive
+indefinitely by using it — the user re-authenticates when it is reached.
+`0` disables the ceiling, leaving sliding expiry only.
+
+Only login tokens slide. API tokens are deliberate, long-lived
+credentials and keep the expiry they were issued with.
 
 ### MFA JWT Expiry
 
@@ -438,7 +453,8 @@ return [
     'otp_length' => 6,
 
     // Expiry
-    'login_token_expiry_minutes' => 1440,
+    'login_token_expiry_minutes' => 1440,     // idle window
+    'login_token_max_lifetime_minutes' => 43200,  // 30 days; 0 = no cap
     'mfa_jwt_expiry_minutes' => 30,
     'jwt_secret' => env('NEEV_JWT_SECRET'),
     'url_expiry_time' => 60,

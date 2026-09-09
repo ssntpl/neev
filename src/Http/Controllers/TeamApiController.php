@@ -652,7 +652,7 @@ class TeamApiController extends Controller
 
         $held = $team->domains()->where('domain', $request->domain)->exists();
 
-        if (!$held && !Domain::isAvailable($request->domain, 'team')) {
+        if (!$held && Domain::findByHostForOwnerType($request->domain, 'team')) {
             return response()->json([
                 'message' => 'This domain is already verified by another team.',
             ], 400);
