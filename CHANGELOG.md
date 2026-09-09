@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-09-08
 
 ### Added
 - **Per-platform OAuth clients** — identity providers issue a separate client per platform (Google rejects a web `client_id` from an Android app, and native clients redirect to a custom scheme), but Socialite reads one `services.<provider>` block. Extra clients now live under a `clients` key inside that block and are selected with a `platform` parameter on `GET {prefix}/oauth/{service}/redirect` and `POST {prefix}/oauth/{service}/callback` — the callback too, since the code was issued to one client and must be exchanged with it. An unconfigured platform returns 404 listing those that are configured, rather than silently using the web client. Omitting `platform` is unchanged, and an installation with *only* platform clients (mobile-only, no top-level block) resolves as well. New `Ssntpl\Neev\Services\OAuthClients`. See [docs/authentication.md](./docs/authentication.md#per-platform-clients-web-android-ios)
@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`neev:domain:add` asks for the owner** — running it without `--owner-type` / `--owner-id` now prompts for both, the way it already prompted for the domain. Non-interactive runs still require the options. `--owner-id` also accepts a slug, which it always resolved but then wrote verbatim into the integer `owner_id` column
 - **Verifying an MFA setup also enrols email OTP** — proving one factor now adds email as a second one, so losing the authenticator app does not lock the account out. Only on successful verification, and skipped when email OTP is already configured, `email` is not in `neev.multi_factor_auth`, or the address is unverified. The verified factor keeps the `preferred` flag. See [docs/mfa.md](./docs/mfa.md#enabled-automatically-alongside-another-factor)
 - **`EmailLinks` service** — every link the package emails, and every response it gives when one is followed, now comes from one overridable class (`Ssntpl\Neev\Services\EmailLinks`) instead of being built inline in six controllers. Subclass it and bind it in a service provider to point links at your own pages or change what a followed link answers. Headless installs previously got frontend paths hardcoded to `config('app.url')`; that is now `EmailLinks::base()`. See [docs/email-links.md](./docs/email-links.md)
+- **Laravel 13 support** — the framework constraint widens to `^12.0|^13.0` and the CI matrix now runs PHP 8.3/8.4 against both lines. No runtime behaviour changed: every dependency already spanned 13 (`laravel/socialite`, `ssntpl/laravel-acl`, `web-auth/webauthn-lib`, `spomky-labs/otphp`, `geoip2/geoip2`), so the only source edit is a static-analysis annotation in `TeamScope`, matching the idiom `TenantScope` already used. `orchestra/testbench` gains `^11.0` for the Laravel 13 line. Apps on Laravel 12 are unaffected
 - **Email verification code alongside the link** — the verification email now carries both a signed link and a numeric code (`$otp` added to the app-owned `email-verify` template's variable contract). The code lets the *waiting* session complete verification in place — cross-device signups, TVs, and environments where security scanners consume single-use links. New endpoints: `POST {prefix}/email/verify-otp` (API) and the Verify form on the Blade kit's verification page. Codes are stored hashed, expire after `otp_expiry_time`, die after 5 wrong attempts, and either proof invalidates the other. Which proofs to show is the app's choice — via its owned email template and UI, not a config toggle. The API resend endpoint now delegates to `AuthService::sendEmailVerification()` (deduplicated)
 - **`GET {prefix}/teams/slug/{slug}`** — looks a team up by its readable handle instead of its id, for clients that route on `/t/acme-labs` and never see the id. Same response and same membership gate as `GET {prefix}/teams/{id}`, including answering `400 Team not found` for a team the caller is not in. Slugs are unique installation-wide, so no tenant needs naming
 - **Join requests can name the team by `slug`** — `POST {prefix}/teams/request` (API) and `POST {prefix}/teams/members/request` (Blade) accept `slug` alongside `team_id`; `team_id` wins if both are sent. The Blade route also still honours the older owner-`email` plus `team`-name pair. The Blade team profile page — the one team page an outsider can open — now carries the **Request to join** button, and shows **Request pending** once a request is in
@@ -361,7 +362,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive Blade views and email templates
 - Artisan commands for installation, GeoIP download, and cleanup
 
-[Unreleased]: https://github.com/ssntpl/neev/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/ssntpl/neev/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/ssntpl/neev/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/ssntpl/neev/compare/v0.4.5...v0.5.0
+[0.4.5]: https://github.com/ssntpl/neev/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/ssntpl/neev/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/ssntpl/neev/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/ssntpl/neev/compare/v0.4.1...v0.4.2

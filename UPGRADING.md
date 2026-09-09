@@ -11,7 +11,13 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## 0.5.0 → Unreleased
+## 0.5.0 → 0.6.0
+
+**Laravel 13 support (additive; no action required).**
+The `laravel/framework` requirement widens to `^12.0|^13.0`, so apps
+may upgrade to Laravel 13 whenever they choose. Nothing is required of
+apps staying on Laravel 12. Packages developing against neev should
+note `orchestra/testbench` now allows `^11.0` for the Laravel 13 line.
 
 **Middleware aliases renamed (action required if you use them).**
 The opt-in alias middleware now use a hyphen instead of a colon:
