@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.6.0] - 2026-09-08
+
+### Added
+- **Laravel 13 support** — the framework constraint widens to `^12.0|^13.0` and the CI matrix now runs PHP 8.3/8.4 against both lines. No runtime behaviour changed: every dependency already spanned 13 (`laravel/socialite`, `ssntpl/laravel-acl`, `web-auth/webauthn-lib`, `spomky-labs/otphp`, `geoip2/geoip2`), so the only source edit is a static-analysis annotation in `TeamScope`, matching the idiom `TenantScope` already used. `orchestra/testbench` gains `^11.0` for the Laravel 13 line. Apps on Laravel 12 are unaffected
+- **Email verification code alongside the link** — the verification email now carries both a signed link and a numeric code (`$otp` added to the app-owned `email-verify` template's variable contract). The code lets the *waiting* session complete verification in place — cross-device signups, TVs, and environments where security scanners consume single-use links. New endpoints: `POST {prefix}/email/verify-otp` (API) and the Verify form on the Blade kit's verification page. Codes are stored hashed, expire after `otp_expiry_time`, die after 5 wrong attempts, and either proof invalidates the other. Which proofs to show is the app's choice — via its owned email template and UI, not a config toggle. The API resend endpoint now delegates to `AuthService::sendEmailVerification()` (deduplicated)
 
 ### Changed
 - **BREAKING: Magic-link authentication rebuilt as stateful, single-use tokens** — replaces the stateless signed-URL flow. Opaque, high-entropy tokens are stored **hashed** (SHA-256) in the new `magic_link_tokens` table; only the plain token ever leaves the app (in the emailed URL).
@@ -312,7 +316,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive Blade views and email templates
 - Artisan commands for installation, GeoIP download, and cleanup
 
-[Unreleased]: https://github.com/ssntpl/neev/compare/v0.4.4...HEAD
+[Unreleased]: https://github.com/ssntpl/neev/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/ssntpl/neev/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/ssntpl/neev/compare/v0.4.5...v0.5.0
+[0.4.5]: https://github.com/ssntpl/neev/compare/v0.4.4...v0.4.5
 [0.4.4]: https://github.com/ssntpl/neev/compare/v0.4.3...v0.4.4
 [0.4.3]: https://github.com/ssntpl/neev/compare/v0.4.2...v0.4.3
 [0.4.2]: https://github.com/ssntpl/neev/compare/v0.4.1...v0.4.2

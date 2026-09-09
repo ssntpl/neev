@@ -75,6 +75,23 @@ superseded whenever a newer link is issued for the same channel.
   to purge expired tokens.
 
 ---
+## 0.5.0 → 0.6.0
+
+**Laravel 13 support (additive; no action required).**
+The `laravel/framework` requirement widens to `^12.0|^13.0`, so apps
+may upgrade to Laravel 13 whenever they choose. Nothing is required of
+apps staying on Laravel 12. Packages developing against neev should
+note `orchestra/testbench` now allows `^11.0` for the Laravel 13 line.
+
+**Email verification code (additive; one schema note).**
+Verification emails now carry a numeric code alongside the signed link,
+verifiable via `POST {prefix}/email/verify-otp` or the Blade kit's
+verification page. The `otp` table gains an `attempts` column — the
+package edits its migration in place, so existing installs add it
+themselves: `$table->unsignedTinyInteger('attempts')->default(0);`
+Apps that ejected the `email-verify` template before this release
+won't show the code until they add the `$otp` block (see the stub
+template) — everything else works regardless.
 
 ## 0.4.5 → 0.5.0
 

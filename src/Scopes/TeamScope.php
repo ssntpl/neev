@@ -9,6 +9,10 @@ use Ssntpl\Neev\Services\ContextManager;
 
 class TeamScope implements Scope
 {
+    /**
+     * This scope must only be applied to models using the BelongsToTeam trait,
+     * which provides getQualifiedTeamIdColumn(). Misuse will crash at runtime.
+     */
     public function apply(Builder $builder, Model $model): void
     {
         if (!app()->bound(ContextManager::class)) {
@@ -24,7 +28,7 @@ class TeamScope implements Scope
         $teamId = $manager->currentTeam()?->getContextId();
 
         if ($teamId !== null) {
-            $builder->where($model->getQualifiedTeamIdColumn(), $teamId);
+            $builder->where($model->getQualifiedTeamIdColumn(), $teamId); // @phpstan-ignore method.notFound
         } else {
             $builder->whereRaw('1 = 0');
         }

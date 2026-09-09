@@ -12,8 +12,10 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedIn;
 use Ssntpl\Neev\Events\PasswordChanged;
+use Illuminate\Support\Facades\Hash;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
+use Ssntpl\Neev\Models\OTP;
 use Ssntpl\Neev\Models\User;
 
 class AuthService
@@ -124,7 +126,66 @@ class AuthService
             $url = config('app.url') . '/verify-email?' . parse_url($signedUrl, PHP_URL_QUERY);
         }
 
-        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', $expiryMinutes));
+        // Both proofs travel in one email; the app-owned template decides
+        // which to show. The code lets the user complete verification on
+        // the device that is waiting (cross-device signup, TVs, SafeLinks-
+        // mangled links); either proof invalidates the other on success.
+        $otp = $this->createEmailVerificationOtp($user);
+
+        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', $expiryMinutes, $otp));
+    }
+
+    /**
+     * Issue (or replace) the user's email-verification code. Stored
+     * hashed; resending resets the attempt counter.
+     */
+    protected function createEmailVerificationOtp(User $user): string
+    {
+        $length = (int) config('neev.otp_length', 6);
+        $otp = (string) random_int(10 ** ($length - 1), (10 ** $length) - 1);
+
+        OTP::updateOrCreate(
+            ['owner_id' => $user->id, 'owner_type' => $user->getMorphClass()],
+            [
+                'otp' => $otp,
+                'attempts' => 0,
+                'expires_at' => now()->addMinutes(config('neev.otp_expiry_time', 15)),
+            ],
+        );
+
+        return $otp;
+    }
+
+    /**
+     * Verify an email-verification code for the waiting session.
+     * Wrong codes count toward OTP::MAX_ATTEMPTS, after which the code
+     * is invalidated and a fresh email must be requested.
+     */
+    public function verifyEmailOtp(User $user, string $otp): bool
+    {
+        $record = OTP::query()
+            ->where('owner_id', $user->id)
+            ->where('owner_type', $user->getMorphClass())
+            ->first();
+
+        if (!$record || $record->expires_at->isPast() || $record->attempts >= OTP::MAX_ATTEMPTS) {
+            $record?->delete();
+            return false;
+        }
+
+        if (!Hash::check($otp, $record->otp)) {
+            $record->increment('attempts');
+            if ($record->attempts >= OTP::MAX_ATTEMPTS) {
+                $record->delete();
+            }
+            return false;
+        }
+
+        // markEmailAsVerified() deletes the OTP row, so the signed link
+        // and the code invalidate each other through the same path.
+        $user->markEmailAsVerified();
+
+        return true;
     }
 
     /**

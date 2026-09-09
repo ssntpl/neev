@@ -18,6 +18,7 @@ class VerifyUserEmail extends Mailable
         public $username,
         public $purpose = '',
         public $expiry = 15,
+        public $otp = null,
     ) {
     }
 
