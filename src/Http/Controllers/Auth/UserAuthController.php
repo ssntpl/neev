@@ -581,20 +581,16 @@ class UserAuthController extends Controller
 
     public function verifyMFAOTPStore(LoginRequest $request, GeoIP $geoIP)
     {
-        $user = User::findByEmail($request->email) ?? User::model()->find($request->user()?->id);
-
-        if (!$user) {
-            return back()->withErrors(['message' => 'Credentials are wrong.']);
-        }
-        $attempt = LoginAttempt::find($request->attempt_id);
-        if ($attempt) {
-            $attempt->is_success = false;
-            $attempt->multi_factor_method = $request->auth_method;
-            $attempt->save();
-        }
+        // Setup verification from the account security page. It confirms a
+        // method for whoever is signed in and is not a login step, so it acts
+        // on the session's user and touches no login attempt.
         if ($request->action === 'verify') {
-            // Setup verification from the security page: activates a
-            // pending method, or just confirms a code for an active one.
+            /** @var User|null $user */
+            $user = User::model()->find($request->user()?->id);
+            if (!$user) {
+                return back()->withErrors(['message' => 'Credentials are wrong.']);
+            }
+
             if ($user->verifyMfaSetup($request->auth_method, (string) $request->otp)) {
                 return back()->with('status', 'Method verified and enabled.');
             }
@@ -605,13 +601,44 @@ class UserAuthController extends Controller
             return back()->withErrors(['message' => 'Code is invalid']);
         }
 
-        if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
-            $this->auth->login($request, $geoIP, $user, LoginAttempt::Password, $request->auth_method, $attempt ?? null);
+        // The login challenge. This route sits outside the authenticated group,
+        // so the account it acts on has to come from the password step that
+        // opened the challenge — `loginStore()` puts it in the session. Taking
+        // it from the request instead would let anyone holding a single second
+        // factor sign in as its owner, no password involved.
+        $email = session('email');
+        $user = $email ? User::findByEmail($email) : null;
 
-            return redirect($this->auth->intendedUrl(session()->pull('mfa_redirect')));
+        if (!$user) {
+            return back()->withErrors(['message' => 'Credentials are wrong.']);
         }
 
-        return back()->withErrors(['message' => 'Code is invalid']);
+        // Only a factor this account has actually enrolled can answer for it.
+        $method = $request->auth_method;
+        $enrolled = $user->activeMultiFactorAuths->pluck('method')->all();
+        if ($method !== 'recovery' && !in_array($method, $enrolled, true)) {
+            return back()->withErrors(['message' => 'Code is invalid']);
+        }
+
+        if (!$user->verifyMFAOTP($method, $request->otp)) {
+            return back()->withErrors(['message' => 'Code is invalid']);
+        }
+
+        // Stamped only now. NeevMiddleware treats a non-null
+        // multi_factor_method as proof the challenge was answered, so writing
+        // it before verifying let a deliberately wrong code open the gate.
+        $attempt = session('attempt_id')
+            ? $user->loginAttempts()->whereKey(session('attempt_id'))->first()
+            : null;
+        if ($attempt) {
+            $attempt->is_success = true;
+            $attempt->multi_factor_method = $method;
+            $attempt->save();
+        }
+
+        $this->auth->login($request, $geoIP, $user, LoginAttempt::Password, $method, $attempt);
+
+        return redirect($this->auth->intendedUrl(session()->pull('mfa_redirect')));
     }
 
 }

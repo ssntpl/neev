@@ -17,7 +17,8 @@ class ResolveTeamMiddleware
 
     public function handle(Request $request, Closure $next): Response
     {
-        $teamParam = $request->route('team') ?? $request->header('X-Team');
+        $routeParam = $request->route('team');
+        $teamParam = $routeParam ?? $request->header('X-Team');
 
         if ($teamParam === null) {
             return $next($request);
@@ -39,6 +40,14 @@ class ResolveTeamMiddleware
 
         $this->contextManager->setTeam($team);
         $request->attributes->set('team', $team);
+
+        // Where the team came from decides who may vouch for it. A route
+        // parameter lands on one controller action, which applies its own rule
+        // — the team profile page is deliberately open to outsiders so they can
+        // ask to join, while the members page is not. The `X-Team` header is
+        // accepted on every route in the neev groups and no controller inspects
+        // it, so BindContextMiddleware authorizes that form centrally.
+        $request->attributes->set('neev.team_source', $routeParam !== null ? 'route' : 'header');
 
         return $next($request);
     }
