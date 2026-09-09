@@ -7,7 +7,7 @@
     @if (config('neev.team'))
         <div class="flex flex-col gap-4" x-data="{ showForm: false }">
             @if ($join_team)
-                <x-neev-component::card x-data="{joinTeamOpen: false}">
+                <x-neev-component::card x-data="{joinTeamOpen: false, joinBy: 'slug'}">
                     <x-slot name="title">
                         {{__('Join Team')}}
                     </x-slot>
@@ -29,23 +29,43 @@
 
                     <x-slot name="content">
                         <div x-show="joinTeamOpen" x-transition>
-                            <form method="POST" class="flex gap-2 mx-4 items-center justify-between" action="{{ route('teams.request') }}">
+                            <form method="POST" class="flex flex-col gap-2 mx-4" action="{{ route('teams.request') }}">
                                 @csrf
 
-                                <div class="flex gap-4 justify-between w-full">
-                                    <div class="flex gap-2 items-center w-2/3">
-                                        <x-neev-component::label for="team" value="{{ __('Team') }}" />
-                                        <x-neev-component::input id="team" class="block w-full" type="text" name="team" required autofocus />
-                                    </div>
-                                    <div class="flex gap-2 items-center w-2/3">
-                                        <x-neev-component::label for="email" value="{{ __('Owner Email') }}" />
-                                        <x-neev-component::input id="email" class="block w-full" type="email" name="email" required autofocus />
-                                    </div>
+                                <div class="flex gap-4 text-sm">
+                                    <label class="flex gap-1 items-center cursor-pointer">
+                                        <input type="radio" name="join_by" value="slug" x-model="joinBy" class="text-indigo-500 focus:ring-indigo-500">
+                                        {{ __('Team Slug') }}
+                                    </label>
+                                    <label class="flex gap-1 items-center cursor-pointer">
+                                        <input type="radio" name="join_by" value="owner" x-model="joinBy" class="text-indigo-500 focus:ring-indigo-500">
+                                        {{ __('Team Name & Owner Email') }}
+                                    </label>
                                 </div>
-                                <div class="w-1/2 text-end">
-                                    <x-neev-component::button>
-                                        {{__('Send Request')}}
-                                    </x-neev-component::button>
+
+                                <div class="flex gap-2 items-center justify-between">
+                                    <div class="flex gap-4 justify-between w-full">
+                                        <div class="flex gap-2 items-center w-2/3" x-show="joinBy === 'slug'" x-transition>
+                                            <x-neev-component::label for="slug" value="{{ __('Slug') }}" />
+                                            <x-neev-component::input id="slug" class="block w-full" type="text" name="slug"
+                                                x-bind:required="joinBy === 'slug'" x-bind:disabled="joinBy !== 'slug'" />
+                                        </div>
+                                        <div class="flex gap-2 items-center w-2/3" x-show="joinBy === 'owner'" x-transition>
+                                            <x-neev-component::label for="team" value="{{ __('Team') }}" />
+                                            <x-neev-component::input id="team" class="block w-full" type="text" name="team"
+                                                x-bind:required="joinBy === 'owner'" x-bind:disabled="joinBy !== 'owner'" />
+                                        </div>
+                                        <div class="flex gap-2 items-center w-2/3" x-show="joinBy === 'owner'" x-transition>
+                                            <x-neev-component::label for="email" value="{{ __('Owner Email') }}" />
+                                            <x-neev-component::input id="email" class="block w-full" type="email" name="email"
+                                                x-bind:required="joinBy === 'owner'" x-bind:disabled="joinBy !== 'owner'" />
+                                        </div>
+                                    </div>
+                                    <div class="w-1/2 text-end">
+                                        <x-neev-component::button>
+                                            {{__('Send Request')}}
+                                        </x-neev-component::button>
+                                    </div>
                                 </div>
                             </form>
                         </div>

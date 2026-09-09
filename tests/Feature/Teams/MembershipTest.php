@@ -18,10 +18,19 @@ class MembershipTest extends TestCase
     use RefreshDatabase;
     use WithNeevConfig;
 
+    protected function defineEnvironment($app): void
+    {
+        parent::defineEnvironment($app);
+
+        // The team routes are registered only when `neev.team` is on, and that
+        // happens while the providers boot — before setUp() runs. Enabling
+        // teams from setUp() would set the config too late for the routes.
+        $app['config']->set('neev.team', true);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
-        $this->enableTeams();
         $this->loadMigrationsFrom(
             dirname(__DIR__, 3) . '/vendor/ssntpl/laravel-acl/database/migrations'
         );
@@ -227,7 +236,7 @@ class MembershipTest extends TestCase
                 'team_id' => $team->id,
             ]);
 
-        $response->assertStatus(400);
+        $response->assertStatus(403);
 
         // Owner should still be a member
         $team->refresh();
@@ -293,6 +302,7 @@ class MembershipTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
 
         $requester = User::factory()->create();
 
@@ -323,6 +333,7 @@ class MembershipTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
 
         $requester = User::factory()->create();
 
@@ -395,10 +406,11 @@ class MembershipTest extends TestCase
     // PUT /neev/teams/leave — revoke invitation
     // -----------------------------------------------------------------
 
-    public function test_owner_can_revoke_invitation(): void
+    public function test_member_can_revoke_invitation(): void
     {
-        [$owner, $token] = $this->authenticatedUser();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        [$member, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create();
+        $team->addMember($member);
 
         $invitation = $team->invitations()->create([
             'email' => 'invitee@example.com',
@@ -418,10 +430,89 @@ class MembershipTest extends TestCase
         $this->assertDatabaseMissing('team_invitations', ['id' => $invitation->id]);
     }
 
-    public function test_revoke_nonexistent_invitation_returns_error(): void
+    /**
+     * The invitee has not joined, so membership cannot be the test for them
+     * declining their own invitation.
+     */
+    public function test_invitee_can_decline_their_own_invitation(): void
+    {
+        [$invitee, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create();
+
+        $invitation = $team->invitations()->create([
+            'email' => $invitee->email,
+            'role' => 'member',
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/leave', [
+                'team_id' => $team->id,
+                'invitation_id' => $invitation->id,
+            ])
+            ->assertOk();
+
+        $this->assertDatabaseMissing('team_invitations', ['id' => $invitation->id]);
+    }
+
+    /**
+     * Revoking an invitation is its own action — the subject is the
+     * invitation, not a member — so the "the owner cannot be removed" rule
+     * must not reach it.
+     */
+    public function test_owner_can_revoke_an_invitation(): void
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
+
+        $invitation = $team->invitations()->create([
+            'email' => 'invitee@example.com',
+            'role' => 'member',
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/leave', [
+                'team_id' => $team->id,
+                'invitation_id' => $invitation->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('message', 'Invitation Revoked Successfully');
+
+        $this->assertDatabaseMissing('team_invitations', ['id' => $invitation->id]);
+    }
+
+    /**
+     * Knowing an invitation id is not authority to cancel it. Only a member of
+     * the team, or the person it was addressed to, may.
+     */
+    public function test_outsider_cannot_revoke_an_invitation(): void
+    {
+        [$outsider, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create();
+
+        $invitation = $team->invitations()->create([
+            'email' => 'invitee@example.com',
+            'role' => 'member',
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/leave', [
+                'team_id' => $team->id,
+                'invitation_id' => $invitation->id,
+            ])
+            ->assertStatus(403);
+
+        $this->assertDatabaseHas('team_invitations', ['id' => $invitation->id]);
+    }
+
+    public function test_revoke_nonexistent_invitation_returns_error(): void
+    {
+        [$member, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create();
+        $team->addMember($member);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/teams/leave', [
@@ -440,6 +531,7 @@ class MembershipTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
 
         $requester = User::factory()->create();
         $team->allUsers()->attach($requester, [
@@ -498,6 +590,7 @@ class MembershipTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
 
         $requester = User::factory()->create();
         $team->allUsers()->attach($requester, [
@@ -532,6 +625,7 @@ class MembershipTest extends TestCase
 
         [$owner, $ownerToken] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
 
         // Create a verified domain for the team
         DomainFactory::new()->verified()->create([
@@ -564,6 +658,7 @@ class MembershipTest extends TestCase
 
         [$owner, $ownerToken] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
 
         DomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,

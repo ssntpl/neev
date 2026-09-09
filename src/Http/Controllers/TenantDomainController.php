@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Domain;
@@ -68,7 +69,19 @@ class TenantDomainController extends Controller
         }
 
         $request->validate([
-            'domain' => 'required|string|unique:domains,domain',
+            'domain' => [
+                'required',
+                'string',
+                // This team cannot register the same domain twice.
+                Rule::unique('domains', 'domain')->where(
+                    fn ($query) => $query->where('owner_type', 'team')->where('owner_id', $team->id)
+                ),
+                // And no team may take what another team has verified.
+                Rule::unique('domains', 'domain')->where(
+                    fn ($query) => $query->where('owner_type', 'team')
+                        ->whereNotNull('verified_at')
+                ),
+            ],
             'type' => 'in:subdomain,custom',
         ]);
 
@@ -340,10 +353,10 @@ class TenantDomainController extends Controller
      */
     public function currentTenant(Request $request)
     {
-        $tenant = $this->tenantResolver->current();
+        $context = $this->tenantResolver->resolvedContext();
         $tenantDomain = $this->tenantResolver->currentDomain();
 
-        if (!$tenant) {
+        if (!$context) {
             return response()->json([
                 'message' => 'No tenant context.',
             ], 400);
@@ -351,8 +364,12 @@ class TenantDomainController extends Controller
 
         return response()->json([
             'data' => [
-                'team' => $tenant,
+                'type' => $context->getContextType(),
+                'context' => $context,
                 'domain' => $tenantDomain,
+                // Kept for callers written before tenant isolation, when the
+                // context could only ever be a Team.
+                'team' => $context->getContextType() === 'team' ? $context : null,
             ],
         ]);
     }

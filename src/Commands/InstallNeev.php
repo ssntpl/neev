@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\PromptsForMissingInput;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use PDOException;
 
 use function Laravel\Prompts\select;
 
@@ -32,12 +33,28 @@ class InstallNeev extends Command implements PromptsForMissingInput
      */
     public function handle()
     {
+        // Every argument is checked before anything is published or edited:
+        // a typo used to be read as "no" for the flags, or to fail inside
+        // neev:ui once the config had already been written.
+        if (! $this->validateArguments()) {
+            return self::FAILURE;
+        }
+
         $this->info('Installing Neev...');
 
-        // Check if users table exists and is not empty
-        if (Schema::hasTable('users') && DB::table('users')->exists()) {
-            $this->error('Installation failed: Users table is not empty. Please run this command on a fresh installation.');
-            return 1;
+        // Nothing below this point touches the database — the check is an early
+        // warning, so an unreachable database must not stop the install. It is
+        // routine for this command to run before the database is set up: it is
+        // documented to run before `migrate`, and the migration that drops the
+        // users table repeats this same check at the point it actually matters.
+        try {
+            if (Schema::hasTable('users') && DB::table('users')->exists()) {
+                $this->error('Installation failed: Users table is not empty. Please run this command on a fresh installation.');
+                return 1;
+            }
+        } catch (PDOException $e) {
+            $this->warn('Could not reach the database, so the users table was not checked.');
+            $this->warn('Continuing — `php artisan migrate` refuses to run if the users table has records.');
         }
 
         $this->callSilent('vendor:publish', ['--tag' => 'neev-config', '--force' => true]);
@@ -56,6 +73,39 @@ class InstallNeev extends Command implements PromptsForMissingInput
         $this->call('neev:ui', ['kit' => $this->argument('kit')]);
 
         $this->info('Neev installed successfully!');
+    }
+
+    /**
+     * Check every argument up front, reporting all bad values at once.
+     */
+    protected function validateArguments(): bool
+    {
+        $allowed = [
+            'tenant' => ['yes', 'no'],
+            'teams' => ['yes', 'no'],
+            'kit' => ['blade', 'none'],
+        ];
+
+        $errors = [];
+
+        foreach ($allowed as $argument => $values) {
+            $given = $this->argument($argument);
+
+            if (! in_array($given, $values, true)) {
+                $errors[] = "  {$argument}: [{$given}] is not valid. Expected " . implode(' or ', $values) . '.';
+            }
+        }
+
+        if ($errors === []) {
+            return true;
+        }
+
+        $this->error('Installation aborted — nothing was changed:');
+        foreach ($errors as $error) {
+            $this->line($error);
+        }
+
+        return false;
     }
 
     /**

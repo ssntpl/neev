@@ -210,20 +210,20 @@ Aliases are single-purpose checks you attach **in addition to** a group:
 
 | Alias | Class | Purpose |
 |-------|-------|---------|
-| `neev:active-team` | `EnsureTeamIsActive` | Reject requests when the current team is deactivated |
-| `neev:active-tenant` | `EnsureTenantIsActive` | Reject requests when the current tenant is deactivated |
-| `neev:tenant-member` | `EnsureTenantMembership` | Standalone membership check (already inside the auth groups; use on custom stacks) |
-| `neev:resolve-team` | `ResolveTeamMiddleware` | Standalone team resolution (already inside the groups; use on custom stacks) |
-| `neev:ensure-sso` | `EnsureContextSSO` | When the resolved tenant/team requires SSO, reject (API) or redirect (web) sessions that were not established via SSO |
-| `neev:password-not-expired` | `EnsurePasswordNotExpired` | Block access once the user's password has expired |
-| `neev:verified-email` | `EnsureEmailIsVerified` | Block access until the user's email is verified |
+| `neev-active-team` | `EnsureTeamIsActive` | Reject requests when the current team is deactivated |
+| `neev-active-tenant` | `EnsureTenantIsActive` | Reject requests when the current tenant is deactivated |
+| `neev-tenant-member` | `EnsureTenantMembership` | Standalone membership check (already inside the auth groups; use on custom stacks) |
+| `neev-resolve-team` | `ResolveTeamMiddleware` | Standalone team resolution (already inside the groups; use on custom stacks) |
+| `neev-ensure-sso` | `EnsureContextSSO` | When the resolved tenant/team requires SSO, reject (API) or redirect (web) sessions that were not established via SSO |
+| `neev-password-not-expired` | `EnsurePasswordNotExpired` | Block access once the user's password has expired |
+| `neev-verified-email` | `EnsureEmailIsVerified` | Block access until the user's email is verified |
 
 ### Ordering Rules
 
-* **Group first, aliases after.** Aliases like `neev:ensure-sso`, `neev:active-team`, and `neev:password-not-expired` need the authenticated user and resolved context, which only the group provides:
+* **Group first, aliases after.** Aliases like `neev-ensure-sso`, `neev-active-team`, and `neev-password-not-expired` need the authenticated user and resolved context, which only the group provides:
 
 ```php
-Route::middleware(['neev:api', 'neev:active-team', 'neev:ensure-sso'])->group(function () {
+Route::middleware(['neev:api', 'neev-active-team', 'neev-ensure-sso'])->group(function () {
     // ...
 });
 ```

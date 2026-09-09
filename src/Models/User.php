@@ -2,7 +2,11 @@
 
 namespace Ssntpl\Neev\Models;
 
+use Carbon\Carbon;
+use Illuminate\Contracts\Validation\Rule as ValidationRule;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Validation\Rule;
 use Ssntpl\LaravelAcl\Traits\HasRoles;
@@ -11,7 +15,6 @@ use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Traits\BelongsToTenant;
 use Ssntpl\Neev\Traits\HasTeams;
 use Ssntpl\Neev\Traits\NeevAuthenticatable;
-use Illuminate\Foundation\Auth\User as Authenticatable;
 
 /**
  * @property int $id
@@ -19,26 +22,26 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
  * @property string $name
  * @property string|null $username
  * @property string|null $email
- * @property \Carbon\Carbon|null $email_verified_at
+ * @property Carbon|null $email_verified_at
  * @property string|null $password
  * @property array|null $password_history
- * @property \Carbon\Carbon|null $password_changed_at
+ * @property Carbon|null $password_changed_at
  * @property bool $active
  * @property int|null $default_team_id
- * @property \Carbon\Carbon|null $created_at
- * @property \Carbon\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read MultiFactorAuth|null $preferredMultiFactorAuth
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Passkey> $passkeys
- * @property-read \Illuminate\Database\Eloquent\Collection<int, MultiFactorAuth> $multiFactorAuths
- * @property-read \Illuminate\Database\Eloquent\Collection<int, MultiFactorAuth> $activeMultiFactorAuths
- * @property-read \Illuminate\Database\Eloquent\Collection<int, RecoveryCode> $recoveryCodes
- * @property-read \Illuminate\Database\Eloquent\Collection<int, LoginAttempt> $loginAttempts
- * @property-read \Illuminate\Database\Eloquent\Collection<int, AccessToken> $accessTokens
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $teams
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $allTeams
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $ownedTeams
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $teamRequests
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $sendRequests
+ * @property-read Collection<int, Passkey> $passkeys
+ * @property-read Collection<int, MultiFactorAuth> $multiFactorAuths
+ * @property-read Collection<int, MultiFactorAuth> $activeMultiFactorAuths
+ * @property-read Collection<int, RecoveryCode> $recoveryCodes
+ * @property-read Collection<int, LoginAttempt> $loginAttempts
+ * @property-read Collection<int, AccessToken> $accessTokens
+ * @property-read Collection<int, Team> $teams
+ * @property-read Collection<int, Team> $allTeams
+ * @property-read Collection<int, Team> $ownedTeams
+ * @property-read Collection<int, Team> $teamRequests
+ * @property-read Collection<int, Team> $sendRequests
  * @property-read Team|null $defaultTeam
  */
 class User extends Authenticatable
@@ -77,16 +80,25 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'password_history',
-        'remember_token',
     ];
 
-    protected $casts = [
-        'active' => 'boolean',
-        'email_verified_at' => 'datetime',
-        'password' => 'hashed',
-        'password_history' => 'array',
-        'password_changed_at' => 'datetime',
-    ];
+    /**
+     * Declared as a method, not a $casts property: Eloquent merges casts()
+     * into $casts, so a project subclass that declares its own $casts keeps
+     * neev's instead of silently replacing them.
+     *
+     * @return array<string, string>
+     */
+    protected function casts(): array
+    {
+        return [
+            'active' => 'boolean',
+            'email_verified_at' => 'datetime',
+            'password' => 'hashed',
+            'password_history' => 'array',
+            'password_changed_at' => 'datetime',
+        ];
+    }
 
     public function getProfilePhotoUrlAttribute()
     {
@@ -128,7 +140,7 @@ class User extends Authenticatable
      *
      * @param int|null $ignoreId  Row ID to ignore (for updates)
      */
-    public static function uniqueEmailRule(?int $ignoreId = null): \Illuminate\Contracts\Validation\Rule|string
+    public static function uniqueEmailRule(?int $ignoreId = null): ValidationRule|string
     {
         $rule = Rule::unique('users', 'email');
 

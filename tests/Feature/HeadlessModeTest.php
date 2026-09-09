@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Route;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Tests\TestCase;
 
 class HeadlessModeTest extends TestCase
@@ -57,23 +58,51 @@ class HeadlessModeTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Email links point at the frontend, not Blade routes
+    // Email links point at machine-facing routes, not Blade pages
     // -----------------------------------------------------------------
 
-    public function test_registration_verification_email_links_to_frontend(): void
+    protected function registerHeadlessUser(string $email = 'headless@example.com'): void
     {
-        Mail::fake();
         config(['neev.password' => ['required', 'confirmed'], 'neev.team' => false]);
 
         $this->postJson('/neev/register', [
             'name' => 'Headless User',
-            'email' => 'headless@example.com',
+            'email' => $email,
             'password' => 'password123',
             'password_confirmation' => 'password123',
         ])->assertOk();
+    }
+
+    /**
+     * Verification finishes on the click, so the default headless link points
+     * straight at the API route that does it — no page of the app's needed.
+     */
+    public function test_registration_verification_email_links_to_the_api_verify_route(): void
+    {
+        Mail::fake();
+
+        $this->registerHeadlessUser();
 
         Mail::assertSent(VerifyUserEmail::class, function (VerifyUserEmail $mail) {
-            return str_starts_with($mail->url, config('app.url') . '/verify-email?')
+            return str_starts_with($mail->url, route('mail.verify') . '?')
+                && str_contains($mail->url, 'signature=');
+        });
+    }
+
+    /**
+     * An app that wants the link to land on its own page overrides EmailLinks
+     * rather than reaching into the service that sends the mail.
+     */
+    public function test_app_can_point_the_verification_link_at_its_own_page(): void
+    {
+        Mail::fake();
+
+        $this->app->bind(EmailLinks::class, FrontendEmailLinks::class);
+
+        $this->registerHeadlessUser();
+
+        Mail::assertSent(VerifyUserEmail::class, function (VerifyUserEmail $mail) {
+            return str_starts_with($mail->url, 'https://app.example.com/verify-email?')
                 && str_contains($mail->url, 'signature=');
         });
     }
@@ -102,5 +131,22 @@ class HeadlessModeTest extends TestCase
             return str_starts_with($mail->url, config('app.url') . '/register?')
                 && str_contains($mail->url, 'invitation_id=');
         });
+    }
+}
+
+/**
+ * A stand-in for the override an app writes when it wants email links to land
+ * on its own frontend instead of finishing on the package's routes.
+ */
+class FrontendEmailLinks extends EmailLinks
+{
+    public function base(): string
+    {
+        return 'https://app.example.com';
+    }
+
+    public function verificationUrl(\Ssntpl\Neev\Models\User $user, \DateTimeInterface $expiresAt): string
+    {
+        return $this->page('/verify-email', parent::verificationUrl($user, $expiresAt));
     }
 }

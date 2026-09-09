@@ -2,6 +2,8 @@
 
 namespace Ssntpl\Neev\Models;
 
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -15,18 +17,19 @@ use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Events\TenantCreated;
+use Ssntpl\Neev\Scopes\TeamTenantScope;
 
 /**
  * @property int $id
  * @property string $name
  * @property string $slug
- * @property \Carbon\Carbon|null $activated_at
+ * @property Carbon|null $activated_at
  * @property string|null $inactive_reason
- * @property \Carbon\Carbon|null $created_at
- * @property \Carbon\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read TenantAuthSettings|null $authSettings
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Team> $teams
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Domain> $domains
+ * @property-read Collection<int, Team> $teams
+ * @property-read Collection<int, Domain> $domains
  */
 class Tenant extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
@@ -71,7 +74,7 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
 
     public function teams(): HasMany
     {
-        return $this->hasMany(Team::getClass());
+        return $this->hasMany(Team::getClass())->withoutGlobalScope(TeamTenantScope::class);
     }
 
     public function authSettings(): HasOne
@@ -226,13 +229,9 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
 
     public static function resolveByDomain(string $domain): ?static
     {
-        $domainRecord = Domain::findByHost($domain);
+        $domainRecord = Domain::findByHostForOwnerType($domain, 'tenant');
 
-        if ($domainRecord && $domainRecord->owner_type === 'tenant') {
-            /** @var static|null */
-            return $domainRecord->owner;
-        }
-
-        return null;
+        /** @var static|null */
+        return $domainRecord?->owner;
     }
 }

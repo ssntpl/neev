@@ -2,8 +2,13 @@
 
 namespace Ssntpl\Neev\Models;
 
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Ssntpl\Neev\Events\DomainReverified;
+use Ssntpl\Neev\Events\DomainVerificationFailed;
+use Ssntpl\Neev\Events\DomainVerified;
 
 /**
  * @property int $id
@@ -13,10 +18,10 @@ use Illuminate\Support\Facades\Cache;
  * @property string $domain
  * @property string|null $verification_token
  * @property bool $is_primary
- * @property \Carbon\Carbon|null $verified_at
- * @property \Carbon\Carbon|null $verification_failed_at
+ * @property Carbon|null $verified_at
+ * @property Carbon|null $verification_failed_at
  * @property-read Model|null $owner
- * @property-read \Illuminate\Database\Eloquent\Collection<int, DomainRule> $rules
+ * @property-read Collection<int, DomainRule> $rules
  */
 class Domain extends Model
 {
@@ -100,6 +105,17 @@ class Domain extends Model
     }
 
     /**
+     * Find a verified domain by host, among one kind of owner.
+     */
+    public static function findByHostForOwnerType(string $host, string $ownerType): ?self
+    {
+        return static::where('domain', $host)
+            ->where('owner_type', $ownerType)
+            ->whereNotNull('verified_at')
+            ->first();
+    }
+
+    /**
      * Find the primary verified domain by host.
      */
     public static function findPrimaryByHost(string $host): ?self
@@ -167,16 +183,16 @@ class Domain extends Model
             $this->save();
 
             if ($isFirstVerification) {
-                event(new \Ssntpl\Neev\Events\DomainVerified($this));
+                event(new DomainVerified($this));
             } elseif ($wasFailingVerification) {
-                event(new \Ssntpl\Neev\Events\DomainReverified($this));
+                event(new DomainReverified($this));
             }
 
             return true;
         }
 
         if ($this->verified_at !== null && $this->verification_failed_at === null) {
-            event(new \Ssntpl\Neev\Events\DomainVerificationFailed($this));
+            event(new DomainVerificationFailed($this));
         }
 
         $this->verification_failed_at = now();

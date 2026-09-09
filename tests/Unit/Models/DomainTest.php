@@ -34,6 +34,64 @@ class DomainTest extends TestCase
     }
 
     // -----------------------------------------------------------------
+    // findByHostForOwnerType() — also the availability check for a claim:
+    // only a verified claim reserves a domain, and only against its own
+    // kind of owner, so a null return means the domain is free
+    // -----------------------------------------------------------------
+
+    public function test_an_unclaimed_domain_is_free(): void
+    {
+        $this->assertNull(Domain::findByHostForOwnerType('acme.test', 'team'));
+    }
+
+    public function test_an_unverified_claim_reserves_nothing(): void
+    {
+        DomainFactory::new()->create(['domain' => 'acme.test', 'owner_type' => 'team', 'owner_id' => 1]);
+
+        $this->assertNull(Domain::findByHostForOwnerType('acme.test', 'team'));
+    }
+
+    public function test_a_verified_claim_reserves_the_domain_for_that_owner_type(): void
+    {
+        DomainFactory::new()->verified()->create(['domain' => 'acme.test', 'owner_type' => 'team', 'owner_id' => 1]);
+
+        // Not free for another team, nor for the team that already holds it.
+        $this->assertNotNull(Domain::findByHostForOwnerType('acme.test', 'team'));
+    }
+
+    public function test_a_claim_is_scoped_to_the_owner_type(): void
+    {
+        DomainFactory::new()->verified()->create(['domain' => 'acme.test', 'owner_type' => 'team', 'owner_id' => 1]);
+
+        // A tenant may federate the same company domain a team has verified.
+        $this->assertNull(Domain::findByHostForOwnerType('acme.test', 'tenant'));
+    }
+
+    public function test_a_verified_tenant_claim_blocks_a_second_tenant(): void
+    {
+        DomainFactory::new()->verified()->create(['domain' => 'acme.test', 'owner_type' => 'tenant', 'owner_id' => 1]);
+
+        $this->assertNotNull(Domain::findByHostForOwnerType('acme.test', 'tenant'));
+    }
+
+    public function test_find_by_host_for_owner_type_finds_the_requested_kind(): void
+    {
+        // Tenant row first, so an unfiltered lookup would shadow the team's.
+        DomainFactory::new()->verified()->create(['domain' => 'acme.test', 'owner_type' => 'tenant', 'owner_id' => 7]);
+        DomainFactory::new()->verified()->create(['domain' => 'acme.test', 'owner_type' => 'team', 'owner_id' => 9]);
+
+        $this->assertSame(9, Domain::findByHostForOwnerType('acme.test', 'team')?->owner_id);
+        $this->assertSame(7, Domain::findByHostForOwnerType('acme.test', 'tenant')?->owner_id);
+    }
+
+    public function test_find_by_host_for_owner_type_ignores_unverified_rows(): void
+    {
+        DomainFactory::new()->create(['domain' => 'acme.test', 'owner_type' => 'team', 'owner_id' => 9]);
+
+        $this->assertNull(Domain::findByHostForOwnerType('acme.test', 'team'));
+    }
+
+    // -----------------------------------------------------------------
     // findByHost()
     // -----------------------------------------------------------------
 

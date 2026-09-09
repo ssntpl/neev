@@ -2,7 +2,9 @@
 
 namespace Ssntpl\Neev\Models;
 
+use Carbon\Carbon;
 use Exception;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -10,6 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
 use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
@@ -18,6 +21,9 @@ use Ssntpl\Neev\Events\MemberAdded;
 use Ssntpl\Neev\Events\MemberRemoved;
 use Ssntpl\Neev\Events\TeamCreated;
 use Ssntpl\Neev\Events\TeamDeleted;
+use Ssntpl\Neev\Scopes\TeamTenantScope;
+use Ssntpl\Neev\Scopes\TenantScope;
+use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Support\SlugHelper;
 use Ssntpl\Neev\Traits\HasTenantAuth;
 
@@ -28,18 +34,18 @@ use Ssntpl\Neev\Traits\HasTenantAuth;
  * @property string $name
  * @property string|null $slug
  * @property bool $is_public
- * @property \Carbon\Carbon|null $activated_at
+ * @property Carbon|null $activated_at
  * @property string|null $inactive_reason
- * @property \Carbon\Carbon|null $created_at
- * @property \Carbon\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read User|null $owner
  * @property-read Domain|null $primaryDomain
  * @property-read Domain|null $domain
  * @property-read TeamAuthSettings|null $authSettings
  * @property-read Tenant|null $tenant
  * @property-read string|null $webDomain
- * @property-read \Illuminate\Database\Eloquent\Collection<int, Domain> $domains
- * @property-read \Illuminate\Database\Eloquent\Collection<int, TeamInvitation> $invitations
+ * @property-read Collection<int, Domain> $domains
+ * @property-read Collection<int, TeamInvitation> $invitations
  */
 class Team extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
@@ -47,10 +53,29 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
 
     protected static function booted()
     {
+        static::addGlobalScope(new TeamTenantScope());
+
         // Auto-generate slug if not provided
         static::creating(function (Team $team) {
             if (empty($team->slug)) {
                 $team->slug = SlugHelper::generate($team->name);
+            }
+        });
+
+        // Team does not use the BelongsToTenant trait: its creating hook would
+        // stamp the resolved context's id blindly, and in shared mode that
+        // context is a Team. So the tenant_id assignment is done here instead.
+        static::creating(function (Team $team) {
+            if ($team->tenant_id !== null || !app()->bound(TenantResolver::class)) {
+                return;
+            }
+
+            $context = app(TenantResolver::class)->resolvedContext();
+
+            // Only in isolated mode. In shared mode the resolved context is
+            // itself a Team, which must never become a team's parent.
+            if ($context && $context->getContextType() === 'tenant') {
+                $team->tenant_id = $context->getContextId();
             }
         });
 
@@ -156,7 +181,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
             ->withPivot(['joined', 'action'])
             ->withTimestamps()
             ->as('membership')
-            ->where(['joined' => false, 'action' => 'request_from_user']);
+            ->where(['joined' => false, 'action' => Membership::REQUEST_FROM_USER]);
     }
 
     public function invitedUsers(): BelongsToMany
@@ -165,7 +190,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
             ->withPivot(['joined', 'action'])
             ->withTimestamps()
             ->as('membership')
-            ->where(['joined' => false, 'action' => 'request_to_user']);
+            ->where(['joined' => false, 'action' => Membership::REQUEST_TO_USER]);
     }
 
     public function removeUser($user): void
@@ -174,7 +199,12 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
             throw new Exception('cannot remove owner.');
         }
 
-        $this->users()->detach($user);
+        // The role is scoped to this team, so it goes with the membership.
+        // Left behind, it would silently come back if the user rejoins.
+        DB::transaction(function () use ($user) {
+            $this->users()->detach($user);
+            $user->removeRole($this);
+        });
 
         event(new MemberRemoved($this, $user));
     }
@@ -213,6 +243,9 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
         return $this->morphMany(Domain::class, 'owner')->whereNotNull('verified_at');
     }
 
+    /**
+     * @return HasMany<TeamInvitation, $this>
+     */
     public function invitations(): HasMany
     {
         return $this->hasMany(TeamInvitation::class);
@@ -220,12 +253,33 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
 
     public function hasUser($user): bool
     {
-        return $this->users()->withoutGlobalScope(\Ssntpl\Neev\Scopes\TenantScope::class)->where('users.id', $user->id)->exists();
+        return $this->users()->withoutGlobalScope(TenantScope::class)->where('users.id', $user->id)->exists();
     }
 
     public function tenant(): BelongsTo
     {
         return $this->belongsTo(Tenant::getClass());
+    }
+
+    /**
+     * The column TenantScope filters on.
+     */
+    public function getTenantIdColumn(): string
+    {
+        return 'tenant_id';
+    }
+
+    public function getQualifiedTenantIdColumn(): string
+    {
+        return $this->qualifyColumn($this->getTenantIdColumn());
+    }
+
+    /**
+     * Query teams across every tenant — for platform-level code only.
+     */
+    public static function withoutTenantScope()
+    {
+        return static::query()->withoutGlobalScope(TeamTenantScope::class);
     }
 
     // -----------------------------------------------------------------
@@ -261,10 +315,23 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
         return $this->hasUser($user);
     }
 
-    public function addMember($user, ?string $role = null): void
+    /**
+     * Attach a user to the team.
+     *
+     * Defaults to a full membership. Pass joined: false to record a pending one
+     * instead — an invitation the user has still to accept, or a request still
+     * awaiting the owner, told apart by $action.
+     *
+     * Note that MemberAdded fires and any $role is granted for pending members
+     * too, so listeners and permissions take effect before the user has joined.
+     */
+    public function addMember($user, ?string $role = null, bool $joined = true, string $action = Membership::REQUEST_TO_USER): void
     {
         if (! $this->allUsers()->where('users.id', $user->id)->exists()) {
-            $this->allUsers()->attach($user, ['joined' => true]);
+            $this->allUsers()->attach($user, [
+                'joined' => $joined,
+                'action' => $action,
+            ]);
 
             event(new MemberAdded($this, $user));
         }
@@ -285,7 +352,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
 
     public static function resolveByDomain(string $domain): ?static
     {
-        $domainRecord = Domain::findByHost($domain);
+        $domainRecord = Domain::findByHostForOwnerType($domain, 'team');
 
         /** @var static|null */
         return $domainRecord?->owner;

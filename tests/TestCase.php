@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Tests;
 
 use Illuminate\Support\Facades\Blade;
 use Orchestra\Testbench\TestCase as BaseTestCase;
+use Ssntpl\LaravelAcl\AclServiceProvider;
 use Ssntpl\Neev\NeevServiceProvider;
 
 abstract class TestCase extends BaseTestCase
@@ -11,6 +12,7 @@ abstract class TestCase extends BaseTestCase
     protected function getPackageProviders($app): array
     {
         return [
+            AclServiceProvider::class,
             NeevServiceProvider::class,
         ];
     }

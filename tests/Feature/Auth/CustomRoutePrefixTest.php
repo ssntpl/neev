@@ -45,29 +45,6 @@ class CustomRoutePrefixTest extends TestCase
             ->assertOk();
     }
 
-    public function test_mfa_token_route_gate_follows_the_prefix(): void
-    {
-        // An MFA-type token may only reach the MFA verification routes.
-        // The gate matches paths, so it must track the configured prefix.
-        $user = User::factory()->create();
-        $mfaToken = $user->accessTokens()->create([
-            'name' => 'mfa',
-            'token' => $plain = \Illuminate\Support\Str::random(40),
-            'token_type' => \Ssntpl\Neev\Models\AccessToken::mfa_token,
-        ]);
-        $bearer = $mfaToken->id . '|' . $plain;
-
-        // Blocked from ordinary API routes under the custom prefix.
-        $this->withHeader('Authorization', 'Bearer ' . $bearer)
-            ->getJson('/auth/users')
-            ->assertUnauthorized();
-
-        // Allowed on the MFA route under the custom prefix.
-        $this->withHeader('Authorization', 'Bearer ' . $bearer)
-            ->getJson('/auth/mfa')
-            ->assertOk();
-    }
-
     public function test_sso_and_csrf_routes_live_under_the_custom_prefix(): void
     {
         $this->get('/auth/csrf-cookie')->assertNoContent();

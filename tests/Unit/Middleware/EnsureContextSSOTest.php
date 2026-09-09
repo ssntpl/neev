@@ -9,6 +9,7 @@ use Mockery;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Http\Middleware\EnsureContextSSO;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Tests\TestCase;
@@ -165,6 +166,16 @@ class EnsureContextSSOTest extends TestCase
         $response = $middleware->handle($request, $this->passThrough());
 
         $this->assertEquals(200, $response->getStatusCode());
+    }
+
+    /**
+     * The SSO callback writes the session flag and this middleware reads it.
+     * Both now spell it `LoginAttempt::SSO` rather than a bare 'sso', so the
+     * constant has to keep that value or the two sides stop agreeing.
+     */
+    public function test_the_session_flag_is_the_login_attempt_sso_constant(): void
+    {
+        $this->assertSame('sso', LoginAttempt::SSO);
     }
 
     // -----------------------------------------------------------------

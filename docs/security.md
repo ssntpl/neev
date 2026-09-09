@@ -118,10 +118,10 @@ $user->isPasswordExpired();          // bool
 $user->isPasswordExpiringSoon(7);    // bool — expiring within the given days
 ```
 
-Enforcement ships as middleware, registered under the `neev:password-not-expired` alias (`Ssntpl\Neev\Http\Middleware\EnsurePasswordNotExpired`). Apply it to routes that should be blocked once the password expires:
+Enforcement ships as middleware, registered under the `neev-password-not-expired` alias (`Ssntpl\Neev\Http\Middleware\EnsurePasswordNotExpired`). Apply it to routes that should be blocked once the password expires:
 
 ```php
-Route::middleware(['neev:api', 'neev:password-not-expired'])->group(function () {
+Route::middleware(['neev:api', 'neev-password-not-expired'])->group(function () {
     // Protected routes
 });
 ```
@@ -147,10 +147,51 @@ Unauthenticated requests pass through unchanged. Set `password_expiry_days` to `
 If MFA or organization-controlled credentials are a compliance requirement:
 
 - **Keep the `oauth` list empty or minimal.** Providers not in the list return 404 on both the redirect and callback routes, which fully disables the path.
-- **For per-organization enforcement, use tenant/team SSO with the `neev:ensure-sso` middleware.** It rejects (API) or redirects (web) any authenticated session that was not established via SSO, closing the OAuth side door for that organization.
+- **For per-organization enforcement, use tenant/team SSO with the `neev-ensure-sso` middleware.** It rejects (API) or redirects (web) any authenticated session that was not established via SSO, closing the OAuth side door for that organization.
 - **If MFA must be universal across all login methods**, implement an application-level step-up check after login — Neev does not provide one for OAuth sessions.
 
 See [Authentication → OAuth / Social Login](./authentication.md#security-warning-oauth-bypasses-mfa-and-password-policies) for details.
+
+---
+
+## Open Redirect Protection
+
+A guest who hits a protected page is bounced to login with the page they
+wanted stored in the session (`url.intended`), and the Blade login form also
+takes an explicit `redirect` parameter — either way the user lands back where
+they were going. Anything reachable that way is attacker
+controlled: a link to *your* login page, carrying *their* destination, is a
+phishing primitive — it wears your domain, and your site appears in the
+referrer of whatever it lands on.
+
+A destination is accepted only when it is on this site:
+
+| Value | Followed | Why |
+|-------|----------|-----|
+| `/settings` | yes | A path on this site |
+| `https://this-site.example/settings` | yes | Absolute, but on the current host — this is the shape the auth middleware stores |
+| `https://evil.example/x` | no | Another host |
+| `//evil.example` | no | Protocol-relative — a browser resolves it to `https://evil.example` |
+| `/\evil.example` | no | Browsers normalise `\` to `/` in the authority, so this is the case above |
+| `/` | no | Nothing to return to; `neev.home` is the better answer |
+| `/login`, `/register`, `/logout`, the verification notice, the reset request | no | Auth pages are not a destination — landing there would bounce the user in a circle |
+| `''`, an array, any non-string | no | Not a destination |
+
+Anything rejected falls back to `config('neev.home')`. The check lives in
+`AuthService::safeRedirect()`, and `AuthService::intendedUrl()` applies it to
+both the form value and the stored destination.
+
+Password login is not the only step that can interrupt the journey:
+
+- **Email verification wins over the destination.** An unverified account is
+  sent to `verification.notice`, so `redirect` cannot be used to step past it.
+  The stored destination survives the detour and is applied once the address
+  is verified.
+- **MFA parks the destination.** The password step redirects to the challenge,
+  so the destination is stored in the session as `mfa_redirect` and applied
+  after the code is verified, then cleared. It is re-validated on the way out,
+  and a login carrying no `redirect` clears any parked value — a destination
+  never survives into a later, unrelated login.
 
 ---
 
@@ -365,8 +406,17 @@ Tokens are formatted as `{id}|{token}`:
 
 ### Token Expiry
 
+Login tokens carry an **idle** window rather than a fixed lifetime: each
+authenticated request past the half-way point of the window slides the
+deadline forward, and `neev.login_token_max_lifetime_minutes` caps how
+far it can be slid from the moment the token was issued. An active user
+is not signed out mid-session; an idle or stolen token still dies on
+schedule. API tokens do not slide.
+
 ```php
-// Login tokens (configured in neev.login_token_expiry_minutes)
+// Login tokens (idle window, slid on use; configured in
+// neev.login_token_expiry_minutes and capped by
+// neev.login_token_max_lifetime_minutes)
 $token = $user->createLoginToken(config('neev.login_token_expiry_minutes', 1440));
 
 // MFA JWTs (configured in neev.mfa_jwt_expiry_minutes)
@@ -401,7 +451,11 @@ The API middleware provides:
 2. **Token Validation:**
    - Looks up the token by ID and verifies the plaintext against the stored hash (`Hash::check`)
    - Checks expiry — expired tokens are deleted and rejected with `401`
-   - Restricts `mfa_token` type tokens to the MFA verification endpoints only
+
+   A token's `token_type` does not restrict which paths it may reach — a
+   token is judged on its hash and its expiry alone. Which endpoints a caller
+   can reach is decided by the route groups. The MFA step-up is carried by a
+   short-lived JWT rather than an `AccessToken`; see [MFA](./mfa.md).
 
 3. **Account Status:**
    - Rejects deactivated users with `403` ("Your account is deactivated.")
@@ -412,10 +466,10 @@ The API middleware provides:
 
 ### Email Verification Enforcement
 
-Email verification is enforced by a dedicated middleware, registered under the `neev:verified-email` alias (`Ssntpl\Neev\Http\Middleware\EnsureEmailIsVerified`):
+Email verification is enforced by a dedicated middleware, registered under the `neev-verified-email` alias (`Ssntpl\Neev\Http\Middleware\EnsureEmailIsVerified`):
 
 ```php
-Route::middleware(['neev:api', 'neev:verified-email'])->group(function () {
+Route::middleware(['neev:api', 'neev-verified-email'])->group(function () {
     // Routes requiring a verified email
 });
 ```
@@ -511,11 +565,16 @@ Deactivated users cannot log in.
 ### Account Deletion
 
 ```php
-// Requires password confirmation
 $user->delete();
 ```
 
 All related data is cascade deleted.
+
+The endpoints in front of it — `DELETE /account/accountDelete` and
+`DELETE /neev/users` — ask for the current password when the account has one.
+An account created through OAuth has no password, so
+the authenticated session is the confirmation and `password` is not required.
+See [Accounts Without a Password](./authentication.md#accounts-without-a-password).
 
 ---
 
@@ -531,11 +590,65 @@ $user->email;         // User's email address
 
 ### Email Verification
 
-The email must be verified before full access is granted:
-
 ```php
 $user->email_verified_at;  // Null if unverified
 ```
+
+Verification gates the routes you choose to protect with the
+`neev-verified-email` middleware — it never gates the act of logging in. Every
+passwordless method (magic link, OAuth, passkey) stays available to an
+unverified account on both the API and the Blade kit, because each of them
+establishes the same proof the verification mail would.
+
+<a id="oauth-and-email-verification"></a>
+
+#### What counts as proof of the address
+
+Verification mail is not the only way an address becomes verified. Anything
+that demonstrates control of the inbox is accepted, and the package marks the
+address verified rather than sending a redundant email:
+
+| Event | Proof |
+|-------|-------|
+| Following the verification link or entering the code | Direct |
+| Following a magic login link | The link was mailed there and came back signed |
+| Registering through a team invitation | The invitation reached that inbox |
+| Signing in through OAuth | The provider authenticated the address |
+
+**The OAuth case is the one with a trade-off.** When a provider returns an
+address that matches an existing account whose email was never verified, the
+callback marks it verified and signs the user in — it does not turn them away.
+So an account registered with an address the registrant did not control
+becomes reachable by whoever later controls that address at the provider.
+Keep the `oauth` list to providers whose email claims you trust, and prefer
+tenant SSO with `neev-ensure-sso` where an organization needs enforcement.
+
+#### What verification is *not* required for
+
+- **Password reset.** A forgotten password is exactly the case where the user
+  may never have finished verifying, so requiring it first would strand them.
+  Both requesting and using a reset link work on an unverified address.
+- **Enrolling an authenticator app.** A TOTP device proves possession of a
+  device, not of an inbox.
+
+Verification **is** required to enrol email OTP as a second factor: that
+factor is only as trustworthy as the inbox the code lands in.
+
+#### Links carry their own authority
+
+Emailed links are signed and time-limited, and the signature — not a session —
+is what authorises the action. Verification and email-change links therefore
+work without being logged in, which is necessary because a mail client opens
+them in whichever browser it likes. Consequences worth knowing:
+
+- A link acts on the account it was minted for, not on whoever is signed in.
+- The verification `hash` is bound to the address the link was mailed to, so a
+  link minted before an address change cannot verify the new one.
+- A second click is not an error; mail scanners routinely fetch links first.
+- Expiry comes from `url_expiry_time` (60 minutes by default).
+
+See [Email Links](./email-links.md) for where these links point and how to
+change it.
 
 ---
 
@@ -614,7 +727,7 @@ public function handle($request, Closure $next)
 Apply the enforcement middleware to protected routes:
 
 ```php
-Route::middleware(['neev:api', 'neev:verified-email', 'neev:password-not-expired'])->group(function () {
+Route::middleware(['neev:api', 'neev-verified-email', 'neev-password-not-expired'])->group(function () {
     // ...
 });
 ```

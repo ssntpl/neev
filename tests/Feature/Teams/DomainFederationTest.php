@@ -16,10 +16,19 @@ class DomainFederationTest extends TestCase
     use RefreshDatabase;
     use WithNeevConfig;
 
+    protected function defineEnvironment($app): void
+    {
+        parent::defineEnvironment($app);
+
+        // The team routes are registered only when `neev.team` is on, and that
+        // happens while the providers boot — before setUp() runs. Enabling
+        // teams from setUp() would set the config too late for the routes.
+        $app['config']->set('neev.team', true);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
-        $this->enableTeams();
         $this->enableDomainFederation();
     }
 
@@ -107,6 +116,7 @@ class DomainFederationTest extends TestCase
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
 
         DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'alpha.com']);
         DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'beta.com']);
@@ -404,6 +414,59 @@ class DomainFederationTest extends TestCase
             ->getJson('/neev/domains?team_id=' . $team->id);
 
         $response->assertOk();
+    }
+
+    // -----------------------------------------------------------------
+    // GET /neev/teams/{team}/domain — the web page's "outside members"
+    // warning counts a member against every federated domain at once
+    // -----------------------------------------------------------------
+
+    public function test_a_member_on_a_second_federated_domain_is_not_flagged_as_outside(): void
+    {
+        $owner = User::factory()->create(['email' => 'owner@acme.com']);
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->allUsers()->attach($owner, ['joined' => true]);
+
+        foreach (['acme.com', 'acme.io'] as $domain) {
+            DomainFactory::new()->verified()->create([
+                'owner_type' => 'team', 'owner_id' => $team->id,
+                'domain' => $domain,
+                'enforce' => true,
+            ]);
+        }
+
+        // On acme.io — inside the team's boundary, just not on acme.com.
+        $member = User::factory()->create(['email' => 'member@acme.io']);
+        $team->allUsers()->attach($member, ['joined' => true]);
+
+        $response = $this->actingAs($owner)->get(route('teams.domain', ['team' => $team->id]));
+
+        $response->assertOk();
+
+        foreach ($response->viewData('outsideMembers') as $count) {
+            $this->assertSame(0, $count);
+        }
+    }
+
+    public function test_a_member_outside_every_federated_domain_is_flagged(): void
+    {
+        $owner = User::factory()->create(['email' => 'owner@acme.com']);
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->allUsers()->attach($owner, ['joined' => true]);
+
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+            'enforce' => true,
+        ]);
+
+        $outsider = User::factory()->create(['email' => 'someone@gmail.com']);
+        $team->allUsers()->attach($outsider, ['joined' => true]);
+
+        $response = $this->actingAs($owner)->get(route('teams.domain', ['team' => $team->id]));
+
+        $response->assertOk();
+        $this->assertSame([1], array_values($response->viewData('outsideMembers')));
     }
 
     // -----------------------------------------------------------------

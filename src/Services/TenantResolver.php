@@ -6,6 +6,8 @@ use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
+use Ssntpl\Neev\Contracts\HasMembersInterface;
+use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Team;
@@ -52,7 +54,11 @@ class TenantResolver
      */
     public function resolve(Request $request): ?ContextContainerInterface
     {
-        if (!config('neev.tenant', false)) {
+        // Isolated mode resolves a Tenant; shared mode resolves the Team that
+        // owns the domain, which is what makes per-team SSO reachable — a team
+        // carries its own auth settings and is an identity provider owner just
+        // as a tenant is.
+        if (!$this->isEnabled() && !config('neev.team', false)) {
             return null;
         }
 
@@ -118,25 +124,26 @@ class TenantResolver
 
         /** @var array{context_type: string, context_id: int}|null $cachedContext */
         $cachedContext = Cache::remember("neev:domain:{$host}", 300, function () use ($host, $isIsolated): ?array {
-            $domain = Domain::findByHost($host);
+            $domain = $this->domainForMode($host, $isIsolated);
+            $owner = $domain ? $this->domainOwner($domain) : null;
 
-            if (! $domain || ! $domain->owner) {
+            if (! $owner) {
                 return null;
             }
 
             if ($isIsolated) {
                 if ($domain->owner_type === 'tenant') {
-                    return ['context_type' => 'tenant', 'context_id' => $domain->owner->getKey()];
+                    return ['context_type' => 'tenant', 'context_id' => $owner->getKey()];
                 }
 
                 // Domain owned by a team — resolve the team's tenant
-                $tenant = $domain->owner->tenant ?? null;
+                $tenant = $owner->tenant ?? null;
                 if ($tenant) {
                     return ['context_type' => 'tenant', 'context_id' => $tenant->getKey()];
                 }
             } else {
                 if ($domain->owner_type === 'team') {
-                    return ['context_type' => 'team', 'context_id' => $domain->owner->getKey()];
+                    return ['context_type' => 'team', 'context_id' => $owner->getKey()];
                 }
             }
 
@@ -153,13 +160,44 @@ class TenantResolver
 
             if ($context) {
                 // Fetch the domain record for the customDomain reference
-                $domain = Domain::findByHost($host);
+                $domain = $this->domainForMode($host, $isIsolated);
 
                 return ['context' => $context, 'via' => 'custom', 'domain' => $host, 'customDomain' => $domain];
             }
         }
 
         return null;
+    }
+
+    /**
+     * The verified domain row this host resolves through, chosen by the owner
+     * kind the active mode routes on rather than by row order: shared mode
+     * only ever routes a team, and isolated mode takes a tenant's own claim
+     * ahead of a team's, which it has to route through that team's tenant.
+     */
+    protected function domainForMode(string $host, bool $isIsolated): ?Domain
+    {
+        if (! $isIsolated) {
+            return Domain::findByHostForOwnerType($host, 'team');
+        }
+
+        return Domain::findByHostForOwnerType($host, 'tenant')
+            ?? Domain::findByHostForOwnerType($host, 'team');
+    }
+
+    /**
+     * The model owning a domain.
+     *
+     * A team owner is read without the team tenant scope: this runs while
+     * resolving the tenant, so there is no resolved tenant yet to match.
+     */
+    protected function domainOwner(Domain $domain)
+    {
+        if ($domain->owner_type === 'team') {
+            return Team::getClass()::withoutTenantScope()->find($domain->owner_id);
+        }
+
+        return $domain->owner;
     }
 
     /**
@@ -241,11 +279,11 @@ class TenantResolver
      *
      * Both Team and Tenant implement all four context interfaces.
      *
-     * @return (ContextContainerInterface&\Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface&\Ssntpl\Neev\Contracts\HasMembersInterface)|null
+     * @return (ContextContainerInterface&IdentityProviderOwnerInterface&HasMembersInterface)|null
      */
     public function resolvedContext(): ?ContextContainerInterface
     {
-        /** @var (ContextContainerInterface&\Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface&\Ssntpl\Neev\Contracts\HasMembersInterface)|null */
+        /** @var (ContextContainerInterface&IdentityProviderOwnerInterface&HasMembersInterface)|null */
         return $this->resolvedContext;
     }
 

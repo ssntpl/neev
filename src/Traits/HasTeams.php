@@ -83,7 +83,7 @@ trait HasTeams
             ->withPivot(['joined', 'action'])
             ->withTimestamps()
             ->as('membership')
-            ->where(['joined' => false, 'action' => 'request_to_user']);
+            ->where(['joined' => false, 'action' => Membership::REQUEST_TO_USER]);
     }
 
     public function sendRequests()
@@ -92,6 +92,6 @@ trait HasTeams
             ->withPivot(['joined', 'action'])
             ->withTimestamps()
             ->as('membership')
-            ->where(['joined' => false, 'action' => 'request_from_user']);
+            ->where(['joined' => false, 'action' => Membership::REQUEST_FROM_USER]);
     }
 }

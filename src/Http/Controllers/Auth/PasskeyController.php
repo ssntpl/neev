@@ -485,7 +485,7 @@ class PasskeyController extends Controller
             [$user, $attempt] = $this->passkeyLogin($request, $geoIP);
 
             $this->auth->login($request, $geoIP, $user, LoginAttempt::Passkey, $attempt ?? null);
-            return redirect(config('neev.home'));
+            return redirect($this->auth->intendedUrl($request->redirect));
         } catch (Exception $e) {
             Log::error($e);
             return back()->withErrors(['message' => 'Unable to authenticate with passkey.']);

@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 
 /**
@@ -9,7 +10,7 @@ use Illuminate\Database\Eloquent\Model;
  * @property int $team_id
  * @property string|null $role
  * @property string $email
- * @property \Carbon\Carbon|null $expires_at
+ * @property Carbon|null $expires_at
  * @property-read Team|null $team
  */
 class TeamInvitation extends Model

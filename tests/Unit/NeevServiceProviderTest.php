@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Unit;
 use Illuminate\Support\Facades\Route;
 use Ssntpl\Neev\Http\Middleware\BindContextMiddleware;
 use Ssntpl\Neev\Http\Middleware\EnsureContextSSO;
+use Ssntpl\Neev\Http\Middleware\EnsureEmailIsVerified;
 use Ssntpl\Neev\Http\Middleware\EnsurePasswordNotExpired;
 use Ssntpl\Neev\Http\Middleware\EnsureTeamIsActive;
 use Ssntpl\Neev\Http\Middleware\EnsureTenantIsActive;
@@ -129,48 +130,78 @@ class NeevServiceProviderTest extends TestCase
     {
         $aliases = Route::getMiddleware();
 
-        $this->assertArrayHasKey('neev:active-team', $aliases);
-        $this->assertSame(EnsureTeamIsActive::class, $aliases['neev:active-team']);
+        $this->assertArrayHasKey('neev-active-team', $aliases);
+        $this->assertSame(EnsureTeamIsActive::class, $aliases['neev-active-team']);
     }
 
     public function test_middleware_alias_neev_tenant_member_resolves_to_ensure_tenant_membership(): void
     {
         $aliases = Route::getMiddleware();
 
-        $this->assertArrayHasKey('neev:tenant-member', $aliases);
-        $this->assertSame(EnsureTenantMembership::class, $aliases['neev:tenant-member']);
+        $this->assertArrayHasKey('neev-tenant-member', $aliases);
+        $this->assertSame(EnsureTenantMembership::class, $aliases['neev-tenant-member']);
     }
 
     public function test_middleware_alias_neev_resolve_team(): void
     {
         $aliases = Route::getMiddleware();
 
-        $this->assertArrayHasKey('neev:resolve-team', $aliases);
-        $this->assertSame(ResolveTeamMiddleware::class, $aliases['neev:resolve-team']);
+        $this->assertArrayHasKey('neev-resolve-team', $aliases);
+        $this->assertSame(ResolveTeamMiddleware::class, $aliases['neev-resolve-team']);
     }
 
     public function test_middleware_alias_neev_ensure_sso(): void
     {
         $aliases = Route::getMiddleware();
 
-        $this->assertArrayHasKey('neev:ensure-sso', $aliases);
-        $this->assertSame(EnsureContextSSO::class, $aliases['neev:ensure-sso']);
+        $this->assertArrayHasKey('neev-ensure-sso', $aliases);
+        $this->assertSame(EnsureContextSSO::class, $aliases['neev-ensure-sso']);
     }
 
     public function test_middleware_alias_neev_active_tenant_resolves_to_ensure_tenant_is_active(): void
     {
         $aliases = Route::getMiddleware();
 
-        $this->assertArrayHasKey('neev:active-tenant', $aliases);
-        $this->assertSame(EnsureTenantIsActive::class, $aliases['neev:active-tenant']);
+        $this->assertArrayHasKey('neev-active-tenant', $aliases);
+        $this->assertSame(EnsureTenantIsActive::class, $aliases['neev-active-tenant']);
     }
 
     public function test_middleware_alias_neev_password_not_expired_resolves_to_ensure_password_not_expired(): void
     {
         $aliases = Route::getMiddleware();
 
-        $this->assertArrayHasKey('neev:password-not-expired', $aliases);
-        $this->assertSame(EnsurePasswordNotExpired::class, $aliases['neev:password-not-expired']);
+        $this->assertArrayHasKey('neev-password-not-expired', $aliases);
+        $this->assertSame(EnsurePasswordNotExpired::class, $aliases['neev-password-not-expired']);
+    }
+
+    public function test_middleware_alias_neev_verified_email_resolves_to_ensure_email_is_verified(): void
+    {
+        $aliases = Route::getMiddleware();
+
+        $this->assertArrayHasKey('neev-verified-email', $aliases);
+        $this->assertSame(EnsureEmailIsVerified::class, $aliases['neev-verified-email']);
+    }
+
+    /**
+     * The aliases were renamed from `neev:*` to `neev-*` because a colon in a
+     * middleware alias is the parameter separator, so `neev:verified-email`
+     * resolved as the `neev` middleware with a `verified-email` argument.
+     */
+    public function test_old_colon_middleware_aliases_are_no_longer_registered(): void
+    {
+        $aliases = Route::getMiddleware();
+
+        foreach ([
+            'neev:active-team',
+            'neev:active-tenant',
+            'neev:tenant-member',
+            'neev:resolve-team',
+            'neev:ensure-sso',
+            'neev:password-not-expired',
+            'neev:verified-email',
+        ] as $old) {
+            $this->assertArrayNotHasKey($old, $aliases);
+        }
     }
 
     // =================================================================

@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Ssntpl\Neev\Events\MfaMethodAdded;
 
@@ -13,10 +14,10 @@ use Ssntpl\Neev\Events\MfaMethodAdded;
  * @property string|null $secret
  * @property string|null $otp
  * @property bool $preferred
- * @property \Carbon\Carbon|null $expires_at
- * @property \Carbon\Carbon|null $last_used
- * @property \Carbon\Carbon|null $created_at
- * @property \Carbon\Carbon|null $updated_at
+ * @property Carbon|null $expires_at
+ * @property Carbon|null $last_used
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  * @property-read User|null $user
  */
 class MultiFactorAuth extends Model

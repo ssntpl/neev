@@ -57,7 +57,7 @@ The two booleans are orthogonal, giving four modes:
 | Mode | `tenant` | `team` | Who shares an email | What `TenantResolver` resolves | Typical product shape |
 |------|----------|--------|---------------------|--------------------------------|-----------------------|
 | **Single-app** | `false` | `false` | One account per email, application-wide | Nothing — resolver is inactive | Personal apps, internal tools, products with no organization concept |
-| **B2B teams** | `false` | `true` | One account per email, application-wide; that account joins many teams | Nothing — resolver is inactive | GitHub/Slack-style collaboration SaaS |
+| **B2B teams** | `false` | `true` | One account per email, application-wide; that account joins many teams | A `Team`, from its verified domain — no user scoping, but it makes per-team SSO reachable | GitHub/Slack-style collaboration SaaS |
 | **Isolated tenants** | `true` | `false` | Unique per `(tenant_id, email)` — the same email can be a separate account in each tenant | A `Tenant` (X-Tenant header → subdomain → custom domain) | White-label SaaS, reseller platforms, regulated industries |
 | **Tenant + teams** | `true` | `true` | Unique per `(tenant_id, email)` | A `Tenant`; teams are resolved within it | Enterprise SaaS: each customer is an isolated tenant with internal teams/workspaces |
 
@@ -65,7 +65,7 @@ Email uniqueness comes from the composite unique index on `users (tenant_id, ema
 
 **Single-app** (`tenant: false`, `team: false`) — Neev is a drop-in auth layer: password/passkey/OAuth login, MFA, sessions, tokens. No organization modeling at all. Choose this when users only ever act as themselves.
 
-**B2B teams** (`tenant: false`, `team: true`) — users are global and log in once; teams are collaboration containers a user can create, join, and switch between. Per-team SSO and roles are available, but identity stays global — a user is the same account in every team. Choose this for the GitHub/Jira/Trello shape.
+**B2B teams** (`tenant: false`, `team: true`) — users are global and log in once; teams are collaboration containers a user can create, join, and switch between. Per-team SSO and roles are available, but identity stays global — a user is the same account in every team. Choose this for the GitHub/Jira/Trello shape. The resolver runs here too, resolving the `Team` that owns the request's domain, which is what lets the SSO routes read that team's auth settings; it does **not** scope users or data — that stays a `tenant: true` concern.
 
 **Isolated tenants** (`tenant: true`, `team: false`) — the tenant is an identity boundary resolved *before* authentication (so Neev knows which identity provider and user namespace to use). Users belong to exactly one tenant and never interact across tenants. Choose this when each customer must be invisible to every other customer.
 
@@ -113,9 +113,39 @@ When `tenant => false`, the `tenant_id` columns remain `NULL` and the global sco
 
 ### Config vs Trait
 
-The `tenant` config key controls the **infrastructure**: tenant resolver, middleware, SSO routes. It determines whether Neev resolves tenants from the `X-Tenant` header and request host.
+The `tenant` config key controls the **identity infrastructure**: user scoping (`TenantScope`), team scoping (`TeamTenantScope`), tenant membership enforcement, and whether a `Tenant` is resolved from the `X-Tenant` header and request host.
+
+Context resolution itself also runs when `team` is enabled on its own: in shared mode the resolver resolves the **`Team`** that owns the request's domain, so the SSO routes can read that team's `team_auth_settings`. Scoping stays off — `TenantScope` and `TeamTenantScope` both key on `tenant`.
 
 The `BelongsToTenant` trait controls **per-model scoping**. Adding the trait to a model opts that model into automatic query scoping and `tenant_id` auto-assignment — regardless of the `tenant` config value. This means you can use `BelongsToTenant` on your own models even in simpler setups where you manage the tenant context manually via `TenantResolver::setCurrentTenant()`.
+
+### Teams Inside a Tenant
+
+The `teams` table has a `tenant_id` column, but `Team` does not use
+`BelongsToTenant` — the trait's global scope would run during tenant
+resolution, which itself reads Teams. The `tenant_id` the trait would assign is
+therefore stamped on in `Team::booted()` instead.
+
+A new team takes its `tenant_id` from the resolved context, and only when that
+context is a Tenant. With `tenant => true` that is what the request resolves to,
+so teams created during a request land under the right tenant automatically.
+`tenant_id` stays `NULL` when:
+
+- nothing is resolved — which is every request when `tenant => false`, since
+  the resolver short-circuits and never sets a context; or
+- the application has set a **Team** as the context itself (via
+  `TenantResolver::setCurrentTenant()`). A Team is never another team's parent,
+  so that context is ignored here.
+
+A `tenant_id` you set yourself before saving is always kept — the hook only
+fills in a `NULL` one. Note it is not fillable, so mass assignment will not
+carry it:
+
+```php
+$team = new Team(['name' => 'Platform', 'user_id' => $user->id]);
+$team->tenant_id = $tenant->id;   // tenant_id is not fillable
+$team->save();
+```
 
 ---
 
@@ -181,6 +211,12 @@ $resolver->runInContext($tenant, function () {
 5. Tenant context is set for the request
 
 Subdomains are not derived from slugs at request time — every host (subdomain or custom domain) must exist as a verified `Domain` record. Subdomains added via the tenant-domains API with `type: subdomain` are auto-verified; custom domains require DNS verification.
+
+> **Passkeys do not work on custom domains.** WebAuthn binds credentials to the single
+> `relying_party_id` from `config/neev.php`, which a tenant's own domain cannot satisfy — the browser
+> refuses the ceremony client-side. Subdomains of the configured domain are fine. Tenants on custom
+> domains need magic link, OAuth, or password with MFA instead. See
+> [Supported Domains](./authentication.md#supported-domains).
 
 ### Tenant & Team Slugs
 
@@ -417,13 +453,13 @@ This section summarizes the middleware from a tenancy perspective. The authorita
 
 | Alias | Middleware |
 |-------|------------|
-| `neev:active-team` | `EnsureTeamIsActive` |
-| `neev:active-tenant` | `EnsureTenantIsActive` |
-| `neev:tenant-member` | `EnsureTenantMembership` |
-| `neev:resolve-team` | `ResolveTeamMiddleware` |
-| `neev:ensure-sso` | `EnsureContextSSO` |
-| `neev:password-not-expired` | `EnsurePasswordNotExpired` |
-| `neev:verified-email` | `EnsureEmailIsVerified` |
+| `neev-active-team` | `EnsureTeamIsActive` |
+| `neev-active-tenant` | `EnsureTenantIsActive` |
+| `neev-tenant-member` | `EnsureTenantMembership` |
+| `neev-resolve-team` | `ResolveTeamMiddleware` |
+| `neev-ensure-sso` | `EnsureContextSSO` |
+| `neev-password-not-expired` | `EnsurePasswordNotExpired` |
+| `neev-verified-email` | `EnsureEmailIsVerified` |
 
 ### Using Middleware
 
@@ -513,6 +549,17 @@ $tenant->getAutoProvisionRole(); // role assigned to auto-provisioned users
 ---
 
 ## Enterprise SSO
+
+SSO is owner-agnostic: a `Tenant` (isolated mode) and a `Team` (shared mode) both own their auth settings, and the whole flow — `TenantSSOManager`, the `/sso/*` routes, `EnsureContextSSO` — works against whichever context the request resolves to.
+
+**Per-team SSO in shared mode** (`tenant: false`, `team: true`) therefore needs a resolvable team: the team must own a **verified** domain, and the request must arrive on that host. `/neev/tenant/auth` then reports the team's method, and `/neev/sso/redirect` builds the driver from `team_auth_settings`:
+
+```bash
+php artisan neev:auth:configure --team=acme --method=sso \
+    --sso-provider=google --sso-client-id=... --sso-client-secret=...
+```
+
+Without a resolvable context the SSO endpoints answer as unconfigured — configuring team SSO is not enough on its own, the domain has to resolve to that team.
 
 ### Supported Providers
 
@@ -719,6 +766,32 @@ $ssoManager->ensureMembership($user, $tenant);
 | POST | `/neev/tenant-domains/{id}/verify` | Verify domain |
 | POST | `/neev/tenant-domains/{id}/regenerate-token` | New verification token |
 | POST | `/neev/tenant-domains/{id}/primary` | Set as primary |
+| GET | `/neev/tenant-domains/current` | The resolved context and its domain |
+
+`current` reports the context the resolver settled on for this request. With
+`tenant => true` that is the Tenant named by the `X-Tenant` header or the
+request host — a team-owned domain resolves up to that team's tenant — so
+`type` is `tenant`:
+
+```json
+{
+  "data": {
+    "type": "tenant",
+    "context": { "id": 1, "name": "Acme", "slug": "acme" },
+    "domain": { "id": 4, "domain": "acme.example.com", "is_primary": true },
+    "team": null
+  }
+}
+```
+
+`context` is that record, and `type` says what it is. `type` is `team` only when
+the application has made a Team the context itself via
+`TenantResolver::setCurrentTenant()`; `team` then repeats `context`, for callers
+written before tenant isolation existed, and is `null` otherwise. Read `context`
+and branch on `type`.
+
+With nothing resolved the endpoint answers `400 No tenant context.` — including
+on every request when `tenant => false`, where the resolver never runs.
 
 ### Tenant Auth
 
@@ -732,6 +805,16 @@ $ssoManager->ensureMembership($user, $tenant);
 |--------|----------|-------------|
 | GET | `/neev/sso/redirect` | Initiate SSO flow |
 | GET | `/neev/sso/callback` | Handle SSO callback |
+
+All of the SSO and tenant-auth routes above run `TenantMiddleware` before their
+controller, so the context is resolved by the time the controller asks for it —
+including `GET /neev/tenant/auth`, which an SPA reads to decide which sign-in
+buttons to show.
+
+That middleware is a no-op when `tenant => false`: it passes the request
+straight through, the controllers see no context, and `/neev/tenant/auth`
+answers with its default of `auth_method: password`, `sso_enabled: false`.
+Tenant-driven SSO needs `tenant => true`.
 
 > The `/neev` prefix on these endpoints is configurable via `route_prefix` in `config/neev.php` (env `NEEV_ROUTE_PREFIX`).
 
@@ -896,6 +979,18 @@ That's it. All queries on `Project` are now automatically scoped to the current 
 - **Querying**: A `WHERE tenant_id = <current_tenant_id>` clause is added to every query automatically.
 - **Creating**: `tenant_id` is set from the resolved tenant. You can override it by setting the value explicitly.
 - **No tenant context**: When tenant isolation is enabled but no tenant is resolved, the scope **fails closed** — queries are scoped to `tenant_id IS NULL`, so only platform-level records (no tenant) are visible and tenant data can never leak. Use `runInContext()` or `setCurrentTenant()` to establish context in console commands and queue jobs, or `withoutTenantScope()` when you explicitly need cross-tenant access.
+
+#### Teams are scoped the same way
+
+`Team` is filtered by the resolved tenant too, so a user's team listings, team lookups by id or slug, and route-model binding never reach across tenants. Teams cannot reuse `TenantScope` itself — `users.tenant_id` holds the *resolved context id* (which is a team id in shared/back-compat mode) while `teams.tenant_id` is a real foreign key into `tenants` — so `Ssntpl\Neev\Scopes\TeamTenantScope` applies the same rules, deriving the tenant from the resolved context whatever its type:
+
+| Tenant isolation | Tenant resolved | Team visibility |
+|---|---|---|
+| Disabled | n/a | No scope applied |
+| Enabled | No | `tenant_id IS NULL` — platform teams only |
+| Enabled | Yes | `tenant_id = <resolved tenant>` |
+
+`Team::withoutTenantScope()` reaches across tenants for platform-level code. Three relations and lookups deliberately bypass the scope, because they are already keyed correctly or run before a tenant exists: `Tenant::teams()`, the console team resolver used by `neev:*` commands, and domain-owner resolution inside `TenantResolver`.
 
 #### Querying
 

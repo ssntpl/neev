@@ -8,6 +8,7 @@ use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantAuthSettingsFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Models\TenantAuthSettings;
 use Ssntpl\Neev\Models\User;
@@ -346,9 +347,30 @@ class TenantTest extends TestCase
         $this->assertNull(Tenant::resolveBySlug('nonexistent'));
     }
 
-    public function test_resolve_by_domain_returns_null(): void
+    public function test_resolve_by_domain_returns_null_when_not_found(): void
     {
-        // Tenant domain ownership is introduced in Phase 3
         $this->assertNull(Tenant::resolveByDomain('example.com'));
+    }
+
+    public function test_resolve_by_domain_returns_the_tenant_for_a_verified_domain(): void
+    {
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme']);
+
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
+            'domain' => 'acme.example.com',
+        ]);
+
+        $this->assertTrue(Tenant::resolveByDomain('acme.example.com')?->is($tenant));
+    }
+
+    public function test_resolve_by_domain_ignores_a_team_owned_host(): void
+    {
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => 1,
+            'domain' => 'team.example.com',
+        ]);
+
+        $this->assertNull(Tenant::resolveByDomain('team.example.com'));
     }
 }

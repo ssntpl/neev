@@ -3,11 +3,16 @@
 namespace Ssntpl\Neev\Tests\Unit\Models;
 
 use Exception;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
+use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
@@ -333,6 +338,23 @@ class TeamTest extends TestCase
         $this->assertCount(0, $team->users);
     }
 
+    public function test_remove_user_also_removes_the_team_role(): void
+    {
+        $owner = User::factory()->create();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        Role::create(['name' => 'editor', 'resource_type' => Team::class]);
+
+        $member = User::factory()->create();
+        $team->addMember($member, 'editor');
+        $this->assertTrue($member->hasRole('editor', $team));
+
+        $team->removeUser($member);
+
+        // Left behind, the role would come back if the user rejoined.
+        $this->assertFalse($member->fresh()->hasRole('editor', $team));
+    }
+
     public function test_remove_user_throws_for_owner(): void
     {
         $owner = User::factory()->create();
@@ -494,5 +516,170 @@ class TeamTest extends TestCase
     public function test_resolve_by_domain_returns_null_when_not_found(): void
     {
         $this->assertNull(Team::resolveByDomain('nonexistent.com'));
+    }
+
+    public function test_resolve_by_domain_ignores_a_tenant_owned_host(): void
+    {
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme']);
+
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
+            'domain' => 'acme.example.com',
+        ]);
+
+        // Returning the Tenant here would break the ?static contract.
+        $this->assertNull(Team::resolveByDomain('acme.example.com'));
+    }
+
+    public function test_resolve_by_domain_finds_the_team_row_behind_a_tenant_row(): void
+    {
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme']);
+        $team = TeamFactory::new()->create();
+
+        // Tenant row first: an unfiltered lookup would shadow the team's.
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
+            'domain' => 'shared.example.com',
+        ]);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'shared.example.com',
+        ]);
+
+        $this->assertTrue(Team::resolveByDomain('shared.example.com')?->is($team));
+    }
+
+    // -----------------------------------------------------------------
+    // addMember()
+    // -----------------------------------------------------------------
+
+    public function test_add_member_records_a_joined_membership_by_default(): void
+    {
+        $team = TeamFactory::new()->create();
+        $user = User::factory()->create();
+
+        $team->addMember($user);
+
+        $this->assertDatabaseHas('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'joined' => true,
+            'action' => Membership::REQUEST_TO_USER,
+        ]);
+        $this->assertTrue($team->hasMember($user));
+    }
+
+    /**
+     * A pending row is the same attach with `joined` off — it is what the
+     * invitation and join-request flows write, and `hasMember()` must not
+     * count it.
+     */
+    public function test_add_member_can_record_a_pending_invitation(): void
+    {
+        $team = TeamFactory::new()->create();
+        $user = User::factory()->create();
+
+        $team->addMember($user, null, joined: false);
+
+        $this->assertDatabaseHas('team_user', [
+            'team_id' => $team->id,
+            'user_id' => $user->id,
+            'joined' => false,
+            'action' => Membership::REQUEST_TO_USER,
+        ]);
+        $this->assertFalse($team->hasMember($user));
+        $this->assertTrue($team->invitedUsers()->where('users.id', $user->id)->exists());
+    }
+
+    /**
+     * The same pending row with the other `action` is a request from the
+     * user, and lands in `joinRequests` rather than `invitedUsers`.
+     */
+    public function test_add_member_can_record_a_pending_join_request(): void
+    {
+        $team = TeamFactory::new()->create();
+        $user = User::factory()->create();
+
+        $team->addMember($user, null, joined: false, action: Membership::REQUEST_FROM_USER);
+
+        $this->assertTrue($team->joinRequests()->where('users.id', $user->id)->exists());
+        $this->assertFalse($team->invitedUsers()->where('users.id', $user->id)->exists());
+    }
+
+    public function test_add_member_is_idempotent(): void
+    {
+        $team = TeamFactory::new()->create();
+        $user = User::factory()->create();
+
+        $team->addMember($user);
+        $team->addMember($user, null, joined: false);
+
+        $this->assertDatabaseCount('team_user', 1);
+        // The first call wins; the second does not downgrade the membership.
+        $this->assertTrue($team->hasMember($user));
+    }
+
+    // -----------------------------------------------------------------
+    // Uniqueness of a team name
+    // -----------------------------------------------------------------
+
+    /**
+     * One owner cannot hold two teams of the same name inside one tenant —
+     * the pair is how the older join-request form names a team.
+     */
+    public function test_an_owner_cannot_repeat_a_team_name_within_a_tenant(): void
+    {
+        $owner = User::factory()->create();
+        $tenant = TenantFactory::new()->create();
+
+        TeamFactory::new()->create([
+            'user_id' => $owner->id, 'name' => 'Acme', 'tenant_id' => $tenant->id,
+        ]);
+
+        $this->expectException(QueryException::class);
+
+        TeamFactory::new()->create([
+            'user_id' => $owner->id, 'name' => 'Acme', 'tenant_id' => $tenant->id,
+        ]);
+    }
+
+    /**
+     * The constraint is scoped to the tenant, so the same owner may hold the
+     * same team name in two tenants — names only have to be distinct inside
+     * the tenant that sees them.
+     */
+    public function test_the_same_owner_may_repeat_a_team_name_in_another_tenant(): void
+    {
+        $owner = User::factory()->create();
+        $one = TenantFactory::new()->create();
+        $two = TenantFactory::new()->create();
+
+        TeamFactory::new()->create([
+            'user_id' => $owner->id, 'name' => 'Acme', 'tenant_id' => $one->id,
+        ]);
+        $second = TeamFactory::new()->create([
+            'user_id' => $owner->id, 'name' => 'Acme', 'tenant_id' => $two->id,
+        ]);
+
+        $this->assertDatabaseCount('teams', 2);
+        $this->assertSame($two->id, $second->tenant_id);
+    }
+
+    /**
+     * The per-tenant slug index was dropped as redundant: the `slug` column
+     * is unique on its own, which is stricter. That global uniqueness is what
+     * lets `resolveBySlug()` and the slug endpoints look a team up without a
+     * tenant filter and still land on exactly one team.
+     */
+    public function test_a_slug_is_unique_across_every_tenant(): void
+    {
+        $one = TenantFactory::new()->create();
+        $two = TenantFactory::new()->create();
+
+        TeamFactory::new()->create(['slug' => 'shared', 'tenant_id' => $one->id]);
+
+        $this->expectException(QueryException::class);
+
+        TeamFactory::new()->create(['slug' => 'shared', 'tenant_id' => $two->id]);
     }
 }

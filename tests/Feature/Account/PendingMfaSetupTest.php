@@ -93,7 +93,8 @@ class PendingMfaSetupTest extends TestCase
 
         $response->assertOk();
         $response->assertJsonPath('auth_state', 'mfa_required');
-        $response->assertJsonPath('mfa_options', ['authenticator']);
+        // Verifying a setup also enrols email OTP, so both factors are offered.
+        $response->assertJsonPath('mfa_options', ['authenticator', 'email']);
     }
 
     // -----------------------------------------------------------------
@@ -278,5 +279,50 @@ class PendingMfaSetupTest extends TestCase
         $this->assertDatabaseMissing('multi_factor_auths', ['id' => $stalePending->id]);
         $this->assertDatabaseHas('multi_factor_auths', ['id' => $freshPending->id]);
         $this->assertDatabaseHas('multi_factor_auths', ['id' => $staleActive->id]);
+    }
+
+    public function test_clean_command_is_disabled_by_a_zero_retention(): void
+    {
+        // Zero used to mean "older than right now", which deleted setups the
+        // user was still in the middle of.
+        config(['neev.mfa_pending_setup_retention_days' => 0]);
+
+        $justStarted = User::factory()->create()->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+            'secret' => 'SECRET',
+        ]);
+
+        $stale = User::factory()->create()->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+            'secret' => 'SECRET',
+        ]);
+        $stale->created_at = now()->subDays(30);
+        $stale->save();
+
+        $this->artisan('neev:clean-pending-mfa-setups')
+            ->expectsOutputToContain('disabled')
+            ->assertSuccessful();
+
+        $this->assertDatabaseHas('multi_factor_auths', ['id' => $justStarted->id]);
+        $this->assertDatabaseHas('multi_factor_auths', ['id' => $stale->id]);
+    }
+
+    public function test_clean_command_is_disabled_by_a_negative_retention(): void
+    {
+        config(['neev.mfa_pending_setup_retention_days' => -1]);
+
+        $pending = User::factory()->create()->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+            'secret' => 'SECRET',
+        ]);
+        $pending->created_at = now()->subDays(30);
+        $pending->save();
+
+        $this->artisan('neev:clean-pending-mfa-setups')->assertSuccessful();
+
+        $this->assertDatabaseHas('multi_factor_auths', ['id' => $pending->id]);
     }
 }
