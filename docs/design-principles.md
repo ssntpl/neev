@@ -51,9 +51,9 @@ safe-for-production defaults.
 The package ships mechanisms fully built; the application decides
 *where* they apply. Nothing branches inside neev's code:
 
-- Enforcement middleware aliases (`neev:verified-email`,
-  `neev:password-not-expired`, `neev:active-team`,
-  `neev:active-tenant`, `neev:ensure-sso`) — attach per route group
+- Enforcement middleware aliases (`neev-verified-email`,
+  `neev-password-not-expired`, `neev-active-team`,
+  `neev-active-tenant`, `neev-ensure-sso`) — attach per route group
 - Events (native `Registered`/`PasswordReset`/`Lockout` plus the
   `Ssntpl\Neev\Events` set) — the integration point for
   notifications, audit, analytics, and anything product-specific
@@ -101,7 +101,7 @@ methods instead. "Someone might need it" is not a requirement.
 
 **Before leaving something to the developer:** does the golden path
 still work with zero application code? Enforcement *placement* may be
-the app's job (attaching `neev:verified-email` is one documented
+the app's job (attaching `neev-verified-email` is one documented
 line). Enforcement *implementation* may not — shipping a config key
 without the middleware that honours it is a broken promise.
 

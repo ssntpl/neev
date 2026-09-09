@@ -258,4 +258,38 @@ class UserTest extends TestCase
 
         $this->assertSame('JS', $user->profile_photo_url);
     }
+    // -----------------------------------------------------------------
+    // casts() rather than a $casts property
+    // -----------------------------------------------------------------
+
+    /**
+     * Eloquent merges what casts() returns into $casts, so an application's
+     * User subclass can declare its own $casts without silently dropping the
+     * package's. A $casts property on the parent would have been replaced.
+     */
+    public function test_a_subclass_declaring_its_own_casts_keeps_the_package_casts(): void
+    {
+        $user = new UserWithExtraCasts();
+
+        $casts = $user->getCasts();
+
+        // The subclass's own cast is present...
+        $this->assertSame('boolean', $casts['onboarded']);
+
+        // ...and none of neev's were lost.
+        $this->assertSame('boolean', $casts['active']);
+        $this->assertSame('datetime', $casts['email_verified_at']);
+        $this->assertSame('hashed', $casts['password']);
+        $this->assertSame('array', $casts['password_history']);
+        $this->assertSame('datetime', $casts['password_changed_at']);
+    }
+
+}
+
+/** An application's own User model, adding a cast of its own. */
+class UserWithExtraCasts extends User
+{
+    protected $casts = [
+        'onboarded' => 'boolean',
+    ];
 }

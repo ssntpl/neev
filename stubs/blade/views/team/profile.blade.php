@@ -28,6 +28,18 @@
                             </x-neev-component::button>
                         </div>
                     </div>
+                @elseif (! $team->hasMember($user))
+                    @if ($team->allUsers->contains($user))
+                        <span class="text-sm text-gray-600 dark:text-gray-400">{{ __('Request pending') }}</span>
+                    @elseif (! ($team->domain?->enforce && $team->domain?->verified_at))
+                        <form method="POST" action="{{ route('teams.request') }}">
+                            @csrf
+                            <input type="hidden" name="team_id" value="{{ $team->id }}">
+                            <x-neev-component::button>
+                                {{ __('Request to join') }}
+                            </x-neev-component::button>
+                        </form>
+                    @endif
                 @endif
             </x-slot>
 

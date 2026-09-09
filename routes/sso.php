@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use Ssntpl\Neev\Http\Controllers\Auth\TenantSSOController;
+use Ssntpl\Neev\Http\Middleware\TenantMiddleware;
 
 /*
 |--------------------------------------------------------------------------
@@ -14,7 +15,7 @@ use Ssntpl\Neev\Http\Controllers\Auth\TenantSSOController;
 |
 */
 
-Route::prefix(config('neev.route_prefix', 'neev'))->group(function () {
+Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware::class)->group(function () {
     // Web routes for SSO flow — these URLs are registered as redirect
     // URIs at the identity providers.
     Route::middleware('web')->group(function () {

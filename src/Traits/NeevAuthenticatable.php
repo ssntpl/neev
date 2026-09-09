@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Traits;
 
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Events\EmailVerified;
 use Ssntpl\Neev\Models\LoginAttempt;
@@ -54,7 +55,7 @@ trait NeevAuthenticatable
     /**
      * Get when the current password expires.
      */
-    public function passwordExpiresAt(): ?\Carbon\Carbon
+    public function passwordExpiresAt(): ?Carbon
     {
         $days = config('neev.password_expiry_days', 90);
         if ($days <= 0) {

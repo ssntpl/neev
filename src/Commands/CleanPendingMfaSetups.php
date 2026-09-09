@@ -15,6 +15,12 @@ class CleanPendingMfaSetups extends Command
     {
         $days = (int) config('neev.mfa_pending_setup_retention_days', 2);
 
+        if ($days <= 0) {
+            $this->info('Pending MFA setup cleanup is disabled (mfa_pending_setup_retention_days is not a positive number of days).');
+
+            return self::SUCCESS;
+        }
+
         $deleted = MultiFactorAuth::query()
             ->where('status', MultiFactorAuth::STATUS_PENDING)
             ->where('created_at', '<', now()->subDays($days))

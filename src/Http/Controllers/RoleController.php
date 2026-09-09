@@ -37,37 +37,44 @@ class RoleController extends Controller
 
     public function changeRole(Request $request)
     {
-        if ($request->invitation_id) {
-            $this->changeInvitationRole($request);
+        $actor = User::model()->find($request->user()?->id);
+        if (!$actor) {
+            throw new Exception('Resource not found.');
+        }
 
+        $resource = $this->resourceFor($request, $actor);
+
+        if ($request->invitation_id) {
+            $this->changeInvitationRole($request, $resource);
             return;
         }
 
         $member = User::model()->find($request->user_id);
-        if (!$member) {
+        if (!$member || !$resource->hasMember($member)) {
             throw new Exception("User not found.");
-        }
-
-        // Resolve the role scope: Team, Tenant, or null (global)
-        $resource = null;
-        if ($request->resource_type && $request->resource_id) {
-            $resource = $request->resource_type::find($request->resource_id);
-            if (!$resource) {
-                throw new Exception("Resource not found.");
-            }
         }
 
         $member->assignRole($request->role, $resource);
     }
 
-    protected function changeInvitationRole(Request $request): void
+    protected function resourceFor(Request $request, User $actor)
     {
-        $resourceClass = $request->resource_type;
-        $resource = $resourceClass::find($request->resource_id);
+        $resource = $request->resource_type::find($request->resource_id);
         if (!$resource) {
-            throw new Exception("Resource not found.");
+            throw new Exception('Resource not found.');
         }
 
+        $permitted = $resource->hasMember($actor);
+
+        if (!$permitted) {
+            throw new Exception('Resource not found.');
+        }
+
+        return $resource;
+    }
+
+    protected function changeInvitationRole(Request $request, $resource): void
+    {
         $invitation = $resource->invitations()->find($request->invitation_id);
         if (!$invitation) {
             throw new Exception("Invitation not found.");

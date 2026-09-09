@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\TenantResolver;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -26,7 +27,7 @@ class EnsureTenantMembership
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  \Closure(Request): (Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -68,7 +69,7 @@ class EnsureTenantMembership
             }
 
             // For web requests, redirect to login with error
-            return redirect()->route('login')
+            return redirect(app(EmailLinks::class)->loginUrl())
                 ->withErrors(['tenant' => __('neev::auth.not_member')]);
         }
 

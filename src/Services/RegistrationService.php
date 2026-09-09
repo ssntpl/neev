@@ -80,10 +80,10 @@ class RegistrationService
      * Register a user from an OAuth/social profile: no password, email
      * pre-verified by the provider.
      */
-    public function registerViaOAuth(string $name, string $email): User
+    public function registerViaOAuth(?string $name, string $email): User
     {
         $userData = [
-            'name' => $name,
+            'name' => $this->displayNameFrom($name, $email),
             'email' => $email,
             'email_verified_at' => now(),
         ];
@@ -114,7 +114,7 @@ class RegistrationService
     protected function acceptInvitation(User $user, $invitationId, ?string $hash): void
     {
         $invitation = TeamInvitation::find($invitationId);
-        if (!$invitation || !hash_equals(sha1($invitation->email), (string) $hash)) {
+        if (!$invitation || $user->email !== $invitation->email || !hash_equals(sha1($invitation->email), (string) $hash)) {
             throw new InvalidInvitationException();
         }
 
@@ -137,6 +137,26 @@ class RegistrationService
             'is_public' => false,
             'activated_at' => now(),
         ]);
+    }
+
+    /**
+     * A display name for a provider that supplied none.
+     *
+     * GitHub returns a null name whenever the account has no display name
+     * set, which is the common case. Falling back to the email's local part
+     * mirrors.
+     */
+    protected function displayNameFrom(?string $name, string $email): string
+    {
+        $name = trim((string) $name);
+
+        if ($name !== '') {
+            return $name;
+        }
+
+        $localPart = explode('@', $email)[0];
+
+        return ucwords(str_replace(['.', '_', '-'], ' ', $localPart)) ?: 'User';
     }
 
     protected function uniqueUsernameFrom(string $email): string

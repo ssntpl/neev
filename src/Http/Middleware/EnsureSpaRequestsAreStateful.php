@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Ssntpl\Neev\Services\SpaCookieResponder;
 use Ssntpl\Neev\Services\SpaCsrfToken;
 use Ssntpl\Neev\Services\StatefulOriginResolver;
 use Symfony\Component\HttpFoundation\Response;
@@ -23,6 +24,7 @@ class EnsureSpaRequestsAreStateful
     public function __construct(
         protected StatefulOriginResolver $origins,
         protected SpaCsrfToken $csrf,
+        protected SpaCookieResponder $cookies,
     ) {
     }
 
@@ -38,12 +40,17 @@ class EnsureSpaRequestsAreStateful
 
         $token = $request->cookie(config('neev.spa.cookie_name', 'neev_session'));
 
-        if (is_string($token) && $token !== '' && !$request->bearerToken()) {
-            $request->headers->set('Authorization', 'Bearer ' . $token);
-            $request->attributes->set('neev.spa', true);
+        if (!is_string($token) || $token === '' || $request->bearerToken()) {
+            return $next($request);
         }
 
-        return $next($request);
+        $request->headers->set('Authorization', 'Bearer ' . $token);
+        $request->attributes->set('neev.spa', true);
+
+        // Downstream token middleware may slide the session's expiry;
+        // the browser's cookie has to follow it or it is dropped at the
+        // deadline it was first issued with.
+        return $this->cookies->refresh($request, $next($request), $token);
     }
 
     protected function isStateChanging(Request $request): bool

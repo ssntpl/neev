@@ -7,6 +7,9 @@ use Illuminate\Auth\Events\Registered;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Contracts\User as SocialiteUser;
 use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\GoogleProvider;
+use SocialiteProviders\Azure\Provider as AzureProvider;
+use SocialiteProviders\Okta\Provider as OktaProvider;
 use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Events\SsoUserProvisioned;
@@ -124,6 +127,8 @@ class TenantSSOManager
             'password_changed_at' => now(),
         ]);
 
+        $user = User::model()->find($user->id);
+
         event(new Registered($user));
         event(new SsoUserProvisioned($user, $owner));
 
@@ -169,9 +174,9 @@ class TenantSSOManager
     {
         // Map driver names to their provider classes
         $providerClasses = [
-            'azure' => \SocialiteProviders\Azure\Provider::class,
-            'google' => \Laravel\Socialite\Two\GoogleProvider::class,
-            'okta' => \SocialiteProviders\Okta\Provider::class,
+            'azure' => AzureProvider::class,
+            'google' => GoogleProvider::class,
+            'okta' => OktaProvider::class,
         ];
 
         return $providerClasses[$driverName]

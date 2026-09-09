@@ -17,6 +17,7 @@ Start here to set up and use Neev in your application.
 | [MFA](./mfa.md) | Authenticator apps (TOTP), email OTP, and recovery codes |
 | [Teams](./teams.md) | Team creation, invitations, roles, domain federation |
 | [Multi-Tenancy](./multi-tenancy.md) | Identity strategy, tenant isolation, subdomain/custom domain, enterprise SSO |
+| [Email Links](./email-links.md) | Where emailed links land and what a followed link answers — the `EmailLinks` seam |
 | [Security](./security.md) | Brute force protection, password policies, login tracking, session management |
 | [CLI Commands](./cli-commands.md) | All Artisan commands: tenant provisioning, domains, members, auth/SSO, team lifecycle |
 
@@ -83,7 +84,7 @@ neev/
     ├── Models/                # User, Team, Tenant, AccessToken, Domain, etc.
     ├── Rules/                 # PasswordHistory, PasswordUserData
     ├── Scopes/                # TenantScope, TeamScope
-    ├── Services/              # ContextManager, TenantResolver, TenantSSOManager, etc.
+    ├── Services/              # ContextManager, TenantResolver, TenantSSOManager, EmailLinks, etc.
     └── Traits/                # HasTeams, HasMultiAuth, BelongsToTenant, BelongsToTeam, etc.
 ```
 
@@ -110,13 +111,19 @@ These can be applied individually to specific routes.
 
 | Alias | Description |
 |-------|-------------|
-| `neev:active-team` | Blocks access when team is inactive/waitlisted |
-| `neev:active-tenant` | Blocks access when tenant is inactive |
-| `neev:tenant-member` | Ensures user is a member of the current tenant |
-| `neev:resolve-team` | Resolves team from route parameter (slug or ID) |
-| `neev:ensure-sso` | Enforces SSO-only access for the current context |
-| `neev:password-not-expired` | Blocks access when the user's password has expired |
-| `neev:verified-email` | Blocks access until the user's email is verified |
+| `neev-active-team` | Blocks access when team is inactive/waitlisted |
+| `neev-active-tenant` | Blocks access when tenant is inactive |
+| `neev-tenant-member` | Ensures user is a member of the current tenant |
+| `neev-resolve-team` | Resolves team from route parameter (slug or ID) |
+| `neev-ensure-sso` | Enforces SSO-only access for the current context |
+| `neev-password-not-expired` | Blocks access when the user's password has expired |
+| `neev-verified-email` | Blocks access until the user's email is verified |
+
+> **Hyphen, not colon.** A colon is Laravel's separator between a middleware
+> name and its parameters, so `neev:verified-email` resolved as the `neev`
+> middleware taking a `verified-email` argument rather than as its own alias.
+> The groups above keep the colon (`neev:web`, `neev:api`) because they are
+> group names, which are looked up separately and take no parameters.
 
 ### Usage
 
@@ -127,12 +134,12 @@ Route::middleware(['neev:web'])->group(function () {
 });
 
 // Apply individual middleware aliases after the group
-Route::middleware(['neev:web', 'neev:active-team'])->group(function () {
+Route::middleware(['neev:web', 'neev-active-team'])->group(function () {
     Route::get('/projects', [ProjectController::class, 'index']);
 });
 ```
 
-> **Ordering:** Always place `neev:web` or `neev:api` before any alias middleware. Aliases like `neev:active-team` and `neev:ensure-sso` depend on context being resolved by the group middleware first. `BindContextMiddleware` (the last middleware in each group) locks the context as immutable — custom middleware that needs tenant/team/user context should run after the Neev group.
+> **Ordering:** Always place `neev:web` or `neev:api` before any alias middleware. Aliases like `neev-active-team` and `neev-ensure-sso` depend on context being resolved by the group middleware first. `BindContextMiddleware` (the last middleware in each group) locks the context as immutable — custom middleware that needs tenant/team/user context should run after the Neev group.
 
 ---
 

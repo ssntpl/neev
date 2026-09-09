@@ -2,9 +2,11 @@
 
 namespace Ssntpl\Neev\Services;
 
+use DateTimeInterface;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Cookie;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
  * Delivers auth tokens via HttpOnly cookie for SPA cookie mode.
@@ -60,6 +62,44 @@ class SpaCookieResponder
         }
 
         return $response->withCookie($this->makeCookie('', -60));
+    }
+
+    /**
+     * Re-issue the auth cookie so the browser's copy tracks the token's
+     * slid expiry — without this the cookie is dropped at its original
+     * deadline even though the token behind it is still valid.
+     *
+     * Only acts on cookie-authenticated requests whose token expiry
+     * moved this request (the `neev.token_expires_at` attribute set by
+     * NeevAPIMiddleware), and never overwrites a cookie the response
+     * set for itself, so logout still clears and token-issuing
+     * endpoints keep their own.
+     */
+    public function refresh(Request $request, Response $response, string $token): Response
+    {
+        $expiresAt = $request->attributes->get('neev.token_expires_at');
+
+        if ($request->attributes->get('neev.spa') !== true || !$expiresAt instanceof DateTimeInterface) {
+            return $response;
+        }
+
+        $name = config('neev.spa.cookie_name', 'neev_session');
+
+        foreach ($response->headers->getCookies() as $cookie) {
+            if ($cookie->getName() === $name) {
+                return $response;
+            }
+        }
+
+        $minutes = (int) ceil(($expiresAt->getTimestamp() - now()->getTimestamp()) / 60);
+
+        if ($minutes < 1) {
+            return $response;
+        }
+
+        $response->headers->setCookie($this->makeCookie($token, $minutes));
+
+        return $response;
     }
 
     /**

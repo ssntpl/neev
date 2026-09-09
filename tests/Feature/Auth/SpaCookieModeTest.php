@@ -29,6 +29,29 @@ class SpaCookieModeTest extends TestCase
         ];
     }
 
+    /**
+     * A cookie-mode session whose idle window is far enough along that
+     * the next request renews it.
+     *
+     * @return array{user: User, plainTextToken: string}
+     */
+    private function createStaleSession(): array
+    {
+        $data = $this->createAuthenticatedUser();
+
+        // 6 hours left of the 24 hour window: past the half-way point.
+        $data['user']->accessTokens()->latest('id')->first()
+            ->forceFill(['expires_at' => now()->addMinutes(360)])->saveQuietly();
+
+        return $data;
+    }
+
+    private function authCookie($response): ?\Symfony\Component\HttpFoundation\Cookie
+    {
+        return collect($response->headers->getCookies())
+            ->first(fn ($c) => $c->getName() === 'neev_session');
+    }
+
     private function csrfPair(): array
     {
         $token = app(SpaCsrfToken::class)->issue();
@@ -141,6 +164,148 @@ class SpaCookieModeTest extends TestCase
             ->withUnencryptedCookie('neev_session', $data['plainTextToken'])
             ->getJson('/neev/users')
             ->assertUnauthorized();
+    }
+
+    // -----------------------------------------------------------------
+    // Sliding session cookie
+    // -----------------------------------------------------------------
+
+    public function test_cookie_is_re_issued_when_the_session_slides(): void
+    {
+        $data = $this->createStaleSession();
+
+        $response = $this->withCredentials()->withHeader('Origin', 'https://app.example.com')
+            ->withUnencryptedCookie('neev_session', $data['plainTextToken'])
+            ->getJson('/neev/users');
+
+        $response->assertOk();
+
+        // Without this the browser drops the cookie at the deadline it
+        // was first issued with, however active the session is.
+        $cookie = $this->authCookie($response);
+
+        $this->assertNotNull($cookie);
+        $this->assertEquals($data['plainTextToken'], $cookie->getValue());
+        $this->assertTrue($cookie->isHttpOnly());
+        $this->assertEqualsWithDelta(
+            now()->addMinutes(config('neev.login_token_expiry_minutes'))->getTimestamp(),
+            $cookie->getExpiresTime(),
+            120
+        );
+    }
+
+    public function test_no_cookie_is_sent_while_the_session_is_inside_its_half_life(): void
+    {
+        // A freshly issued session has its full window left, so responses
+        // carry no Set-Cookie header at all.
+        $data = $this->createAuthenticatedUser();
+
+        $response = $this->withCredentials()->withHeader('Origin', 'https://app.example.com')
+            ->withUnencryptedCookie('neev_session', $data['plainTextToken'])
+            ->getJson('/neev/users');
+
+        $response->assertOk();
+        $this->assertNull($this->authCookie($response));
+    }
+
+    public function test_logout_still_clears_the_cookie_on_a_sliding_session(): void
+    {
+        $data = $this->createStaleSession();
+        $csrf = $this->csrfPair();
+
+        $response = $this->withCredentials()->withHeader('Origin', 'https://app.example.com')
+            ->withHeaders($csrf['header'])
+            ->withUnencryptedCookie('neev_session', $data['plainTextToken'])
+            ->withUnencryptedCookies($csrf['cookie'])
+            ->postJson('/neev/logout');
+
+        $response->assertOk();
+
+        // The renewal must not overwrite the cookie logout cleared.
+        $cookie = $this->authCookie($response);
+
+        $this->assertNotNull($cookie);
+        $this->assertEmpty($cookie->getValue());
+        $this->assertLessThan(now()->getTimestamp(), $cookie->getExpiresTime());
+    }
+
+    public function test_bearer_callers_are_never_sent_a_cookie(): void
+    {
+        $data = $this->createStaleSession();
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
+            ->getJson('/neev/users');
+
+        $response->assertOk();
+        $this->assertNull($this->authCookie($response));
+    }
+
+    public function test_an_actively_used_session_outlives_its_original_deadline(): void
+    {
+        $data = $this->createAuthenticatedUser();
+        $token = $data['user']->accessTokens()->latest('id')->first();
+        $originalDeadline = $token->expires_at;
+
+        // Come back with 6 hours left, twice over: the deadline the user
+        // started with passes while they are still working.
+        $this->travelTo($originalDeadline->copy()->subHours(6));
+        $this->withCredentials()->withHeader('Origin', 'https://app.example.com')
+            ->withUnencryptedCookie('neev_session', $data['plainTextToken'])
+            ->getJson('/neev/users')
+            ->assertOk();
+
+        $this->travelTo($originalDeadline->copy()->addHours(6));
+        $this->withCredentials()->withHeader('Origin', 'https://app.example.com')
+            ->withUnencryptedCookie('neev_session', $data['plainTextToken'])
+            ->getJson('/neev/users')
+            ->assertOk();
+
+        $this->travelBack();
+    }
+
+    public function test_an_idle_session_expires_and_reports_why(): void
+    {
+        $data = $this->createAuthenticatedUser();
+
+        $this->travelTo(now()->addMinutes(config('neev.login_token_expiry_minutes') + 1));
+
+        $response = $this->withCredentials()->withHeader('Origin', 'https://app.example.com')
+            ->withUnencryptedCookie('neev_session', $data['plainTextToken'])
+            ->getJson('/neev/users');
+
+        $response->assertUnauthorized();
+        $response->assertJsonPath('code', 'token_expired');
+
+        $this->travelBack();
+    }
+
+    public function test_a_session_is_not_slid_past_its_absolute_lifetime(): void
+    {
+        config(['neev.login_token_max_lifetime_minutes' => 43200]);
+
+        $data = $this->createAuthenticatedUser();
+        $token = $data['user']->accessTokens()->latest('id')->first();
+
+        // Keep it alive across the whole 30 days, then step past. Each visit
+        // is anchored a minute inside the current deadline: arriving exactly
+        // on it is a coin toss the wall clock, not the sliding, decides.
+        for ($day = 1; $day <= 30; $day++) {
+            $this->travelTo($token->refresh()->expires_at->copy()->subMinute());
+
+            $this->withCredentials()->withHeader('Origin', 'https://app.example.com')
+                ->withUnencryptedCookie('neev_session', $data['plainTextToken'])
+                ->getJson('/neev/users')
+                ->assertOk();
+        }
+
+        $this->travelTo($token->refresh()->expires_at->copy()->addMinute());
+
+        $this->withCredentials()->withHeader('Origin', 'https://app.example.com')
+            ->withUnencryptedCookie('neev_session', $data['plainTextToken'])
+            ->getJson('/neev/users')
+            ->assertUnauthorized();
+
+        $this->travelBack();
     }
 
     // -----------------------------------------------------------------

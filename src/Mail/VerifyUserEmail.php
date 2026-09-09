@@ -17,7 +17,8 @@ class VerifyUserEmail extends Mailable
         public $url,
         public $username,
         public $purpose = '',
-        public $expiry = 15,
+        public $link_expiry = 15,
+        public $otp_expiry = 15,
         public $otp = null,
     ) {
     }

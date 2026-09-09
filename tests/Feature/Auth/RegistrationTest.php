@@ -314,6 +314,42 @@ class RegistrationTest extends TestCase
         $response->assertStatus(400);
     }
 
+    /**
+     * Holding the invitation link marks the new account's address verified,
+     * so the address being registered has to be the one the invitation was
+     * sent to. Otherwise the link would verify an address it never reached.
+     */
+    public function test_register_via_invitation_rejects_a_different_email(): void
+    {
+        $this->enableTeams();
+
+        $owner = User::factory()->create();
+        $team = Team::forceCreate([
+            'name' => 'Mismatch Team',
+            'user_id' => $owner->id,
+            'is_public' => false,
+        ]);
+
+        $invitation = $team->invitations()->create([
+            'email' => 'invited@example.com',
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        // The hash still matches the invitation, but the account being made
+        // is for someone else's address.
+        $this->postJson('/neev/register', [
+            'name' => 'Impostor',
+            'email' => 'attacker@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'invitation_id' => $invitation->id,
+            'hash' => sha1('invited@example.com'),
+        ])->assertStatus(400);
+
+        $this->assertDatabaseMissing('users', ['email' => 'attacker@example.com']);
+        $this->assertDatabaseHas('team_invitations', ['id' => $invitation->id]);
+    }
+
     // -----------------------------------------------------------------
     // Registration with domain federation
     // -----------------------------------------------------------------

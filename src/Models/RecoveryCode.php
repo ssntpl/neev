@@ -2,14 +2,15 @@
 
 namespace Ssntpl\Neev\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 
 /**
  * @property int $id
  * @property int $user_id
  * @property string $code
- * @property \Carbon\Carbon|null $created_at
- * @property \Carbon\Carbon|null $updated_at
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
  */
 class RecoveryCode extends Model
 {

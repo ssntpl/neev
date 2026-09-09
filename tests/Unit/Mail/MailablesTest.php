@@ -39,13 +39,17 @@ class MailablesTest extends TestCase
             url: 'https://example.com/verify',
             username: 'John',
             purpose: 'registration',
-            expiry: 30,
+            link_expiry: 30,
+            otp_expiry: 10,
+            otp: '123456',
         );
 
         $this->assertSame('https://example.com/verify', $mailable->url);
         $this->assertSame('John', $mailable->username);
         $this->assertSame('registration', $mailable->purpose);
-        $this->assertSame(30, $mailable->expiry);
+        $this->assertSame(30, $mailable->link_expiry);
+        $this->assertSame(10, $mailable->otp_expiry);
+        $this->assertSame('123456', $mailable->otp);
     }
 
     public function test_verify_user_email_has_default_purpose_and_expiry(): void
@@ -53,7 +57,42 @@ class MailablesTest extends TestCase
         $mailable = new VerifyUserEmail('https://example.com/verify', 'John');
 
         $this->assertSame('', $mailable->purpose);
-        $this->assertSame(15, $mailable->expiry);
+        $this->assertSame(15, $mailable->link_expiry);
+        $this->assertSame(15, $mailable->otp_expiry);
+        $this->assertNull($mailable->otp);
+    }
+
+    public function test_verify_user_email_renders_link_and_otp_expiry_separately(): void
+    {
+        $mailable = new VerifyUserEmail(
+            url: 'https://example.com/verify',
+            username: 'John',
+            purpose: 'Verify Email',
+            link_expiry: 60,
+            otp_expiry: 15,
+            otp: '654321',
+        );
+
+        $rendered = $mailable->render();
+
+        $this->assertStringContainsString('This link is valid for 60 minutes', $rendered);
+        $this->assertStringContainsString('This code will expire 15 minutes', $rendered);
+        $this->assertStringContainsString('654321', $rendered);
+    }
+
+    public function test_verify_user_email_omits_otp_block_when_no_code_given(): void
+    {
+        $mailable = new VerifyUserEmail(
+            url: 'https://example.com/verify',
+            username: 'John',
+            purpose: 'Reset Password',
+            link_expiry: 60,
+        );
+
+        $rendered = $mailable->render();
+
+        $this->assertStringContainsString('This link is valid for 60 minutes', $rendered);
+        $this->assertStringNotContainsString('This code will expire', $rendered);
     }
 
     // =================================================================

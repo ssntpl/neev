@@ -17,12 +17,12 @@ class TenantMiddleware
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  \Closure(Request): (Response)  $next
      * @param  string  $mode  'required' to 404 when no tenant found, 'optional' to pass through
      */
     public function handle(Request $request, Closure $next, string $mode = 'optional'): Response
     {
-        if (!config('neev.tenant', false)) {
+        if (!config('neev.tenant', false) && !config('neev.team', false)) {
             return $next($request);
         }
 

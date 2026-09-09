@@ -47,7 +47,7 @@ Neev supports multiple MFA methods that provide an extra layer of security beyon
 
 ```php
 // config/neev.php
-'mfa_pending_setup_retention_days' => 2,  // Days before unverified setups are deleted
+'mfa_pending_setup_retention_days' => 2,  // Days before unverified setups are deleted (0 disables the cleanup)
 ```
 
 Authenticator setups that are started but never verified remain in a `pending` state. The `neev:clean-pending-mfa-setups` command deletes pending setups older than this many days — see [CLI Commands](./cli-commands.md).
@@ -185,7 +185,46 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 3. Receives confirmation email with code
 4. MFA is enabled
 
-Unlike the authenticator method, email OTP requires no verification step — the account email is already verified, so the method is created **active** immediately.
+Unlike the authenticator method, email OTP requires no verification step of its
+own — the address has already been verified, so the method is created
+**active** immediately.
+
+### Enabled automatically alongside another factor
+
+Verifying any MFA setup also enrols email OTP, so a user always keeps a second
+way in and losing the authenticator app does not lock them out. It happens only
+on **successful** verification (`verifyMfaSetup()`), never for a setup that is
+still pending or one whose code was wrong, and it is skipped silently when email
+OTP is already configured, when `email` is not in `neev.multi_factor_auth`, or
+when the account's address is unverified.
+
+The factor being verified keeps the `preferred` flag, so the user's own choice
+stays their default challenge; email is added as a secondary. After enrolling an
+authenticator, `mfa_options` on the next login therefore reads
+`["authenticator", "email"]`.
+
+Removing the authenticator later leaves the email factor in place — the account
+stays in MFA rather than dropping out of it.
+
+### The address must be verified first
+
+An email OTP is only as trustworthy as the inbox it lands in, so an unverified
+address cannot become a second factor:
+
+```json
+{
+  "status": "Error",
+  "method": "email",
+  "message": "Email is not verified."
+}
+```
+
+The API returns this with `422`; the Blade kit redirects back with the message
+in the error bag. Verify the address first (see
+[Authentication → Email Verification](./authentication.md#email-verification)),
+then enable the factor. This gate applies only to the email method — an
+authenticator app proves possession of a device, not of an inbox, so it can be
+enrolled on an unverified account.
 
 ### API: Enable Email OTP
 

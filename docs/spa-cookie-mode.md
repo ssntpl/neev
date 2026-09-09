@@ -96,10 +96,7 @@ public function handle(Request $request, Closure $next): Response
     [$id, $token] = explode('|', $token, 2);
     $accessToken = AccessToken::with('attempt')->find($id);
 
-    if (! $accessToken
-        || ! Hash::check($token, $accessToken->token)
-        || ($accessToken->token_type == AccessToken::mfa_token
-            && ! $request->is(['neev/mfa/otp/verify', 'neev/mfa']))) {
+    if (! $accessToken || ! Hash::check($token, $accessToken->token)) {
         return response()->json(['message' => 'Invalid or expired token'], 401);
     }
     // … expiry check, user lookup, last_used_at update, Auth::setUser()
@@ -451,11 +448,8 @@ to deleting all the user's tokens).
 > `src/Http/Controllers/Auth/UserAuthApiController.php`), and
 > `POST /neev/mfa/otp/verify` is protected by the **`neev:login`**
 > group (`JwtLoginMiddleware`), **not** `neev:api`
-> (`routes/neev.php`). The `AccessToken::mfa_token` type referenced
-> in `NeevAPIMiddleware.php:34` is a separate, legacy concept and is
-> **not** what the password-login MFA path produces. Any spec that
-> assumes MFA runs through `NeevAPIMiddleware` is wrong for this
-> flow. This section is corrected accordingly.
+> (`routes/neev.php`). Any spec that assumes MFA runs through
+> `NeevAPIMiddleware` is wrong for this flow.
 
 The MFA flow has two response shapes to cover:
 

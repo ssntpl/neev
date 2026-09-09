@@ -21,7 +21,22 @@ php artisan neev:install
 php artisan neev:install yes no blade
 ```
 
-Prompts for: multi-tenant isolation (`yes`/`no`), team support (`yes`/`no`), and the frontend starter kit (`blade`/`none`, default `blade`). Publishes the config file, sets the `tenant` and `team` options accordingly, and calls `neev:ui` to eject the chosen kit (and, always, the email templates). Only runs on a fresh installation (fails if the `users` table has records).
+Prompts for: multi-tenant isolation (`yes`/`no`), team support (`yes`/`no`), and the frontend starter kit (`blade`/`none`, default `blade`). Publishes the config file, sets the `tenant` and `team` options accordingly, and calls `neev:ui` to eject the chosen kit (and, always, the email templates). Only runs on a fresh installation: it fails if the `users` table has records. If
+the database cannot be reached it warns that the check was skipped and carries
+on — nothing the command does touches the database, and it is documented to run
+before `php artisan migrate`, which repeats the check and refuses where it
+matters.
+
+**Arguments are validated up front.** All three are checked before anything is published or edited, and every bad value is reported at once, so a typo cannot leave a half-configured application behind:
+
+```
+$ php artisan neev:install y yes vue
+Installation aborted — nothing was changed:
+  tenant: [y] is not valid. Expected yes or no.
+  kit: [vue] is not valid. Expected blade or none.
+```
+
+Only `yes`/`no` and `blade`/`none` are accepted — the values the interactive prompts produce. Anything else fails rather than being silently read as "no". The command also propagates `neev:ui`'s exit code, so a failed kit ejection no longer reports success.
 
 ### `neev:ui`
 
@@ -72,7 +87,7 @@ Delete MFA setups that were started but never verified (still in the `pending` s
 php artisan neev:clean-pending-mfa-setups
 ```
 
-Retention is controlled by `config('neev.mfa_pending_setup_retention_days')` (default: 2 days). Schedule it alongside the other maintenance commands:
+Retention is controlled by `config('neev.mfa_pending_setup_retention_days')` (default: 2 days). Setting it to `0` (or any value below 1) **disables** the cleanup rather than deleting everything — a retention of zero would otherwise mean "older than right now" and wipe setups a user was still in the middle of. Schedule it alongside the other maintenance commands:
 
 ```php
 $schedule->command('neev:clean-pending-mfa-setups')->daily();
@@ -128,6 +143,19 @@ php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --domain=acme.
 **Shared mode**: Creates a `Team` with the given owner. If `--activate` is passed, sets `activated_at`.
 
 **Isolated mode**: Creates a `Tenant`. If `--owner` is provided, also creates a default team with the owner attached. If `--domain` is provided, attaches it to the tenant.
+
+**Disabled features are refused.** The command will not create rows the installation has no code path to reach:
+
+- Shared mode with `neev.team` off — refuses outright.
+- Isolated mode with `neev.team` off and `--owner` given — refuses, because the owner is held by a team.
+
+**Every option is checked before the first row is written**, so a bad value leaves nothing behind: an unknown `--owner`, an invalid or already-taken `--slug`, or a `--domain` another owner of the same kind has already verified. All problems are reported together:
+
+```
+Nothing was created. Fix the following and run the command again:
+  Invalid slug [Bad Slug!]: use lowercase letters, digits and hyphens, starting and ending with a letter or digit.
+  Owner not found: nobody@acme.com
+```
 
 ### `neev:tenant:list`
 
@@ -194,11 +222,22 @@ php artisan neev:domain:add custom.local --owner-type=team --owner-id=1 --skip-v
 | Argument / Option | Description |
 |-------------------|-------------|
 | `domain` | The domain to add (prompted if omitted) |
-| `--owner-type=` | Owner type: `team` or `tenant` (required) |
-| `--owner-id=` | Owner ID (required) |
+| `--owner-type=` | Owner type: `team` or `tenant` (prompted if omitted) |
+| `--owner-id=` | Owner ID **or slug** (prompted if omitted) |
 | `--primary` | Set as primary domain |
 | `--enforce` | Enforce domain-based federation |
 | `--skip-verification` | Mark as verified immediately |
+
+Run interactively without the owner options and the command asks for them, the way it already asks for the domain:
+
+```
+ What owns this domain?  › A tenant / A team          # defaults by identity mode
+ Which tenant owns it? (ID or slug)  › acme
+```
+
+Non-interactive runs (`--no-interaction`, CI) still require `--owner-type` and `--owner-id`.
+
+**Uniqueness is per owner type.** A tenant and a team may both federate the same company domain, but two teams — or two tenants — may not. A domain is only reserved once its owner has *verified* it; an unverified claim blocks nobody. The command also refuses a domain the same owner already holds.
 
 Unless `--skip-verification` is passed, the command displays the DNS TXT record (name and token) required to verify the domain.
 
@@ -267,6 +306,10 @@ php artisan neev:member:add user@example.com --team=acme-corp --role=editor
 
 Looks up the user by email and attaches them with `joined=true`.
 
+Under tenant isolation the user and the team must belong to the same tenant; a cross-tenant add is refused.
+
+The membership and the role are written together: if `--role` names a role that does not exist, the attach is rolled back and the command fails, rather than leaving the user in the team without the role.
+
 ### `neev:member:remove`
 
 Remove a user from a team.
@@ -282,7 +325,7 @@ php artisan neev:member:remove user@example.com --team=acme-corp --force
 | `--team=` | Team ID or slug (required) |
 | `--force` | Skip confirmation prompt |
 
-Refuses to remove the team owner.
+Refuses to remove the team owner. The team-scoped role is deleted along with the membership, so it cannot come back if the user is added again later.
 
 ### `neev:member:list`
 

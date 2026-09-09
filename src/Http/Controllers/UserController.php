@@ -6,10 +6,13 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\LaravelAcl\Models\Permission;
 use Ssntpl\Neev\Services\AuthService;
+use Ssntpl\Neev\Services\EmailLinks;
 
 class UserController extends Controller
 {
@@ -120,7 +123,19 @@ class UserController extends Controller
         ]);
 
         $user = User::model()->find($request->user()?->id);
-        if (!$user || !Hash::check($request->current_password, $user->password)) {
+        if (!$user) {
+            return back()->withErrors([
+                'message' => 'User not found.'
+            ]);
+        }
+
+        if ($user->password === null) {
+            return back()->withErrors([
+                'message' => 'Your account has no password yet. Use the emailed link to set one.'
+            ]);
+        }
+
+        if (!Hash::check($request->current_password, $user->password)) {
             return back()->withErrors([
                 'message' => 'Current Password is Wrong.'
             ]);
@@ -130,19 +145,48 @@ class UserController extends Controller
         return back()->with('status', 'Password has been successfully updated.');
     }
 
+    public function sendPasswordResetLink(Request $request)
+    {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return redirect(app(EmailLinks::class)->loginUrl());
+        }
+
+        $expiryMinutes = config('neev.url_expiry_time', 60);
+        $url = app(EmailLinks::class)->passwordResetUrl($user, now()->addMinutes($expiryMinutes));
+
+        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Forgot Password', $expiryMinutes));
+
+        return back()->with('status', __('A password reset link has been sent to your email address.'));
+    }
+
     public function accountDelete(Request $request)
     {
-        $request->validate([
-            'password' => ['required'],
-        ]);
         $user = User::model()->find($request->user()?->id);
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (!$user) {
             return back()->withErrors([
                 'message' => 'Password is Wrong.'
             ]);
         }
+
+        // Accounts registered through OAuth have no password. Demanding one
+        // left them permanently unable to delete their account, since
+        // Hash::check() against a null hash can never succeed. For those the
+        // authenticated session is the confirmation.
+        if ($user->password !== null) {
+            $request->validate([
+                'password' => ['required'],
+            ]);
+
+            if (!Hash::check($request->password, $user->password)) {
+                return back()->withErrors([
+                    'message' => 'Password is Wrong.'
+                ]);
+            }
+        }
+
         $user->delete();
-        return redirect(route('login'));
+        return redirect(app(EmailLinks::class)->loginUrl());
     }
 
     public function addMultiFactorAuth(Request $request)
@@ -171,6 +215,9 @@ class UserController extends Controller
         $res = $user->addMultiFactorAuth($request->auth_method);
         if (!$res) {
             return back()->withErrors(['message' => 'Auth was not added.']);
+        }
+        if (($res['status'] ?? null) === 'Error') {
+            return back()->withErrors(['message' => $res['message'] ?? 'Auth was not added.']);
         }
         return back()->with($res);
     }

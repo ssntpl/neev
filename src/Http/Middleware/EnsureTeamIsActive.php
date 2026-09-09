@@ -4,6 +4,8 @@ namespace Ssntpl\Neev\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\EmailLinks;
 use Symfony\Component\HttpFoundation\Response;
 
 class EnsureTeamIsActive
@@ -13,18 +15,18 @@ class EnsureTeamIsActive
      *
      * Check if the user's team is active. If not, block access to team features.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  \Closure(Request): (Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
-        /** @var \Ssntpl\Neev\Models\User|null $user */
+        /** @var User|null $user */
         $user = $request->user();
 
         if (!$user) {
             if ($request->expectsJson()) {
                 return response()->json(['message' => 'Unauthenticated.'], 401);
             }
-            return redirect()->route('login');
+            return redirect(app(EmailLinks::class)->loginUrl());
         }
 
         $team = $user->defaultTeam ?? $user->teams->first();

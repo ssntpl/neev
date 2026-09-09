@@ -3,13 +3,16 @@
 namespace Ssntpl\Neev\Tests\Unit\Services;
 
 use Exception;
+use Illuminate\Auth\Events\Registered;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Laravel\Socialite\Contracts\User as SocialiteUser;
 use Mockery;
 use Ssntpl\Neev\Database\Factories\TeamAuthSettingsFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Events\SsoUserProvisioned;
 use Ssntpl\Neev\Services\TenantSSOManager;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -174,6 +177,47 @@ class TenantSSOManagerTest extends TestCase
 
         // extractNameFromEmail('john.doe@company.com') should produce 'John Doe'
         $this->assertSame('John Doe', $created->name);
+    }
+
+    public function test_a_provisioned_user_is_reloaded_so_database_defaults_are_present(): void
+    {
+        // forceCreate() only knows the columns it was handed, so the in-memory
+        // model is missing everything the table fills in itself. Re-reading it
+        // means the listeners on Registered/SsoUserProvisioned — and the caller
+        // that goes on to log this user in — see a complete record.
+        $this->enableTenantAuth();
+
+        $team = TeamFactory::new()->create();
+        TeamAuthSettingsFactory::new()
+            ->sso('entra')
+            ->autoProvision('member')
+            ->create(['team_id' => $team->id]);
+
+        $created = $this->manager->findOrCreateUser($team, $this->mockSocialiteUser('fresh@company.com', 'Fresh User'));
+
+        $this->assertTrue($created->exists);
+        $this->assertFalse($created->wasRecentlyCreated);
+        $this->assertTrue($created->active);
+        $this->assertNotNull($created->created_at);
+        $this->assertEquals($created->getAttributes(), User::model()->find($created->id)->getAttributes());
+    }
+
+    public function test_the_registered_event_receives_the_reloaded_user(): void
+    {
+        $this->enableTenantAuth();
+
+        $team = TeamFactory::new()->create();
+        TeamAuthSettingsFactory::new()
+            ->sso('entra')
+            ->autoProvision('member')
+            ->create(['team_id' => $team->id]);
+
+        Event::fake([Registered::class, SsoUserProvisioned::class]);
+
+        $created = $this->manager->findOrCreateUser($team, $this->mockSocialiteUser('events@company.com', 'Events User'));
+
+        Event::assertDispatched(Registered::class, fn (Registered $event) => $event->user->is($created) && $event->user->active === true);
+        Event::assertDispatched(SsoUserProvisioned::class, fn (SsoUserProvisioned $event) => $event->user->is($created));
     }
 
     public function test_find_or_create_user_throws_when_not_found_and_auto_provision_disabled(): void

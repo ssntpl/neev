@@ -6,6 +6,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 
@@ -40,6 +41,11 @@ class UserApiController extends Controller
             return response()->json([
                 'message' => 'Auth was not added.',
             ], 400);
+        }
+        if (($res['status'] ?? null) === 'Error') {
+            return response()->json([
+                'message' => $res['message'] ?? 'Auth was not added.',
+            ], 422);
         }
         return response()->json($res);
     }
@@ -116,15 +122,25 @@ class UserApiController extends Controller
 
     public function deleteUser(Request $request)
     {
-        $request->validate([
-            'password' => ['required'],
-        ]);
-
         $user = User::model()->find($request->user()?->id);
-        if (!Hash::check($request->password, $user->password)) {
+        if (!$user) {
             return response()->json([
                 'message' => 'Password is Wrong.',
             ], 403);
+        }
+
+        // See UserController::accountDelete — OAuth accounts hold no password,
+        // so requiring one locked them out of deleting their account.
+        if ($user->password !== null) {
+            $request->validate([
+                'password' => ['required'],
+            ]);
+
+            if (!Hash::check($request->password, $user->password)) {
+                return response()->json([
+                    'message' => 'Password is Wrong.',
+                ], 403);
+            }
         }
 
         $user->delete();
@@ -200,6 +216,18 @@ class UserApiController extends Controller
             ]);
 
             $user = User::model()->find($request->user()->id);
+            if (!$user) {
+                return response()->json([
+                    'message' => 'User not found.',
+                ], 404);
+            }
+
+            if ($user->password === null) {
+                return response()->json([
+                    'message' => 'Your account has no password yet. Use the emailed link to set one.',
+                ], 403);
+            }
+
             if (!Hash::check($request->current_password, $user->password)) {
                 return response()->json([
                     'message' => 'Current Password is Wrong.',
@@ -211,7 +239,7 @@ class UserApiController extends Controller
             return response()->json([
                 'message' => 'Password has been successfully updated.',
             ]);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             throw $e;
         } catch (Exception $e) {
             Log::error($e);

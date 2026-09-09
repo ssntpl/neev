@@ -28,6 +28,12 @@ Enable team/organization sub-grouping. Teams are optional in both tenant and non
 - Team invitations are available
 - Team switching is enabled
 - Requires `teams`, `memberships`, `team_invitations` tables
+- The team routes are registered — `/teams/*` and `/account/teams` on the web,
+  `/neev/teams/*`, `/neev/domains/*` and `/neev/changeTeamOwner` on the API
+
+With `team => false` those routes are never registered, so the paths answer 404
+and `route('teams.create')` throws. Wrap any link to them in
+`@if (config('neev.team'))`. See [Web Routes](./web-routes.md#team-routes).
 
 The two flags combine into four valid modes:
 
@@ -109,7 +115,7 @@ App-wide social login providers. Uncomment providers you want to enable. Each re
 'relying_party_id' => parse_url(config('app.url'), PHP_URL_HOST),
 ```
 
-The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host of `app.url`.
+The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host of `app.url`. This is a single application-wide value: passkeys work on this domain and its subdomains only, never on a tenant's custom domain. See [Supported Domains](./authentication.md#supported-domains).
 
 ### WebAuthn Allowed Origins
 
@@ -119,7 +125,7 @@ The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host
 ],
 ```
 
-Origins permitted to complete WebAuthn ceremonies. List every allowed origin for multi-origin setups (e.g. app served from multiple domains).
+Origins permitted to complete WebAuthn ceremonies **under the relying party ID above**. List every allowed origin for multi-origin setups (e.g. app served from multiple domains), including each subdomain — subdomain matching is off, so a wildcard is not accepted. Listing an origin the relying party ID does not cover has no effect; the browser rejects those ceremonies before the server sees them.
 
 ---
 
@@ -150,6 +156,8 @@ Number of single-use recovery codes generated per user.
 
 Days to keep unverified (pending) MFA setups before the `neev:clean-pending-mfa-setups` command deletes them.
 
+Set it to `0` (or any value below 1) to **disable** the cleanup. Zero does not mean "delete everything": a retention of zero would be "older than right now", which would wipe setups a user was still in the middle of, so the command skips the deletion and reports that it is disabled — the same convention `login_history_retention_days` follows.
+
 ---
 
 ## Verification
@@ -162,7 +170,7 @@ Days to keep unverified (pending) MFA setups before the `neev:clean-pending-mfa-
 
 Length of one-time password codes: 4, 6, or 8 digits (used for MFA email OTP). Replaces the old `otp_min` / `otp_max` range keys.
 
-> **Email verification:** there is no `email_verified` toggle anymore. The verification flow (signed links) is always available, and enforcement is opt-in via the `neev:verified-email` middleware alias (`EnsureEmailIsVerified`) — apply it to the routes you want to protect.
+> **Email verification:** there is no `email_verified` toggle anymore. The verification flow (signed links) is always available, and enforcement is opt-in via the `neev-verified-email` middleware alias (`EnsureEmailIsVerified`) — apply it to the routes you want to protect.
 
 ---
 
@@ -172,9 +180,24 @@ Length of one-time password codes: 4, 6, or 8 digits (used for MFA email OTP). R
 
 ```php
 'login_token_expiry_minutes' => 1440,
+'login_token_max_lifetime_minutes' => (int) env('NEEV_LOGIN_TOKEN_MAX_LIFETIME_MINUTES', 43200),
 ```
 
-Minutes before login access tokens expire.
+`login_token_expiry_minutes` is an **idle** window: minutes of inactivity
+before a login token expires. Every authenticated request past the
+half-way point of that window slides the deadline forward, so a session
+in active use is never cut off mid-work. In SPA cookie mode the auth
+cookie is re-issued with the same deadline, so the browser's copy tracks
+the token's.
+
+`login_token_max_lifetime_minutes` caps a session's total life, measured
+from when the token was issued (default 30 days). The idle window never
+slides a token past this ceiling, so a stolen token cannot be kept alive
+indefinitely by using it — the user re-authenticates when it is reached.
+`0` disables the ceiling, leaving sliding expiry only.
+
+Only login tokens slide. API tokens are deliberate, long-lived
+credentials and keep the expiry they were issued with.
 
 ### MFA JWT Expiry
 
@@ -255,6 +278,12 @@ Notes:
 - With `allow_unverified_users` off (the default), generation throws `MagicLinkUnverifiedException` for an unverified address and the API returns `403`. Otherwise the link would be mailed and every redemption of it would fail as "invalid or expired". Turning it on lets those users in and marks the email verified on redemption. Both refusals happen **before** the previous link is invalidated, so a rejected send never costs the user the link already in their inbox.
 - A magic link does **not** enforce MFA (by design).
 - Prune expired rows with `php artisan neev:clean-magic-links`.
+Minutes before every emailed link expires — magic links, password reset,
+email verification, email change, and team invitations.
+
+Where those links *point* is not configuration: it is decided by the
+`EmailLinks` service, which you subclass and bind when you want them on your
+own pages. See [Email Links](./email-links.md).
 
 ### OTP Expiry
 
@@ -272,7 +301,7 @@ Minutes before email OTP codes expire.
 
 Days before a password expires. Set to `0` to disable. Replaces the old `password_soft_expiry_days` / `password_hard_expiry_days` pair — the warning period is now the app's UI concern via the user helper methods (`passwordExpiresAt()`, `isPasswordExpired()`, `isPasswordExpiringSoon($days)`).
 
-Enforcement is opt-in: apply the `neev:password-not-expired` middleware alias (`EnsurePasswordNotExpired`) to protected routes. It returns a 403 with a `password_expired` error for expired passwords.
+Enforcement is opt-in: apply the `neev-password-not-expired` middleware alias (`EnsurePasswordNotExpired`) to protected routes. It returns a 403 with a `password_expired` error for expired passwords.
 
 ---
 
@@ -346,6 +375,10 @@ Path users are redirected to after login, logout-adjacent flows, and email actio
 ## Password Validation
 
 ```php
+use Ssntpl\Neev\Rules\Password;
+use Ssntpl\Neev\Rules\PasswordHistory;
+use Ssntpl\Neev\Rules\PasswordUserData;
+
 'password' => [
     'required',
     'confirmed',
@@ -354,6 +387,18 @@ Path users are redirected to after login, logout-adjacent flows, and email actio
     PasswordUserData::notContain(['name', 'email']),
 ],
 ```
+
+`Ssntpl\Neev\Rules\Password` is Laravel's `Illuminate\Validation\Rules\Password`
+with one addition: a `__set_state()` method. `php artisan config:cache` writes
+the config with `var_export()` and reads it back with `require`, and an object
+without `__set_state()` makes that cache file fatal on load — which is what
+Laravel reports as a non-serializable config value. The fluent builder is
+unchanged and every method returns the same class, so
+`Password::min(8)->symbols()` reads and behaves exactly as before while
+surviving a cached config. `PasswordHistory` and `PasswordUserData` carry the
+same trait.
+
+Import the rule from `Ssntpl\Neev\Rules` in your published `config/neev.php`.
 
 | Rule | Description |
 |------|-------------|
@@ -465,7 +510,8 @@ return [
     'otp_length' => 6,
 
     // Expiry
-    'login_token_expiry_minutes' => 1440,
+    'login_token_expiry_minutes' => 1440,     // idle window
+    'login_token_max_lifetime_minutes' => 43200,  // 30 days; 0 = no cap
     'mfa_jwt_expiry_minutes' => 30,
     'jwt_secret' => env('NEEV_JWT_SECRET'),
     'url_expiry_time' => 60,
@@ -545,13 +591,13 @@ The following keys no longer exist in `config/neev.php`. Where behaviour moved, 
 |-------------|-------------|
 | `identity_strategy`, `tenant_isolation`, `tenant_isolation_options` | Single `tenant` flag; domain resolution via `domains` table |
 | `tenant_auth`, `tenant_auth_options` | Per-entity settings in `tenant_auth_settings` / `team_auth_settings` DB tables |
-| `email_verified` | Opt-in `neev:verified-email` middleware alias (`EnsureEmailIsVerified`) |
+| `email_verified` | Opt-in `neev-verified-email` middleware alias (`EnsureEmailIsVerified`) |
 | `require_company_email`, `free_email_domains`, `domain_federation` | Removed from Neev (app-level or separate package concern) |
 | `magicauth` | Removed — magic link login is always available |
 | `dashboard_url`, `frontend_url` | `home` (path only, Blade flows) |
 | `otp_min` / `otp_max` | `otp_length` |
 | `login_soft_attempts` / `login_hard_attempts` / `login_block_minutes` | `login_throttle` progressive delay |
-| `password_soft_expiry_days` / `password_hard_expiry_days` | `password_expiry_days` + `neev:password-not-expired` middleware alias (`EnsurePasswordNotExpired`) |
+| `password_soft_expiry_days` / `password_hard_expiry_days` | `password_expiry_days` + `neev-password-not-expired` middleware alias (`EnsurePasswordNotExpired`) |
 | `record_failed_login_attempts` | `log_failed_logins` |
 | `last_login_attempts_in_days` | `login_history_retention_days` |
 | `geo_ip_db`, `edition`, `maxmind_license_key` | `maxmind.db_path`, `maxmind.edition`, `maxmind.license_key` |

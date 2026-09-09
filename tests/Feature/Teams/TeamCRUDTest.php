@@ -14,10 +14,19 @@ class TeamCRUDTest extends TestCase
     use RefreshDatabase;
     use WithNeevConfig;
 
+    protected function defineEnvironment($app): void
+    {
+        parent::defineEnvironment($app);
+
+        // The team routes are registered only when `neev.team` is on, and that
+        // happens while the providers boot — before setUp() runs. Enabling
+        // teams from setUp() would set the config too late for the routes.
+        $app['config']->set('neev.team', true);
+    }
+
     protected function setUp(): void
     {
         parent::setUp();
-        $this->enableTeams();
         $this->loadMigrationsFrom(
             dirname(__DIR__, 3) . '/vendor/ssntpl/laravel-acl/database/migrations'
         );
@@ -183,6 +192,8 @@ class TeamCRUDTest extends TestCase
 
         $team = TeamFactory::new()->create(['user_id' => $user->id, 'name' => 'Old Name']);
 
+        $team->addMember($user);
+
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/teams', [
                 'team_id' => $team->id,
@@ -204,6 +215,8 @@ class TeamCRUDTest extends TestCase
 
         $team = TeamFactory::new()->create(['user_id' => $user->id, 'is_public' => false]);
 
+        $team->addMember($user);
+
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->putJson('/neev/teams', [
                 'team_id' => $team->id,
@@ -214,6 +227,11 @@ class TeamCRUDTest extends TestCase
             ->assertJsonPath('data.is_public', true);
     }
 
+    /**
+     * The authorisation check runs first and answers the same way whether the
+     * team is missing or simply not yours, so the endpoint never confirms
+     * that a team id exists.
+     */
     public function test_update_nonexistent_team_returns_error(): void
     {
         [$user, $token] = $this->authenticatedUser();
@@ -224,7 +242,7 @@ class TeamCRUDTest extends TestCase
                 'name' => 'Whatever',
             ]);
 
-        $response->assertStatus(400);
+        $response->assertStatus(403);
     }
 
     // -----------------------------------------------------------------

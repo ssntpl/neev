@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Feature\Account;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
+use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -72,6 +73,11 @@ class MFAManagementTest extends TestCase
         $response->assertStatus(422);
     }
 
+    /**
+     * Adding a factor that is already configured is a client error, and the
+     * controller now reports every `status => Error` result as 422 rather
+     * than a 200 carrying an error message.
+     */
     public function test_add_duplicate_email_mfa_returns_already_configured(): void
     {
         [$user, $token] = $this->authenticatedUser();
@@ -84,8 +90,47 @@ class MFAManagementTest extends TestCase
                 'auth_method' => 'email',
             ]);
 
-        $response->assertOk()
+        $response->assertStatus(422)
             ->assertJsonPath('message', 'Email already Configured.');
+    }
+
+    /**
+     * An email OTP factor is only as trustworthy as the address it is sent to,
+     * so an unverified address cannot become a second factor.
+     */
+    public function test_add_email_mfa_is_rejected_when_email_is_unverified(): void
+    {
+        $user = User::factory()->unverified()->create();
+        $token = $user->createLoginToken(60)->plainTextToken;
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', [
+                'auth_method' => 'email',
+            ]);
+
+        $response->assertStatus(422)
+            ->assertJsonPath('message', 'Email is not verified.');
+
+        $this->assertSame(0, $user->multiFactorAuths()->where('method', 'email')->count());
+    }
+
+    public function test_add_email_mfa_succeeds_once_the_email_is_verified(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->assertNotNull($user->email_verified_at);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', [
+                'auth_method' => 'email',
+            ]);
+
+        $response->assertOk();
+
+        $this->assertSame(
+            MultiFactorAuth::STATUS_ACTIVE,
+            $user->multiFactorAuths()->where('method', 'email')->first()->status
+        );
     }
 
     public function test_add_unsupported_mfa_method_returns_error(): void

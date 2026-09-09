@@ -56,8 +56,8 @@
 - [x] Brute force protection (progressive delay via `login_throttle`: exponential backoff after `delay_after` failures, capped at `max_delay_seconds`)
 - [x] Login attempt tracking (IP, browser, OS, device, GeoIP location)
 - [x] Password history (prevents reusing last N passwords)
-- [x] Password expiry enforcement (`password_expiry_days` config + opt-in `neev:password-not-expired` middleware, added in v0.4.0)
-- [x] Email verification enforcement (opt-in `neev:verified-email` middleware, added in v0.4.4)
+- [x] Password expiry enforcement (`password_expiry_days` config + opt-in `neev-password-not-expired` middleware, added in v0.4.0)
+- [x] Email verification enforcement (opt-in `neev-verified-email` middleware, added in v0.4.4)
 - [x] MaxMind GeoIP integration for IP geolocation
 
 ### API & Access Tokens
@@ -96,13 +96,13 @@
 - [x] `neev:api` - API token authentication (TenantMiddleware > ResolveTeamMiddleware > NeevAPIMiddleware > EnsureTenantMembership > BindContextMiddleware)
 - [x] `neev:login` - MFA step-up JWT authentication (TenantMiddleware > ResolveTeamMiddleware > JwtLoginMiddleware > EnsureTenantMembership > BindContextMiddleware)
 - [x] `neev:tenant` - Tenant resolution, required (TenantMiddleware:required > ResolveTeamMiddleware > BindContextMiddleware)
-- [x] `neev:active-team` - Blocks inactive teams
-- [x] `neev:active-tenant` - Blocks inactive tenants
-- [x] `neev:tenant-member` - Verifies user belongs to tenant
-- [x] `neev:resolve-team` - Resolves team from route parameter
-- [x] `neev:ensure-sso` - Enforces SSO-only access for current context
-- [x] `neev:password-not-expired` - Blocks users with expired passwords (opt-in)
-- [x] `neev:verified-email` - Blocks users with unverified email (opt-in)
+- [x] `neev-active-team` - Blocks inactive teams
+- [x] `neev-active-tenant` - Blocks inactive tenants
+- [x] `neev-tenant-member` - Verifies user belongs to tenant
+- [x] `neev-resolve-team` - Resolves team from route parameter
+- [x] `neev-ensure-sso` - Enforces SSO-only access for current context
+- [x] `neev-password-not-expired` - Blocks users with expired passwords (opt-in)
+- [x] `neev-verified-email` - Blocks users with unverified email (opt-in)
 
 ### Configuration
 - [x] Minimal config surface (~20 keys, two orthogonal identity flags `tenant` + `team`) after the v0.4.0 config overhaul; per-tenant/team auth behaviour lives in `tenant_auth_settings`/`team_auth_settings` DB tables
@@ -133,7 +133,7 @@
 - [x] **SSO SPA flow documentation** — covered in `docs/spa-authentication.md` (SSO → SPA section: discovery, redirect, cookie vs fragment callback).
 - [x] **Middleware usage and ordering documentation** — authoritative "Middleware Usage & Ordering" section in `docs/architecture-internals.md`.
 - [x] **Queue/background job tenant context** — documented in `docs/multi-tenancy.md` (Console & Queue Context) with a complete job example.
-- [x] **OAuth security bypass documentation** — verified against the callback flows and prominently documented in `docs/authentication.md` + `docs/security.md`, with mitigations (provider allowlist, `neev:ensure-sso`).
+- [x] **OAuth security bypass documentation** — verified against the callback flows and prominently documented in `docs/authentication.md` + `docs/security.md`, with mitigations (provider allowlist, `neev-ensure-sso`).
 - [x] **CORS/SPA guidance** — covered in `docs/spa-authentication.md` (backend setup: cors.php example, credentials, encryption caveats).
 
 ### Code Cleanup

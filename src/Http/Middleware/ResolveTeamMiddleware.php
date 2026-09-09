@@ -25,9 +25,13 @@ class ResolveTeamMiddleware
 
         $teamClass = Team::getClass();
 
-        $team = ctype_digit((string) $teamParam)
-            ? $teamClass::find((int) $teamParam)
-            : $teamClass::resolveBySlug((string) $teamParam);
+        // Route model binding may already have resolved the parameter into a
+        // model, in which case there is nothing left to look up.
+        $team = $teamParam instanceof $teamClass
+            ? $teamParam
+            : (ctype_digit((string) $teamParam)
+                ? $teamClass::find((int) $teamParam)
+                : $teamClass::resolveBySlug((string) $teamParam));
 
         if (!$team) {
             return response()->json(['message' => 'Team not found.'], 404);

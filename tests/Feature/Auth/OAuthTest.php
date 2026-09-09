@@ -58,7 +58,25 @@ class OAuthTest extends TestCase
             ->andReturn($provider);
     }
 
-    private function mockSocialiteUser(string $email, string $name = 'Test User'): void
+    private function mockSocialiteUser(string $email, ?string $name = 'Test User', ?string $nickname = null): void
+    {
+        $socialiteUser = Mockery::mock(SocialiteUser::class);
+        $socialiteUser->email = $email;
+        $socialiteUser->name = $name;
+        $socialiteUser->shouldReceive('getId')->andReturn('oauth-123');
+        $socialiteUser->shouldReceive('getNickname')->andReturn($nickname);
+        $socialiteUser->shouldReceive('getAvatar')->andReturn(null);
+
+        $provider = Mockery::mock(Provider::class);
+        $provider->shouldReceive('user')->andReturn($socialiteUser);
+
+        Socialite::shouldReceive('driver')
+            ->with('google')
+            ->andReturn($provider);
+    }
+
+    /** The API flow drives the provider statelessly with its own redirect URL. */
+    private function mockStatelessSocialiteUser(string $email, ?string $name = 'Test User'): void
     {
         $socialiteUser = Mockery::mock(SocialiteUser::class);
         $socialiteUser->email = $email;
@@ -68,6 +86,8 @@ class OAuthTest extends TestCase
         $socialiteUser->shouldReceive('getAvatar')->andReturn(null);
 
         $provider = Mockery::mock(Provider::class);
+        $provider->shouldReceive('stateless')->andReturnSelf();
+        $provider->shouldReceive('redirectUrl')->andReturnSelf();
         $provider->shouldReceive('user')->andReturn($socialiteUser);
 
         Socialite::shouldReceive('driver')
@@ -111,6 +131,60 @@ class OAuthTest extends TestCase
     public function test_redirect_returns_404_for_unconfigured_service(): void
     {
         $response = $this->get('/neev/oauth/github');
+
+        $response->assertStatus(404);
+    }
+
+    // -----------------------------------------------------------------
+    // GET /oauth/{service}/redirect — per-platform clients
+    // -----------------------------------------------------------------
+
+    public function test_api_redirect_uses_the_default_client_without_a_platform(): void
+    {
+        $response = $this->getJson('/neev/oauth/google/redirect');
+
+        $response->assertOk();
+        $this->assertStringContainsString('client_id=test-client-id', $response->json('url'));
+    }
+
+    public function test_api_redirect_uses_the_platform_client_and_its_redirect(): void
+    {
+        // Google will not accept a web client_id from an Android app, and a
+        // native client redirects to its own scheme.
+        config(['services.google.clients.android' => [
+            'client_id' => 'android-client-id',
+            'client_secret' => 'android-secret',
+            'redirect' => 'com.acme.app:/oauth',
+        ]]);
+
+        $response = $this->getJson('/neev/oauth/google/redirect?platform=android');
+
+        $response->assertOk();
+        $this->assertStringContainsString('client_id=android-client-id', $response->json('url'));
+        $this->assertStringContainsString(urlencode('com.acme.app:/oauth'), $response->json('url'));
+    }
+
+    public function test_api_redirect_404s_for_a_platform_that_is_not_configured(): void
+    {
+        config(['services.google.clients.android' => [
+            'client_id' => 'android-client-id',
+            'client_secret' => 'android-secret',
+            'redirect' => 'com.acme.app:/oauth',
+        ]]);
+
+        $response = $this->getJson('/neev/oauth/google/redirect?platform=ios');
+
+        $response->assertStatus(404)
+            ->assertJsonPath('platforms', ['android']);
+    }
+
+    public function test_api_callback_404s_for_a_platform_that_is_not_configured(): void
+    {
+        // The code was issued to one client and must be exchanged with it.
+        $response = $this->postJson('/neev/oauth/google/callback', [
+            'code' => 'abc',
+            'platform' => 'ios',
+        ]);
 
         $response->assertStatus(404);
     }
@@ -183,15 +257,59 @@ class OAuthTest extends TestCase
         $response->assertRedirect(route('login'));
     }
 
-    public function test_callback_redirects_to_login_for_unverified_email(): void
+    public function test_callback_verifies_and_logs_in_a_previously_unverified_email(): void
     {
+        // The provider authenticated the address, which is proof of ownership
+        // as strong as our own verification mail, so the callback adopts it
+        // rather than turning the user away.
         $user = User::factory()->unverified()->create();
 
         $this->mockSocialiteUser($user->email);
 
         $response = $this->get('/neev/oauth/google/callback?code=test-auth-code');
 
-        $response->assertRedirect(route('login'));
+        $response->assertRedirect(config('neev.home'));
+
+        $user->refresh();
+        $this->assertNotNull($user->email_verified_at);
+        $this->assertAuthenticatedAs($user);
+    }
+
+    // -----------------------------------------------------------------
+    // POST /neev/oauth/{service}/callback — API flow
+    // -----------------------------------------------------------------
+
+    public function test_api_callback_verifies_and_issues_a_token_for_a_previously_unverified_email(): void
+    {
+        $user = User::factory()->unverified()->create();
+
+        $this->mockStatelessSocialiteUser($user->email);
+
+        $response = $this->postJson('/neev/oauth/google/callback', ['code' => 'test-auth-code']);
+
+        $response->assertOk();
+        $response->assertJson([
+            'auth_state' => 'authenticated',
+            'email_verified' => true,
+        ]);
+        $this->assertNotEmpty($response->json('token'));
+        $this->assertNotNull($user->refresh()->email_verified_at);
+    }
+
+    /** The issued token is usable straight away — no verification step in between. */
+    public function test_api_callback_token_authenticates_an_unverified_account_immediately(): void
+    {
+        $user = User::factory()->unverified()->create();
+
+        $this->mockStatelessSocialiteUser($user->email);
+
+        $token = $this->postJson('/neev/oauth/google/callback', ['code' => 'test-auth-code'])
+            ->assertOk()
+            ->json('token');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/users')
+            ->assertOk();
     }
 
     public function test_callback_creates_team_when_teams_enabled(): void
@@ -261,6 +379,52 @@ class OAuthTest extends TestCase
 
         // User should have their own team since their domain is not verified
         $this->assertEquals(1, Team::where('user_id', $user->id)->count());
+    }
+
+    // -----------------------------------------------------------------
+    // Providers that supply no display name
+    // -----------------------------------------------------------------
+
+    /**
+     * GitHub returns a null name whenever the account has no display name
+     * set, which is the common case, so registration falls back to the
+     * provider's handle.
+     */
+    public function test_callback_falls_back_to_the_provider_nickname_when_no_name_is_given(): void
+    {
+        $this->mockSocialiteUser('nameless@example.com', null, 'octocat');
+
+        $this->get('/neev/oauth/google/callback?code=test-auth-code');
+
+        $this->assertSame('octocat', User::where('email', 'nameless@example.com')->first()->name);
+    }
+
+    /** With neither a name nor a handle, the address's local part is used. */
+    public function test_callback_derives_a_name_from_the_email_when_the_provider_gives_nothing(): void
+    {
+        $this->mockSocialiteUser('ada.lovelace@example.com', null, null);
+
+        $this->get('/neev/oauth/google/callback?code=test-auth-code');
+
+        $this->assertSame('Ada Lovelace', User::where('email', 'ada.lovelace@example.com')->first()->name);
+    }
+
+    public function test_callback_treats_a_blank_name_the_same_as_a_missing_one(): void
+    {
+        $this->mockSocialiteUser('blank_name@example.com', '   ', null);
+
+        $this->get('/neev/oauth/google/callback?code=test-auth-code');
+
+        $this->assertSame('Blank Name', User::where('email', 'blank_name@example.com')->first()->name);
+    }
+
+    public function test_callback_keeps_the_provider_name_when_one_is_given(): void
+    {
+        $this->mockSocialiteUser('named@example.com', 'Grace Hopper', 'ghopper');
+
+        $this->get('/neev/oauth/google/callback?code=test-auth-code');
+
+        $this->assertSame('Grace Hopper', User::where('email', 'named@example.com')->first()->name);
     }
 
 }

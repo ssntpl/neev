@@ -6,9 +6,12 @@ use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Ssntpl\Neev\Models\User;
 use Illuminate\Support\Str;
+use Ssntpl\Neev\Support\ExportsState;
 
 class PasswordUserData implements ValidationRule
 {
+    use ExportsState;
+
     public function __construct(
         protected string|array $columns = [],
     ) {

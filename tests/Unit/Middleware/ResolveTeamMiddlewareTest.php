@@ -36,7 +36,7 @@ class ResolveTeamMiddlewareTest extends TestCase
 
     private function createRequestWithTeamParam($teamParam): Request
     {
-        $request = Request::create('/teams/' . $teamParam);
+        $request = Request::create('/teams/' . (is_object($teamParam) ? $teamParam->getKey() : $teamParam));
         $route = new Route('GET', '/teams/{team}', fn () => null);
         $route->bind($request);
         $route->setParameter('team', $teamParam);
@@ -157,4 +157,52 @@ class ResolveTeamMiddlewareTest extends TestCase
         $this->assertNotNull($attributeTeam);
         $this->assertEquals($team->id, $attributeTeam->id);
     }
+    // -----------------------------------------------------------------
+    // Route model binding has already resolved the parameter
+    // -----------------------------------------------------------------
+
+    /**
+     * When the route type-hints the model, Laravel hands the middleware a
+     * Team rather than an id or slug, and there is nothing left to look up.
+     */
+    public function test_accepts_a_team_already_resolved_by_route_model_binding(): void
+    {
+        $team = TeamFactory::new()->create(['slug' => 'bound-team']);
+
+        $request = $this->createRequestWithTeamParam($team);
+        $resolvedTeam = null;
+
+        $next = function (Request $req) use (&$resolvedTeam): Response {
+            $resolvedTeam = $req->attributes->get('team');
+            return response()->json(['message' => 'OK'], 200);
+        };
+
+        $response = $this->middleware->handle($request, $next);
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertTrue($team->is($resolvedTeam));
+        $this->assertTrue($this->contextManager->hasTeam());
+        $this->assertEquals($team->id, $this->contextManager->currentTeam()->id);
+    }
+
+    /** A bound model is used as-is, without a second query to find it again. */
+    public function test_a_bound_team_is_not_looked_up_again(): void
+    {
+        $team = TeamFactory::new()->create();
+
+        $request = $this->createRequestWithTeamParam($team);
+
+        \Illuminate\Support\Facades\DB::enableQueryLog();
+        \Illuminate\Support\Facades\DB::flushQueryLog();
+
+        $this->middleware->handle($request, $this->passThrough());
+
+        $queries = \Illuminate\Support\Facades\DB::getQueryLog();
+        $this->assertSame(
+            [],
+            array_values(array_filter($queries, fn ($q) => str_contains($q['query'], 'from "teams"'))),
+            'A team handed in by route model binding must not be re-queried.'
+        );
+    }
+
 }

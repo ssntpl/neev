@@ -34,6 +34,8 @@ class TenantSSOAdditionalTest extends TestCase
         $resolver = Mockery::mock(TenantResolver::class);
         $resolver->shouldReceive('current')->andReturn($tenant);
         $resolver->shouldReceive('resolvedContext')->andReturn($tenant);
+        $resolver->shouldReceive('resolve')->andReturn($tenant);
+        $resolver->shouldReceive('isResolvedDomainVerified')->andReturn(true);
         $this->app->instance(TenantResolver::class, $resolver);
     }
 

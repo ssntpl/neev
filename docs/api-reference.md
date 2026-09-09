@@ -111,7 +111,13 @@ POST /neev/login
 ```
 
 When `auth_state` is `mfa_required`, the token is a short-lived JWT (type `mfa`) that can only be used to verify MFA. Complete MFA verification to get a full access token.
-`expires_in` is returned in minutes.
+`expires_in` is returned in minutes. For a login token it is an **idle**
+window: an authenticated request past the half-way point of the window
+slides the deadline forward (capped by
+`login_token_max_lifetime_minutes`, default 30 days from issue), so a
+client in active use is not signed out when `expires_in` elapses. An
+expired token answers `401` with `"code": "token_expired"`. API tokens
+do not slide.
 
 ---
 
@@ -289,6 +295,17 @@ POST /neev/forgotPassword
 }
 ```
 
+An **unverified** address can request and use a reset link. A forgotten
+password is exactly the case where the user may never have finished
+verifying, so requiring verification first would strand them. `404 User not
+registered or wrong email.` is returned only when no account holds the
+address.
+
+Where the link lands is controlled by [`EmailLinks`](./email-links.md):
+the Blade kit sends it to its own `reset.request` form, while a headless
+install sends it to `{app.url}/reset-password` carrying the signed query for
+your page to forward here.
+
 ---
 
 ### Reset Password
@@ -349,18 +366,44 @@ Authorization: Bearer {token}
 GET /neev/email/verify?id={user_id}&hash={email_hash}&signature={signature}&expires={timestamp}
 ```
 
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
+**No authentication required.** The signature is the credential. A mail client
+hands the link to whichever browser it likes — rarely the one holding the
+session — so requiring a token here would break most real clicks. The link
+verifies the account it was minted for, regardless of who is signed in.
+Throttled to 10 requests/minute.
 
-**Response:**
+**Response (`200`):**
 
 ```json
 {
     "message": "Email verification done."
 }
 ```
+
+**Response (`200`, already verified):**
+
+```json
+{
+    "message": "Email verification already done."
+}
+```
+
+A second click is not an error — mail scanners routinely fetch links before
+the recipient does.
+
+**Response (`403`)** — bad or expired signature, unknown user, or a `hash`
+that no longer matches the account's address:
+
+```json
+{
+    "message": "Invalid or expired verification link."
+}
+```
+
+If the caller does not send `Accept: application/json`, these answer with a
+redirect instead (to `neev.home` on success, with an error bag on failure).
+Both the URL and the response are controlled by
+[`EmailLinks`](./email-links.md).
 
 ---
 
@@ -395,6 +438,11 @@ Authorization: Bearer {token}
 
 Request to change the authenticated user's email address. Sends a verification link to the new email. Requires current password for security.
 
+An account created through OAuth has no password, so
+there is nothing to check: the request is refused with `403` and *Set a password
+on your account before changing your email address.* until one is set. See
+[Accounts Without a Password](./authentication.md#accounts-without-a-password).
+
 ```http
 POST /neev/email/change
 ```
@@ -425,9 +473,15 @@ Authorization: Bearer {token}
 
 ### Verify Email Change
 
-Verify the email change using the signed URL sent to the new email address. The frontend receives the signed URL parameters and forwards them to this endpoint.
+Verify the email change using the signed URL sent to the new email address.
+
+The route answers **both** verbs. `GET` is what a clicked link issues; `POST`
+is retained for SPAs that receive the signed URL parameters on their own page
+and forward them here. Like verification, no authentication is required — the
+signature is the credential. Throttled to 10 requests/minute.
 
 ```http
+GET  /neev/email/change/verify?id={user_id}&email={new_email}&signature={signature}&expires={timestamp}
 POST /neev/email/change/verify?id={user_id}&email={new_email}&signature={signature}&expires={timestamp}
 ```
 
@@ -481,6 +535,20 @@ Authorization: Bearer {token}
 ```
 
 The authenticator method is created in a **pending** state and is not enforced at login until activated via [Verify MFA Setup](#verify-mfa-setup). The email method is created active immediately.
+
+**Response (`422`)** — the request could not be satisfied. The body carries the
+reason:
+
+```json
+{
+    "message": "Email is not verified."
+}
+```
+
+An email factor is only as trustworthy as the inbox it is sent to, so an
+unverified address cannot be enrolled. `Email already Configured.` comes back
+the same way when the factor already exists. A `400` still means the method
+name itself is not one neev supports.
 
 **Response (email):**
 
@@ -868,6 +936,10 @@ Authorization: Bearer {token}
 }
 ```
 
+`password` is required — and checked — only when the account has one. An account
+created through OAuth has no password, so the bearer
+token is the confirmation and the body may be empty.
+
 **Response:**
 
 ```json
@@ -875,6 +947,13 @@ Authorization: Bearer {token}
     "message": "Account has been deleted."
 }
 ```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 422 | Validation error — `password` missing on an account that has one |
+| 403 | `Password is Wrong.` |
 
 ---
 
@@ -906,6 +985,20 @@ Authorization: Bearer {token}
     "message": "Password has been successfully updated."
 }
 ```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 403 | `Current Password is Wrong.` |
+| 403 | `Your account has no password yet. Use the emailed link to set one.` |
+| 404 | `User not found.` |
+
+An account with no password cannot use this endpoint — there is no current
+password to check. It sets its first one through the emailed link:
+`POST /account/password/reset-link` under the Blade kit, or your own page
+calling `EmailLinks::passwordResetUrl()`. See
+[Accounts Without a Password](./authentication.md#accounts-without-a-password).
 
 ---
 
@@ -1136,6 +1229,10 @@ Authorization: Bearer {token}
 
 ## Team Management
 
+> These endpoints, and the [Domain Federation](#domain-federation) ones, are
+> registered only when `'team' => true` in `config/neev.php`. With teams off
+> they answer 404.
+
 ### Get User's Teams
 
 ```http
@@ -1166,6 +1263,8 @@ Authorization: Bearer {token}
     ]
 }
 ```
+
+Under tenant isolation the list holds only teams in the tenant the request resolved to. A user who belongs to teams in several tenants sees each tenant's teams on that tenant's domain, never a merged list.
 
 ---
 
@@ -1229,6 +1328,37 @@ Authorization: Bearer {token}
     }
 }
 ```
+
+**Errors:**
+
+| Status | Message | When |
+| --- | --- | --- |
+| `400` | `Team not found` | The team does not exist, **or** the caller is not one of its members |
+
+A team the caller does not belong to is reported as missing rather than
+forbidden, so the endpoint cannot be used to probe which team ids exist.
+
+---
+
+### Get Team Details by Slug
+
+```http
+GET /neev/teams/slug/{slug}
+```
+
+Looks a team up by its slug instead of its id, for clients that route on a
+readable team handle (`/t/acme-labs`) and never see the id. Slugs are unique
+across the whole installation, so no tenant needs naming.
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Response:** identical to `GET /neev/teams/{id}`.
+
+**Errors:** identical to `GET /neev/teams/{id}` — membership is required, and
+an unknown slug and someone else's team give the same `400 Team not found`.
 
 ---
 
@@ -1319,6 +1449,18 @@ Authorization: Bearer {token}
 }
 ```
 
+**Errors:**
+
+| Status | Message | When |
+| --- | --- | --- |
+| `400` | `Role not found.` | `role` names a role that does not resolve for this team |
+| `400` | `User already added.` | The address already belongs to a joined member |
+
+Attaching the member and granting the role are one transaction: if the role
+cannot be resolved the membership is rolled back and no invitation mail is
+sent, so a bad role name cannot leave a member behind with no permissions.
+The same applies to accepting an invitation via `PUT /neev/teams/inviteUser`.
+
 ---
 
 ### Accept/Reject Invitation
@@ -1384,13 +1526,27 @@ POST /neev/teams/request
 Authorization: Bearer {token}
 ```
 
-**Request Body:**
+**Request Body:** name the team by id **or** by slug.
 
 ```json
 {
     "team_id": 1
 }
 ```
+
+```json
+{
+    "slug": "acme-labs"
+}
+```
+
+`team_id` wins if both are sent. A body naming neither is refused with `400`,
+as is a slug that matches no team.
+
+The request is recorded as a pending membership with
+`action = request_from_user`, and the team owner is emailed. A team whose
+domain federation is enforced or verified does not accept join requests —
+membership there follows from the verified domain.
 
 ---
 
@@ -1602,6 +1758,52 @@ POST /neev/tenant-domains/{id}/verify
 ```http
 POST /neev/tenant-domains/{id}/primary
 ```
+
+---
+
+### Get Current Tenant
+
+Reports the context the resolver settled on for this request, and the domain it
+was resolved from. Requires `tenant => true`: with tenant isolation off the
+resolver never runs and this always answers 400.
+
+```http
+GET /neev/tenant-domains/current
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Response:**
+
+```json
+{
+    "data": {
+        "type": "tenant",
+        "context": { "id": 1, "name": "Acme", "slug": "acme" },
+        "domain": { "id": 4, "domain": "acme.example.com", "is_primary": true },
+        "team": null
+    }
+}
+```
+
+`context` is that record and `type` says what it is. Resolution from the
+`X-Tenant` header or the request host always yields a `Tenant` (a team-owned
+domain resolves up to that team's tenant), so `type` is normally `tenant`. It is
+`team` only when the application has made a Team the context itself via
+`TenantResolver::setCurrentTenant()`.
+
+`team` repeats `context` when the type is `team`, and is `null` otherwise — kept
+for callers written before tenant isolation, when the context could only ever be
+a Team. New code should read `context` and branch on `type`.
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 400 | `No tenant context.` |
 
 ---
 

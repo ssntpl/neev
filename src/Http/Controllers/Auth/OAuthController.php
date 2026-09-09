@@ -9,6 +9,7 @@ use Laravel\Socialite\Facades\Socialite;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
+use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\SpaCookieResponder;
@@ -45,20 +46,22 @@ class OAuthController extends Controller
         }
 
         if (!$request->code) {
-            return redirect(route('login'));
+            return redirect(app(EmailLinks::class)->loginUrl());
         }
 
         $oauthUser = Socialite::driver($service)->user();
 
         $user = User::findByEmail($oauthUser->email);
         if ($user) {
+            // The provider authenticated this address, which is proof of
+            // ownership just as strong as our own verification mail.
             if (!$user->hasVerifiedEmail()) {
-                return redirect(route('login'));
+                $user->markEmailAsVerified();
             }
         } else {
             try {
                 $user = app(RegistrationService::class)
-                    ->registerViaOAuth($oauthUser->name, $oauthUser->email);
+                    ->registerViaOAuth($oauthUser->name ?: $oauthUser->getNickname(), $oauthUser->email);
             } catch (Exception $e) {
                 Log::error($e);
                 return redirect(route('register'));
@@ -67,7 +70,7 @@ class OAuthController extends Controller
 
         $this->auth->login($request, $geoIP, $user, $service);
 
-        $response = redirect(config('neev.home'));
+        $response = redirect($this->auth->intendedUrl());
 
         // Same-origin SPA monolith: also issue a login token in the
         // HttpOnly cookie so the SPA is authenticated for API calls when

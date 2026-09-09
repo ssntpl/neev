@@ -17,6 +17,15 @@
             <strong>{{ $email }}</strong>
         </div>
 
+        @unless ($has_password)
+            <div class="mb-4 text-sm text-gray-600 dark:text-gray-400">
+                {{ __('Changing your email address requires your password. Your account was created without one, so please') }}
+                <a href="{{ route('account.security') }}" class="text-blue-600 dark:text-blue-400 hover:underline">{{ __('set a password') }}</a>
+                {{ __('first.') }}
+            </div>
+        @endunless
+
+        @if ($has_password)
         <form method="POST" action="{{ route('email.update') }}">
             @csrf
             @method('PUT')
@@ -37,5 +46,6 @@
                 </x-neev-component::button>
             </div>
         </form>
+        @endif
     </x-neev-component::authentication-card>
 </x-neev-layout::guest>

@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
+use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Rules\PasswordHistory;
 use Ssntpl\Neev\Tests\TestCase;
@@ -53,15 +54,22 @@ class PasswordResetTest extends TestCase
         $response->assertStatus(404);
     }
 
-    public function test_forgot_password_returns_error_for_unverified_user(): void
+    public function test_forgot_password_sends_link_to_unverified_user(): void
     {
+        // A forgotten password is exactly the case where the user may never
+        // have completed verification, so verification is not a precondition
+        // for receiving a reset link.
+        Mail::fake();
+
         $user = User::factory()->unverified()->create();
 
         $response = $this->postJson('/neev/forgotPassword', [
             'email' => $user->email,
         ]);
 
-        $response->assertStatus(404);
+        $response->assertOk();
+
+        Mail::assertSent(VerifyUserEmail::class, fn (VerifyUserEmail $mail) => $mail->purpose === 'Reset Password');
     }
 
     // -----------------------------------------------------------------

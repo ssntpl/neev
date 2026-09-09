@@ -28,14 +28,6 @@ class AccessTokenFactory extends Factory
         ]);
     }
 
-    public function mfa(): static
-    {
-        return $this->state([
-            'name' => 'mfa_token',
-            'token_type' => AccessToken::mfa_token,
-        ]);
-    }
-
     public function expired(): static
     {
         return $this->state([

@@ -54,8 +54,24 @@
                     <x-neev-component::button type="submit">
                         {{ __('Log Out') }}
                     </x-neev-component::button>
-                </div>
                 </form>
+            </div>
+        </div>
+
+        <div class="mt-4 space-y-1 text-sm text-gray-600 dark:text-gray-400">
+            <div>
+                {{ __('Wrong address?') }}
+                <a href="{{ route('email.change') }}"
+                   class="text-blue-600 dark:text-blue-400 hover:underline">
+                    {{ __('Change your email address') }}
+                </a>
+            </div>
+            <div>
+                {{ __('No longer want this account?') }}
+                <a href="{{ route('account.security') }}"
+                   class="text-blue-600 dark:text-blue-400 hover:underline">
+                    {{ __('Manage or delete it') }}
+                </a>
             </div>
         </div>
     </x-neev-component::authentication-card>

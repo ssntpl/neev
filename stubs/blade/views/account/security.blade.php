@@ -9,7 +9,7 @@
         <x-neev-component::card x-data="{changePasswordOpen: false}">
             {{-- title --}}
             <x-slot name="title">
-                {{ __('Change Password') }}
+                {{ $user->password ? __('Change Password') : __('Set Password') }}
             </x-slot>
             
             {{-- Action --}}
@@ -31,6 +31,24 @@
 
             {{-- Content --}}
             <x-slot name="content">
+                {{-- Accounts registered through OAuth, a magic link or a passkey have
+                     no current password to prove ownership with, so the only way to
+                     set one is the link mailed to the address on the account. --}}
+                @if (!$user->password)
+                    <div x-show="changePasswordOpen" x-transition class="flex flex-col gap-3">
+                        <p class="text-sm text-gray-600 dark:text-gray-400">
+                            {{ __('Your account has no password yet. We will email a link to') }}
+                            <strong>{{ $user->email }}</strong>
+                            {{ __('so you can set one.') }}
+                        </p>
+                        <form method="POST" action="{{ route('password.reset.link') }}" class="flex justify-end">
+                            @csrf
+                            <x-neev-component::button>
+                                {{ __('Email me a link to set a password') }}
+                            </x-neev-component::button>
+                        </form>
+                    </div>
+                @else
                 <form method="POST" x-show="changePasswordOpen" x-transition action="{{ route('password.change') }}" class="flex flex-col gap-2">
                     @csrf
 
@@ -55,6 +73,19 @@
                         </x-neev-component::button>
                     </div>
                 </form>
+
+                {{-- Forgotten the current password? The link goes to the address on
+                     the account, so it works without knowing the old one. --}}
+                <form method="POST" x-show="changePasswordOpen" x-transition action="{{ route('password.reset.link') }}" class="mt-3 flex items-center gap-2">
+                    @csrf
+                    <span class="text-sm text-gray-600 dark:text-gray-400">
+                        {{ __("Don't remember your current password?") }}
+                    </span>
+                    <button type="submit" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                        {{ __('Email me a reset link') }}
+                    </button>
+                </form>
+                @endif
             </x-slot>
         </x-neev-component::card>
 
@@ -273,19 +304,26 @@
                             </x-slot>
                             
                             <x-slot name="content">
-                                {{ __('Please enter your password to confirm you would like to delete of your account.') }}
-                                
+                                @if ($user->password)
+                                    {{ __('Please enter your password to confirm you would like to delete of your account.') }}
+                                @else
+                                    {{ __('Are you sure you would like to delete your account? This cannot be undone.') }}
+                                @endif
+
                                 <form method="POST" action="{{ route('account.delete') }}" x-ref="deleteAccountForm">
                                     @csrf
                                     @method('DELETE')
-                                    <div class="mt-4">
-                                        <x-neev-component::input type="password"
-                                            name="password"
-                                            class="mt-1 block w-3/4"
-                                            autocomplete="password"
-                                            placeholder="{{ __('Password') }}"
-                                            x-ref="password" />
-                                    </div>
+                                    {{-- Accounts registered through OAuth have no password to confirm. --}}
+                                    @if ($user->password)
+                                        <div class="mt-4">
+                                            <x-neev-component::input type="password"
+                                                name="password"
+                                                class="mt-1 block w-3/4"
+                                                autocomplete="password"
+                                                placeholder="{{ __('Password') }}"
+                                                x-ref="password" />
+                                        </div>
+                                    @endif
                                 </form>
                             </x-slot>
 

@@ -507,4 +507,49 @@ class HasMultiAuthTest extends TestCase
 
         $this->assertCount(2, $user->recoveryCodes);
     }
+    // -----------------------------------------------------------------
+    // An email factor needs a verified address
+    // -----------------------------------------------------------------
+
+    /**
+     * An email OTP is only as trustworthy as the inbox it lands in, so an
+     * address nobody has proved they control cannot become a second factor.
+     */
+    public function test_add_email_factor_is_refused_while_the_address_is_unverified(): void
+    {
+        $user = User::factory()->unverified()->create();
+
+        $result = $user->addMultiFactorAuth('email');
+
+        $this->assertSame('Error', $result['status']);
+        $this->assertSame('Email is not verified.', $result['message']);
+        $this->assertCount(0, $user->multiFactorAuths()->get());
+    }
+
+    public function test_add_email_factor_is_active_immediately_once_verified(): void
+    {
+        $user = User::factory()->create();
+
+        $result = $user->addMultiFactorAuth('email');
+
+        $this->assertSame('Success', $result['status']);
+
+        $auth = $user->multiFactorAuths()->where('method', 'email')->first();
+        $this->assertSame(MultiFactorAuth::STATUS_ACTIVE, $auth->status);
+    }
+
+    /**
+     * Verification gates only the email factor — an authenticator app proves
+     * possession of the device, not of the inbox.
+     */
+    public function test_an_authenticator_factor_does_not_require_a_verified_address(): void
+    {
+        $user = User::factory()->unverified()->create();
+
+        $result = $user->addMultiFactorAuth('authenticator');
+
+        $this->assertSame('Success', $result['status']);
+        $this->assertNotNull($user->multiFactorAuths()->where('method', 'authenticator')->first());
+    }
+
 }

@@ -180,7 +180,9 @@ Content-Type: application/json
 }
 ```
 
-`expires_in` is in minutes and matches the cookie lifetime.
+`expires_in` is in minutes and matches the cookie lifetime the session
+starts with. It is an **idle** window, not a countdown to a forced
+logout — see §4.8.
 
 **Response (MFA enabled)** — the cookie now holds a short-lived MFA JWT, not a login token:
 
@@ -366,6 +368,38 @@ Revoking the *current* session this way returns **400** (`You cannot revoke your
 
 There is no client-readable token to check. On boot, call `GET /neev/users`: **200** means the cookie is valid (render the app), **401** means signed out (render login). This replaces any `localStorage.getItem('token')` check from bearer-mode codebases.
 
+### 4.8 How long a session lasts
+
+`login_token_expiry_minutes` (default 1440) is an **idle** window, not a
+fixed lifetime. Once a session is past the half-way point of that
+window, the next authenticated request slides the deadline forward and
+the response carries a fresh `Set-Cookie` with the new deadline — so a
+user who keeps working is never signed out mid-session, and one who
+walks away is signed out after a day of inactivity.
+
+`login_token_max_lifetime_minutes` (default 43200 — 30 days) caps the
+total life of a session from the moment it was issued. Sliding stops at
+that ceiling, and the user signs in again.
+
+There is nothing for the SPA to do: no refresh endpoint to call and no
+token to rotate. The renewal rides on the requests the app is already
+making, and the cookie is updated by the browser. Two consequences worth
+knowing:
+
+- The `Set-Cookie` appears on only a small fraction of responses (those
+  past the half-way point), not on every request.
+- `expires_in` from the login response is a floor, not the session's
+  real deadline, once the session has been in use. `GET
+  {prefix}/sessions` reports the live state of each session.
+
+An expired session answers **401** with a machine-readable code, so the
+SPA can tell "your session ended, sign in again" from a malformed or
+revoked token:
+
+```json
+{ "message": "Invalid or expired token", "code": "token_expired" }
+```
+
 ---
 
 ## 5. SSO and OAuth flows
@@ -456,7 +490,7 @@ One backend serves both modes simultaneously; nothing is configured per-client.
 
 - The request origin isn't on `NEEV_SPA_STATEFUL_DOMAINS`, so the middleware never promoted the cookie to a bearer header. Remember the match is against the **SPA's origin** (scheme-less host, with port if the origin has one): `localhost:5173` and `localhost` are different entries; a subdomain needs an exact entry or a `*.example.com` wildcard.
 - The cookie value was encrypted somewhere along the way (e.g. you renamed the auth cookie in config after sessions were issued, or a custom middleware stack encrypts it), so the synthesized bearer token is garbage. Neev auto-excludes its configured `cookie_name` from `EncryptCookies` — verify no other layer re-encrypts it, and log out/in after changing the cookie name.
-- The token behind the cookie was revoked or expired (`expires_in` elapsed, session revoked from another device, `logout` elsewhere). This is a normal signed-out state: route to login.
+- The token behind the cookie was revoked or expired (idle past `login_token_expiry_minutes`, past the `login_token_max_lifetime_minutes` ceiling, session revoked from another device, `logout` elsewhere). This is a normal signed-out state: route to login — an expiry answers with `"code": "token_expired"` (§4.8). Note that an *active* session is not signed out when `expires_in` elapses; its deadline slides.
 
 **Cookie never arrives / is never sent back**
 

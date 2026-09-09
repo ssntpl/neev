@@ -5,6 +5,8 @@ namespace Ssntpl\Neev\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
+use Ssntpl\Neev\Models\AccessToken;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Services\TenantResolver;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -26,7 +28,7 @@ class EnsureContextSSO
     /**
      * Handle an incoming request.
      *
-     * @param  \Closure(\Illuminate\Http\Request): (\Symfony\Component\HttpFoundation\Response)  $next
+     * @param  \Closure(Request): (Response)  $next
      */
     public function handle(Request $request, Closure $next): Response
     {
@@ -73,15 +75,15 @@ class EnsureContextSSO
     protected function wasAuthenticatedViaSSO(Request $request): bool
     {
         // Check session flag set during SSO callback
-        if ($request->hasSession() && $request->session()->get('auth_method') === 'sso') {
+        if ($request->hasSession() && $request->session()->get('auth_method') === LoginAttempt::SSO) {
             return true;
         }
 
         // For API requests, check the login attempt method on the token
         $tokenId = $request->attributes->get('token_id');
         if ($tokenId) {
-            $accessToken = \Ssntpl\Neev\Models\AccessToken::find($tokenId);
-            if ($accessToken?->attempt?->method === \Ssntpl\Neev\Models\LoginAttempt::SSO) { // @phpstan-ignore property.notFound
+            $accessToken = AccessToken::find($tokenId);
+            if ($accessToken?->attempt?->method === LoginAttempt::SSO) { // @phpstan-ignore property.notFound
                 return true;
             }
         }
