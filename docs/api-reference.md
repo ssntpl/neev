@@ -141,7 +141,9 @@ POST /neev/sendLoginLink
 ```
 
 `channel` is optional (default `web`); it must be a channel defined in
-`magic_link.channels`.
+`magic_link.channels`, and a deep-link channel must have a `scheme` or
+`universal_link` set. Anything else returns `422` ("Unsupported login link
+channel.") — an unusable channel is never downgraded to a web link.
 
 **Response:**
 

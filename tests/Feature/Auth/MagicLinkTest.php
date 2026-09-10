@@ -4,9 +4,14 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Ssntpl\Neev\Events\MagicLinkConsumed;
+use Ssntpl\Neev\Events\MagicLinkGenerated;
+use Ssntpl\Neev\Events\MagicLinkRejected;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
 use Ssntpl\Neev\Mail\LoginUsingLink;
+use Ssntpl\Neev\Models\MagicLinkToken;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
 use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
@@ -382,5 +387,217 @@ class MagicLinkTest extends TestCase
         $this->postJson('/neev/sendLoginLink', ['email' => $user->email])
             ->assertStatus(422)
             ->assertJson(['message' => 'Unable to send a login link for this request.']);
+    }
+
+    // -----------------------------------------------------------------
+    // Channel validation
+    // -----------------------------------------------------------------
+
+    /**
+     * The shipped 'mobile' channel has scheme/universal_link unset by default.
+     * Falling through to the web branch would mail a browser URL in answer to a
+     * mobile request — a 200, a valid token, and a login that opens Safari.
+     */
+    public function test_unconfigured_deep_link_channel_is_rejected(): void
+    {
+        Mail::fake();
+        config([
+            'neev.magic_link.channels.mobile.scheme' => null,
+            'neev.magic_link.channels.mobile.universal_link' => null,
+        ]);
+
+        $user = User::factory()->create();
+
+        $response = $this->postJson('/neev/sendLoginLink', [
+            'email' => $user->email,
+            'channel' => 'mobile',
+        ]);
+
+        $response->assertStatus(422);
+        Mail::assertNothingSent();
+    }
+
+    public function test_configured_deep_link_channel_builds_a_deep_link(): void
+    {
+        Mail::fake();
+        config(['neev.magic_link.channels.mobile.scheme' => 'myapp://login']);
+
+        $user = User::factory()->create();
+
+        $this->postJson('/neev/sendLoginLink', [
+            'email' => $user->email,
+            'channel' => 'mobile',
+        ])->assertOk();
+
+        Mail::assertSent(LoginUsingLink::class, function (LoginUsingLink $mail) {
+            return str_starts_with($mail->url, 'myapp://login?')
+                && str_contains($mail->url, 'token=');
+        });
+    }
+
+    /**
+     * A typo must not quietly mint a web token in response to a mobile request.
+     */
+    public function test_unknown_channel_is_rejected_rather_than_downgraded_to_web(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create();
+
+        $response = $this->postJson('/neev/sendLoginLink', [
+            'email' => $user->email,
+            'channel' => 'mobil',
+        ]);
+
+        $response->assertStatus(422);
+        $this->assertDatabaseCount('magic_link_tokens', 0);
+        Mail::assertNothingSent();
+    }
+
+    // -----------------------------------------------------------------
+    // Event payloads must survive a queue and carry no secrets
+    // -----------------------------------------------------------------
+
+    /**
+     * Single-use is enforced by deleting the token row, so an event that
+     * carried the model would restore it with firstOrFail() on the worker and
+     * throw ModelNotFoundException for every link redeemed before the queue
+     * drained.
+     */
+    public function test_generated_event_survives_the_token_row_being_deleted(): void
+    {
+        $user = User::factory()->create();
+        $token = MagicLinkToken::create([
+            'user_id' => $user->id,
+            'token' => MagicLinkToken::hashToken('probe-token'),
+            'channel' => 'web',
+            'expires_at' => now()->addMinutes(10),
+        ]);
+
+        $payload = serialize(MagicLinkGenerated::fromToken($user, $token));
+
+        MagicLinkToken::query()->whereKey($token->getKey())->delete();
+
+        $restored = unserialize($payload);
+
+        $this->assertSame($token->getKey(), $restored->tokenId);
+        $this->assertSame('web', $restored->channel);
+        $this->assertSame($user->id, $restored->user->id);
+    }
+
+    /**
+     * Queue payloads land in Redis, `jobs` and `failed_jobs` — the last retained
+     * indefinitely and routinely copied into backups. None of them may carry the
+     * account's password hash or the stored token hash.
+     */
+    public function test_event_payloads_carry_no_password_or_token_hash(): void
+    {
+        $user = User::factory()->create(['password' => bcrypt('SentinelPass123!')]);
+        $passwordHash = $user->fresh()->password;
+
+        $token = MagicLinkToken::create([
+            'user_id' => $user->id,
+            'token' => MagicLinkToken::hashToken('probe-token'),
+            'channel' => 'web',
+            'expires_at' => now()->addMinutes(10),
+        ]);
+        $tokenHash = $token->token;
+
+        $result = MagicLinkResult::valid($user, 'web', $token);
+
+        $payloads = [
+            'generated' => serialize(MagicLinkGenerated::fromToken($user, $token)),
+            'consumed' => serialize(MagicLinkConsumed::fromResult($user, $result)),
+            'rejected' => serialize(MagicLinkRejected::fromResult(
+                MagicLinkResult::failure(MagicLinkResult::BINDING_MISMATCH, 'web', $token, $user)
+            )),
+        ];
+
+        foreach ($payloads as $name => $payload) {
+            $this->assertStringNotContainsString($passwordHash, $payload, "{$name} leaks the password hash");
+            $this->assertStringNotContainsString($tokenHash, $payload, "{$name} leaks the stored token hash");
+        }
+    }
+
+    public function test_rejected_event_reports_status_and_survives_a_missing_user(): void
+    {
+        $event = MagicLinkRejected::fromResult(
+            MagicLinkResult::failure(MagicLinkResult::INVALID)
+        );
+
+        $restored = unserialize(serialize($event));
+
+        $this->assertSame(MagicLinkResult::INVALID, $restored->status);
+        $this->assertNull($restored->user);
+        $this->assertNull($restored->tokenId);
+    }
+
+    // -----------------------------------------------------------------
+    // Replacement is serialized on the rows it replaces
+    // -----------------------------------------------------------------
+
+    /**
+     * The delete-then-insert that replaces a user's link must be serialized, or
+     * two concurrent sends both delete before either inserts and the user ends
+     * up with two live links for one channel.
+     *
+     * The lock has to be taken on the token rows. Locking the user row looked
+     * equivalent but User carries TenantScope: generation with no resolved
+     * tenant (CLI, queued jobs) searched `tenant_id is null`, matched nothing
+     * for a tenant's user, and locked no row at all — silently, because the
+     * result was discarded.
+     */
+    public function test_replacement_locks_the_token_rows_it_is_about_to_delete(): void
+    {
+        $user = User::factory()->create();
+
+        $queries = [];
+        DB::listen(function ($event) use (&$queries) {
+            $queries[] = $event->sql;
+        });
+
+        app(MagicLinkManager::class)->forWeb($user);
+
+        $lock = null;
+        $delete = null;
+        foreach ($queries as $position => $sql) {
+            if ($lock === null
+                && str_starts_with($sql, 'select')
+                && str_contains($sql, 'magic_link_tokens')
+                && str_contains($sql, 'user_id')
+                && str_contains($sql, 'channel')) {
+                $lock = $position;
+            }
+            if ($delete === null && str_starts_with($sql, 'delete')) {
+                $delete = $position;
+            }
+        }
+
+        $this->assertNotNull($lock, 'Replacement must take a lock on the token rows.');
+        $this->assertNotNull($delete, 'Replacement must delete the previous link.');
+        $this->assertLessThan($delete, $lock, 'The lock must precede the delete.');
+
+        // A select against users here would be the tenant-scoped lock that
+        // silently matched nothing.
+        foreach ($queries as $sql) {
+            $this->assertStringNotContainsString(
+                'from "users"',
+                $sql,
+                'The lock must not be taken on the tenant-scoped users table.'
+            );
+        }
+    }
+
+    public function test_generating_twice_leaves_exactly_one_live_link(): void
+    {
+        $user = User::factory()->create();
+        $manager = app(MagicLinkManager::class);
+
+        $first = $manager->forWeb($user);
+        $second = $manager->forWeb($user);
+
+        $this->assertDatabaseCount('magic_link_tokens', 1);
+        $this->assertNull(MagicLinkToken::findByToken($first['token']));
+        $this->assertNotNull(MagicLinkToken::findByToken($second['token']));
     }
 }

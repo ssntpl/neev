@@ -22,8 +22,8 @@ return new class () extends Migration {
             $table->timestamp('expires_at');
             $table->timestamps();
 
-            $table->index('user_id');
             $table->index(['user_id', 'channel']);
+            $table->index('expires_at');
         });
     }
 

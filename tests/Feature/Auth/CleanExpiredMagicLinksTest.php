@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Ssntpl\Neev\Models\MagicLinkToken;
 use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Models\User;
@@ -103,5 +104,41 @@ class CleanExpiredMagicLinksTest extends TestCase
         $this->artisan('neev:clean-magic-links')
             ->expectsOutputToContain('Deleted 0 expired magic-link token(s).')
             ->assertSuccessful();
+    }
+
+    // -----------------------------------------------------------------
+    // Schema
+    // -----------------------------------------------------------------
+
+    /**
+     * This command and MagicLinkToken::scopeActive() both range over
+     * expires_at. Unindexed it is a full scan, slowest exactly when the table
+     * is largest — while holding locks against the insert every link request
+     * makes.
+     */
+    public function test_expires_at_is_indexed(): void
+    {
+        $columns = array_map(
+            fn (array $index) => $index['columns'],
+            Schema::getIndexes('magic_link_tokens')
+        );
+
+        $this->assertContains(['expires_at'], $columns);
+    }
+
+    /**
+     * ['user_id', 'channel'] serves every lookup a lone user_id index would,
+     * by leftmost prefix. Carrying both costs writes on the hottest path this
+     * table has.
+     */
+    public function test_there_is_no_redundant_user_id_index(): void
+    {
+        $columns = array_map(
+            fn (array $index) => $index['columns'],
+            Schema::getIndexes('magic_link_tokens')
+        );
+
+        $this->assertContains(['user_id', 'channel'], $columns);
+        $this->assertNotContains(['user_id'], $columns);
     }
 }

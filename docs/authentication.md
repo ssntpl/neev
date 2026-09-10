@@ -276,6 +276,12 @@ scanner burn the link before the user clicks it. Your frontend should treat
 add your own (e.g. `desktop`) under `magic_link.channels` with no code change. A
 channel with a `scheme`/`universal_link` builds a deep link; otherwise a web URL.
 
+A channel that cannot produce a usable URL is rejected at send time with
+`MagicLinkChannelException` (HTTP `422`) rather than quietly falling back to a
+web link: either the channel is not declared under `magic_link.channels`, or it
+declares `scheme`/`universal_link` and both are empty. So `channel=mobile` fails
+loudly until `NEEV_MOBILE_SCHEME` (or `NEEV_MOBILE_UNIVERSAL_LINK`) is set.
+
 ### Configuration & options
 
 Configured under `magic_link` in `config/neev.php`:
@@ -285,7 +291,6 @@ Configured under `magic_link` in `config/neev.php`:
     'expires_in' => 10,             // minutes a link stays valid
     'bind_to_browser' => false,        // restrict redemption to the originating browser/device
     'require_confirmation' => true,    // explicit confirm step; a GET never consumes the link
-    'allow_unverified_users' => false, // unverified users may use links; redeeming verifies the email
     'channels' => [ /* web, mobile, ... */ ],
 ],
 ```
@@ -312,14 +317,26 @@ inbox:
 | Exception | Thrown when |
 |---|---|
 | `MagicLinkBindingException` | `bind_to_browser` is on but the request has no binding source (`X-Device-Id`, `binding`, or session). |
-| `MagicLinkUnverifiedException` | The user's email is unverified and `allow_unverified_users` is off. The API surfaces this as `403`. |
 
-With `allow_unverified_users` on, redeeming a link marks the email verified and
-fires `EmailVerified`: following the link is itself proof of inbox control.
+An unverified address is **not** refused. The link is mailed to that address, so
+following it proves control of the inbox exactly as the verification mail would —
+redeeming therefore marks the email verified and fires `EmailVerified`. Gating
+sends on verification would remove the one path an unverified user has to become
+verified, stranding anyone who never received their verification mail.
 
 Lifecycle events `MagicLinkGenerated` (`Ssntpl\Neev\Events\`), `MagicLinkConsumed`,
 and `MagicLinkRejected` are fired for auditing/notifications. Prune expired tokens
 with `php artisan neev:clean-magic-links`.
+
+The events describe the token with scalars (`$tokenId`, `$channel`, `$expiresAt`)
+rather than carrying the `MagicLinkToken` model, so they are safe to handle from a
+queue. Carrying the model would break on both counts: the row is deleted the
+moment the link is redeemed, so a queued listener restoring it would throw
+`ModelNotFoundException`; and a model reachable other than as a top-level property
+is serialized by value, which would put the account's password hash and the stored
+token hash into the queue payload — and into `failed_jobs`, which is retained
+indefinitely. `$user` is a model, which `SerializesModels` reduces to a
+class-and-id reference; call `->fresh()` if you need attributes as of the click.
 
 ---
 

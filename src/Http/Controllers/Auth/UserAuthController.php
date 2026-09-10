@@ -15,7 +15,6 @@ use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
-use Ssntpl\Neev\Exceptions\MagicLinkUnverifiedException;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
@@ -174,23 +173,17 @@ class UserAuthController extends Controller
         // Single-use token redeemed server-side by the Blade flow.
         try {
             $link = $magicLink->forWeb($user, ['request' => $request]);
-        } catch (MagicLinkUnverifiedException $e) {
-            Log::warning($e);
-
-            return back()->withErrors([
-                'message' => 'Please verify your email address before using a login link.',
-            ]);
         } catch (MagicLinkBindingException $e) {
-            Log::warning($e);
+            Log::warning('Magic link refused: no binding source on the request.', [
+                'user_id' => $user->id,
+            ]);
 
             return back()->withErrors([
                 'message' => 'Unable to send a login link right now. Please try again later.',
             ]);
         }
 
-        $url = route('login.link.verify', ['token' => $link['token']]);
-
-        Mail::to($user->email)->send(new LoginUsingLink($url, $link['expires_in']));
+        Mail::to($user->email)->send(new LoginUsingLink($link['url'], $link['expires_in']));
 
         return back()->with('status', 'Login link has been sent.');
     }

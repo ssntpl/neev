@@ -200,14 +200,6 @@ return [
         // lock them out. With confirmation on, GET only ever validates.
         'require_confirmation' => env('NEEV_MAGIC_LINK_CONFIRMATION', true),
 
-        // Whether a user whose email is unverified may use magic links.
-        //
-        // Following a link proves control of the inbox, so when this is on,
-        // redeeming one also marks the email verified. When off, sending to an
-        // unverified address is refused outright (MagicLinkUnverifiedException)
-        // rather than mailing a link that redemption would always reject.
-        'allow_unverified_users' => env('NEEV_MAGIC_LINK_ALLOW_UNVERIFIED', false),
-
         // Channel-aware link generation. Neev builds the URL; it never renders
         // UI or handles deep-link routing — the host app does.
         //
@@ -217,8 +209,11 @@ return [
         'channels' => [
             'web' => [
                 'base_url' => env('APP_URL'),
-                // Path appended to base_url for the redemption link.
-                'path' => '/login-link',
+                // Path appended to base_url for the redemption link. Left unset
+                // it follows the UI mode: '/login-link/verify' for the Blade kit
+                // (which redeems the token on its own route), '/login-link' for
+                // headless installs (your page reads the token and posts it).
+                'path' => env('NEEV_MAGIC_LINK_WEB_PATH'),
             ],
             'mobile' => [
                 // Custom URL scheme for native deep links (e.g. "myapp://login").

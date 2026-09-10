@@ -9,7 +9,7 @@ use Ssntpl\Neev\Events\MagicLinkConsumed;
 use Ssntpl\Neev\Events\MagicLinkGenerated;
 use Ssntpl\Neev\Events\MagicLinkRejected;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
-use Ssntpl\Neev\Exceptions\MagicLinkUnverifiedException;
+use Ssntpl\Neev\Exceptions\MagicLinkChannelException;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\MagicLinkToken;
 use Ssntpl\Neev\Models\User;
@@ -59,8 +59,10 @@ class MagicLinkManager
      * Issue a new magic link.
      *
      * The channel is any key under config('neev.magic_link.channels') — host
-     * apps can add their own (e.g. 'desktop') without changing Neev. Unknown
-     * channels fall back to 'web'.
+     * apps can add their own (e.g. 'desktop') without changing Neev. A channel
+     * that is not declared there is rejected rather than quietly downgraded to
+     * 'web': a caller that asked for a mobile link and silently got a web one
+     * has no way to notice.
      *
      * Always invalidates the user's existing link(s) for this channel, then
      * persists a fresh single-use token and fires MagicLinkGenerated.
@@ -70,8 +72,9 @@ class MagicLinkManager
      *
      * @throws MagicLinkBindingException     When binding is enabled but the
      *                                       request carries no binding source.
-     * @throws MagicLinkUnverifiedException  When the user's email is unverified
-     *                                       and the unverified policy forbids it.
+     * @throws MagicLinkChannelException     When the channel is not configured,
+     *                                       or is a deep-link channel with no
+     *                                       scheme/universal link set.
      */
     public function generate(object $user, string $channel = 'web', array $context = []): array
     {
@@ -79,19 +82,21 @@ class MagicLinkManager
         $context = $this->withRequest($context);
         $request = $context['request'] ?? null;
 
-        // Both checks run before invalidating: a refused send must not cost the
-        // user the link they already have.
-        $this->assertUserMayReceiveLink($user);
+        // Runs before invalidating: a refused send must not cost the user the
+        // link they already have.
         $metaData = $this->buildMetaData($request, $context);
 
         $plain = MagicLinkToken::generateToken();
 
         // Replacement must be atomic: without serialization two concurrent
         // sends both invalidate before either inserts, leaving two live links
-        // for the same user and channel. Locking the user row makes the
-        // delete-then-insert pair mutually exclusive per user.
+        // for the same user and channel.
         $token = DB::transaction(function () use ($user, $channel, $metaData, $request, $plain) {
-            User::model()->lockForUpdate()->find($user->id);
+            MagicLinkToken::query()
+                ->where('user_id', $user->id)
+                ->where('channel', $channel)
+                ->lockForUpdate()
+                ->get();
 
             $this->invalidatePrevious($user->id, $channel);
 
@@ -106,35 +111,9 @@ class MagicLinkManager
             ]);
         });
 
-        MagicLinkGenerated::dispatch($user, $token);
+        event(MagicLinkGenerated::fromToken($user, $token));
 
         return $this->linkPayload($token, $plain);
-    }
-
-    /**
-     * Refuse to issue a link the recipient could never use.
-     *
-     * Without this the link is mailed, and every redemption of it fails as
-     * "invalid or expired" — a dead end the user cannot get out of.
-     *
-     * @throws MagicLinkUnverifiedException
-     */
-    protected function assertUserMayReceiveLink(object $user): void
-    {
-        if (!$user->hasVerifiedEmail() && !$this->allowsUnverifiedUsers()) {
-            throw MagicLinkUnverifiedException::forEmail($user->email);
-        }
-    }
-
-    /**
-     * Whether users with an unverified email may use magic links at all.
-     *
-     * When enabled, redeeming a link also marks the email verified — following
-     * the link is itself proof of control over the inbox.
-     */
-    protected function allowsUnverifiedUsers(): bool
-    {
-        return (bool) config('neev.magic_link.allow_unverified_users', false);
     }
 
     /**
@@ -219,7 +198,7 @@ class MagicLinkManager
         $result = $this->resolve($request, $context);
 
         if (!$result->isValid() && !$result->needsConfirmation()) {
-            MagicLinkRejected::dispatch($result);
+            event(MagicLinkRejected::fromResult($result));
         }
 
         return $result;
@@ -239,7 +218,7 @@ class MagicLinkManager
         // A pending-confirmation token is eligible for consumption: this call
         // IS the explicit confirmation step.
         if (!$result->isValid() && !$result->needsConfirmation()) {
-            MagicLinkRejected::dispatch($result);
+            event(MagicLinkRejected::fromResult($result));
             return $result;
         }
 
@@ -253,22 +232,22 @@ class MagicLinkManager
                 $result->token,
                 $result->user,
             );
-            MagicLinkRejected::dispatch($rejected);
+            event(MagicLinkRejected::fromResult($rejected));
 
             return $rejected;
         }
 
         $user = $result->user;
 
-        // The click proved control of the inbox, so redeeming doubles as email
-        // verification. Only reachable when the unverified policy allows it —
-        // resolve() rejects unverified users otherwise.
+        // The link was mailed to this address and came back, which proves inbox
+        // control just as the verification mail would — so redeeming doubles as
+        // email verification.
         if (!$user->hasVerifiedEmail()) {
             $user->markEmailAsVerified();
         }
 
         $final = MagicLinkResult::valid($user, $result->channel, $result->token);
-        MagicLinkConsumed::dispatch($user, $final);
+        event(MagicLinkConsumed::fromResult($user, $final));
 
         return $final;
     }
@@ -334,10 +313,11 @@ class MagicLinkManager
     }
 
     /**
-     * Resolve an eligible user, or null.
+     * Resolve the user a token belongs to, or null.
      *
-     * An unverified user is only eligible when the unverified policy allows it,
-     * in which case consume() marks the email verified on redemption.
+     * An unverified address is not a reason to refuse: the link was mailed to
+     * that address and came back, which proves control of the inbox just as the
+     * verification mail would — so consume() marks it verified instead.
      */
     protected function resolveUser(int|string|null $userId): ?object
     {
@@ -345,17 +325,7 @@ class MagicLinkManager
             return null;
         }
 
-        $user = User::model()->find($userId);
-
-        if (!$user) {
-            return null;
-        }
-
-        if (!$user->hasVerifiedEmail() && !$this->allowsUnverifiedUsers()) {
-            return null;
-        }
-
-        return $user;
+        return User::model()->find($userId) ?: null;
     }
 
 
@@ -458,25 +428,49 @@ class MagicLinkManager
     /**
      * Build the base redemption URL for any configured channel.
      *
-     * A channel whose config has a `scheme` or `universal_link` is treated as a
-     * deep link (mobile/desktop/...). Otherwise it is a web URL built from
+     * A channel whose config declares a `scheme` or `universal_link` is treated
+     * as a deep link (mobile/desktop/...). Otherwise it is a web URL built from
      * `base_url` + `path`. Works for any channel the host adds to config.
+     *
+     * @throws MagicLinkChannelException
      */
     protected function channelBaseUrl(string $channel): string
     {
         $config = (array) config("neev.magic_link.channels.{$channel}", []);
 
         // Deep-link channels (mobile, desktop, ...): scheme or universal link.
+        $declaresDeepLink = array_key_exists('scheme', $config)
+            || array_key_exists('universal_link', $config);
+
         $deepLink = $config['scheme'] ?? $config['universal_link'] ?? null;
         if (!empty($deepLink)) {
             return rtrim((string) $deepLink, '/');
         }
 
+        // Declared as a deep-link channel but pointing nowhere — the shipped
+        // 'mobile' channel with NEEV_MOBILE_SCHEME unset is exactly this.
+        if ($declaresDeepLink) {
+            throw MagicLinkChannelException::unconfiguredDeepLink($channel);
+        }
+
         // Web-style channels: base URL + path.
         $base = rtrim($this->webBaseUrl($config), '/');
-        $path = (string) ($config['path'] ?? '/login-link');
+        $path = (string) ($config['path'] ?? $this->defaultWebPath());
 
         return $base . '/' . ltrim($path, '/');
+    }
+
+    /**
+     * Default path for a web-style channel when config does not set one.
+     *
+     * The Blade kit redeems the token server-side on its own route, so the link
+     * must land there directly. A headless install has no such route: the link
+     * lands on the host app's page, which reads the token and posts it to the
+     * API. Same reasoning as EmailLinks' route-vs-page split.
+     */
+    protected function defaultWebPath(): string
+    {
+        return config('neev.ui') === 'blade' ? '/login-link/verify' : '/login-link';
     }
 
     /**
@@ -549,15 +543,31 @@ class MagicLinkManager
     }
 
     /**
-     * Resolve a requested channel to a valid configured channel, defaulting to
-     * 'web' when it is empty or not defined in config.
+     * Resolve a requested channel, defaulting to 'web' when none is given.
+     *
+     * An undeclared channel is rejected, not downgraded to 'web'. A typo such
+     * as 'mobil' would otherwise mint a perfectly valid *web* token in response
+     * to a mobile request, and neither the caller nor the operator would see a
+     * thing.
+     *
+     * @throws MagicLinkChannelException
      */
     protected function normalizeChannel(?string $channel): string
     {
         $channel = $channel ?: 'web';
         $channels = array_keys((array) config('neev.magic_link.channels', []));
 
-        return in_array($channel, $channels, true) ? $channel : 'web';
+        // An install that configures no channels at all still gets the built-in
+        // web channel; anything beyond that has to be declared.
+        if ($channels === [] && $channel === 'web') {
+            return 'web';
+        }
+
+        if (!in_array($channel, $channels, true)) {
+            throw MagicLinkChannelException::unknown($channel, $channels);
+        }
+
+        return $channel;
     }
 
     /**

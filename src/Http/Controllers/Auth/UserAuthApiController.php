@@ -14,7 +14,7 @@ use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
-use Ssntpl\Neev\Exceptions\MagicLinkUnverifiedException;
+use Ssntpl\Neev\Exceptions\MagicLinkChannelException;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
@@ -395,17 +395,21 @@ class UserAuthApiController extends Controller
 
         try {
             $link = $magicLink->generate($user, $channel, ['request' => $request]);
-        } catch (MagicLinkUnverifiedException $e) {
-            Log::warning($e);
-
-            return response()->json([
-                'message' => 'Please verify your email address before using a login link.',
-            ], 403);
         } catch (MagicLinkBindingException $e) {
-            Log::warning($e);
+            Log::warning('Magic link refused: no binding source on the request.', [
+                'user_id' => $user->id,
+            ]);
 
             return response()->json([
                 'message' => 'Unable to send a login link for this request.',
+            ], 422);
+        } catch (MagicLinkChannelException $e) {
+            Log::warning('Magic link refused: unusable channel.', [
+                'channel' => $channel,
+            ]);
+
+            return response()->json([
+                'message' => 'Unsupported login link channel.',
             ], 422);
         }
 

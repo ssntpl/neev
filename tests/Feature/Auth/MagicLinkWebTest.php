@@ -52,6 +52,27 @@ class MagicLinkWebTest extends TestCase
         });
     }
 
+    /**
+     * The emailed link must be built from configuration, never from the request.
+     *
+     * `route()` derives its host from the Host header, which an unauthenticated
+     * attacker controls: a forged Host would mail the user a genuine, working
+     * single-use login token pointing at the attacker's server.
+     */
+    public function test_send_login_link_ignores_a_forged_host_header(): void
+    {
+        Mail::fake();
+
+        $user = $this->createUser();
+
+        $this->post('http://evil.attacker.net/login/link', ['email' => $user->email]);
+
+        Mail::assertSent(LoginUsingLink::class, function (LoginUsingLink $mail) {
+            return !str_contains($mail->url, 'evil.attacker.net')
+                && str_starts_with($mail->url, rtrim(config('app.url'), '/') . '/login-link/verify');
+        });
+    }
+
     public function test_send_login_link_with_unknown_email_reports_an_error(): void
     {
         Mail::fake();

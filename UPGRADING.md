@@ -11,7 +11,7 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## 0.5.0 → Unreleased
+## 0.6.0 → Unreleased
 
 **Magic links are now stateful and single-use (action required).**
 The stateless signed-URL flow is gone. Links are opaque tokens stored
@@ -47,15 +47,11 @@ superseded whenever a newer link is issued for the same channel.
   (`login.link.verify`). Re-run `php artisan neev:ui blade` or apply the
   new `auth/confirm-login-link.blade.php` view if you ejected the kit.
   Apps that published `routes/neev.php` must re-apply the route change.
-- **Unverified users can no longer request a link by default.**
-  `POST /neev/sendLoginLink` returns `403` ("Please verify your email
-  address before using a login link.") for an unverified address, and
-  `MagicLinkManager::generate()` throws `MagicLinkUnverifiedException`.
-  Previously a link was mailed and every redemption of it failed with
-  "Invalid or expired" — a dead end. Set
-  `NEEV_MAGIC_LINK_ALLOW_UNVERIFIED=true` to let unverified users use
-  magic links; redeeming one then **marks the email verified** and fires
-  `EmailVerified`, since following the link proves inbox control.
+- **Unverified addresses are unaffected (no action required).** A magic
+  link is still mailed to an unverified address, and redeeming it still
+  marks the email verified and fires `EmailVerified` — following the link
+  proves inbox control just as the verification mail would. This matches
+  0.6.0 exactly; nothing about it changed.
 - **Malformed input is now a rejection, not a 500.**
   `POST /neev/sendLoginLink` without an `email` returns `422` (it raised
   a `TypeError` before), and a non-scalar `token` on the redemption and
@@ -70,6 +66,26 @@ superseded whenever a newer link is issued for the same channel.
 - Both refusals above happen **before** the previous link is
   invalidated, so a rejected send never costs the user the working link
   already in their inbox.
+- **An unusable channel is now rejected, not silently downgraded.**
+  `POST /neev/sendLoginLink` returns `422` ("Unsupported login link
+  channel.") and `MagicLinkManager::generate()` throws
+  `MagicLinkChannelException` when the requested channel is not declared
+  under `magic_link.channels`, or is a deep-link channel whose `scheme`
+  and `universal_link` are both empty. Previously both cases fell through
+  to a web URL: a client asking for `channel=mobile` got a `200` and an
+  emailed link that opens a browser instead of the app, with nothing
+  logged. **If you send mobile links, set `NEEV_MOBILE_SCHEME` or
+  `NEEV_MOBILE_UNIVERSAL_LINK` before deploying** — a mobile send that
+  used to appear to work will now fail loudly.
+- **The magic-link host no longer follows the request.** The Blade flow
+  built its emailed URL with `route()`, which takes the host from the
+  `Host` header — an unauthenticated attacker could have the application
+  mail a working login token pointing at a host of their choosing. The
+  URL is now built by `MagicLinkManager` from configuration (and, in
+  tenant mode, the tenant's own verified domain). `channels.web.path` now
+  defaults to unset and follows the UI mode: `/login-link/verify` for the
+  Blade kit, `/login-link` for headless. Set `NEEV_MAGIC_LINK_WEB_PATH`
+  to override.
 - Redemption routes are now rate-limited (`throttle:10,1`).
 - Schedule `neev:clean-magic-links` alongside `neev:clean-login-attempts`
   to purge expired tokens.
