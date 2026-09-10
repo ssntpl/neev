@@ -526,4 +526,118 @@ class TeamWebAuthorizationTest extends TestCase
         $response->assertDontSee('Request to join');
         $response->assertDontSee('Request pending');
     }
+
+    // -----------------------------------------------------------------
+    // Removing members and revoking invitations (teams.leave)
+    // -----------------------------------------------------------------
+
+    /**
+     * The subject of this action is named by `user_id` in the request, so
+     * without a membership gate any signed-in stranger could take a member
+     * out of a team they have nothing to do with.
+     */
+    public function test_an_outsider_cannot_remove_a_member(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $member = User::factory()->create();
+        $team->addMember($member);
+
+        $outsider = User::factory()->create();
+
+        $this->actingAs($outsider)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertSessionHasErrors('message');
+
+        $this->assertTrue($team->refresh()->hasMember($member));
+    }
+
+    /**
+     * The domain-federation branch of this action deactivates the target's
+     * whole account, so an outsider reaching it is worse than a stray removal.
+     */
+    public function test_an_outsider_cannot_deactivate_a_member_through_a_federated_domain(): void
+    {
+        $this->enableDomainFederation();
+
+        [$team, $owner] = $this->teamWithOwner();
+        $member = User::factory()->create(['email' => 'someone@federated.test']);
+        $team->addMember($member);
+        $team->domains()->create([
+            'domain' => 'federated.test',
+            'verified_at' => now(),
+            'verification_token' => 'probe-token',
+        ]);
+
+        $outsider = User::factory()->create();
+
+        $this->actingAs($outsider)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertSessionHasErrors('message');
+
+        $this->assertTrue($member->refresh()->active);
+    }
+
+    /** An outsider holding an invitation id is not entitled to revoke it. */
+    public function test_an_outsider_cannot_revoke_an_invitation(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $invitation = $team->invitations()->create([
+            'email' => 'invited@example.com',
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $outsider = User::factory()->create();
+
+        $this->actingAs($outsider)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'invitation_id' => $invitation->id])
+            ->assertSessionHasErrors('message');
+
+        $this->assertDatabaseHas('team_invitations', ['id' => $invitation->id]);
+    }
+
+    /** The gate is membership, not identity: a member may still remove a member. */
+    public function test_a_member_can_remove_another_member(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $member = User::factory()->create();
+        $team->addMember($member);
+
+        $this->actingAs($owner)
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertSessionHasNoErrors();
+
+        $this->assertFalse($team->refresh()->hasMember($member));
+    }
+
+    /** The owner holds the team, so they are not a member who can be taken out of it. */
+    public function test_the_owner_cannot_be_removed(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $member = User::factory()->create();
+        $team->addMember($member);
+
+        $this->actingAs($member)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'user_id' => $owner->id])
+            ->assertSessionHasErrors('message');
+
+        $this->assertTrue($team->refresh()->hasMember($owner));
+    }
+
+    /** A member leaving of their own accord is the ordinary path. */
+    public function test_a_member_can_leave_the_team_themselves(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $member = User::factory()->create();
+        $team->addMember($member);
+
+        $this->actingAs($member)
+            ->delete(route('teams.leave'), ['team_id' => $team->id])
+            ->assertSessionHasNoErrors();
+
+        $this->assertFalse($team->refresh()->hasMember($member));
+    }
 }

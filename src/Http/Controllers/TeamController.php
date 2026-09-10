@@ -240,17 +240,40 @@ class TeamController extends Controller
         try {
             /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
+            /** @var User|null $actor */
+            $actor = User::model()->find($request->user()?->id);
 
-            if ($request->has('invitation_id')) {
-                $invitation = $team->invitations()->find($request->invitation_id);
-                if ($invitation) {
-                    $invitation->delete();
-                    return back()->with('status', 'Invitation Revoked Successfully');
-                }
-                return back()->withErrors(['message' => 'Invitation not found.']);
+            if (!$team || !$user || !$actor) {
+                return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
             }
-            if ($user->id == $team->user_id) {
-                return back()->withErrors(['message' => 'You cannot leave from this team.']);
+
+            // Revoking an invitation is its own action: the invitee has not
+            // joined, and the subject is the invitation rather than a member,
+            // so the membership and owner rules below do not apply to it.
+            if ($request->has('invitation_id')) {
+                $invitation = $team->invitations()->whereKey($request->invitation_id)->first();
+                if (!$invitation) {
+                    return back()->withErrors(['message' => 'Invitation not found.']);
+                }
+
+                // A member of the team may revoke it; the invitee may decline
+                // their own. Holding an id is not enough for anyone else.
+                $isMember = $team->hasMember($actor);
+                $isInvitee = hash_equals((string) $invitation->email, (string) $actor->email);
+
+                if (!$isMember && !$isInvitee) {
+                    return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
+                }
+
+                $invitation->delete();
+
+                return back()->with('status', 'Invitation Revoked Successfully');
+            }
+
+            // Leaving, or removing someone. The owner holds the team, so they
+            // are not a member who can be taken out of it.
+            if ($user->id == $team->user_id || !$team->hasMember($actor)) {
+                return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
             }
 
             if ($team->domain?->verified_at && str_ends_with(strtolower($user->email), '@' . strtolower($team->domain?->domain))) {
