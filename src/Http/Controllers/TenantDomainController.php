@@ -82,11 +82,9 @@ class TenantDomainController extends Controller
                         ->whereNotNull('verified_at')
                 ),
             ],
-            'type' => 'in:subdomain,custom',
         ]);
 
         try {
-            $type = $request->type ?? 'custom';
             $domain = $request->domain;
 
             $tenantDomain = new Domain([
@@ -96,8 +94,14 @@ class TenantDomainController extends Controller
                 'is_primary' => $team->domains()->count() === 0, // First domain is primary
             ]);
 
-            // Subdomains are auto-verified; custom domains need DNS verification
-            if ($type === 'subdomain') {
+            // Whether this needs proving is decided here, from the host itself.
+            // A host inside one of the platform's own zones was issued by this
+            // installation, so there is nothing for the claimant to prove;
+            // anything else is somebody else's property and must show the DNS
+            // TXT record. The caller does not get a say — a client-supplied
+            // 'type' would let any team owner mark any domain verified, claim
+            // it installation-wide, and take over its email federation.
+            if (Domain::isPlatformSubdomain($domain)) {
                 $tenantDomain->verified_at = now();
                 $tenantDomain->save();
                 $token = null;

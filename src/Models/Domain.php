@@ -67,12 +67,71 @@ class Domain extends Model
      * Whether the email's domain has been claimed and DNS-verified by
      * a team/tenant (used to skip personal-team auto-creation for
      * federated domains during registration).
+     *
+     * The verified row is what the question is about, so it is asked for in
+     * the query. Reading the first row of any kind and then testing it would
+     * answer "no" whenever an unverified claim by another team happened to
+     * sort first — several teams may hold pending claims on one domain.
      */
     public static function isVerifiedForEmail(string $email): bool
     {
-        $emailDomain = substr(strrchr($email, '@'), 1);
+        $emailDomain = strrchr($email, '@');
 
-        return static::where('domain', $emailDomain)->first()?->verified_at !== null;
+        if ($emailDomain === false) {
+            return false;
+        }
+
+        return static::query()
+            ->where('domain', substr($emailDomain, 1))
+            ->whereNotNull('verified_at')
+            ->exists();
+    }
+
+    /**
+     * The DNS zones this installation owns, normalised for comparison.
+     *
+     * @return array<int, string>
+     */
+    public static function platformDomains(): array
+    {
+        $configured = config('neev.platform_domains');
+
+        if ($configured === null || $configured === '') {
+            return [];
+        }
+
+        return collect(is_array($configured) ? $configured : [$configured])
+            ->map(fn ($domain) => strtolower(trim((string) $domain, " \t\n\r\0\x0B.")))
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Whether a host sits inside one of this installation's own DNS zones.
+     *
+     * Only hosts strictly below a platform domain qualify. The apex is
+     * excluded deliberately: `otper.com` is the installation's own name, not a
+     * tenant's, and nobody should be able to claim it. The leading dot is what
+     * makes the boundary real — without it `evil-otper.com` would pass as a
+     * host inside `otper.com`.
+     */
+    public static function isPlatformSubdomain(string $host): bool
+    {
+        $host = strtolower(trim($host, " \t\n\r\0\x0B."));
+
+        if ($host === '') {
+            return false;
+        }
+
+        foreach (static::platformDomains() as $platform) {
+            if (str_ends_with($host, '.' . $platform)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function rules()

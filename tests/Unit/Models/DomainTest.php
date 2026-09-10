@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\DomainRule;
 use Ssntpl\Neev\Models\Team;
@@ -413,5 +414,79 @@ class DomainTest extends TestCase
         ]);
 
         $this->assertFalse($domain->isVerificationStale(30));
+    }
+
+    // -----------------------------------------------------------------
+    // Platform zones
+    // -----------------------------------------------------------------
+
+    /**
+     * The boundary between "a host we issued" and "somebody else's property".
+     * Getting it wrong in the permissive direction hands an attacker a verified
+     * claim on a domain they do not own, so the look-alike cases matter as much
+     * as the happy path.
+     *
+     * @return array<string, array{0: string|array<int, string>|null, 1: string, 2: bool}>
+     */
+    public static function platformHostProvider(): array
+    {
+        return [
+            'host below the zone'            => ['otper.com', 'acme.otper.com', true],
+            'deeper host below the zone'     => ['otper.com', 'eu.acme.otper.com', true],
+            'the apex itself'                => ['otper.com', 'otper.com', false],
+            'look-alike prefix'              => ['otper.com', 'evil-otper.com', false],
+            'zone name used as a prefix'     => ['otper.com', 'otper.com.evil.com', false],
+            'unrelated domain'               => ['otper.com', 'ssntpl.in', false],
+            'suffix without the dot'         => ['otper.com', 'notperotper.com', false],
+            'uppercase host'                 => ['otper.com', 'ACME.Otper.COM', true],
+            'fully qualified trailing dot'   => ['otper.com', 'acme.otper.com.', true],
+            'zone configured with a dot'     => ['.otper.com', 'acme.otper.com', true],
+            'second zone in a list'          => [['otper.com', 'otper.dev'], 'acme.otper.dev', true],
+            'outside every zone in a list'   => [['otper.com', 'otper.dev'], 'acme.example.com', false],
+            'no zones configured'            => [null, 'acme.otper.com', false],
+            'empty string configured'        => ['', 'acme.otper.com', false],
+            'blank entry in a list'          => [['', 'otper.com'], 'acme.otper.com', true],
+            'blank entry matches nothing'    => [[''], 'acme.otper.com', false],
+            'empty host'                     => ['otper.com', '', false],
+        ];
+    }
+
+    /**
+     * @param  string|array<int, string>|null  $configured
+     */
+    #[DataProvider('platformHostProvider')]
+    public function test_platform_subdomain_matching($configured, string $host, bool $expected): void
+    {
+        config(['neev.platform_domains' => $configured]);
+
+        $this->assertSame($expected, Domain::isPlatformSubdomain($host));
+    }
+
+    /**
+     * Several teams may hold pending claims on one domain; only a verified one
+     * counts. Reading the first row of any kind and then testing it would
+     * answer "no" whenever an unverified claim sorted first.
+     */
+    public function test_a_verified_claim_is_found_behind_an_unverified_one(): void
+    {
+        Domain::create(['owner_type' => 'team', 'owner_id' => 1, 'domain' => 'acme.com']);
+        Domain::create([
+            'owner_type' => 'team', 'owner_id' => 2, 'domain' => 'acme.com',
+            'verified_at' => now(),
+        ]);
+
+        $this->assertTrue(Domain::isVerifiedForEmail('someone@acme.com'));
+    }
+
+    public function test_an_unverified_claim_alone_is_not_enough(): void
+    {
+        Domain::create(['owner_type' => 'team', 'owner_id' => 1, 'domain' => 'acme.com']);
+
+        $this->assertFalse(Domain::isVerifiedForEmail('someone@acme.com'));
+    }
+
+    public function test_an_address_without_a_domain_is_not_verified(): void
+    {
+        $this->assertFalse(Domain::isVerifiedForEmail('not-an-address'));
     }
 }

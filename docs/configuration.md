@@ -46,7 +46,41 @@ The two flags combine into four valid modes:
 
 The `neev:install` wizard asks exactly these two questions and sets the flags for you.
 
-> **Where did `identity_strategy` and `tenant_isolation` go?** They were collapsed into the single `tenant` flag: `tenant = true` always means isolated identity with strict scoping (no longer configurable). Subdomain suffix and custom-domain options were removed — the package simply looks up the request host in the `domains` table, and the consuming app creates domain records however it wants. See [Architecture](./architecture.md) and [docs/config-refactor.md](./config-refactor.md) for the rationale.
+> **Where did `identity_strategy` and `tenant_isolation` go?** They were collapsed into the single `tenant` flag: `tenant = true` always means isolated identity with strict scoping (no longer configurable). Subdomain suffix and custom-domain options were removed — *resolution* simply looks up the request host in the `domains` table, and the consuming app creates domain records however it wants. `platform_domains` below is not a resolution setting: it decides only whether a claimed domain has to prove ownership by DNS. See [Architecture](./architecture.md) and [docs/config-refactor.md](./config-refactor.md) for the rationale.
+
+---
+
+## Platform Domains
+
+The DNS zones this installation itself owns — the ones you hand tenant and team
+subdomains out under.
+
+```php
+'platform_domains' => 'otper.com',                    // one
+'platform_domains' => ['otper.com', 'otper.dev'],     // several
+```
+
+`NEEV_PLATFORM_DOMAINS` sets a single domain from the environment; a list has to
+be written in the published config, since env values are strings.
+
+This is what `POST {prefix}/tenant-domains` uses to decide whether a claimed
+domain needs DNS verification:
+
+| Claimed host | With `platform_domains => 'otper.com'` |
+|---|---|
+| `acme.otper.com` | Issued by you — verified immediately |
+| `eu.acme.otper.com` | Issued by you — verified immediately |
+| `otper.com` | The apex is yours, not a tenant's — DNS verification |
+| `evil-otper.com` | Somebody else's — DNS verification |
+| `ssntpl.in` | Somebody else's — DNS verification |
+
+The decision is made from the host alone. Nothing in the request influences it,
+because a verified claim reserves the domain installation-wide and governs which
+team `@that-domain` signups join — letting a caller assert its own domain was
+verified would hand any team owner a takeover of any domain.
+
+Leave it unset and nothing auto-verifies: every domain goes through DNS. That is
+the right default for an installation that hands out no subdomains of its own.
 
 ---
 

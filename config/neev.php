@@ -19,6 +19,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Platform domains
+    |--------------------------------------------------------------------------
+    |
+    | The DNS zones this installation itself owns — the ones tenant and team
+    | subdomains are handed out under. A host inside one of these is issued by
+    | you, so it needs no ownership proof and is verified on the spot. Every
+    | other host is somebody else's property and must prove control of it with
+    | the DNS TXT record, whatever the client submitting it claims.
+    |
+    | One domain as a string, several as an array:
+    |
+    |     'platform_domains' => 'otper.com',
+    |     'platform_domains' => ['otper.com', 'otper.dev'],
+    |
+    | Only hosts strictly *below* a platform domain qualify — 'acme.otper.com'
+    | does, the bare 'otper.com' does not, so nobody claims your apex. Leave it
+    | empty and nothing auto-verifies: every domain goes through DNS, which is
+    | the safe default for an installation that hands out no subdomains.
+    |
+    */
+    'platform_domains' => env('NEEV_PLATFORM_DOMAINS'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Routes
     |--------------------------------------------------------------------------
     |

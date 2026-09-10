@@ -91,8 +91,11 @@ class TenantDomainTest extends TestCase
     // POST /neev/tenant-domains/ — add domain
     // -----------------------------------------------------------------
 
-    public function test_add_subdomain_is_auto_verified(): void
+    /** A host inside a zone the platform owns was issued by us, so it needs no proof. */
+    public function test_a_host_under_a_platform_domain_is_auto_verified(): void
     {
+        config(['neev.platform_domains' => 'test.com']);
+
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
 
@@ -100,7 +103,6 @@ class TenantDomainTest extends TestCase
             ->postJson('/neev/tenant-domains/', [
                 'team_id' => $team->id,
                 'domain' => 'myteam.test.com',
-                'type' => 'subdomain',
             ]);
 
         $response->assertOk();
@@ -109,6 +111,70 @@ class TenantDomainTest extends TestCase
         $this->assertNotNull($domain);
         $this->assertNotNull($domain->verified_at);
         $this->assertTrue($domain->is_primary); // First domain is primary
+    }
+
+    /**
+     * The reported bug: `type` was a client-supplied switch, so a team owner
+     * could mark any domain verified. A verified claim reserves the domain
+     * installation-wide and governs which team `@that-domain` signups join, so
+     * this was a takeover of somebody else's domain for the price of one field.
+     */
+    public function test_a_domain_outside_the_platform_zones_is_not_auto_verified_however_it_is_labelled(): void
+    {
+        config(['neev.platform_domains' => 'otper.com']);
+
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains/', [
+                'team_id' => $team->id,
+                'domain' => 'ssntpl.in',
+                'type' => 'subdomain',
+            ]);
+
+        $response->assertOk()
+            ->assertJsonStructure(['verification_token', 'dns_record']);
+
+        $this->assertNull(
+            Domain::where('domain', 'ssntpl.in')->first()?->verified_at,
+            'A domain the platform does not own must prove ownership by DNS.',
+        );
+    }
+
+    /** With no platform zones declared, nothing is ours to vouch for. */
+    public function test_nothing_is_auto_verified_when_no_platform_domain_is_configured(): void
+    {
+        config(['neev.platform_domains' => null]);
+
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains/', [
+                'team_id' => $team->id,
+                'domain' => 'myteam.test.com',
+                'type' => 'subdomain',
+            ])->assertOk();
+
+        $this->assertNull(Domain::where('domain', 'myteam.test.com')->first()?->verified_at);
+    }
+
+    /** Several platform zones, declared as an array. */
+    public function test_platform_domains_may_be_a_list(): void
+    {
+        config(['neev.platform_domains' => ['otper.com', 'test.com']]);
+
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains/', [
+                'team_id' => $team->id,
+                'domain' => 'myteam.test.com',
+            ])->assertOk();
+
+        $this->assertNotNull(Domain::where('domain', 'myteam.test.com')->first()?->verified_at);
     }
 
     public function test_add_custom_domain_returns_verification_token(): void

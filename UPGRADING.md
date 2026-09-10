@@ -11,6 +11,44 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
+## 0.6.0 → unreleased
+
+**`type` on `POST {prefix}/tenant-domains` is ignored (action required if you
+hand out subdomains).**
+Whether a claimed domain is verified immediately or has to publish a DNS TXT
+record is now derived from the host, by matching it against the new
+`platform_domains` config. Set it to the zone (or zones) your installation hands
+subdomains out under:
+
+```php
+// config/neev.php
+'platform_domains' => 'otper.com',                 // or ['otper.com', 'otper.dev']
+```
+
+Until you set it, **nothing auto-verifies** — every domain added through that
+endpoint comes back with a `verification_token` and waits for DNS. If your app
+was sending `type: subdomain` to get instant verification, that is the change to
+make; the field itself is now ignored rather than rejected, so no request will
+start failing.
+
+Existing rows are untouched. Worth auditing them once, though: under the old
+behaviour any team owner could set `verified_at` on any domain by asking, so a
+verified claim in your `domains` table is not evidence that the team owns it.
+
+```php
+// Verified claims that would not auto-verify under the new rule.
+Domain::whereNotNull('verified_at')
+    ->whereNull('verification_token')
+    ->get()
+    ->reject(fn ($d) => Domain::isPlatformSubdomain($d->domain));
+```
+
+Rows with a `verification_token` passed DNS verification and are sound. Rows
+without one were auto-verified; those inside your platform zones are fine, and
+anything else was taken on trust.
+
+---
+
 ## 0.5.0 → 0.6.0
 
 **Laravel 13 support (additive; no action required).**
