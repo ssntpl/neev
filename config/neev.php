@@ -269,7 +269,24 @@ return [
     'slug' => [
         'min_length' => 2,
         'max_length' => 63,
-        'reserved' => ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn', 'assets', 'static'],
+
+        // Slugs no team or tenant may hold. A slug is also the host handed out
+        // under `platform_domains`, so this list is what keeps your own
+        // operational names out of tenants' hands — reserving 'app' is what
+        // makes `app.otper.com` unclaimable.
+        //
+        // Add the names you would not want appearing in front of your domain
+        // in a link. A tenant slug of 'google', 'sbi' or 'hdfc' yields
+        // `google.otper.com` — your certificate, your domain, somebody else's
+        // content — which is a convincing thing to put in a phishing email.
+        // Which brands matter is yours to decide; the package ships only the
+        // operational names it can know about.
+        'reserved' => [
+            'www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn', 'assets', 'static',
+            'auth', 'login', 'signin', 'signup', 'register', 'account', 'accounts',
+            'billing', 'dashboard', 'docs', 'help', 'support', 'status', 'secure',
+            'security', 'internal', 'staging', 'test', 'dev', 'blog', 'about',
+        ],
     ],
 
     /*

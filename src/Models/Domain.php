@@ -132,6 +132,34 @@ class Domain extends Model
     }
 
     /**
+     * Whether this host is the one the platform issues to that owner.
+     *
+     * A tenant's subdomain is its slug: team `acme` is handed `acme.otper.com`
+     * and nothing else. Anchoring the claim to the claimant's own identity is
+     * what stops a team taking a host that was never theirs — the installation's
+     * operational names (`app.`, `www.`, `api.`) included, since no team can
+     * hold those slugs while they are in `neev.slug.reserved`.
+     */
+    public static function isPlatformSubdomainFor(string $host, ?string $slug): bool
+    {
+        $slug = strtolower(trim((string) $slug));
+
+        if ($slug === '') {
+            return false;
+        }
+
+        $host = static::canonicalHost($host);
+
+        foreach (static::platformDomains() as $platform) {
+            if ($host === $slug . '.' . $platform) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Whether a host sits inside one of this installation's own DNS zones.
      *
      * Only hosts strictly below a platform domain qualify. The apex is

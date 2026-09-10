@@ -91,13 +91,13 @@ class TenantDomainTest extends TestCase
     // POST /neev/tenant-domains/ — add domain
     // -----------------------------------------------------------------
 
-    /** A host inside a zone the platform owns was issued by us, so it needs no proof. */
-    public function test_a_host_under_a_platform_domain_is_auto_verified(): void
+    /** The one host we issue a team is its own slug under a platform zone. */
+    public function test_a_teams_own_subdomain_is_auto_verified(): void
     {
         config(['neev.platform_domains' => 'test.com']);
 
         [$user, $token] = $this->authenticatedUser();
-        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        $team = TeamFactory::new()->create(['user_id' => $user->id, 'slug' => 'myteam']);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/tenant-domains/', [
@@ -111,6 +111,48 @@ class TenantDomainTest extends TestCase
         $this->assertNotNull($domain);
         $this->assertNotNull($domain->verified_at);
         $this->assertTrue($domain->is_primary); // First domain is primary
+    }
+
+    /**
+     * The installation's own operational hosts sit inside the platform zone but
+     * are nobody's tenant subdomain. Auto-verifying the whole zone would hand
+     * `app.otper.com` to whichever team owner asked for it first, make their
+     * team the resolved context for every request to that host, and — through
+     * the uniqueness rule — lock the operator out of their own hostname.
+     */
+    public function test_a_team_cannot_claim_an_operational_host_in_the_platform_zone(): void
+    {
+        config(['neev.platform_domains' => 'test.com']);
+
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id, 'slug' => 'myteam']);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains/', [
+                'team_id' => $team->id,
+                'domain' => 'app.test.com',
+            ])->assertOk()
+            ->assertJsonStructure(['verification_token']);
+
+        $this->assertNull(Domain::where('domain', 'app.test.com')->first()?->verified_at);
+    }
+
+    /** Nor may a team take the subdomain that belongs to another team's slug. */
+    public function test_a_team_cannot_claim_another_teams_subdomain(): void
+    {
+        config(['neev.platform_domains' => 'test.com']);
+
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id, 'slug' => 'mine']);
+        TeamFactory::new()->create(['slug' => 'theirs']);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains/', [
+                'team_id' => $team->id,
+                'domain' => 'theirs.test.com',
+            ])->assertOk();
+
+        $this->assertNull(Domain::where('domain', 'theirs.test.com')->first()?->verified_at);
     }
 
     /**
@@ -148,7 +190,7 @@ class TenantDomainTest extends TestCase
         config(['neev.platform_domains' => null]);
 
         [$user, $token] = $this->authenticatedUser();
-        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        $team = TeamFactory::new()->create(['user_id' => $user->id, 'slug' => 'myteam']);
 
         $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/tenant-domains/', [
@@ -166,7 +208,7 @@ class TenantDomainTest extends TestCase
         config(['neev.platform_domains' => ['otper.com', 'test.com']]);
 
         [$user, $token] = $this->authenticatedUser();
-        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        $team = TeamFactory::new()->create(['user_id' => $user->id, 'slug' => 'myteam']);
 
         $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/tenant-domains/', [

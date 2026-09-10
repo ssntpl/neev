@@ -16,9 +16,12 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 **`type` on `POST {prefix}/tenant-domains` is ignored (action required if you
 hand out subdomains).**
 Whether a claimed domain is verified immediately or has to publish a DNS TXT
-record is now derived from the host, by matching it against the new
-`platform_domains` config. Set it to the zone (or zones) your installation hands
-subdomains out under:
+record is now derived from the host and the claiming team. A tenant's subdomain
+is its slug, so team `acme` is issued `acme.otper.com` and that single claim is
+taken on trust; everything else — another team's slug, one of your own
+operational hosts like `app.otper.com`, the apex, any outside domain — publishes
+the TXT record. Set `platform_domains` to the zone (or zones) your installation
+hands subdomains out under:
 
 ```php
 // config/neev.php
@@ -31,6 +34,12 @@ was sending `type: subdomain` to get instant verification, that is the change to
 make; the field itself is now ignored rather than rejected, so no request will
 start failing.
 
+**While you are there, review `slug.reserved`.** A slug is now the host a team
+is issued, so that list is what keeps your own operational names — and any brand
+you would not want in front of your domain — out of tenants' hands. The package
+ships the operational defaults it can know about; `google.otper.com` on your
+certificate is a decision only you can make.
+
 Existing rows are untouched. Worth auditing them once, though: under the old
 behaviour any team owner could set `verified_at` on any domain by asking, so a
 verified claim in your `domains` table is not evidence that the team owns it.
@@ -38,8 +47,9 @@ verified claim in your `domains` table is not evidence that the team owns it.
 ```php
 // Verified claims that would not auto-verify under the new rule.
 Domain::whereNotNull('verified_at')
+    ->with('owner')
     ->get()
-    ->reject(fn ($d) => Domain::isPlatformSubdomain($d->domain));
+    ->reject(fn ($d) => Domain::isPlatformSubdomainFor($d->domain, $d->owner?->slug));
 ```
 
 Every row this returns is verified for a host outside your platform zones, so

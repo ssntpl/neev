@@ -521,4 +521,39 @@ class DomainTest extends TestCase
 
         $this->assertSame($stored, $domain->fresh()->domain);
     }
+
+    /**
+     * The claim is anchored to the claimant's own identity, not just the zone.
+     *
+     * @return array<string, array{0: string|array<int, string>|null, 1: string, 2: string|null, 3: bool}>
+     */
+    public static function issuedHostProvider(): array
+    {
+        return [
+            'the team\'s own subdomain'      => ['otper.com', 'acme.otper.com', 'acme', true],
+            'an operational host'            => ['otper.com', 'app.otper.com', 'acme', false],
+            'another team\'s subdomain'      => ['otper.com', 'other.otper.com', 'acme', false],
+            'a deeper host under its own'    => ['otper.com', 'eu.acme.otper.com', 'acme', false],
+            'the apex'                       => ['otper.com', 'otper.com', 'acme', false],
+            'a look-alike zone'              => ['otper.com', 'acme.evil-otper.com', 'acme', false],
+            'outside every zone'             => ['otper.com', 'acme.example.com', 'acme', false],
+            'second zone in a list'          => [['otper.com', 'otper.dev'], 'acme.otper.dev', 'acme', true],
+            'uppercase host'                 => ['otper.com', 'ACME.Otper.COM', 'acme', true],
+            'fully qualified trailing dot'   => ['otper.com', 'acme.otper.com.', 'acme', true],
+            'no slug'                        => ['otper.com', 'acme.otper.com', null, false],
+            'empty slug'                     => ['otper.com', 'acme.otper.com', '', false],
+            'no zones configured'            => [null, 'acme.otper.com', 'acme', false],
+        ];
+    }
+
+    /**
+     * @param  string|array<int, string>|null  $configured
+     */
+    #[DataProvider('issuedHostProvider')]
+    public function test_only_the_owners_own_subdomain_is_issued_to_it($configured, string $host, ?string $slug, bool $expected): void
+    {
+        config(['neev.platform_domains' => $configured]);
+
+        $this->assertSame($expected, Domain::isPlatformSubdomainFor($host, $slug));
+    }
 }

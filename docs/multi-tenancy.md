@@ -212,7 +212,7 @@ $resolver->runInContext($tenant, function () {
 
 Subdomains are not derived from slugs at request time — every host (subdomain or custom domain) must exist as a verified `Domain` record.
 
-Whether a host needs DNS verification is decided from the host itself, against the `platform_domains` config — never from anything the request says. A host strictly below one of your platform domains (`acme.otper.com` under `otper.com`) was issued by this installation, so it is verified on the spot. Every other host, including the platform apex itself, must prove control with the DNS TXT record. With `platform_domains` unset, nothing auto-verifies.
+Whether a host needs DNS verification is decided from the host and the claiming team, against the `platform_domains` config — never from anything the request says. A tenant's subdomain is its slug, so team `acme` is issued `acme.otper.com` and that single claim is taken on trust. Every other host — another team's slug, one of your own operational names like `app.otper.com`, the platform apex, or any outside domain — must prove control with the DNS TXT record. With `platform_domains` unset, nothing auto-verifies.
 
 > **Passkeys do not work on custom domains.** WebAuthn binds credentials to the single
 > `relying_party_id` from `config/neev.php`, which a tenant's own domain cannot satisfy — the browser
