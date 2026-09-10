@@ -38,14 +38,17 @@ verified claim in your `domains` table is not evidence that the team owns it.
 ```php
 // Verified claims that would not auto-verify under the new rule.
 Domain::whereNotNull('verified_at')
-    ->whereNull('verification_token')
     ->get()
     ->reject(fn ($d) => Domain::isPlatformSubdomain($d->domain));
 ```
 
-Rows with a `verification_token` passed DNS verification and are sound. Rows
-without one were auto-verified; those inside your platform zones are fine, and
-anything else was taken on trust.
+Every row this returns is verified for a host outside your platform zones, so
+each one either passed DNS verification honestly or was taken on trust under the
+old rule, and the record cannot tell you which. Holding a
+`verification_token` is not the tiebreaker it looks like: `PUT {prefix}/domains`
+and the Blade domain pages rotate a token onto a row without clearing
+`verified_at`, so a claim made under the old behaviour can carry one. Confirm the
+survivors against your own records of who owns what.
 
 ---
 

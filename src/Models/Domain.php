@@ -101,11 +101,34 @@ class Domain extends Model
         }
 
         return collect(is_array($configured) ? $configured : [$configured])
-            ->map(fn ($domain) => strtolower(trim((string) $domain, " \t\n\r\0\x0B.")))
+            ->map(fn ($domain) => static::canonicalHost((string) $domain))
             ->filter()
             ->unique()
             ->values()
             ->all();
+    }
+
+    /**
+     * One canonical spelling of a host, so that the verification decision, the
+     * uniqueness reservation and the resolution lookup all compare the same
+     * value.
+     *
+     * `acme.otper.com.` is the fully qualified form of `acme.otper.com` and
+     * `ACME.otper.com` is the same name again; stored as written they are three
+     * distinct strings, so a second team could claim an alias of a host another
+     * team already holds and the reservation would not notice.
+     */
+    public static function canonicalHost(string $host): string
+    {
+        return strtolower(trim($host, " \t\n\r\0\x0B."));
+    }
+
+    /**
+     * Canonicalise on the way in, whichever code path writes the row.
+     */
+    public function setDomainAttribute(?string $value): void
+    {
+        $this->attributes['domain'] = $value === null ? null : static::canonicalHost($value);
     }
 
     /**
@@ -119,7 +142,7 @@ class Domain extends Model
      */
     public static function isPlatformSubdomain(string $host): bool
     {
-        $host = strtolower(trim($host, " \t\n\r\0\x0B."));
+        $host = static::canonicalHost($host);
 
         if ($host === '') {
             return false;

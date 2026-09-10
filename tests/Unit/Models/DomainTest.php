@@ -489,4 +489,36 @@ class DomainTest extends TestCase
     {
         $this->assertFalse(Domain::isVerifiedForEmail('not-an-address'));
     }
+
+    /**
+     * The decision, the uniqueness reservation and the resolution lookup must
+     * compare the same spelling. Stored as written, `acme.otper.com.` is a
+     * different string from `acme.otper.com`, so a second team could claim an
+     * alias of a host another team already holds.
+     *
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function hostAliasProvider(): array
+    {
+        return [
+            'trailing dot'   => ['acme.otper.com.', 'acme.otper.com'],
+            'several dots'   => ['acme.otper.com..', 'acme.otper.com'],
+            'leading dot'    => ['.acme.otper.com', 'acme.otper.com'],
+            'uppercase'      => ['ACME.Otper.COM', 'acme.otper.com'],
+            'surrounding ws' => ["  acme.otper.com \t", 'acme.otper.com'],
+            'already canonical' => ['acme.otper.com', 'acme.otper.com'],
+        ];
+    }
+
+    #[DataProvider('hostAliasProvider')]
+    public function test_a_host_is_stored_in_one_canonical_spelling(string $written, string $stored): void
+    {
+        $domain = Domain::create([
+            'owner_type' => 'team',
+            'owner_id' => 1,
+            'domain' => $written,
+        ]);
+
+        $this->assertSame($stored, $domain->fresh()->domain);
+    }
 }
