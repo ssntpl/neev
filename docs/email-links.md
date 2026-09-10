@@ -146,7 +146,6 @@ class AppEmailLinks extends EmailLinks
 | `verificationUrl()` | `(User $user, DateTimeInterface $expiresAt): string` |
 | `emailChangeUrl()` | `(User $user, string $newEmail, DateTimeInterface $expiresAt): string` |
 | `passwordResetUrl()` | `(User $user, DateTimeInterface $expiresAt): string` |
-| `magicLinkUrl()` | `(User $user, DateTimeInterface $expiresAt): string` |
 | `invitationUrl()` | `(int\|string $invitationId, string $email, DateTimeInterface $expiresAt): string` |
 | `oauthCallbackUrl()` | `(string $service): string` |
 | `loginUrl()` | `(): string` |

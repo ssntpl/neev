@@ -14,8 +14,11 @@ use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
+use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
+use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
+use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
@@ -156,42 +159,79 @@ class UserAuthController extends Controller
         return view('neev::auth.login-password', $viewData);
     }
 
-    public function sendLoginLink(Request $request)
+    public function sendLoginLink(Request $request, MagicLinkManager $magicLink)
     {
+        $request->validate([
+            'email' => ['required', 'string', 'email'],
+        ]);
+
         $user = User::findByEmail($request->email);
         if (!$user) {
             return back()->withErrors(['message' => 'Credentials are wrong.']);
         }
 
-        $expiryMinutes = config('neev.url_expiry_time', 60);
-        $url = app(EmailLinks::class)->magicLinkUrl($user, now()->addMinutes($expiryMinutes));
+        // Single-use token redeemed server-side by the Blade flow.
+        try {
+            $link = $magicLink->forWeb($user, ['request' => $request]);
+        } catch (MagicLinkBindingException $e) {
+            Log::warning('Magic link refused: no binding source on the request.', [
+                'user_id' => $user->id,
+            ]);
 
-        Mail::to($user->email)->send(new LoginUsingLink($url, $expiryMinutes));
+            return back()->withErrors([
+                'message' => 'Unable to send a login link right now. Please try again later.',
+            ]);
+        }
+
+        Mail::to($user->email)->send(new LoginUsingLink($link['url'], $link['expires_in']));
 
         return back()->with('status', 'Login link has been sent.');
     }
 
-    public function loginUsingLink(Request $request, $id, GeoIP $geoIP)
+    /**
+     * Magic-link redemption for the Blade flow (login + confirmation share this
+     * single route).
+     *
+     * When confirmation is required, a GET only validates the link (so email
+     * scanners cannot auto-consume it) and renders a confirmation page; the
+     * user then POSTs back here to consume it. Otherwise the link is consumed
+     * and the session is authenticated immediately.
+     */
+    public function verifyLoginLink(Request $request, GeoIP $geoIP, MagicLinkManager $magicLink)
     {
         if ($request->user()?->id) {
             return redirect(config('neev.home'));
         }
-        if (! $request->hasValidSignature()) {
+
+        if (config('neev.magic_link.require_confirmation', false) && $request->isMethod('get')) {
+            $result = $magicLink->validate($request);
+
+            if ($result->needsConfirmation()) {
+                return view('neev::auth.confirm-login-link', [
+                    'token' => $request->input('token'),
+                    'channel' => $result->channel,
+                ]);
+            }
+
+            return $this->completeWebMagicLink($request, $geoIP, $result);
+        }
+
+        $result = $magicLink->consume($request);
+
+        return $this->completeWebMagicLink($request, $geoIP, $result);
+    }
+
+    /**
+     * Complete a web magic-link redemption: log in on success, redirect with an
+     * error otherwise.
+     */
+    protected function completeWebMagicLink(Request $request, GeoIP $geoIP, MagicLinkResult $result)
+    {
+        if (!$result->isValid()) {
             return redirect(app(EmailLinks::class)->loginUrl())->withErrors(['message' => 'Invalid or expired login link.']);
         }
 
-        $user = User::model()->find($id);
-        if (!$user) {
-            return redirect(app(EmailLinks::class)->loginUrl());
-        }
-
-        // The link was mailed to this address and came back signed, which
-        // proves inbox control just as the verification mail would.
-        if (!$user->hasVerifiedEmail()) {
-            $user->markEmailAsVerified();
-        }
-
-        $this->auth->login($request, $geoIP, $user, LoginAttempt::MagicAuth);
+        $this->auth->login($request, $geoIP, $result->user, LoginAttempt::MagicAuth);
 
         return redirect($this->auth->intendedUrl($request->redirect));
     }

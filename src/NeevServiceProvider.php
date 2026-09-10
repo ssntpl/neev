@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Ssntpl\Neev\Commands\Auth\ConfigureAuthCommand;
 use Ssntpl\Neev\Commands\Auth\ShowAuthCommand;
+use Ssntpl\Neev\Commands\CleanExpiredMagicLinks;
 use Ssntpl\Neev\Commands\CleanOldLoginAttempts;
 use Ssntpl\Neev\Commands\CleanPendingMfaSetups;
 use Ssntpl\Neev\Commands\Domain\AddDomainCommand;
@@ -40,6 +41,7 @@ use Ssntpl\Neev\Http\Middleware\TenantMiddleware;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Services\ContextManager;
+use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\OAuthClients;
 use Ssntpl\Neev\Services\TenantResolver;
@@ -126,6 +128,8 @@ class NeevServiceProvider extends ServiceProvider
 
             __DIR__.'/../database/migrations/2025_01_01_000011_create_team_auth_settings_table.php' => database_path('migrations/2025_01_01_000011_create_team_auth_settings_table.php'),
             __DIR__.'/../database/migrations/2025_01_01_000012_create_tenant_auth_settings_table.php' => database_path('migrations/2025_01_01_000012_create_tenant_auth_settings_table.php'),
+
+            __DIR__.'/../database/migrations/2025_01_01_000013_create_magic_link_tokens_table.php' => database_path('migrations/2025_01_01_000013_create_magic_link_tokens_table.php'),
         ], 'neev-migrations');
 
         // Blade starter kit: ejected into the app (app-owned from then on).
@@ -178,6 +182,7 @@ class NeevServiceProvider extends ServiceProvider
         $this->app->scoped(ContextManager::class);
         $this->app->scoped(TenantResolver::class);
         $this->app->singleton(TenantSSOManager::class);
+        $this->app->singleton(MagicLinkManager::class);
         $this->app->singleton(EmailLinks::class);
         $this->app->singleton(OAuthClients::class);
 
@@ -186,6 +191,7 @@ class NeevServiceProvider extends ServiceProvider
             InstallUi::class,
             DownloadGeoLiteDb::class,
             CleanOldLoginAttempts::class,
+            CleanExpiredMagicLinks::class,
             CleanPendingMfaSetups::class,
 
             CreateTenantCommand::class,

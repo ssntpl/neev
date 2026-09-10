@@ -13,9 +13,13 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
+use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
+use Ssntpl\Neev\Exceptions\MagicLinkChannelException;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
+use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
+use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\Models\LoginAttempt;
@@ -373,8 +377,13 @@ class UserAuthApiController extends Controller
         }
     }
 
-    public function sendLoginLink(Request $request)
+    public function sendLoginLink(Request $request, MagicLinkManager $magicLink)
     {
+        $request->validate([
+            'email' => ['required', 'string', 'email'],
+            'channel' => ['sometimes', 'string'],
+        ]);
+
         $user = User::findByEmail($request->email);
         if (!$user) {
             return response()->json([
@@ -382,37 +391,100 @@ class UserAuthApiController extends Controller
             ], 401);
         }
 
-        $expiryMinutes = config('neev.url_expiry_time', 60);
-        $url = app(EmailLinks::class)->magicLinkUrl($user, now()->addMinutes($expiryMinutes));
+        $channel = (string) $request->input('channel', 'web');
 
-        Mail::to($user->email)->send(new LoginUsingLink($url, $expiryMinutes));
+        try {
+            $link = $magicLink->generate($user, $channel, ['request' => $request]);
+        } catch (MagicLinkBindingException $e) {
+            Log::warning('Magic link refused: no binding source on the request.', [
+                'user_id' => $user->id,
+            ]);
+
+            return response()->json([
+                'message' => 'Unable to send a login link for this request.',
+            ], 422);
+        } catch (MagicLinkChannelException $e) {
+            Log::warning('Magic link refused: unusable channel.', [
+                'channel' => $channel,
+            ]);
+
+            return response()->json([
+                'message' => 'Unsupported login link channel.',
+            ], 422);
+        }
+
+        Mail::to($user->email)->send(new LoginUsingLink($link['url'], $link['expires_in']));
 
         return response()->json([
             'message' => 'Login link has been sent.',
         ]);
     }
 
-    public function loginUsingLink(Request $request, GeoIP $geoIP)
+    /**
+     * Redeem a magic link (login + confirmation share this single route).
+     *
+     * When confirmation is required, a GET only validates the link (scanner-safe)
+     * and returns a "confirmation_required" state; a POST is the user's explicit
+     * confirmation, which consumes the link. Otherwise the link is consumed and
+     * a login token is issued.
+     */
+    public function loginUsingLink(Request $request, GeoIP $geoIP, MagicLinkManager $magicLink)
     {
-        if (! $request->hasValidSignature()) {
+        if (config('neev.magic_link.require_confirmation', false) && $request->isMethod('get')) {
+            $result = $magicLink->validate($request);
+        } else {
+            $result = $magicLink->consume($request);
+        }
+
+        return $this->respondToMagicLink($request, $geoIP, $result);
+    }
+
+    /**
+     * Validate a magic link WITHOUT consuming it.
+     *
+     * Exposes channel metadata and the "pending confirmation" state so host
+     * applications can build confirmation UX. Never authenticates.
+     */
+    public function validateLoginLink(Request $request, MagicLinkManager $magicLink)
+    {
+        $result = $magicLink->validate($request);
+
+        return response()->json([
+            'status' => $result->status,
+            'valid' => $result->isValid(),
+            'requires_confirmation' => $result->needsConfirmation(),
+            'channel' => $result->channel,
+            'email_verified' => $result->user?->hasVerifiedEmail(),
+        ]);
+    }
+
+    /**
+     * Build the JSON response for a magic-link redemption result.
+     */
+    protected function respondToMagicLink(Request $request, GeoIP $geoIP, MagicLinkResult $result)
+    {
+        if ($result->needsConfirmation()) {
+            return response()->json([
+                'auth_state' => 'confirmation_required',
+                'channel' => $result->channel,
+                'message' => 'Please confirm this login to continue.',
+            ]);
+        }
+
+        if (!$result->isValid()) {
+            // Preserve the historical deactivated-account behaviour (422).
+            if ($result->status === MagicLinkResult::INACTIVE_USER) {
+                throw ValidationException::withMessages([
+                    'email' => 'Your account is deactivated, please contact your admin to activate your account.',
+                ]);
+            }
+
             return response()->json([
                 'message' => 'Invalid or expired verification link.',
             ], 403);
         }
 
-        $user = User::model()->find($request->id);
-        if (!$user) {
-            return response()->json([
-                'message' => 'Invalid or expired verification link.',
-            ], 403);
-        }
-
-        // The link was mailed to this address and came back signed, which
-        // proves inbox control just as the verification mail would.
-        if (!$user->hasVerifiedEmail()) {
-            $user->markEmailAsVerified();
-        }
-
+        $user = $result->user;
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
         $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::MagicAuth, $expiryMinutes);
 

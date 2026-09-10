@@ -56,8 +56,17 @@ destination cannot leak from an earlier attempt.
 
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| POST | `/login/link` | `login.link.send` | Send login link to email |
-| GET | `/login/{id}` | `login.link` | Login via magic link |
+| POST | `/login/link` | `login.link.send` | Send a single-use login link to email |
+| GET / POST | `/login-link/verify` | `login.link.verify` | Redeem the link (GET opens; POST confirms) |
+
+The link is single-use and redeemed via `token`. While
+`magic_link.require_confirmation` is on (the default), the `GET` only shows a
+confirmation page — never consuming the link, so a mail scanner's prefetch cannot
+burn it — and the user's `POST` completes the login (see
+[authentication.md](./authentication.md#magic-link-authentication)).
+
+The legacy `GET /login/{id}` (`login.link`) route was removed along with the
+signed-URL flow.
 
 ---
 
@@ -352,6 +361,7 @@ php artisan neev:ui blade
 |------|-------------|
 | `auth/register.blade.php` | Registration form |
 | `auth/login.blade.php` | Login form |
+| `auth/confirm-login-link.blade.php` | Magic-link confirmation page (shown on GET when `require_confirmation` is on) |
 | `auth/login-password.blade.php` | Password entry after email, plus the passwordless options (OAuth, magic link, passkey) |
 | `auth/forgot-password.blade.php` | Password reset request |
 | `auth/reset-password.blade.php` | New password form |
