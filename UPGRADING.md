@@ -20,8 +20,8 @@ record is now derived from the host and the claiming team. A tenant's subdomain
 is its slug, so team `acme` is issued `acme.otper.com` and that single claim is
 taken on trust; everything else — another team's slug, one of your own
 operational hosts like `app.otper.com`, the apex, any outside domain — publishes
-the TXT record. Set `platform_domain` to the zone (or zones) your installation
-hands subdomains out under:
+the TXT record. Set `platform_domain` to the zone your installation hands subdomains
+out under:
 
 ```php
 // config/neev.php
@@ -59,6 +59,25 @@ old rule, and the record cannot tell you which. Holding a
 and the Blade domain pages rotate a token onto a row without clearing
 `verified_at`, so a claim made under the old behaviour can carry one. Confirm the
 survivors against your own records of who owns what.
+
+**Email MFA codes gain an attempt counter (one schema note).**
+`multi_factor_auths` gains an `attempts` column so an emailed MFA code is
+spent after 5 wrong guesses, as the email-verification code already was.
+The package edits its migration in place, so installs that have already
+run it add the column themselves:
+
+```php
+Schema::table('multi_factor_auths', function (Blueprint $table) {
+    $table->unsignedTinyInteger('attempts')->default(0);
+});
+```
+
+Two behaviour changes come with it, neither needing action. Reopening the
+MFA challenge page no longer extends a live code's expiry — it previously
+refreshed `expires_at` without issuing a new code, so the same secret
+could be kept alive indefinitely. And a code is cleared once spent,
+whether entered correctly or exhausted, so a user who runs out of guesses
+must request a new code rather than retrying the old one.
 
 ---
 
