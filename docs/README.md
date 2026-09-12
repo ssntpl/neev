@@ -52,6 +52,7 @@ Design proposals and their implementation status.
 | [Email Reputation Package](./email-reputation-package.md) | v1 scope decided | Standalone classification-only package (free/disposable/relay/unknown); network tier deferred; neev takes no dependency on it. |
 | [RFC 004 — Device Authorization Grant](./rfcs/004-device-authorization-grant.md) | Proposed | RFC 8628 for TVs/consoles/kiosks/CLIs: device shows a code, user approves on their phone through the full neev auth stack, device polls for a normal neev token. |
 | [RFC 005 — OAuth 2.1 Authorization Server](./rfcs/005-oauth-authorization-server.md) | Proposed (gated behind RFC 004) | Neev as identity provider: auth-code + mandatory PKCE, refresh rotation, client credentials — scopes on neev's own tokens; build-vs-Passport analysis included. |
+| [RFC 006 — Hostnames vs Email Domains](./rfcs/006-hostnames-vs-email-domains.md) | Proposed (§6 needs decisions) | The `domains` table holds two things with opposite uniqueness rules: serving hostnames (must be globally unique) and verified email domains (must not be — WorkOS allows several orgs to share one). Splits them into `hostnames` + `email_domains`, derives the platform subdomain from the slug, deletes `is_primary` and `domain_rules`. Researched against 18 systems; fixes the reported `type: subdomain` takeover at its root. |
 
 ---
 
