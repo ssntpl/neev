@@ -82,11 +82,9 @@ class TenantDomainController extends Controller
                         ->whereNotNull('verified_at')
                 ),
             ],
-            'type' => 'in:subdomain,custom',
         ]);
 
         try {
-            $type = $request->type ?? 'custom';
             $domain = $request->domain;
 
             $tenantDomain = new Domain([
@@ -96,8 +94,16 @@ class TenantDomainController extends Controller
                 'is_primary' => $team->domains()->count() === 0, // First domain is primary
             ]);
 
-            // Subdomains are auto-verified; custom domains need DNS verification
-            if ($type === 'subdomain') {
+            // Whether this needs proving is decided here, from the host and
+            // the claimant. The one host this installation issues a team is the
+            // team's own slug under a platform zone, so that is the only claim
+            // taken on trust; everything else shows the DNS TXT record. The
+            // caller does not get a say — a client-supplied 'type' would let any
+            // team owner mark any domain verified, claim it installation-wide,
+            // and take over its email federation. Matching the slug rather than
+            // the zone matters too: "anything under otper.com" would hand out
+            // app.otper.com to whoever asked first.
+            if (Domain::isPlatformSubdomainFor($domain, $team->slug)) {
                 $tenantDomain->verified_at = now();
                 $tenantDomain->save();
                 $token = null;

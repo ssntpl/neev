@@ -19,6 +19,30 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Platform domains
+    |--------------------------------------------------------------------------
+    |
+    | The DNS zones this installation itself owns — the ones tenant and team
+    | subdomains are handed out under. A host inside one of these is issued by
+    | you, so it needs no ownership proof and is verified on the spot. Every
+    | other host is somebody else's property and must prove control of it with
+    | the DNS TXT record, whatever the client submitting it claims.
+    |
+    | One zone, as a string:
+    |
+    |     'platform_domain' => 'otper.com',
+    |
+    | A tenant's subdomain is its slug, so team `acme` is issued
+    | 'acme.otper.com' and nothing else. The bare 'otper.com' never qualifies —
+    | the apex is this installation's own name, not a tenant's. Leave it empty
+    | and nothing auto-verifies: every domain goes through DNS, which is the safe
+    | default for an installation that hands out no subdomains.
+    |
+    */
+    'platform_domain' => env('NEEV_PLATFORM_DOMAIN'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Routes
     |--------------------------------------------------------------------------
     |
@@ -245,7 +269,24 @@ return [
     'slug' => [
         'min_length' => 2,
         'max_length' => 63,
-        'reserved' => ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn', 'assets', 'static'],
+
+        // Slugs no team or tenant may hold. A slug is also the host handed out
+        // under `platform_domain`, so this list is what keeps your own
+        // operational names out of tenants' hands — reserving 'app' is what
+        // makes `app.otper.com` unclaimable.
+        //
+        // Add the names you would not want appearing in front of your domain
+        // in a link. A tenant slug of 'google', 'sbi' or 'hdfc' yields
+        // `google.otper.com` — your certificate, your domain, somebody else's
+        // content — which is a convincing thing to put in a phishing email.
+        // Which brands matter is yours to decide; the package ships only the
+        // operational names it can know about.
+        'reserved' => [
+            'www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn', 'assets', 'static',
+            'auth', 'login', 'signin', 'signup', 'register', 'account', 'accounts',
+            'billing', 'dashboard', 'docs', 'help', 'support', 'status', 'secure',
+            'security', 'internal', 'staging', 'test', 'dev', 'blog', 'about',
+        ],
     ],
 
     /*

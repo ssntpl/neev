@@ -46,7 +46,56 @@ The two flags combine into four valid modes:
 
 The `neev:install` wizard asks exactly these two questions and sets the flags for you.
 
-> **Where did `identity_strategy` and `tenant_isolation` go?** They were collapsed into the single `tenant` flag: `tenant = true` always means isolated identity with strict scoping (no longer configurable). Subdomain suffix and custom-domain options were removed — the package simply looks up the request host in the `domains` table, and the consuming app creates domain records however it wants. See [Architecture](./architecture.md) and [docs/config-refactor.md](./config-refactor.md) for the rationale.
+> **Where did `identity_strategy` and `tenant_isolation` go?** They were collapsed into the single `tenant` flag: `tenant = true` always means isolated identity with strict scoping (no longer configurable). Subdomain suffix and custom-domain options were removed — *resolution* simply looks up the request host in the `domains` table, and the consuming app creates domain records however it wants. `platform_domain` below is not a resolution setting: it decides only whether a claimed domain has to prove ownership by DNS. See [Architecture](./architecture.md) and [docs/config-refactor.md](./config-refactor.md) for the rationale.
+
+---
+
+## Platform Domains
+
+The DNS zones this installation itself owns — the ones you hand tenant and team
+subdomains out under.
+
+```php
+'platform_domain' => 'otper.com',
+```
+
+Set it from the environment with `NEEV_PLATFORM_DOMAIN`. One zone — a tenant has
+one canonical host, so a list would leave "which host is `acme`'s?"
+ambiguous.
+
+A tenant's subdomain **is its slug**. Team `acme` is issued `acme.otper.com` and
+nothing else, so `POST {prefix}/tenant-domains` takes exactly that one claim on
+trust:
+
+| Claimed by team `acme` | With `platform_domain => 'otper.com'` |
+|---|---|
+| `acme.otper.com` | Its own — verified immediately |
+| `app.otper.com` | Not its slug — DNS verification |
+| `other.otper.com` | Another team's slug — DNS verification |
+| `eu.acme.otper.com` | Not its slug — DNS verification |
+| `otper.com` | The apex is yours, not a tenant's — DNS verification |
+| `evil-otper.com` | Somebody else's — DNS verification |
+| `ssntpl.in` | Somebody else's — DNS verification |
+
+Anchoring the claim to the claimant's own identity is the point. Auto-verifying
+*anything* under the zone would hand `app.otper.com` to whichever team owner
+asked for it first: their team becomes the resolved context for every request to
+that host, and the uniqueness rule then locks you out of your own hostname.
+
+The decision is made from the host and the claiming team. Nothing in the request
+influences it, because a verified claim reserves the domain installation-wide and
+governs which team `@that-domain` signups join — letting a caller assert its own
+domain was verified would hand any team owner a takeover of any domain.
+
+The second half of this is [`slug.reserved`](#team-slugs): a host is only
+claimable if some team holds the matching slug, so reserving `app` is what makes
+`app.otper.com` unclaimable. Reserve the brand names you would not want in front
+of your domain, too — a tenant slug of `google` yields `google.otper.com` on your
+certificate and your domain, which is a convincing thing to put in a phishing
+email.
+
+Leave it unset and nothing auto-verifies: every domain goes through DNS. That is
+the right default for an installation that hands out no subdomains of its own.
 
 ---
 
@@ -398,6 +447,17 @@ Only used when `team => true`.
 | `min_length` | Minimum slug length |
 | `max_length` | Maximum slug length (63 for DNS compliance) |
 | `reserved` | Slugs that cannot be used by teams |
+
+A slug is also the host handed out under
+[`platform_domain`](#platform-domains), so this list is what keeps your own
+operational names out of tenants' hands: reserving `app` is what makes
+`app.otper.com` unclaimable.
+
+Reserve the brand names you would not want in front of your domain, too. A
+tenant slug of `google`, `sbi` or `hdfc` yields `google.otper.com` — your
+certificate, your domain, somebody else's content — which is a convincing thing
+to put in a phishing email. Which brands matter is yours to decide; the package
+ships only the operational names it can know about.
 
 ---
 
