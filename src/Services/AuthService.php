@@ -239,7 +239,87 @@ class AuthService
             $user->save();
         });
 
+        // The old password vouched for every session and login token this
+        // account holds; it no longer can. Revoked outside the transaction so a
+        // failure here leaves the password changed rather than silently rolling
+        // it back — a changed password with stale sessions is recoverable, the
+        // reverse looks like success and is not.
+        //
+        // API tokens are deliberately left alone: they are credentials the user
+        // minted deliberately, not a by-product of signing in, and killing a
+        // team's integrations because someone rotated their password is a
+        // product decision. `revokeApiTokens()` and the PasswordChanged event
+        // are there for applications that want it.
+        $request = request();
+
+        $this->revokeOtherSessions(
+            $user,
+            $request->hasSession() ? $request->session()->getId() : null,
+        );
+        $this->revokeLoginTokens($user, $request->attributes->get('token_id'));
+
         event(new PasswordChanged($user));
+    }
+
+    /**
+     * Drop this account's session records, optionally sparing one.
+     *
+     * Only the database session driver stores sessions where they can be
+     * enumerated. On file, redis or cookie drivers another session cannot be
+     * reached at all, so this reports 0 and the application should attach
+     * Laravel's `AuthenticateSession` middleware, which invalidates a session
+     * whose stored password hash no longer matches — driver-agnostic, and the
+     * only thing that works there.
+     *
+     * @return int rows removed
+     */
+    public function revokeOtherSessions(User $user, ?string $exceptSessionId = null): int
+    {
+        if (config('session.driver') !== 'database') {
+            return 0;
+        }
+
+        $query = DB::table(config('session.table', 'sessions'))->where('user_id', $user->id);
+
+        if ($exceptSessionId !== null) {
+            $query->where('id', '!=', $exceptSessionId);
+        }
+
+        return $query->delete();
+    }
+
+    /**
+     * Drop this account's login tokens, optionally sparing the one in use.
+     *
+     * Login tokens are the API's equivalent of a session — minted by signing
+     * in, slid forward while active — so they answer to the password the same
+     * way a session does.
+     *
+     * @return int tokens removed
+     */
+    public function revokeLoginTokens(User $user, int|string|null $exceptTokenId = null): int
+    {
+        $query = $user->loginTokens();
+
+        if ($exceptTokenId !== null) {
+            $query->where('id', '!=', $exceptTokenId);
+        }
+
+        return $query->delete();
+    }
+
+    /**
+     * Drop the API tokens this account created.
+     *
+     * Not called on a password change — see changePassword(). This exists so an
+     * application that treats a password change as a compromise can revoke them
+     * from a PasswordChanged listener, rather than reaching into the table.
+     *
+     * @return int tokens removed
+     */
+    public function revokeApiTokens(User $user): int
+    {
+        return $user->apiTokens()->delete();
     }
 
     /**
