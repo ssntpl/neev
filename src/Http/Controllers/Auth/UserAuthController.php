@@ -543,14 +543,14 @@ class UserAuthController extends Controller
                 return back()->withErrors(['message' => 'Invalid Email.']);
             }
             $expiryMinutes = config('neev.otp_expiry_time', 15);
-            if ($auth->expires_at && now()->lt($auth->expires_at)) {
-                $auth->expires_at = now()->addMinutes($expiryMinutes);
-                $auth->save();
-            } else {
+
+            // A code that is still live is left exactly as it is. Refreshing
+            // expires_at here without minting a new code kept one six-digit
+            // secret alive for as long as the page was reopened, which is what
+            // made it worth grinding through.
+            if (!$auth->expires_at || now()->gte($auth->expires_at)) {
                 $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
-                $auth->otp = $otp;
-                $auth->expires_at = now()->addMinutes($expiryMinutes);
-                $auth->save();
+                $auth->issueOtp($otp, $expiryMinutes);
                 Mail::to($email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
             }
         }
@@ -572,9 +572,7 @@ class UserAuthController extends Controller
         }
         $expiryMinutes = config('neev.otp_expiry_time', 15);
         $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
-        $auth->otp = $otp;
-        $auth->expires_at = now()->addMinutes($expiryMinutes);
-        $auth->save();
+        $auth->issueOtp($otp, $expiryMinutes);
         Mail::to($email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
         return back()->with('status', 'Verification code has been sent.');
     }

@@ -159,4 +159,54 @@ class MfaWebChallengeTest extends TestCase
 
         $this->get('/mfa-protected')->assertOk();
     }
+
+    /**
+     * Reopening the challenge page must not buy the live code more time.
+     * Refreshing expires_at without minting a new code kept one six-digit
+     * secret alive indefinitely, which is what made grinding it worthwhile.
+     */
+    public function test_reopening_the_challenge_page_does_not_extend_a_live_code(): void
+    {
+        $user = User::factory()->create(['password' => bcrypt('correct-password')]);
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+            'verified_at' => now(),
+            'otp' => '123456',
+            'expires_at' => now()->addMinutes(5),
+        ]);
+
+        $this->post('/login', ['email' => $user->email, 'password' => 'correct-password']);
+
+        $before = $auth->fresh()->expires_at;
+        $this->travel(2)->minutes();
+        $this->get('/otp/mfa/email')->assertOk();
+
+        $this->assertEquals(
+            $before->timestamp,
+            $auth->fresh()->expires_at->timestamp,
+            'A live code must keep its original deadline.',
+        );
+    }
+
+    /** An expired code is replaced, and the replacement starts with a full budget. */
+    public function test_an_expired_code_is_replaced_with_a_fresh_budget(): void
+    {
+        $user = User::factory()->create(['password' => bcrypt('correct-password')]);
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+            'verified_at' => now(),
+            'otp' => '123456',
+            'expires_at' => now()->subMinute(),
+            'attempts' => 4,
+        ]);
+
+        $this->post('/login', ['email' => $user->email, 'password' => 'correct-password']);
+        $this->get('/otp/mfa/email')->assertOk();
+
+        $fresh = $auth->fresh();
+        $this->assertTrue($fresh->expires_at->isFuture());
+        $this->assertSame(0, $fresh->attempts);
+    }
 }

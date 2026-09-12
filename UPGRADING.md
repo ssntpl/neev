@@ -11,6 +11,29 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
+## 0.6.0 → unreleased
+
+**Email MFA codes gain an attempt counter (one schema note).**
+`multi_factor_auths` gains an `attempts` column so an emailed MFA code is
+spent after 5 wrong guesses, as the email-verification code already was.
+The package edits its migration in place, so installs that have already
+run it add the column themselves:
+
+```php
+Schema::table('multi_factor_auths', function (Blueprint $table) {
+    $table->unsignedTinyInteger('attempts')->default(0);
+});
+```
+
+Two behaviour changes come with it, neither needing action. Reopening the
+MFA challenge page no longer extends a live code's expiry — it previously
+refreshed `expires_at` without issuing a new code, so the same secret
+could be kept alive indefinitely. And a code is cleared once spent,
+whether entered correctly or exhausted, so a user who runs out of guesses
+must request a new code rather than retrying the old one.
+
+---
+
 ## 0.5.0 → 0.6.0
 
 **Laravel 13 support (additive; no action required).**

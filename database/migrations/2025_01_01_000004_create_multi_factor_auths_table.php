@@ -17,6 +17,7 @@ return new class () extends Migration {
             $table->string('status')->default('active');
             $table->text('secret')->nullable();
             $table->string('otp')->nullable();
+            $table->unsignedTinyInteger('attempts')->default(0);
             $table->boolean('preferred')->default(false);
             $table->timestamp('expires_at')->nullable();
             $table->timestamp('last_used')->nullable();
