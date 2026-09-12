@@ -1,64 +1,10 @@
 parameters:
 	ignoreErrors:
 		-
-			message: '#^Method Ssntpl\\Neev\\Commands\\Domain\\AddDomainCommand\:\:promptForMissingArgumentsUsing\(\) should return array\<string, array\{string, string\}\|bool\|\(Closure\(\)\: array\<int\|string\>\)\|int\|string\> but returns array\{domain\: Closure\(\)\: string\}\.$#'
-			identifier: return.type
-			count: 1
-			path: src/Commands/Domain/AddDomainCommand.php
-
-		-
-			message: '#^Method Ssntpl\\Neev\\Commands\\Member\\AddMemberCommand\:\:promptForMissingArgumentsUsing\(\) should return array\<string, array\{string, string\}\|bool\|\(Closure\(\)\: array\<int\|string\>\)\|int\|string\> but returns array\{email\: Closure\(\)\: string\}\.$#'
-			identifier: return.type
-			count: 1
-			path: src/Commands/Member/AddMemberCommand.php
-
-		-
-			message: '#^Using nullsafe property access "\?\-\>email" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Commands/Member/ListMembersCommand.php
-
-		-
 			message: '#^Using nullsafe property access "\?\-\>name" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
 			identifier: nullsafe.neverNull
 			count: 1
 			path: src/Commands/Member/ListMembersCommand.php
-
-		-
-			message: '#^Method Ssntpl\\Neev\\Commands\\Member\\RemoveMemberCommand\:\:promptForMissingArgumentsUsing\(\) should return array\<string, array\{string, string\}\|bool\|\(Closure\(\)\: array\<int\|string\>\)\|int\|string\> but returns array\{email\: Closure\(\)\: string\}\.$#'
-			identifier: return.type
-			count: 1
-			path: src/Commands/Member/RemoveMemberCommand.php
-
-		-
-			message: '#^Method Ssntpl\\Neev\\Commands\\Team\\ActivateTeamCommand\:\:promptForMissingArgumentsUsing\(\) should return array\<string, array\{string, string\}\|bool\|\(Closure\(\)\: array\<int\|string\>\)\|int\|string\> but returns array\{team\: Closure\(\)\: string\}\.$#'
-			identifier: return.type
-			count: 1
-			path: src/Commands/Team/ActivateTeamCommand.php
-
-		-
-			message: '#^Method Ssntpl\\Neev\\Commands\\Tenant\\CreateTenantCommand\:\:promptForMissingArgumentsUsing\(\) should return array\<string, array\{string, string\}\|bool\|\(Closure\(\)\: array\<int\|string\>\)\|int\|string\> but returns array\{name\: Closure\(\)\: string\}\.$#'
-			identifier: return.type
-			count: 1
-			path: src/Commands/Tenant/CreateTenantCommand.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Commands/Tenant/ShowTenantCommand.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$name\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Commands/Tenant/ShowTenantCommand.php
-
-		-
-			message: '#^Method Ssntpl\\Neev\\Commands\\Tenant\\ShowTenantCommand\:\:promptForMissingArgumentsUsing\(\) should return array\<string, array\{string, string\}\|bool\|\(Closure\(\)\: array\<int\|string\>\)\|int\|string\> but returns array\{identifier\: Closure\(\)\: string\}\.$#'
-			identifier: return.type
-			count: 1
-			path: src/Commands/Tenant/ShowTenantCommand.php
 
 		-
 			message: '#^Access to an undefined property Laravel\\Socialite\\Contracts\\User\:\:\$email\.$#'
@@ -91,25 +37,13 @@ parameters:
 			path: src/Http/Controllers/Auth/PasskeyController.php
 
 		-
-			message: '#^Parameter \$authenticatorAssertionResponse of method Webauthn\\AuthenticatorAssertionResponseValidator\:\:check\(\) expects Webauthn\\AuthenticatorAssertionResponse, Webauthn\\AuthenticatorResponse given\.$#'
-			identifier: argument.type
-			count: 1
-			path: src/Http/Controllers/Auth/PasskeyController.php
-
-		-
 			message: '#^Call to an undefined method Laravel\\Socialite\\Contracts\\Provider\:\:with\(\)\.$#'
 			identifier: method.notFound
 			count: 1
 			path: src/Http/Controllers/Auth/TenantSSOController.php
 
 		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\AccessToken\>\|Ssntpl\\Neev\\Models\\AccessToken\:\:\$attempt\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Http/Controllers/Auth/UserAuthApiController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\AccessToken\>\|Ssntpl\\Neev\\Models\\AccessToken\:\:\$user\.$#'
+			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Collection\<.+, Ssntpl\\Neev\\Models\\AccessToken\>\|Ssntpl\\Neev\\Models\\AccessToken\:\:\$user\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Http/Controllers/Auth/UserAuthApiController.php
@@ -118,18 +52,6 @@ parameters:
 			message: '#^Parameter \#1 \$view of function view expects view\-string\|null, string given\.$#'
 			identifier: argument.type
 			count: 9
-			path: src/Http/Controllers/Auth/UserAuthController.php
-
-		-
-			message: '#^Using nullsafe property access "\?\-\>user" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Http/Controllers/Auth/UserAuthController.php
-
-		-
-			message: '#^Using nullsafe property access on non\-nullable type Illuminate\\Database\\Eloquent\\Collection\<int, Ssntpl\\Neev\\Models\\TeamInvitation\>\|Ssntpl\\Neev\\Models\\TeamInvitation\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 2
 			path: src/Http/Controllers/Auth/UserAuthController.php
 
 		-
@@ -145,21 +67,9 @@ parameters:
 			path: src/Http/Controllers/TeamApiController.php
 
 		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 2
-			path: src/Http/Controllers/TeamApiController.php
-
-		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$membership\.$#'
 			identifier: property.notFound
 			count: 2
-			path: src/Http/Controllers/TeamApiController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$role\.$#'
-			identifier: property.notFound
-			count: 1
 			path: src/Http/Controllers/TeamApiController.php
 
 		-
@@ -183,6 +93,12 @@ parameters:
 		-
 			message: '#^Property Ssntpl\\Neev\\Models\\DomainRule\:\:\$value \(string\|null\) does not accept bool\.$#'
 			identifier: assign.propertyType
+			count: 1
+			path: src/Http/Controllers/TeamApiController.php
+
+		-
+			message: '#^Relation ''rules'' is not found in Ssntpl\\Neev\\Models\\Domain model\.$#'
+			identifier: larastan.relationExistence
 			count: 1
 			path: src/Http/Controllers/TeamApiController.php
 
@@ -217,21 +133,9 @@ parameters:
 			path: src/Http/Controllers/TeamController.php
 
 		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$id\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Http/Controllers/TeamController.php
-
-		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$membership\.$#'
 			identifier: property.notFound
 			count: 2
-			path: src/Http/Controllers/TeamController.php
-
-		-
-			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$role\.$#'
-			identifier: property.notFound
-			count: 1
 			path: src/Http/Controllers/TeamController.php
 
 		-
@@ -242,12 +146,6 @@ parameters:
 
 		-
 			message: '#^Access to an undefined property Illuminate\\Database\\Eloquent\\Model\:\:\$users\.$#'
-			identifier: property.notFound
-			count: 1
-			path: src/Http/Controllers/TeamController.php
-
-		-
-			message: '#^Access to an undefined property Ssntpl\\Neev\\Models\\Team\:\:\$verified_at\.$#'
 			identifier: property.notFound
 			count: 1
 			path: src/Http/Controllers/TeamController.php
@@ -283,9 +181,27 @@ parameters:
 			path: src/Http/Controllers/TenantDomainController.php
 
 		-
+			message: '#^Relation ''teams'' is not found in Illuminate\\Foundation\\Auth\\User model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: src/Http/Controllers/UserApiController.php
+
+		-
 			message: '#^Parameter \#1 \$view of function view expects view\-string\|null, string given\.$#'
 			identifier: argument.type
-			count: 8
+			count: 7
+			path: src/Http/Controllers/UserController.php
+
+		-
+			message: '#^Relation ''multiFactorAuths'' is not found in Ssntpl\\Neev\\Models\\User model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: src/Http/Controllers/UserController.php
+
+		-
+			message: '#^Relation ''passkeys'' is not found in Ssntpl\\Neev\\Models\\User model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
 			path: src/Http/Controllers/UserController.php
 
 		-
@@ -301,9 +217,9 @@ parameters:
 			path: src/Http/Middleware/NeevMiddleware.php
 
 		-
-			message: '#^Access to an undefined property Illuminate\\Foundation\\Auth\\User\:\:\$email\.$#'
-			identifier: property.notFound
-			count: 1
+			message: '#^Call to an undefined method Illuminate\\Foundation\\Auth\\User\:\:activeMultiFactorAuths\(\)\.$#'
+			identifier: method.notFound
+			count: 2
 			path: src/Http/Middleware/NeevMiddleware.php
 
 		-
@@ -313,14 +229,20 @@ parameters:
 			path: src/Http/Middleware/NeevMiddleware.php
 
 		-
-			message: '#^Call to an undefined method Illuminate\\Foundation\\Auth\\User\:\:activeMultiFactorAuths\(\)\.$#'
-			identifier: method.notFound
-			count: 2
+			message: '#^Parameter \#1 \$user of method Ssntpl\\Neev\\Services\\ContextManager\:\:setUser\(\) expects Ssntpl\\Neev\\Models\\User\|null, Illuminate\\Foundation\\Auth\\User given\.$#'
+			identifier: argument.type
+			count: 1
 			path: src/Http/Middleware/NeevMiddleware.php
 
 		-
-			message: '#^Parameter \#1 \$user of method Ssntpl\\Neev\\Services\\ContextManager\:\:setUser\(\) expects Ssntpl\\Neev\\Models\\User\|null, Illuminate\\Foundation\\Auth\\User given\.$#'
-			identifier: argument.type
+			message: '#^Relation ''activeMultiFactorAuths'' is not found in Illuminate\\Foundation\\Auth\\User model\.$#'
+			identifier: larastan.relationExistence
+			count: 1
+			path: src/Http/Middleware/NeevMiddleware.php
+
+		-
+			message: '#^Relation ''preferredMultiFactorAuth'' is not found in Illuminate\\Foundation\\Auth\\User model\.$#'
+			identifier: larastan.relationExistence
 			count: 1
 			path: src/Http/Middleware/NeevMiddleware.php
 
@@ -331,6 +253,36 @@ parameters:
 			path: src/Http/Middleware/NeevMiddleware.php
 
 		-
+			message: '#^Parameter \$view of class Illuminate\\Mail\\Mailables\\Content constructor expects view\-string\|null, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Mail/EmailOTP.php
+
+		-
+			message: '#^Parameter \$view of class Illuminate\\Mail\\Mailables\\Content constructor expects view\-string\|null, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Mail/LoginUsingLink.php
+
+		-
+			message: '#^Parameter \$view of class Illuminate\\Mail\\Mailables\\Content constructor expects view\-string\|null, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Mail/TeamInvitation.php
+
+		-
+			message: '#^Parameter \$view of class Illuminate\\Mail\\Mailables\\Content constructor expects view\-string\|null, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Mail/TeamJoinRequest.php
+
+		-
+			message: '#^Parameter \$view of class Illuminate\\Mail\\Mailables\\Content constructor expects view\-string\|null, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Mail/VerifyUserEmail.php
+
+		-
 			message: '#^Method Ssntpl\\Neev\\Models\\Team\:\:model\(\) should return static\(Ssntpl\\Neev\\Models\\Team\) but returns object\.$#'
 			identifier: return.type
 			count: 1
@@ -339,24 +291,6 @@ parameters:
 		-
 			message: '#^Method Ssntpl\\Neev\\Models\\Team\:\:resolveBySlug\(\) should return static\(Ssntpl\\Neev\\Models\\Team\)\|null but returns Ssntpl\\Neev\\Models\\Team\|null\.$#'
 			identifier: return.type
-			count: 1
-			path: src/Models/Team.php
-
-		-
-			message: '#^Using nullsafe property access "\?\-\>auth_method" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Models/Team.php
-
-		-
-			message: '#^Using nullsafe property access "\?\-\>auto_provision" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Models/Team.php
-
-		-
-			message: '#^Using nullsafe property access "\?\-\>auto_provision_role" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
 			count: 1
 			path: src/Models/Team.php
 
@@ -409,15 +343,9 @@ parameters:
 			path: src/Models/User.php
 
 		-
-			message: '#^Using nullsafe property access "\?\-\>method" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
-			path: src/Models/User.php
-
-		-
-			message: '#^Using nullsafe property access "\?\-\>secret" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
-			identifier: nullsafe.neverNull
-			count: 1
+			message: '#^Relation ''multiFactorAuths'' is not found in Ssntpl\\Neev\\Models\\User model\.$#'
+			identifier: larastan.relationExistence
+			count: 4
 			path: src/Models/User.php
 
 		-
@@ -431,12 +359,6 @@ parameters:
 			identifier: new.static
 			count: 1
 			path: src/Rules/PasswordUserData.php
-
-		-
-			message: '#^Call to an undefined method TModel of Illuminate\\Database\\Eloquent\\Model\:\:getQualifiedTeamIdColumn\(\)\.$#'
-			identifier: method.notFound
-			count: 1
-			path: src/Scopes/TeamScope.php
 
 		-
 			message: '#^Call to an undefined method Illuminate\\Http\\Request\:\:authenticate\(\)\.$#'
@@ -467,3 +389,33 @@ parameters:
 			identifier: trait.unused
 			count: 1
 			path: src/Traits/BelongsToTeam.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>method" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Traits/HasMultiAuth.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>secret" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Traits/HasMultiAuth.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>auth_method" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Traits/HasTenantAuth.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>auto_provision" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Traits/HasTenantAuth.php
+
+		-
+			message: '#^Using nullsafe property access "\?\-\>auto_provision_role" on left side of \?\? is unnecessary\. Use \-\> instead\.$#'
+			identifier: nullsafe.neverNull
+			count: 1
+			path: src/Traits/HasTenantAuth.php
