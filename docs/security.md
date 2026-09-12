@@ -93,6 +93,33 @@ PasswordHistory::notReused(5)  // Cannot reuse last 5 passwords
 
 Passwords are stored hashed on the `users` table, with password history maintained as a JSON column.
 
+### What a Password Change Revokes
+
+Changing or resetting a password drops the account's other **sessions** and
+**login tokens** — the credentials the old password vouched for. The session and
+login token making the request are spared, so whoever changed the password stays
+signed in.
+
+Sessions can only be dropped on the **database** session driver, the one where
+another session is reachable at all. On `file`, `redis` or `cookie`, attach
+Laravel's `AuthenticateSession` middleware to your authenticated routes: it
+stores the password hash in the session and invalidates any session whose hash no
+longer matches, which is driver-agnostic and the only thing that works there.
+
+**API tokens are not revoked.** They are credentials the user created
+deliberately, not a by-product of signing in, so ending a team's integrations
+because someone rotated their password is the application's decision rather than
+the package's. Make it from a `PasswordChanged` listener:
+
+```php
+Event::listen(function (PasswordChanged $event) {
+    app(AuthService::class)->revokeApiTokens($event->user);
+});
+```
+
+The same primitives are available directly: `revokeOtherSessions()`,
+`revokeLoginTokens()` and `revokeApiTokens()` on `AuthService`.
+
 ### Personal Data Prevention
 
 Prevents using personal information:
