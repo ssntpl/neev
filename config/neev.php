@@ -28,18 +28,18 @@ return [
     | other host is somebody else's property and must prove control of it with
     | the DNS TXT record, whatever the client submitting it claims.
     |
-    | One domain as a string, several as an array:
+    | One zone, as a string:
     |
-    |     'platform_domains' => 'otper.com',
-    |     'platform_domains' => ['otper.com', 'otper.dev'],
+    |     'platform_domain' => 'otper.com',
     |
-    | Only hosts strictly *below* a platform domain qualify — 'acme.otper.com'
-    | does, the bare 'otper.com' does not, so nobody claims your apex. Leave it
-    | empty and nothing auto-verifies: every domain goes through DNS, which is
-    | the safe default for an installation that hands out no subdomains.
+    | A tenant's subdomain is its slug, so team `acme` is issued
+    | 'acme.otper.com' and nothing else. The bare 'otper.com' never qualifies —
+    | the apex is this installation's own name, not a tenant's. Leave it empty
+    | and nothing auto-verifies: every domain goes through DNS, which is the safe
+    | default for an installation that hands out no subdomains.
     |
     */
-    'platform_domains' => env('NEEV_PLATFORM_DOMAINS'),
+    'platform_domain' => env('NEEV_PLATFORM_DOMAIN'),
 
     /*
     |--------------------------------------------------------------------------
@@ -271,7 +271,7 @@ return [
         'max_length' => 63,
 
         // Slugs no team or tenant may hold. A slug is also the host handed out
-        // under `platform_domains`, so this list is what keeps your own
+        // under `platform_domain`, so this list is what keeps your own
         // operational names out of tenants' hands — reserving 'app' is what
         // makes `app.otper.com` unclaimable.
         //

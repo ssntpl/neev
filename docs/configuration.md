@@ -46,7 +46,7 @@ The two flags combine into four valid modes:
 
 The `neev:install` wizard asks exactly these two questions and sets the flags for you.
 
-> **Where did `identity_strategy` and `tenant_isolation` go?** They were collapsed into the single `tenant` flag: `tenant = true` always means isolated identity with strict scoping (no longer configurable). Subdomain suffix and custom-domain options were removed — *resolution* simply looks up the request host in the `domains` table, and the consuming app creates domain records however it wants. `platform_domains` below is not a resolution setting: it decides only whether a claimed domain has to prove ownership by DNS. See [Architecture](./architecture.md) and [docs/config-refactor.md](./config-refactor.md) for the rationale.
+> **Where did `identity_strategy` and `tenant_isolation` go?** They were collapsed into the single `tenant` flag: `tenant = true` always means isolated identity with strict scoping (no longer configurable). Subdomain suffix and custom-domain options were removed — *resolution* simply looks up the request host in the `domains` table, and the consuming app creates domain records however it wants. `platform_domain` below is not a resolution setting: it decides only whether a claimed domain has to prove ownership by DNS. See [Architecture](./architecture.md) and [docs/config-refactor.md](./config-refactor.md) for the rationale.
 
 ---
 
@@ -56,18 +56,18 @@ The DNS zones this installation itself owns — the ones you hand tenant and tea
 subdomains out under.
 
 ```php
-'platform_domains' => 'otper.com',                    // one
-'platform_domains' => ['otper.com', 'otper.dev'],     // several
+'platform_domain' => 'otper.com',
 ```
 
-`NEEV_PLATFORM_DOMAINS` sets a single domain from the environment; a list has to
-be written in the published config, since env values are strings.
+Set it from the environment with `NEEV_PLATFORM_DOMAIN`. One zone — a tenant has
+one canonical host, so a list would leave "which host is `acme`'s?"
+ambiguous.
 
 A tenant's subdomain **is its slug**. Team `acme` is issued `acme.otper.com` and
 nothing else, so `POST {prefix}/tenant-domains` takes exactly that one claim on
 trust:
 
-| Claimed by team `acme` | With `platform_domains => 'otper.com'` |
+| Claimed by team `acme` | With `platform_domain => 'otper.com'` |
 |---|---|
 | `acme.otper.com` | Its own — verified immediately |
 | `app.otper.com` | Not its slug — DNS verification |
@@ -449,7 +449,7 @@ Only used when `team => true`.
 | `reserved` | Slugs that cannot be used by teams |
 
 A slug is also the host handed out under
-[`platform_domains`](#platform-domains), so this list is what keeps your own
+[`platform_domain`](#platform-domains), so this list is what keeps your own
 operational names out of tenants' hands: reserving `app` is what makes
 `app.otper.com` unclaimable.
 

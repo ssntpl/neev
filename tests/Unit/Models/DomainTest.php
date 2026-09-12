@@ -426,7 +426,7 @@ class DomainTest extends TestCase
      * claim on a domain they do not own, so the look-alike cases matter as much
      * as the happy path.
      *
-     * @return array<string, array{0: string|array<int, string>|null, 1: string, 2: bool}>
+     * @return array<string, array{0: string|null, 1: string, 2: bool}>
      */
     public static function platformHostProvider(): array
     {
@@ -441,23 +441,17 @@ class DomainTest extends TestCase
             'uppercase host'                 => ['otper.com', 'ACME.Otper.COM', true],
             'fully qualified trailing dot'   => ['otper.com', 'acme.otper.com.', true],
             'zone configured with a dot'     => ['.otper.com', 'acme.otper.com', true],
-            'second zone in a list'          => [['otper.com', 'otper.dev'], 'acme.otper.dev', true],
-            'outside every zone in a list'   => [['otper.com', 'otper.dev'], 'acme.example.com', false],
             'no zones configured'            => [null, 'acme.otper.com', false],
             'empty string configured'        => ['', 'acme.otper.com', false],
-            'blank entry in a list'          => [['', 'otper.com'], 'acme.otper.com', true],
-            'blank entry matches nothing'    => [[''], 'acme.otper.com', false],
+            'whitespace-only zone'           => ['   ', 'acme.otper.com', false],
             'empty host'                     => ['otper.com', '', false],
         ];
     }
 
-    /**
-     * @param  string|array<int, string>|null  $configured
-     */
     #[DataProvider('platformHostProvider')]
-    public function test_platform_subdomain_matching($configured, string $host, bool $expected): void
+    public function test_platform_subdomain_matching(?string $configured, string $host, bool $expected): void
     {
-        config(['neev.platform_domains' => $configured]);
+        config(['neev.platform_domain' => $configured]);
 
         $this->assertSame($expected, Domain::isPlatformSubdomain($host));
     }
@@ -525,7 +519,7 @@ class DomainTest extends TestCase
     /**
      * The claim is anchored to the claimant's own identity, not just the zone.
      *
-     * @return array<string, array{0: string|array<int, string>|null, 1: string, 2: string|null, 3: bool}>
+     * @return array<string, array{0: string|null, 1: string, 2: string|null, 3: bool}>
      */
     public static function issuedHostProvider(): array
     {
@@ -537,7 +531,6 @@ class DomainTest extends TestCase
             'the apex'                       => ['otper.com', 'otper.com', 'acme', false],
             'a look-alike zone'              => ['otper.com', 'acme.evil-otper.com', 'acme', false],
             'outside every zone'             => ['otper.com', 'acme.example.com', 'acme', false],
-            'second zone in a list'          => [['otper.com', 'otper.dev'], 'acme.otper.dev', 'acme', true],
             'uppercase host'                 => ['otper.com', 'ACME.Otper.COM', 'acme', true],
             'fully qualified trailing dot'   => ['otper.com', 'acme.otper.com.', 'acme', true],
             'no slug'                        => ['otper.com', 'acme.otper.com', null, false],
@@ -546,13 +539,10 @@ class DomainTest extends TestCase
         ];
     }
 
-    /**
-     * @param  string|array<int, string>|null  $configured
-     */
     #[DataProvider('issuedHostProvider')]
-    public function test_only_the_owners_own_subdomain_is_issued_to_it($configured, string $host, ?string $slug, bool $expected): void
+    public function test_only_the_owners_own_subdomain_is_issued_to_it(?string $configured, string $host, ?string $slug, bool $expected): void
     {
-        config(['neev.platform_domains' => $configured]);
+        config(['neev.platform_domain' => $configured]);
 
         $this->assertSame($expected, Domain::isPlatformSubdomainFor($host, $slug));
     }

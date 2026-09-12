@@ -20,12 +20,12 @@ record is now derived from the host and the claiming team. A tenant's subdomain
 is its slug, so team `acme` is issued `acme.otper.com` and that single claim is
 taken on trust; everything else — another team's slug, one of your own
 operational hosts like `app.otper.com`, the apex, any outside domain — publishes
-the TXT record. Set `platform_domains` to the zone (or zones) your installation
+the TXT record. Set `platform_domain` to the zone (or zones) your installation
 hands subdomains out under:
 
 ```php
 // config/neev.php
-'platform_domains' => 'otper.com',                 // or ['otper.com', 'otper.dev']
+'platform_domain' => 'otper.com',
 ```
 
 Until you set it, **nothing auto-verifies** — every domain added through that

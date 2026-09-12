@@ -1687,7 +1687,7 @@ Authorization: Bearer {token}
 ```
 
 Whether the domain needs DNS verification is derived from the host and the
-claiming team, against the `platform_domains` config — the request cannot
+claiming team, against the `platform_domain` config — the request cannot
 influence it. A team's own subdomain (its slug under a platform domain) is
 verified immediately and the response carries no token; anything else comes back
 with `verification_token` and `dns_record` to publish.

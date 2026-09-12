@@ -94,7 +94,7 @@ class TenantDomainTest extends TestCase
     /** The one host we issue a team is its own slug under a platform zone. */
     public function test_a_teams_own_subdomain_is_auto_verified(): void
     {
-        config(['neev.platform_domains' => 'test.com']);
+        config(['neev.platform_domain' => 'test.com']);
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id, 'slug' => 'myteam']);
@@ -122,7 +122,7 @@ class TenantDomainTest extends TestCase
      */
     public function test_a_team_cannot_claim_an_operational_host_in_the_platform_zone(): void
     {
-        config(['neev.platform_domains' => 'test.com']);
+        config(['neev.platform_domain' => 'test.com']);
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id, 'slug' => 'myteam']);
@@ -140,7 +140,7 @@ class TenantDomainTest extends TestCase
     /** Nor may a team take the subdomain that belongs to another team's slug. */
     public function test_a_team_cannot_claim_another_teams_subdomain(): void
     {
-        config(['neev.platform_domains' => 'test.com']);
+        config(['neev.platform_domain' => 'test.com']);
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id, 'slug' => 'mine']);
@@ -163,7 +163,7 @@ class TenantDomainTest extends TestCase
      */
     public function test_a_domain_outside_the_platform_zones_is_not_auto_verified_however_it_is_labelled(): void
     {
-        config(['neev.platform_domains' => 'otper.com']);
+        config(['neev.platform_domain' => 'otper.com']);
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
@@ -187,7 +187,7 @@ class TenantDomainTest extends TestCase
     /** With no platform zones declared, nothing is ours to vouch for. */
     public function test_nothing_is_auto_verified_when_no_platform_domain_is_configured(): void
     {
-        config(['neev.platform_domains' => null]);
+        config(['neev.platform_domain' => null]);
 
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id, 'slug' => 'myteam']);
@@ -202,22 +202,6 @@ class TenantDomainTest extends TestCase
         $this->assertNull(Domain::where('domain', 'myteam.test.com')->first()?->verified_at);
     }
 
-    /** Several platform zones, declared as an array. */
-    public function test_platform_domains_may_be_a_list(): void
-    {
-        config(['neev.platform_domains' => ['otper.com', 'test.com']]);
-
-        [$user, $token] = $this->authenticatedUser();
-        $team = TeamFactory::new()->create(['user_id' => $user->id, 'slug' => 'myteam']);
-
-        $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/tenant-domains/', [
-                'team_id' => $team->id,
-                'domain' => 'myteam.test.com',
-            ])->assertOk();
-
-        $this->assertNotNull(Domain::where('domain', 'myteam.test.com')->first()?->verified_at);
-    }
 
     public function test_add_custom_domain_returns_verification_token(): void
     {

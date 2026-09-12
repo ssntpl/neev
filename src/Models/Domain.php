@@ -88,24 +88,19 @@ class Domain extends Model
     }
 
     /**
-     * The DNS zones this installation owns, normalised for comparison.
+     * The DNS zone this installation owns, normalised for comparison.
      *
-     * @return array<int, string>
+     * Null when none is configured, in which case nothing auto-verifies.
      */
-    public static function platformDomains(): array
+    public static function platformDomain(): ?string
     {
-        $configured = config('neev.platform_domains');
+        $configured = config('neev.platform_domain');
 
-        if ($configured === null || $configured === '') {
-            return [];
+        if (!is_string($configured)) {
+            return null;
         }
 
-        return collect(is_array($configured) ? $configured : [$configured])
-            ->map(fn ($domain) => static::canonicalHost((string) $domain))
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
+        return static::canonicalHost($configured) ?: null;
     }
 
     /**
@@ -148,15 +143,9 @@ class Domain extends Model
             return false;
         }
 
-        $host = static::canonicalHost($host);
+        $platform = static::platformDomain();
 
-        foreach (static::platformDomains() as $platform) {
-            if ($host === $slug . '.' . $platform) {
-                return true;
-            }
-        }
-
-        return false;
+        return $platform !== null && static::canonicalHost($host) === $slug . '.' . $platform;
     }
 
     /**
@@ -171,18 +160,9 @@ class Domain extends Model
     public static function isPlatformSubdomain(string $host): bool
     {
         $host = static::canonicalHost($host);
+        $platform = static::platformDomain();
 
-        if ($host === '') {
-            return false;
-        }
-
-        foreach (static::platformDomains() as $platform) {
-            if (str_ends_with($host, '.' . $platform)) {
-                return true;
-            }
-        }
-
-        return false;
+        return $host !== '' && $platform !== null && str_ends_with($host, '.' . $platform);
     }
 
     public function rules()
