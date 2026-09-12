@@ -21,7 +21,7 @@ use Ssntpl\Neev\Rules\PasswordHistory;
 
 class AuthService
 {
-    public function login(Request $request, GeoIP $geoIP, $user, $method, $mfa = null, $attempt = null, bool $viaRequestAuth = false)
+    public function login(Request $request, GeoIP $geoIP, $user, $method, ?string $mfa = null, ?LoginAttempt $attempt = null, bool $viaRequestAuth = false)
     {
         if (!$user?->active) {
             throw ValidationException::withMessages([
@@ -43,7 +43,7 @@ class AuthService
         session(['attempt_id' => $attempt->id ?? null]);
     }
 
-    public function recordLoginAttempt(Request $request, GeoIP $geoIP, $user, $method, $mfa = null, $attempt = null): ?LoginAttempt
+    public function recordLoginAttempt(Request $request, GeoIP $geoIP, $user, $method, ?string $mfa = null, ?LoginAttempt $attempt = null): ?LoginAttempt
     {
         try {
             if ($attempt) {
