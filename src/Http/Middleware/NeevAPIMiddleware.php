@@ -63,6 +63,9 @@ class NeevAPIMiddleware
         Auth::setUser($user);
         $request->setUserResolver(fn () => $user);
         $request->attributes->set('token_id', $id);
+        // The token itself, so ability checks and application code do not have
+        // to look it up again from the id.
+        $request->attributes->set('neev.access_token', $accessToken);
 
         if (app()->bound(ContextManager::class)) {
             app(ContextManager::class)->setUser($user);
