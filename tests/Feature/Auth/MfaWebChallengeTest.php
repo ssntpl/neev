@@ -208,6 +208,9 @@ class MfaWebChallengeTest extends TestCase
         $fresh = $auth->fresh();
         $this->assertTrue($fresh->expires_at->isFuture());
         $this->assertSame(0, $fresh->attempts);
+    }
+
+    /**
      * The challenge page is reachable directly — a bookmark, a back button, or
      * a session that lapsed while the code was being fetched. Without a
      * challenge in progress there is no account to look up, and
