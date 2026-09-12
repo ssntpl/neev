@@ -241,14 +241,30 @@ trait HasMultiAuth
                 return false;
 
             case 'email':
-                if (Hash::check((string) $otp, $auth->otp) && now()->lt($auth->expires_at)) {
-                    $auth->otp = null;
-                    $auth->expires_at = null;
-                    $auth->last_used = now();
-                    $auth->save();
-                    return true;
+                // Six digits is only as strong as the number of guesses
+                // allowed against it, so the count is the control here.
+                if ($auth->expires_at === null || now()->gte($auth->expires_at)
+                    || $auth->attempts >= MultiFactorAuth::MAX_ATTEMPTS) {
+                    $auth->clearOtp();
+
+                    return false;
                 }
-                break;
+
+                if (!Hash::check((string) $otp, $auth->otp)) {
+                    $auth->increment('attempts');
+
+                    if ($auth->attempts >= MultiFactorAuth::MAX_ATTEMPTS) {
+                        $auth->clearOtp();
+                    }
+
+                    return false;
+                }
+
+                $auth->last_used = now();
+                $auth->save();
+                $auth->clearOtp();
+
+                return true;
 
             case 'recovery':
                 $code = $this->recoveryCodes->first(function ($recoveryCode) use ($otp) {

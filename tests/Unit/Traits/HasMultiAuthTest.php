@@ -552,4 +552,90 @@ class HasMultiAuthTest extends TestCase
         $this->assertNotNull($user->multiFactorAuths()->where('method', 'authenticator')->first());
     }
 
+    // -----------------------------------------------------------------
+    // Email OTP attempt cap
+    // -----------------------------------------------------------------
+
+    /**
+     * An email OTP is six digits, so the only thing standing between a guesser
+     * and the account is the number of guesses allowed. The email-verification
+     * OTP has capped this since it shipped (OTP::MAX_ATTEMPTS); the MFA one
+     * counted nothing, which made it the weaker of the two codes despite
+     * guarding more.
+     */
+    public function test_email_otp_stops_accepting_guesses_after_the_cap(): void
+    {
+        $user = User::factory()->create();
+
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+            'otp' => '123456',
+            'expires_at' => now()->addMinutes(10),
+        ]);
+        $user->load('multiFactorAuths');
+
+        for ($i = 0; $i < MultiFactorAuth::MAX_ATTEMPTS; $i++) {
+            $this->assertFalse($user->verifyMFAOTP('email', '000000'));
+        }
+
+        // The correct code, arriving one guess too late.
+        $this->assertFalse(
+            $user->fresh()->verifyMFAOTP('email', '123456'),
+            'Once the cap is reached the code must be spent, correct or not.',
+        );
+        $this->assertNull($auth->fresh()?->otp);
+    }
+
+    public function test_a_wrong_email_otp_guess_is_counted(): void
+    {
+        $user = User::factory()->create();
+
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+            'otp' => '123456',
+            'expires_at' => now()->addMinutes(10),
+        ]);
+        $user->load('multiFactorAuths');
+
+        $this->assertFalse($user->verifyMFAOTP('email', '000000'));
+        $this->assertSame(1, $auth->fresh()->attempts);
+    }
+
+    /** Guesses spent so far must not narrow the next code's budget. */
+    public function test_issuing_a_new_email_otp_resets_the_count(): void
+    {
+        $user = User::factory()->create();
+
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+            'otp' => '123456',
+            'expires_at' => now()->addMinutes(10),
+            'attempts' => 3,
+        ]);
+
+        $auth->issueOtp('654321', 10);
+
+        $this->assertSame(0, $auth->fresh()->attempts);
+    }
+
+    /** A correct code within budget still works, and clears the count. */
+    public function test_a_correct_email_otp_within_the_cap_succeeds(): void
+    {
+        $user = User::factory()->create();
+
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+            'otp' => '123456',
+            'expires_at' => now()->addMinutes(10),
+            'attempts' => 2,
+        ]);
+        $user->load('multiFactorAuths');
+
+        $this->assertTrue($user->verifyMFAOTP('email', '123456'));
+        $this->assertSame(0, $auth->fresh()->attempts);
+    }
 }
