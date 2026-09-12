@@ -32,6 +32,7 @@ use Ssntpl\Neev\Http\Middleware\EnsureSpaRequestsAreStateful;
 use Ssntpl\Neev\Http\Middleware\EnsureTeamIsActive;
 use Ssntpl\Neev\Http\Middleware\EnsureTenantIsActive;
 use Ssntpl\Neev\Http\Middleware\EnsureTenantMembership;
+use Ssntpl\Neev\Http\Middleware\EnsureTokenCan;
 use Ssntpl\Neev\Http\Middleware\JwtLoginMiddleware;
 use Ssntpl\Neev\Http\Middleware\NeevAPIMiddleware;
 use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
@@ -106,6 +107,7 @@ class NeevServiceProvider extends ServiceProvider
         Route::aliasMiddleware('neev-ensure-sso', EnsureContextSSO::class);
         Route::aliasMiddleware('neev-password-not-expired', EnsurePasswordNotExpired::class);
         Route::aliasMiddleware('neev-verified-email', EnsureEmailIsVerified::class);
+        Route::aliasMiddleware('neev-token-can', EnsureTokenCan::class);
 
         $this->publishes([
             __DIR__.'/../config/neev.php' => config_path('neev.php'),

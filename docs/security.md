@@ -457,12 +457,39 @@ $token = $user->createApiToken('name', ['read'], 43200);  // 30 days
 
 ```php
 $token = $user->createApiToken('name', ['read', 'write', 'delete']);
+```
 
-// Check permissions
-if ($token->can('write')) {
+Enforce them per route with the `neev-token-can` middleware, which requires
+**every** ability listed:
+
+```php
+Route::middleware(['neev:api', 'neev-token-can:write'])->put('/posts/{post}', ...);
+Route::middleware(['neev:api', 'neev-token-can:read,write'])->post('/sync', ...);
+```
+
+Or check one directly — the token is on the request:
+
+```php
+$token = $request->attributes->get('neev.access_token');
+
+if ($token?->can('write')) {
     // Allowed
 }
 ```
+
+Two things worth knowing:
+
+- **A login token carries full authority.** It is minted by signing in with
+  complete credentials, so it is the API's equivalent of a session rather than a
+  scope — `can()` always returns true for one. Only an API token, created
+  deliberately with chosen abilities, is scoped.
+- **An API token created without abilities can do nothing guarded.**
+  `createApiToken('name')` defaults to no permissions, and a scope that was never
+  granted is not held. Routes without the middleware are unaffected, so attaching
+  it is what turns the column on.
+
+`$token->can('*')` is granted by a `'*'` entry, which `createApiToken()` also
+collapses to automatically when every registered permission is passed.
 
 ---
 
