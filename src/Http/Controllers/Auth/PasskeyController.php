@@ -484,7 +484,7 @@ class PasskeyController extends Controller
         try {
             [$user, $attempt] = $this->passkeyLogin($request, $geoIP);
 
-            $this->auth->login($request, $geoIP, $user, LoginAttempt::Passkey, $attempt ?? null);
+            $this->auth->login($request, $geoIP, $user, LoginAttempt::Passkey, attempt: $attempt);
             return redirect($this->auth->intendedUrl($request->redirect));
         } catch (Exception $e) {
             Log::error($e);

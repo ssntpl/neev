@@ -67,12 +67,102 @@ class Domain extends Model
      * Whether the email's domain has been claimed and DNS-verified by
      * a team/tenant (used to skip personal-team auto-creation for
      * federated domains during registration).
+     *
+     * The verified row is what the question is about, so it is asked for in
+     * the query. Reading the first row of any kind and then testing it would
+     * answer "no" whenever an unverified claim by another team happened to
+     * sort first — several teams may hold pending claims on one domain.
      */
     public static function isVerifiedForEmail(string $email): bool
     {
-        $emailDomain = substr(strrchr($email, '@'), 1);
+        $emailDomain = strrchr($email, '@');
 
-        return static::where('domain', $emailDomain)->first()?->verified_at !== null;
+        if ($emailDomain === false) {
+            return false;
+        }
+
+        return static::query()
+            ->where('domain', substr($emailDomain, 1))
+            ->whereNotNull('verified_at')
+            ->exists();
+    }
+
+    /**
+     * The DNS zone this installation owns, normalised for comparison.
+     *
+     * Null when none is configured, in which case nothing auto-verifies.
+     */
+    public static function platformDomain(): ?string
+    {
+        $configured = config('neev.platform_domain');
+
+        if (!is_string($configured)) {
+            return null;
+        }
+
+        return static::canonicalHost($configured) ?: null;
+    }
+
+    /**
+     * One canonical spelling of a host, so that the verification decision, the
+     * uniqueness reservation and the resolution lookup all compare the same
+     * value.
+     *
+     * `acme.otper.com.` is the fully qualified form of `acme.otper.com` and
+     * `ACME.otper.com` is the same name again; stored as written they are three
+     * distinct strings, so a second team could claim an alias of a host another
+     * team already holds and the reservation would not notice.
+     */
+    public static function canonicalHost(string $host): string
+    {
+        return strtolower(trim($host, " \t\n\r\0\x0B."));
+    }
+
+    /**
+     * Canonicalise on the way in, whichever code path writes the row.
+     */
+    public function setDomainAttribute(?string $value): void
+    {
+        $this->attributes['domain'] = $value === null ? null : static::canonicalHost($value);
+    }
+
+    /**
+     * Whether this host is the one the platform issues to that owner.
+     *
+     * A tenant's subdomain is its slug: team `acme` is handed `acme.otper.com`
+     * and nothing else. Anchoring the claim to the claimant's own identity is
+     * what stops a team taking a host that was never theirs — the installation's
+     * operational names (`app.`, `www.`, `api.`) included, since no team can
+     * hold those slugs while they are in `neev.slug.reserved`.
+     */
+    public static function isPlatformSubdomainFor(string $host, ?string $slug): bool
+    {
+        $slug = strtolower(trim((string) $slug));
+
+        if ($slug === '') {
+            return false;
+        }
+
+        $platform = static::platformDomain();
+
+        return $platform !== null && static::canonicalHost($host) === $slug . '.' . $platform;
+    }
+
+    /**
+     * Whether a host sits inside one of this installation's own DNS zones.
+     *
+     * Only hosts strictly below a platform domain qualify. The apex is
+     * excluded deliberately: `otper.com` is the installation's own name, not a
+     * tenant's, and nobody should be able to claim it. The leading dot is what
+     * makes the boundary real — without it `evil-otper.com` would pass as a
+     * host inside `otper.com`.
+     */
+    public static function isPlatformSubdomain(string $host): bool
+    {
+        $host = static::canonicalHost($host);
+        $platform = static::platformDomain();
+
+        return $host !== '' && $platform !== null && str_ends_with($host, '.' . $platform);
     }
 
     public function rules()

@@ -208,5 +208,14 @@ class MfaWebChallengeTest extends TestCase
         $fresh = $auth->fresh();
         $this->assertTrue($fresh->expires_at->isFuture());
         $this->assertSame(0, $fresh->attempts);
+     * The challenge page is reachable directly — a bookmark, a back button, or
+     * a session that lapsed while the code was being fetched. Without a
+     * challenge in progress there is no account to look up, and
+     * User::findByEmail() takes a non-nullable string.
+     */
+    public function test_the_challenge_page_survives_a_lapsed_session(): void
+    {
+        $this->get('/otp/mfa/email')->assertRedirect(route('login'));
+        $this->get('/otp/mfa/authenticator')->assertRedirect(route('login'));
     }
 }
