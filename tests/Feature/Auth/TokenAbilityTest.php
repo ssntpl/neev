@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
+use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 
@@ -31,6 +32,11 @@ class TokenAbilityTest extends TestCase
 
         Route::middleware(['neev:api'])
             ->get('/needs-nothing', fn () => response()->json(['ok' => true]));
+
+        // Misconfigured on purpose: the ability check with nothing in front of
+        // it to authenticate a token.
+        Route::middleware(['neev-token-can:write'])
+            ->get('/no-token', fn () => response()->json(['ok' => true]));
     }
 
     private function hit(string $uri, string $token)
@@ -55,6 +61,57 @@ class TokenAbilityTest extends TestCase
         $token = $user->createApiToken('scoped', ['read'])->plainTextToken;
 
         $this->hit('/needs-write', $token)->assertForbidden();
+    }
+
+    /**
+     * The refusal is JSON whatever the client asked for. Everything here was
+     * authenticated by a bearer token; a redirect would hand a curl client an
+     * HTML page instead of a 403.
+     */
+    public function test_a_refusal_is_a_json_403_even_without_an_accept_header(): void
+    {
+        $user = User::factory()->create();
+        $token = $user->createApiToken('scoped', ['read'])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->get('/needs-write')
+            ->assertForbidden()
+            ->assertJsonPath('message', 'This token is not permitted to perform this action.');
+    }
+
+    /**
+     * Fail-closed: with no token on the request there is nothing whose
+     * abilities can be checked, so the request is refused, not waved through.
+     */
+    public function test_a_request_with_no_token_is_refused(): void
+    {
+        $this->getJson('/no-token')
+            ->assertForbidden()
+            ->assertJsonPath('message', 'This action requires an API token.');
+
+        $user = User::factory()->create();
+
+        $this->actingAs($user)->getJson('/no-token')->assertForbidden();
+    }
+
+    /**
+     * The schema default for `token_type` is `login`, the type `can()` trusts
+     * unconditionally. A row created directly, without naming a type, must
+     * come out as the scoped kind rather than inherit that authority.
+     */
+    public function test_a_token_created_without_a_type_is_an_api_token(): void
+    {
+        $user = User::factory()->create();
+        $plainText = 'raw-token-plaintext';
+
+        $token = $user->accessTokens()->create([
+            'name' => 'raw',
+            'token' => $plainText,
+            'permissions' => ['read'],
+        ]);
+
+        $this->assertSame(AccessToken::api_token, $token->fresh()->token_type);
+        $this->hit('/needs-write', $token->id . '|' . $plainText)->assertForbidden();
     }
 
     /** A wildcard stands for every ability. */

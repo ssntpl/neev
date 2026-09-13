@@ -119,6 +119,7 @@ These can be applied individually to specific routes.
 | `neev-ensure-sso` | Enforces SSO-only access for the current context |
 | `neev-password-not-expired` | Blocks access when the user's password has expired |
 | `neev-verified-email` | Blocks access until the user's email is verified |
+| `neev-token-can` | Requires the calling API token to hold every listed ability (`neev-token-can:read,write`); refuses requests with no token |
 
 > **Hyphen, not colon.** A colon is Laravel's separator between a middleware
 > name and its parameters, so `neev:verified-email` resolved as the `neev`

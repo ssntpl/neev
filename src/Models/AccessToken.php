@@ -50,6 +50,17 @@ class AccessToken extends Model
         'expires_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        // A token nobody typed is an API token — the scoped kind. The column's
+        // schema default says `login` for historical reasons, and with `can()`
+        // now trusting login tokens unconditionally, a row created outside
+        // `createLoginToken()` must not acquire that authority by omission.
+        static::creating(function (self $token) {
+            $token->token_type ??= self::api_token;
+        });
+    }
+
     public function user()
     {
         return $this->belongsTo(User::getClass(), 'user_id');

@@ -22,6 +22,11 @@ use Symfony\Component\HttpFoundation\Response;
  * It is deliberately fail-closed. A request that arrives without a token has
  * nothing whose abilities can be checked, so it is refused rather than waved
  * through; this belongs on token-authenticated routes, after `neev:api`.
+ *
+ * Refusals are always JSON. Everything this middleware sees was authenticated
+ * by a bearer token, and `neev:api` itself answers a failed token with JSON no
+ * matter what the client's Accept header says; a redirect here would send a
+ * scoped API client to an HTML page.
  */
 class EnsureTokenCan
 {
@@ -30,24 +35,20 @@ class EnsureTokenCan
         $token = $request->attributes->get('neev.access_token');
 
         if (!$token instanceof AccessToken) {
-            return $this->deny($request, __('This action requires an API token.'));
+            return $this->deny(__('This action requires an API token.'));
         }
 
         foreach ($abilities as $ability) {
             if (!$token->can($ability)) {
-                return $this->deny($request, __('This token is not permitted to perform this action.'));
+                return $this->deny(__('This token is not permitted to perform this action.'));
             }
         }
 
         return $next($request);
     }
 
-    protected function deny(Request $request, string $message): Response
+    protected function deny(string $message): Response
     {
-        if ($request->expectsJson()) {
-            return response()->json(['message' => $message], 403);
-        }
-
-        return redirect(config('neev.home'))->withErrors(['message' => $message]);
+        return response()->json(['message' => $message], 403);
     }
 }

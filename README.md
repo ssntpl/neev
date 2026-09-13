@@ -570,6 +570,7 @@ Response:
 | `neev-ensure-sso` | Enforces SSO-only access for the current context |
 | `neev-password-not-expired` | Forces password change when password has expired |
 | `neev-verified-email` | Requires a verified email address |
+| `neev-token-can` | Requires the calling API token to hold every listed ability (`neev-token-can:read,write`) |
 
 ---
 

@@ -239,6 +239,12 @@ class AuthService
             $user->save();
         });
 
+        // The transaction worked on its own locked copy. Bring the caller's
+        // instance up to date so whatever holds it — the auth guard, and through
+        // it AuthenticateSession's stored password hash — sees the new password
+        // rather than signing the caller out on their next request.
+        $user->refresh();
+
         // The old password vouched for every session and login token this
         // account holds; it no longer can. Revoked outside the transaction so a
         // failure here leaves the password changed rather than silently rolling
@@ -279,7 +285,12 @@ class AuthService
             return 0;
         }
 
-        $query = DB::table(config('session.table', 'sessions'))->where('user_id', $user->id);
+        // Laravel's database driver reads `session.connection`, which need not
+        // be the default connection; the delete has to hit the same table it
+        // writes to or it removes nothing.
+        $query = DB::connection(config('session.connection'))
+            ->table(config('session.table', 'sessions'))
+            ->where('user_id', $user->id);
 
         if ($exceptSessionId !== null) {
             $query->where('id', '!=', $exceptSessionId);

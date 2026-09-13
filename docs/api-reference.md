@@ -276,6 +276,11 @@ POST /neev/resetPassword?id={user_id}&hash={email_hash}&signature={signature}&ex
 }
 ```
 
+Resetting the password revokes the account's other login tokens and, on the
+database session driver, its other web sessions; other signed-in devices start
+receiving `401`. API tokens are unaffected — see
+[What a Password Change Revokes](./security.md#what-a-password-change-revokes).
+
 ---
 
 ## Email Verification
@@ -928,6 +933,12 @@ Authorization: Bearer {token}
     "message": "Password has been successfully updated."
 }
 ```
+
+Changing the password revokes the account's other login tokens and, on the
+database session driver, its other web sessions; the token making this request
+survives, other signed-in devices start receiving `401`. API tokens are
+unaffected — see
+[What a Password Change Revokes](./security.md#what-a-password-change-revokes).
 
 **Errors:**
 

@@ -10,6 +10,7 @@ use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Mockery;
@@ -422,18 +423,67 @@ class AuthServiceTest extends TestCase
         $user = User::factory()->create();
         $other = User::factory()->create();
 
-        $this->seedSession('current-session', $user->id);
-        $this->seedSession('stale-session', $user->id);
-        $this->seedSession('somebody-elses', $other->id);
-
         $request = $this->makeRequestWithSession();
         $this->app['request'] = $request;
 
+        $this->seedSession($request->session()->getId(), $user->id);
+        $this->seedSession('stale-session', $user->id);
+        $this->seedSession('somebody-elses', $other->id);
+
         app(AuthService::class)->changePassword($user, 'a-brand-new-password');
 
-        // The other user's session is untouched; this user's stale one is gone.
+        // The other user's session is untouched; this user's stale one is gone;
+        // the session that asked for the change is the one that survives.
         $this->assertDatabaseHas('sessions', ['id' => 'somebody-elses']);
         $this->assertDatabaseMissing('sessions', ['id' => 'stale-session']);
+        $this->assertDatabaseHas('sessions', ['id' => $request->session()->getId()]);
+    }
+
+    /**
+     * Laravel's database driver stores sessions on `session.connection`, which
+     * is not necessarily the default connection. Deleting from the default one
+     * would remove nothing while reporting the driver as supported.
+     */
+    public function test_session_revocation_uses_the_session_connection(): void
+    {
+        config([
+            'session.driver' => 'database',
+            'session.connection' => 'sessions_db',
+            'database.connections.sessions_db' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => ''],
+        ]);
+
+        Schema::connection('sessions_db')->create('sessions', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->foreignId('user_id')->nullable()->index();
+            $table->longText('payload');
+            $table->integer('last_activity')->index();
+        });
+
+        $user = User::factory()->create();
+
+        DB::connection('sessions_db')->table('sessions')->insert([
+            ['id' => 'stale-session', 'user_id' => $user->id, 'payload' => '', 'last_activity' => time()],
+        ]);
+
+        $removed = app(AuthService::class)->revokeOtherSessions($user);
+
+        $this->assertSame(1, $removed);
+        $this->assertSame(0, DB::connection('sessions_db')->table('sessions')->count());
+    }
+
+    /**
+     * The service works on its own locked copy inside the transaction. The
+     * instance the caller passed — usually the guard's — must come out of the
+     * call carrying the new hash, or AuthenticateSession stores the stale one
+     * and signs the caller out on their next request.
+     */
+    public function test_the_callers_instance_reflects_the_new_password(): void
+    {
+        $user = User::factory()->create(['password' => 'old-password']);
+
+        app(AuthService::class)->changePassword($user, 'a-brand-new-password');
+
+        $this->assertTrue(Hash::check('a-brand-new-password', $user->password));
     }
 
     /** Login tokens are the API's sessions, so they answer to the password too. */
