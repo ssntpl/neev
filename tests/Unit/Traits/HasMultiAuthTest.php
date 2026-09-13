@@ -575,9 +575,15 @@ class HasMultiAuthTest extends TestCase
         ]);
         $user->load('multiFactorAuths');
 
-        for ($i = 0; $i < MultiFactorAuth::MAX_ATTEMPTS; $i++) {
+        for ($i = 1; $i < MultiFactorAuth::MAX_ATTEMPTS; $i++) {
             $this->assertFalse($user->verifyMFAOTP('email', '000000'));
+            $this->assertNotNull($auth->fresh()->otp, "The code must survive wrong guess $i.");
+            $this->assertSame($i, $auth->fresh()->attempts);
         }
+
+        // The last permitted wrong guess spends the code.
+        $this->assertFalse($user->verifyMFAOTP('email', '000000'));
+        $this->assertNull($auth->fresh()->otp);
 
         // The correct code, arriving one guess too late.
         $this->assertFalse(
@@ -621,7 +627,10 @@ class HasMultiAuthTest extends TestCase
         $this->assertSame(0, $auth->fresh()->attempts);
     }
 
-    /** A correct code within budget still works, and clears the count. */
+    /**
+     * A correct code on the last permitted guess still works, and clears the
+     * count. Seeded at the boundary so a cap that is one too tight fails here.
+     */
     public function test_a_correct_email_otp_within_the_cap_succeeds(): void
     {
         $user = User::factory()->create();
@@ -631,7 +640,7 @@ class HasMultiAuthTest extends TestCase
             'preferred' => true,
             'otp' => '123456',
             'expires_at' => now()->addMinutes(10),
-            'attempts' => 2,
+            'attempts' => MultiFactorAuth::MAX_ATTEMPTS - 1,
         ]);
         $user->load('multiFactorAuths');
 

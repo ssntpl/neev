@@ -241,18 +241,31 @@ trait HasMultiAuth
                 return false;
 
             case 'email':
-                // Six digits is only as strong as the number of guesses
-                // allowed against it, so the count is the control here.
-                if ($auth->expires_at === null || now()->gte($auth->expires_at)
-                    || $auth->attempts >= MultiFactorAuth::MAX_ATTEMPTS) {
+                if ($auth->expires_at === null || now()->gte($auth->expires_at)) {
                     $auth->clearOtp();
 
                     return false;
                 }
 
-                if (!Hash::check((string) $otp, $auth->otp)) {
-                    $auth->increment('attempts');
+                // Six digits is only as strong as the number of guesses allowed
+                // against it, so the count is the control here. The guess is
+                // reserved with a conditional increment *before* the hash is
+                // compared: requests arriving together would otherwise each read
+                // a stale count, all pass the check, and all be evaluated.
+                $reserved = $auth->newQueryWithoutScopes()
+                    ->whereKey($auth->getKey())
+                    ->where('attempts', '<', MultiFactorAuth::MAX_ATTEMPTS)
+                    ->increment('attempts');
 
+                if ($reserved === 0) {
+                    $auth->clearOtp();
+
+                    return false;
+                }
+
+                $auth->refresh();
+
+                if (!Hash::check((string) $otp, $auth->otp)) {
                     if ($auth->attempts >= MultiFactorAuth::MAX_ATTEMPTS) {
                         $auth->clearOtp();
                     }
