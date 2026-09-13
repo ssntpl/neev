@@ -180,9 +180,7 @@ class UserAuthApiController extends Controller
         }
         $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
         $expiryMinutes = config('neev.otp_expiry_time', 15);
-        $auth->otp = $otp;
-        $auth->expires_at = now()->addMinutes($expiryMinutes);
-        $auth->save();
+        $auth->issueOtp($otp, $expiryMinutes);
         Mail::to($user->email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
     }
 
