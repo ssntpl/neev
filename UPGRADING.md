@@ -79,6 +79,17 @@ could be kept alive indefinitely. And a code is cleared once spent,
 whether entered correctly or exhausted, so a user who runs out of guesses
 must request a new code rather than retrying the old one.
 
+**A password change now signs the account's other devices out (action
+required only on non-database session drivers).** `AuthService::changePassword()`
+drops the account's other login tokens and, on the `database` session driver,
+its other web sessions; the session and token making the request survive. API
+tokens are untouched — revoke them from a `PasswordChanged` listener if your
+product wants that. On `file`, `redis` or `cookie` sessions the package cannot
+reach the other sessions; attach Laravel's `AuthenticateSession` middleware to
+your authenticated routes to get the same effect there. Sessions are read from
+`session.connection`, so a separate session database works unchanged. See
+[docs/security.md](./docs/security.md#what-a-password-change-revokes).
+
 ---
 
 ## 0.5.0 → 0.6.0

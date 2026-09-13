@@ -3,11 +3,15 @@
 namespace Ssntpl\Neev\Tests\Unit\Services;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
 use Illuminate\Session\ArraySessionHandler;
 use Illuminate\Session\Store;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Mockery;
 use Ssntpl\Neev\Database\Factories\LoginAttemptFactory;
@@ -377,5 +381,183 @@ class AuthServiceTest extends TestCase
             $rows->first()->multi_factor_method,
             'A passkey login answers no MFA challenge, so it must not stamp the gate column.',
         );
+    }
+
+    // ---------------------------------------------------------------
+    // Revocation on password change
+    // ---------------------------------------------------------------
+
+    private function createSessionsTable(): void
+    {
+        Schema::dropIfExists('sessions');
+        Schema::create('sessions', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->foreignId('user_id')->nullable()->index();
+            $table->string('ip_address', 45)->nullable();
+            $table->text('user_agent')->nullable();
+            $table->longText('payload');
+            $table->integer('last_activity')->index();
+        });
+    }
+
+    private function seedSession(string $id, ?int $userId): void
+    {
+        DB::table('sessions')->insert([
+            'id' => $id,
+            'user_id' => $userId,
+            'payload' => '',
+            'last_activity' => time(),
+        ]);
+    }
+
+    /**
+     * The whole point of changing a password after a compromise is that the old
+     * one stops working. Leaving every existing session signed in means it
+     * does not.
+     */
+    public function test_changing_a_password_drops_the_accounts_other_sessions(): void
+    {
+        config(['session.driver' => 'database']);
+        $this->createSessionsTable();
+
+        $user = User::factory()->create();
+        $other = User::factory()->create();
+
+        $request = $this->makeRequestWithSession();
+        $this->app['request'] = $request;
+
+        $this->seedSession($request->session()->getId(), $user->id);
+        $this->seedSession('stale-session', $user->id);
+        $this->seedSession('somebody-elses', $other->id);
+
+        app(AuthService::class)->changePassword($user, 'a-brand-new-password');
+
+        // The other user's session is untouched; this user's stale one is gone;
+        // the session that asked for the change is the one that survives.
+        $this->assertDatabaseHas('sessions', ['id' => 'somebody-elses']);
+        $this->assertDatabaseMissing('sessions', ['id' => 'stale-session']);
+        $this->assertDatabaseHas('sessions', ['id' => $request->session()->getId()]);
+    }
+
+    /**
+     * Laravel's database driver stores sessions on `session.connection`, which
+     * is not necessarily the default connection. Deleting from the default one
+     * would remove nothing while reporting the driver as supported.
+     */
+    public function test_session_revocation_uses_the_session_connection(): void
+    {
+        config([
+            'session.driver' => 'database',
+            'session.connection' => 'sessions_db',
+            'database.connections.sessions_db' => ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => ''],
+        ]);
+
+        Schema::connection('sessions_db')->create('sessions', function (Blueprint $table) {
+            $table->string('id')->primary();
+            $table->foreignId('user_id')->nullable()->index();
+            $table->longText('payload');
+            $table->integer('last_activity')->index();
+        });
+
+        $user = User::factory()->create();
+
+        DB::connection('sessions_db')->table('sessions')->insert([
+            ['id' => 'stale-session', 'user_id' => $user->id, 'payload' => '', 'last_activity' => time()],
+        ]);
+
+        $removed = app(AuthService::class)->revokeOtherSessions($user);
+
+        $this->assertSame(1, $removed);
+        $this->assertSame(0, DB::connection('sessions_db')->table('sessions')->count());
+    }
+
+    /**
+     * The service works on its own locked copy inside the transaction. The
+     * instance the caller passed — usually the guard's — must come out of the
+     * call carrying the new hash, or AuthenticateSession stores the stale one
+     * and signs the caller out on their next request.
+     */
+    public function test_the_callers_instance_reflects_the_new_password(): void
+    {
+        $user = User::factory()->create(['password' => 'old-password']);
+
+        app(AuthService::class)->changePassword($user, 'a-brand-new-password');
+
+        $this->assertTrue(Hash::check('a-brand-new-password', $user->password));
+    }
+
+    /** Login tokens are the API's sessions, so they answer to the password too. */
+    public function test_changing_a_password_drops_login_tokens_but_not_api_tokens(): void
+    {
+        $user = User::factory()->create();
+
+        $user->createLoginToken(60);
+        $user->createLoginToken(60);
+        $user->createApiToken('integration');
+
+        $this->assertSame(2, $user->loginTokens()->count());
+
+        app(AuthService::class)->changePassword($user, 'a-brand-new-password');
+
+        $this->assertSame(0, $user->loginTokens()->count(), 'Login tokens survive a password change.');
+        $this->assertSame(
+            1,
+            $user->apiTokens()->count(),
+            'API tokens are the user\'s own deliberate credentials — revoking them is the app\'s call.',
+        );
+    }
+
+    /** The token making the request is spared, so the caller is not logged out mid-call. */
+    public function test_the_login_token_in_use_survives_its_own_password_change(): void
+    {
+        $user = User::factory()->create();
+
+        $current = $user->createLoginToken(60);
+        $user->createLoginToken(60);
+
+        $request = $this->makeRequestWithSession();
+        $request->attributes->set('token_id', $current->accessToken->id);
+        $this->app['request'] = $request;
+
+        app(AuthService::class)->changePassword($user, 'a-brand-new-password');
+
+        $this->assertSame(1, $user->loginTokens()->count());
+        $this->assertNotNull($user->loginTokens()->find($current->accessToken->id));
+    }
+
+    /**
+     * On file/redis/cookie drivers another session cannot be reached. Reporting
+     * 0 is honest; pretending to have revoked would not be.
+     */
+    public function test_session_revocation_reports_nothing_on_a_non_database_driver(): void
+    {
+        config(['session.driver' => 'file']);
+
+        $user = User::factory()->create();
+
+        $this->assertSame(0, app(AuthService::class)->revokeOtherSessions($user));
+    }
+
+    /** Called outside a request — a console password reset — spares nothing. */
+    public function test_revocation_spares_nothing_when_there_is_no_current_credential(): void
+    {
+        config(['session.driver' => 'database']);
+        $this->createSessionsTable();
+
+        $user = User::factory()->create();
+        $this->seedSession('some-session', $user->id);
+
+        $this->assertSame(1, app(AuthService::class)->revokeOtherSessions($user));
+        $this->assertDatabaseMissing('sessions', ['id' => 'some-session']);
+    }
+
+    public function test_api_tokens_can_be_revoked_on_request(): void
+    {
+        $user = User::factory()->create();
+        $user->createApiToken('one');
+        $user->createApiToken('two');
+
+        $this->assertSame(2, app(AuthService::class)->revokeApiTokens($user));
+        $this->assertSame(0, $user->apiTokens()->count());
     }
 }

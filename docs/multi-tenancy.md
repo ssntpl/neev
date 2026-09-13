@@ -462,6 +462,7 @@ This section summarizes the middleware from a tenancy perspective. The authorita
 | `neev-ensure-sso` | `EnsureContextSSO` |
 | `neev-password-not-expired` | `EnsurePasswordNotExpired` |
 | `neev-verified-email` | `EnsureEmailIsVerified` |
+| `neev-token-can` | `EnsureTokenCan` |
 
 ### Using Middleware
 

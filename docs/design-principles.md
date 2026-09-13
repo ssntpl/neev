@@ -53,7 +53,8 @@ The package ships mechanisms fully built; the application decides
 
 - Enforcement middleware aliases (`neev-verified-email`,
   `neev-password-not-expired`, `neev-active-team`,
-  `neev-active-tenant`, `neev-ensure-sso`) — attach per route group
+  `neev-active-tenant`, `neev-ensure-sso`, `neev-token-can`) — attach
+  per route group
 - Events (native `Registered`/`PasswordReset`/`Lockout` plus the
   `Ssntpl\Neev\Events` set) — the integration point for
   notifications, audit, analytics, and anything product-specific

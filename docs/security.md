@@ -93,6 +93,33 @@ PasswordHistory::notReused(5)  // Cannot reuse last 5 passwords
 
 Passwords are stored hashed on the `users` table, with password history maintained as a JSON column.
 
+### What a Password Change Revokes
+
+Changing or resetting a password drops the account's other **sessions** and
+**login tokens** — the credentials the old password vouched for. The session and
+login token making the request are spared, so whoever changed the password stays
+signed in.
+
+Sessions can only be dropped on the **database** session driver, the one where
+another session is reachable at all. On `file`, `redis` or `cookie`, attach
+Laravel's `AuthenticateSession` middleware to your authenticated routes: it
+stores the password hash in the session and invalidates any session whose hash no
+longer matches, which is driver-agnostic and the only thing that works there.
+
+**API tokens are not revoked.** They are credentials the user created
+deliberately, not a by-product of signing in, so ending a team's integrations
+because someone rotated their password is the application's decision rather than
+the package's. Make it from a `PasswordChanged` listener:
+
+```php
+Event::listen(function (PasswordChanged $event) {
+    app(AuthService::class)->revokeApiTokens($event->user);
+});
+```
+
+The same primitives are available directly: `revokeOtherSessions()`,
+`revokeLoginTokens()` and `revokeApiTokens()` on `AuthService`.
+
 ### Personal Data Prevention
 
 Prevents using personal information:
@@ -430,12 +457,39 @@ $token = $user->createApiToken('name', ['read'], 43200);  // 30 days
 
 ```php
 $token = $user->createApiToken('name', ['read', 'write', 'delete']);
+```
 
-// Check permissions
-if ($token->can('write')) {
+Enforce them per route with the `neev-token-can` middleware, which requires
+**every** ability listed:
+
+```php
+Route::middleware(['neev:api', 'neev-token-can:write'])->put('/posts/{post}', ...);
+Route::middleware(['neev:api', 'neev-token-can:read,write'])->post('/sync', ...);
+```
+
+Or check one directly — the token is on the request:
+
+```php
+$token = $request->attributes->get('neev.access_token');
+
+if ($token?->can('write')) {
     // Allowed
 }
 ```
+
+Two things worth knowing:
+
+- **A login token carries full authority.** It is minted by signing in with
+  complete credentials, so it is the API's equivalent of a session rather than a
+  scope — `can()` always returns true for one. Only an API token, created
+  deliberately with chosen abilities, is scoped.
+- **An API token created without abilities can do nothing guarded.**
+  `createApiToken('name')` defaults to no permissions, and a scope that was never
+  granted is not held. Routes without the middleware are unaffected, so attaching
+  it is what turns the column on.
+
+`$token->can('*')` is granted by a `'*'` entry, which `createApiToken()` also
+collapses to automatically when every registered permission is passed.
 
 ---
 
