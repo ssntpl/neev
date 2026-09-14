@@ -61,9 +61,11 @@ class RelyingPartyResolver
     {
         $domain = $this->domain();
 
+        $configured = (array) config('neev.allowed_origins', []);
+
         return $domain !== null
-            ? ['https://' . Domain::canonicalHost($domain->domain)]
-            : (array) config('neev.allowed_origins', []);
+            ? array_unique(array_merge($configured, ['https://' . Domain::canonicalHost($domain->domain)]))
+            : $configured;
     }
 
     /**
