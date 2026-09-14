@@ -5,7 +5,6 @@ namespace Ssntpl\Neev\Http\Controllers;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
@@ -50,7 +49,7 @@ class UserController extends Controller
 
     public function sessions(Request $request)
     {
-        $sessions = DB::table('sessions')
+        $sessions = app(AuthService::class)->sessionsTable()
             ->where('user_id', auth()->id())
             ->orderBy('last_activity', 'desc')
             ->get()

@@ -12,7 +12,11 @@ trait HasAccessToken
 {
     public function createApiToken(?string $name = null, ?array $permissions = null, ?int $expiry = null)
     {
-        if ($permissions !== null && count($permissions) === Permission::count()) {
+        // Naming every registered permission is the same grant as '*', so it
+        // is stored that way. The test is by content: a list that merely has
+        // the right *number* of entries is not the full set, and neither is an
+        // empty list on an install that has registered no permissions yet.
+        if ($permissions !== null && $permissions !== [] && $this->coversEveryPermission($permissions)) {
             $permissions = ['*'];
         }
         $plainTextToken = Str::random(40);
@@ -26,6 +30,13 @@ trait HasAccessToken
         ]);
 
         return new NewAccessToken($token, $token->getKey().'|'.$plainTextToken);
+    }
+
+    private function coversEveryPermission(array $permissions): bool
+    {
+        $registered = Permission::query()->pluck('name')->all();
+
+        return $registered !== [] && array_diff($registered, $permissions) === [];
     }
 
     public function createLoginToken(?int $expiry)

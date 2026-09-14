@@ -83,7 +83,13 @@ class InstallUi extends Command
 
         $contents = file_get_contents($file);
         $replacement = "'ui' => " . ($value === null ? "env('NEEV_UI')" : var_export($value, true)) . ',';
-        $updated = preg_replace("/'ui' => [^,]+,/", $replacement, $contents, 1, $count);
+
+        // The value runs to the comma that ends the line, not the first comma
+        // in sight: `env('NEEV_UI', 'blade')` has one inside it, and stopping
+        // there wrote `'ui' => 'blade', 'blade'),` — a parse error in the app's
+        // config. A value spread over several lines is left alone and reported
+        // below rather than guessed at.
+        $updated = preg_replace("/'ui'\s*=>\s*.*?,(?=[ \t]*(?:\/\/[^\n]*)?$)/m", $replacement, $contents, 1, $count);
 
         if ($count === 1) {
             file_put_contents($file, $updated);

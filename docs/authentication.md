@@ -214,7 +214,9 @@ Passwordless login via secure email links. Always available — no config toggle
 2. Clicks "Send Login Link"
 3. Receives email with secure link
 4. Clicks link to authenticate
-5. Automatically logged in
+5. If the account has MFA enrolled, the MFA challenge follows — a magic link
+   is a first factor, not a way around the second
+6. Logged in
 
 Following the link also **marks an unverified address verified**: the link was
 mailed to that address and came back signed, which proves inbox control just

@@ -166,6 +166,11 @@ GET /neev/loginUsingLink?id={email_id}&signature={signature}&expires={timestamp}
 }
 ```
 
+A magic link is a first factor. An account with MFA enrolled gets the same
+`auth_state: mfa_required` response as `POST /neev/login`, with the short-lived
+MFA JWT and `mfa_options`; complete it with `POST /neev/mfa/otp/verify` exactly
+as after a password.
+
 ---
 
 ### Logout

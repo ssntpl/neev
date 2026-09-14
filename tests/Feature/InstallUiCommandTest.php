@@ -7,11 +7,23 @@ use Ssntpl\Neev\Tests\TestCase;
 
 class InstallUiCommandTest extends TestCase
 {
+    private bool $wroteConfig = false;
+
     protected function tearDown(): void
     {
         File::deleteDirectory(resource_path('views/vendor/neev'));
 
+        if ($this->wroteConfig) {
+            File::delete(config_path('neev.php'));
+        }
+
         parent::tearDown();
+    }
+
+    private function publishConfig(string $uiLine): void
+    {
+        File::put(config_path('neev.php'), "<?php\n\nreturn [\n    {$uiLine}\n    'home' => '/home',\n];\n");
+        $this->wroteConfig = true;
     }
 
     public function test_blade_kit_ejects_views_and_email_templates(): void
@@ -48,5 +60,48 @@ class InstallUiCommandTest extends TestCase
     public function test_unknown_kit_fails(): void
     {
         $this->artisan('neev:ui', ['kit' => 'angular'])->assertFailed();
+    }
+
+    /**
+     * `env('NEEV_UI', 'blade')` is the ordinary way to write the key, and it
+     * has a comma inside it. Stopping at that comma wrote
+     * `'ui' => 'blade', 'blade'),` — a parse error in the app's config.
+     */
+    public function test_the_ui_key_is_rewritten_around_an_env_default(): void
+    {
+        $this->publishConfig("'ui' => env('NEEV_UI', 'blade'),");
+
+        $this->artisan('neev:ui', ['kit' => 'none'])->assertSuccessful();
+
+        $written = File::get(config_path('neev.php'));
+        $this->assertStringContainsString("'ui' => env('NEEV_UI'),", $written);
+        $this->assertStringNotContainsString("'blade')", $written);
+
+        $config = include config_path('neev.php');
+        $this->assertSame('/home', $config['home']);
+    }
+
+    public function test_the_ui_key_is_rewritten_when_it_is_a_plain_value(): void
+    {
+        $this->publishConfig("'ui' => null, // set by the installer");
+
+        $this->artisan('neev:ui', ['kit' => 'blade'])->assertSuccessful();
+
+        $config = include config_path('neev.php');
+        $this->assertSame('blade', $config['ui']);
+        $this->assertSame('/home', $config['home']);
+    }
+
+    /** A value the rewrite cannot parse is reported, not mangled. */
+    public function test_an_unparseable_ui_value_is_left_alone(): void
+    {
+        $this->publishConfig("'ui' => env(\n        'NEEV_UI',\n        'blade',\n    ),");
+        $before = File::get(config_path('neev.php'));
+
+        $this->artisan('neev:ui', ['kit' => 'none'])
+            ->expectsOutputToContain("Could not update 'ui'")
+            ->assertSuccessful();
+
+        $this->assertSame($before, File::get(config_path('neev.php')));
     }
 }
