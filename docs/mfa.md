@@ -54,7 +54,7 @@ Authenticator setups that are started but never verified remain in a `pending` s
 
 ### MFA JWT Settings
 
-After a password login that requires MFA, the API issues a short-lived JWT used only to complete verification:
+After a password or magic-link login that requires MFA, the API issues a short-lived JWT used only to complete verification:
 
 ```php
 // config/neev.php
@@ -350,6 +350,8 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 6. Full access token is returned
 
 Only **active** methods trigger the MFA challenge — pending setups never gate login, and the verify endpoint rejects codes for pending methods.
+
+A magic link enters the same flow at step 3: `GET {prefix}/loginUsingLink` returns `mfa_required` with the JWT for an enrolled account, and the Blade `login.link` route redirects to the challenge page. Passkey and OAuth logins do not — see [OAuth / Social Login Bypass](./security.md#oauth--social-login-bypass).
 
 ### Web Flow
 

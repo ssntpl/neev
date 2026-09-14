@@ -132,6 +132,15 @@ class UserAuthApiController extends Controller
      */
     private function mfaChallenge(Request $request, GeoIP $geoIP, User $user, string $loginMethod, string $mfaMethod)
     {
+        // The same refusal AuthService::createApiToken() gives a deactivated
+        // account at the end of the flow, given here at the start — before an
+        // attempt is recorded, a code is mailed, or a JWT is minted for it.
+        if (!$user->active) {
+            throw ValidationException::withMessages([
+                'email' => 'Your account is deactivated, please contact your admin to activate your account.',
+            ]);
+        }
+
         $clientDetails = LoginAttempt::getClientDetails($request);
         $attempt = $user->loginAttempts()->create([
             'method' => $loginMethod,

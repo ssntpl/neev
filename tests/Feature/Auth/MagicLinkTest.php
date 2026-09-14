@@ -193,6 +193,28 @@ class MagicLinkTest extends TestCase
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['email']);
     }
+
+    /**
+     * A deactivated account is refused before the MFA hand-off records an
+     * attempt, mails a code or mints a JWT for it — the same answer it gets
+     * without MFA, at the same point.
+     */
+    public function test_login_using_link_for_an_inactive_mfa_enrolled_user_is_refused_before_the_challenge(): void
+    {
+        Mail::fake();
+
+        $user = $this->createUser(['active' => false]);
+        $user->addMultiFactorAuth('email');
+
+        $signedUrl = URL::temporarySignedRoute('loginUsingLink', now()->addMinutes(60), ['id' => $user->id]);
+
+        $this->getJson($signedUrl)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['email']);
+
+        $this->assertSame(0, $user->loginAttempts()->count());
+        Mail::assertNothingSent();
+    }
     // -----------------------------------------------------------------
     // A magic link proves inbox control
     // -----------------------------------------------------------------

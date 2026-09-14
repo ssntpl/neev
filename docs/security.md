@@ -118,7 +118,10 @@ Event::listen(function (PasswordChanged $event) {
 ```
 
 The same primitives are available directly: `revokeOtherSessions()`,
-`revokeLoginTokens()` and `revokeApiTokens()` on `AuthService`.
+`revokeSession()`, `revokeLoginTokens()` and `revokeApiTokens()` on
+`AuthService`; `sessionsTable()` returns a query builder over the session
+store's table on the connection the database driver actually uses
+(`session.connection`), which is what all of them read.
 
 ### Personal Data Prevention
 
@@ -164,7 +167,7 @@ Unauthenticated requests pass through unchanged. Set `password_expiry_days` to `
 
 ## OAuth / Social Login Bypass
 
-> **Warning:** everything in the sections above — and the MFA gate — applies only to password-based login. OAuth/social login (the `oauth` providers list in `config/neev.php`) is a separate, complete authentication path:
+> **Warning:** everything in the sections above — and the MFA gate — applies only to password and magic-link login. OAuth/social login (the `oauth` providers list in `config/neev.php`) is a separate, complete authentication path:
 >
 > - The OAuth callback logs the user in (web) or issues a full access token (API) **without checking the user's enrolled MFA methods**. A user with active TOTP or email MFA is never prompted for a second factor when signing in via OAuth.
 > - Accounts created via OAuth have **no password**, so strength rules, password history, and password expiry never apply to them. Their email is marked verified automatically.

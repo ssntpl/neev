@@ -174,7 +174,13 @@ class AuthService
             return false;
         }
 
-        $record->refresh();
+        // Unlike the MFA row, which is only ever cleared, this row is deleted
+        // — by a concurrent success or by the guess that exhausted it — so the
+        // re-read may find nothing. That is a spent code, not an error.
+        $record = $record->fresh();
+        if (!$record) {
+            return false;
+        }
 
         if (!Hash::check($otp, $record->otp)) {
             if ($record->attempts >= OTP::MAX_ATTEMPTS) {

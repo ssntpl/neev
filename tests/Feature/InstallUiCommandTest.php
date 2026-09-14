@@ -104,4 +104,48 @@ class InstallUiCommandTest extends TestCase
 
         $this->assertSame($before, File::get(config_path('neev.php')));
     }
+
+    /**
+     * The shape that defeats a line-based match: the first line ends in a
+     * comma, so a naive rewrite leaves `'blade'),` dangling. Unbalanced
+     * brackets are the tell.
+     */
+    public function test_a_value_wrapped_after_its_first_argument_is_left_alone(): void
+    {
+        $this->publishConfig("'ui' => env('NEEV_UI',\n        'blade'),");
+        $before = File::get(config_path('neev.php'));
+
+        $this->artisan('neev:ui', ['kit' => 'none'])
+            ->expectsOutputToContain("Could not update 'ui'")
+            ->assertSuccessful();
+
+        $this->assertSame($before, File::get(config_path('neev.php')));
+    }
+
+    /** Another key on the same line must not be swallowed with the value. */
+    public function test_a_line_carrying_another_key_is_left_alone(): void
+    {
+        $this->publishConfig("'ui' => env('NEEV_UI'), 'dashboard' => '/dash',");
+        $before = File::get(config_path('neev.php'));
+
+        $this->artisan('neev:ui', ['kit' => 'blade'])
+            ->expectsOutputToContain("Could not update 'ui'")
+            ->assertSuccessful();
+
+        $this->assertSame($before, File::get(config_path('neev.php')));
+        $this->assertSame('/dash', (include config_path('neev.php'))['dashboard']);
+    }
+
+    /** A config file with Windows line endings is rewritten like any other. */
+    public function test_the_ui_key_is_rewritten_in_a_crlf_file(): void
+    {
+        File::put(config_path('neev.php'), "<?php\r\n\r\nreturn [\r\n    'ui' => env('NEEV_UI', 'blade'),\r\n    'home' => '/home',\r\n];\r\n");
+        $this->wroteConfig = true;
+
+        $this->artisan('neev:ui', ['kit' => 'blade'])->assertSuccessful();
+
+        $written = File::get(config_path('neev.php'));
+        $this->assertStringContainsString("    'ui' => 'blade',\r\n", $written);
+        $this->assertSame('blade', (include config_path('neev.php'))['ui']);
+    }
 }
