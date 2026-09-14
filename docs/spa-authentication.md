@@ -296,6 +296,10 @@ The emailed link points at your frontend (`{APP_URL}/login-link?id=…&signature
 GET /neev/loginUsingLink?id={id}&expires={timestamp}&signature={signature}
 ```
 
+Branch on `auth_state` here too: an account with MFA enrolled gets
+`mfa_required` and the JWT cookie, and continues through [§4.2](#42-mfa-verify)
+exactly as after a password.
+
 **Response** — cookie set:
 
 ```json

@@ -4,8 +4,11 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\URL;
+use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -190,6 +193,28 @@ class MagicLinkTest extends TestCase
         $response->assertUnprocessable();
         $response->assertJsonValidationErrors(['email']);
     }
+
+    /**
+     * A deactivated account is refused before the MFA hand-off records an
+     * attempt, mails a code or mints a JWT for it — the same answer it gets
+     * without MFA, at the same point.
+     */
+    public function test_login_using_link_for_an_inactive_mfa_enrolled_user_is_refused_before_the_challenge(): void
+    {
+        Mail::fake();
+
+        $user = $this->createUser(['active' => false]);
+        $user->addMultiFactorAuth('email');
+
+        $signedUrl = URL::temporarySignedRoute('loginUsingLink', now()->addMinutes(60), ['id' => $user->id]);
+
+        $this->getJson($signedUrl)
+            ->assertUnprocessable()
+            ->assertJsonValidationErrors(['email']);
+
+        $this->assertSame(0, $user->loginAttempts()->count());
+        Mail::assertNothingSent();
+    }
     // -----------------------------------------------------------------
     // A magic link proves inbox control
     // -----------------------------------------------------------------
@@ -277,6 +302,84 @@ class MagicLinkTest extends TestCase
 
         // The now-verified session passes the email-verification gate.
         $this->get(route('verification.notice'))->assertRedirect(config('neev.home'));
+    }
+
+    // -----------------------------------------------------------------
+    // A magic link is a first factor, not a way around the second
+    // -----------------------------------------------------------------
+
+    /**
+     * An enrolled account used to get a full login token straight from the
+     * link, with `mfa_options: null`. It now stops where a password login
+     * stops, and the same challenge completes it.
+     */
+    public function test_login_using_link_stops_at_mfa_for_an_enrolled_account(): void
+    {
+        Mail::fake();
+
+        $user = $this->createUser();
+        $user->addMultiFactorAuth('email');
+
+        $signedUrl = URL::temporarySignedRoute('loginUsingLink', now()->addMinutes(60), ['id' => $user->id]);
+
+        $step1 = $this->getJson($signedUrl);
+
+        $step1->assertOk()
+            ->assertJsonPath('auth_state', 'mfa_required')
+            ->assertJsonPath('mfa_options', ['email']);
+        // The short-lived MFA JWT, not an {id}|{plaintext} login token.
+        $this->assertStringNotContainsString('|', $step1->json('token'));
+        $this->assertSame(0, $user->loginTokens()->count());
+        $this->assertDatabaseHas('login_attempts', [
+            'user_id' => $user->id,
+            'method' => LoginAttempt::MagicAuth,
+            'multi_factor_method' => 'email',
+            'is_success' => false,
+        ]);
+        Mail::assertSent(EmailOTP::class, fn (EmailOTP $mail) => $mail->hasTo($user->email));
+
+        // The challenge the password flow uses completes this one too.
+        $auth = $user->multiFactorAuths()->where('method', 'email')->first();
+        $auth->issueOtp('123456', 10);
+
+        $step2 = $this->withHeader('Authorization', 'Bearer ' . $step1->json('token'))
+            ->postJson('/neev/mfa/otp/verify', ['auth_method' => 'email', 'otp' => '123456']);
+
+        $step2->assertOk()->assertJsonPath('auth_state', 'authenticated');
+        $this->assertStringContainsString('|', $step2->json('token'));
+    }
+
+    /**
+     * The web flow signed the session in but never put the account where the
+     * challenge page looks for it, so an enrolled user bounced between the
+     * challenge and the login page. It now lands on the challenge, and
+     * protected routes stay closed until it is answered.
+     */
+    public function test_web_login_link_stops_at_the_mfa_challenge_for_an_enrolled_account(): void
+    {
+        Mail::fake();
+        $this->enableMFA();
+
+        Route::middleware(['web', 'neev:web'])
+            ->get('/mfa-protected', fn () => response('PROTECTED-PAYLOAD'));
+
+        $user = $this->createUser();
+        $user->addMultiFactorAuth('email');
+
+        $url = URL::temporarySignedRoute('login.link', now()->addMinutes(60), ['id' => $user->id]);
+
+        $this->get($url)->assertRedirect(route('otp.mfa.create', 'email'));
+        $this->assertSame($user->email, session('email'));
+
+        $this->get('/mfa-protected')->assertRedirect(route('otp.mfa.create', 'email'));
+        $this->get(route('otp.mfa.create', 'email'))->assertOk();
+
+        // Answering the challenge opens the gate.
+        $user->multiFactorAuths()->where('method', 'email')->first()->issueOtp('123456', 10);
+        $this->post('/otp/mfa', ['email' => $user->email, 'auth_method' => 'email', 'otp' => '123456'])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect();
+        $this->get('/mfa-protected')->assertOk()->assertSee('PROTECTED-PAYLOAD');
     }
 
 }

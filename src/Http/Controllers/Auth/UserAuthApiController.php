@@ -109,38 +109,7 @@ class UserAuthApiController extends Controller
             ], 401);
         }
         if ($mfaMethod) {
-            // Record login attempt (MFA pending)
-            $clientDetails = LoginAttempt::getClientDetails($request);
-            $attempt = $user->loginAttempts()->create([
-                'method' => LoginAttempt::Password,
-                'location' => $geoIP->getLocation($request->ip()),
-                'multi_factor_method' => $mfaMethod,
-                'platform' => $clientDetails['platform'] ?? '',
-                'browser' => $clientDetails['browser'] ?? '',
-                'device' => $clientDetails['device'] ?? '',
-                'ip_address' => $request->ip(),
-                'is_success' => false,
-            ]);
-
-            if ($mfaMethod === 'email') {
-                $this->sendMfaEmailOTP($user);
-            }
-
-            $expiryMinutes = config('neev.mfa_jwt_expiry_minutes', 30);
-            $expirySeconds = $expiryMinutes * 60;
-            $tempToken = $this->getJwtToken($user->id, "mfa", $expirySeconds, [
-                'attempt_id' => $attempt->id
-            ]);
-
-            // SPA callers get the short-lived MFA JWT in the cookie; it is
-            // replaced by the real login token after OTP verification.
-            return app(SpaCookieResponder::class)->attach($request, response()->json([
-                'auth_state' => 'mfa_required',
-                'token' => $tempToken,
-                'expires_in' => $expiryMinutes,
-                'mfa_options' => $this->getMfaOptions($user),
-                'email_verified' => $user->hasVerifiedEmail(),
-            ]), $expiryMinutes);
+            return $this->mfaChallenge($request, $geoIP, $user, LoginAttempt::Password, $mfaMethod);
         }
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
         $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::Password, $expiryMinutes);
@@ -150,6 +119,56 @@ class UserAuthApiController extends Controller
             'token' => $token,
             'expires_in' => $expiryMinutes,
             'mfa_options' => null,
+            'email_verified' => $user->hasVerifiedEmail(),
+        ]), $expiryMinutes);
+    }
+
+    /**
+     * Park a login at the MFA step: record the attempt as pending, send the
+     * emailed code if that is the method, and hand back the short-lived MFA
+     * JWT that `POST {prefix}/mfa/otp/verify` accepts. Shared by every first
+     * factor — password and magic link alike — so none of them can skip the
+     * second.
+     */
+    private function mfaChallenge(Request $request, GeoIP $geoIP, User $user, string $loginMethod, string $mfaMethod)
+    {
+        // The same refusal AuthService::createApiToken() gives a deactivated
+        // account at the end of the flow, given here at the start — before an
+        // attempt is recorded, a code is mailed, or a JWT is minted for it.
+        if (!$user->active) {
+            throw ValidationException::withMessages([
+                'email' => 'Your account is deactivated, please contact your admin to activate your account.',
+            ]);
+        }
+
+        $clientDetails = LoginAttempt::getClientDetails($request);
+        $attempt = $user->loginAttempts()->create([
+            'method' => $loginMethod,
+            'location' => $geoIP->getLocation($request->ip()),
+            'multi_factor_method' => $mfaMethod,
+            'platform' => $clientDetails['platform'] ?? '',
+            'browser' => $clientDetails['browser'] ?? '',
+            'device' => $clientDetails['device'] ?? '',
+            'ip_address' => $request->ip(),
+            'is_success' => false,
+        ]);
+
+        if ($mfaMethod === 'email') {
+            $this->sendMfaEmailOTP($user);
+        }
+
+        $expiryMinutes = config('neev.mfa_jwt_expiry_minutes', 30);
+        $tempToken = $this->getJwtToken($user->id, "mfa", $expiryMinutes * 60, [
+            'attempt_id' => $attempt->id
+        ]);
+
+        // SPA callers get the short-lived MFA JWT in the cookie; it is
+        // replaced by the real login token after OTP verification.
+        return app(SpaCookieResponder::class)->attach($request, response()->json([
+            'auth_state' => 'mfa_required',
+            'token' => $tempToken,
+            'expires_in' => $expiryMinutes,
+            'mfa_options' => $this->getMfaOptions($user),
             'email_verified' => $user->hasVerifiedEmail(),
         ]), $expiryMinutes);
     }
@@ -409,6 +428,14 @@ class UserAuthApiController extends Controller
         // proves inbox control just as the verification mail would.
         if (!$user->hasVerifiedEmail()) {
             $user->markEmailAsVerified();
+        }
+
+        // A magic link is a first factor, not a way around the second: an
+        // enrolled account answers the same challenge it would after a
+        // password, and gets the same short-lived JWT instead of a token.
+        $mfaMethod = $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method;
+        if ($mfaMethod) {
+            return $this->mfaChallenge($request, $geoIP, $user, LoginAttempt::MagicAuth, $mfaMethod);
         }
 
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);

@@ -214,7 +214,9 @@ Passwordless login via secure email links. Always available — no config toggle
 2. Clicks "Send Login Link"
 3. Receives email with secure link
 4. Clicks link to authenticate
-5. Automatically logged in
+5. If the account has MFA enrolled, the MFA challenge follows — a magic link
+   is a first factor, not a way around the second
+6. Logged in
 
 Following the link also **marks an unverified address verified**: the link was
 mailed to that address and came back signed, which proves inbox control just
@@ -689,13 +691,17 @@ as to accepting it:
   `POST {prefix}/oauth/{service}/callback` never inspect
   `email_verified_at`. The callback and the magic-link exchange return
   `"email_verified": true` because completing them verified the address, and
-  the token they issue is a full login token, not a restricted one.
+  the token they issue is a full login token, not a restricted one — except
+  that a magic link for an MFA-enrolled account issues the MFA step-up JWT
+  instead, exactly as a password login would (see
+  [Magic Link Authentication](#magic-link-authentication)).
 - **Web** — the Blade kit's password page (`auth/login-password.blade.php`)
   shows the OAuth buttons, "Login Via Link" and the passkey button whatever
   the account's verification state, so an unverified user is not left with
   only the password they may not have. The `login.link` and
   `oauth.callback` routes sign the user straight in and land on
-  `neev.home`, not on `verification.notice`.
+  `neev.home`, not on `verification.notice` — or, for `login.link` on an
+  MFA-enrolled account, on the MFA challenge.
 
 Only password login still stops at the verification notice — a password says
 nothing about who controls the inbox, so it cannot stand in for verification.

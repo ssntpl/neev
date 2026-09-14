@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Services;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -154,13 +155,34 @@ class AuthService
             ->where('owner_type', $user->getMorphClass())
             ->first();
 
-        if (!$record || $record->expires_at->isPast() || $record->attempts >= OTP::MAX_ATTEMPTS) {
+        if (!$record || $record->expires_at->isPast()) {
             $record?->delete();
             return false;
         }
 
+        // The guess is reserved with a conditional increment *before* the hash
+        // is compared, as HasMultiAuth::verifyMFAOTP() does: requests arriving
+        // together would otherwise each read a stale count, all pass the
+        // check, and all be evaluated against the same code.
+        $reserved = $record->newQueryWithoutScopes()
+            ->whereKey($record->getKey())
+            ->where('attempts', '<', OTP::MAX_ATTEMPTS)
+            ->increment('attempts');
+
+        if ($reserved === 0) {
+            $record->delete();
+            return false;
+        }
+
+        // Unlike the MFA row, which is only ever cleared, this row is deleted
+        // — by a concurrent success or by the guess that exhausted it — so the
+        // re-read may find nothing. That is a spent code, not an error.
+        $record = $record->fresh();
+        if (!$record) {
+            return false;
+        }
+
         if (!Hash::check($otp, $record->otp)) {
-            $record->increment('attempts');
             if ($record->attempts >= OTP::MAX_ATTEMPTS) {
                 $record->delete();
             }
@@ -285,18 +307,43 @@ class AuthService
             return 0;
         }
 
-        // Laravel's database driver reads `session.connection`, which need not
-        // be the default connection; the delete has to hit the same table it
-        // writes to or it removes nothing.
-        $query = DB::connection(config('session.connection'))
-            ->table(config('session.table', 'sessions'))
-            ->where('user_id', $user->id);
+        $query = $this->sessionsTable()->where('user_id', $user->id);
 
         if ($exceptSessionId !== null) {
             $query->where('id', '!=', $exceptSessionId);
         }
 
         return $query->delete();
+    }
+
+    /**
+     * Drop one of this account's sessions. A row belonging to anyone else is
+     * left alone whatever id is passed.
+     *
+     * @return int rows removed
+     */
+    public function revokeSession(User $user, string $sessionId): int
+    {
+        if (config('session.driver') !== 'database') {
+            return 0;
+        }
+
+        return $this->sessionsTable()
+            ->where('user_id', $user->id)
+            ->where('id', $sessionId)
+            ->delete();
+    }
+
+    /**
+     * The session store's table, on the connection the database driver
+     * actually uses. Laravel reads `session.connection`, which need not be the
+     * default connection; a query on the default one reads or deletes from a
+     * table the driver never writes to.
+     */
+    public function sessionsTable(): QueryBuilder
+    {
+        return DB::connection(config('session.connection'))
+            ->table(config('session.table', 'sessions'));
     }
 
     /**
