@@ -64,7 +64,7 @@ class PasskeyController extends Controller
             ], 404);
         }
 
-        $passkeys = $user->passkeys()->get();
+        $passkeys = $user->passkeys()->forRelyingParty($this->relyingParty->rpId())->get();
 
         return response()->json([
             'data' => $passkeys
@@ -226,20 +226,22 @@ class PasskeyController extends Controller
             throw $e;
         }
 
-        $aaguid = $credentialSource->aaguid->toRfc4122();
+        $credentialId = Base64UrlSafe::encode($credentialSource->publicKeyCredentialId);
 
-        // Re-enrolling the same authenticator replaces its credential, but
-        // only within this relying party — the same device registering on a
-        // second domain is a separate credential, not a replacement. An
-        // all-zero AAGUID identifies no device at all, so it can never stand
-        // in for one.
-        $passkey = $aaguid === '00000000-0000-0000-0000-000000000000'
-            ? null
-            : $user->passkeys()->where('aaguid', $aaguid)->forRelyingParty($rpId)->first();
+        // The credential ID is the unique identity of a credential for its
+        // lifetime — re-enrolling the same physical key on the same RP
+        // produces the same ID and should update the row rather than add a
+        // duplicate. AAGUID identifies a make/model, not a device: two keys
+        // of the same model share an AAGUID, so matching on it would let one
+        // overwrite the other.
+        $passkey = $user->passkeys()
+            ->where('credential_id', $credentialId)
+            ->forRelyingParty($rpId)
+            ->first();
 
         if ($passkey) {
             $passkey->name = $request->input('name', 'Default Device') ?? 'Default Device';
-            $passkey->credential_id = Base64UrlSafe::encode($credentialSource->publicKeyCredentialId);
+            $passkey->credential_id = $credentialId;
             $passkey->rp_id = $rpId;
             $passkey->public_key = Base64UrlSafe::encode($credentialSource->credentialPublicKey);
             $passkey->transports = $input['response']['transports'] ?? [];
@@ -248,11 +250,11 @@ class PasskeyController extends Controller
             $passkey->save();
         } else {
             $passkey = $user->passkeys()->create([
-                'credential_id' => Base64UrlSafe::encode($credentialSource->publicKeyCredentialId),
+                'credential_id' => $credentialId,
                 'rp_id' => $rpId,
                 'public_key' => Base64UrlSafe::encode($credentialSource->credentialPublicKey),
                 'name' => $request->input('name', 'Default Device') ?? 'Default Device',
-                'aaguid' => $aaguid,
+                'aaguid' => $credentialSource->aaguid->toRfc4122(),
                 'transports' => $input['response']['transports'] ?? [],
                 'ip' => $request->ip(),
                 'location' => $geoIP->getLocation($request->ip()),

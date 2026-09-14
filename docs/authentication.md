@@ -379,21 +379,20 @@ password with MFA.
 
 `allowed_origins` does **not** need to list a verified tenant domain. A ceremony under a relying party
 taken from the `domains` table admits exactly one origin — `https://` plus the domain record's own
-value — and nothing else. The configured list is not inherited, and `allow_origin_subdomains` is
-forced off there.
+value — and the configured list is merged in alongside it.
 
 That origin is built from the record, never from the request, so a call arriving over `http` or on a
 non-standard port cannot widen what the ceremony accepts. Serve verified tenant domains over HTTPS on
 the default port, which WebAuthn requires in any case.
 
-Because the check is exact, **verify the host you actually serve passkeys from**. A row on `acme.com`
-lets a browser on `app.acme.com` start a ceremony — the relying party covers it — but the server then
-refuses the assertion, since `https://app.acme.com` is not `https://acme.com`. Verify `app.acme.com`
-and make it primary if that is where users sign in.
+Because the check is exact for custom domains, **verify the host you actually serve passkeys from**.
+A row on `acme.com` lets a browser on `app.acme.com` start a ceremony — the relying party covers it
+— but the server then refuses the assertion, since `https://app.acme.com` is not `https://acme.com`.
+Verify `app.acme.com` and make it primary if that is where users sign in.
 
-The configured list governs every host running under the configured relying party: the configured
-domain and all of its subdomains. Those are matched exactly by default, so each subdomain that serves
-passkeys must appear verbatim — a wildcard is not accepted:
+The configured list governs every host running under the configured relying party. For tenants on
+platform subdomains, subdomain matching is on automatically — every host under your platform domain
+is yours. For the configured relying party, each origin that serves passkeys must appear verbatim:
 
 ```php
 'allowed_origins' => [
@@ -403,17 +402,26 @@ passkeys must appear verbatim — a wildcard is not accepted:
 ],
 ```
 
-Setting `neev.allow_origin_subdomains` to `true` accepts a ceremony from any subdomain of a listed
-origin instead, which saves maintaining that list as tenants come and go. **Turn it on only when
-every host under the domain is yours.** A passkey is bound to the relying party ID, not to a single
-origin, so one credential is valid across every subdomain sharing that ID. With subdomain matching
-on, the server no longer rejects an assertion arriving from an unexpected host — so a subdomain
-takeover, an XSS on a marketing or staging subdomain, or a tenant able to serve its own script from
-its subdomain can request a challenge, run the ceremony from that origin, and be issued a session as
-the victim. With it off, the origin list is what stops that.
+To disable subdomain matching on the platform path — for example, to lock ceremonies to the exact
+origins listed above — override `allowSubdomains()` in a subclass of `RelyingPartyResolver` and bind
+it in a service provider:
 
-The setting is matched on scheme and port as well as host, and a suffix alone does not qualify:
-`evil-example.com` is not a subdomain of `example.com`.
+```php
+// app/Services/RelyingPartyResolver.php
+class RelyingPartyResolver extends \Ssntpl\Neev\Services\RelyingPartyResolver
+{
+    public function allowSubdomains(): bool { return false; }
+}
+
+// AppServiceProvider::register()
+$this->app->bind(
+    \Ssntpl\Neev\Services\RelyingPartyResolver::class,
+    \App\Services\RelyingPartyResolver::class,
+);
+```
+
+Origin matching is on scheme and host; a suffix alone does not qualify: `evil-example.com` is not a
+subdomain of `example.com`.
 
 #### Deployment
 

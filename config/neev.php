@@ -100,13 +100,6 @@ return [
         config('app.url'),
     ],
 
-    // Accept a ceremony from any subdomain of an entry in `allowed_origins`, rather than only from
-    // the listed origins themselves. A passkey is bound to `relying_party_id`, not to one origin, so
-    // with this on, any host under that domain — a tenant subdomain, a staging box, a forgotten CNAME
-    // — can complete a ceremony for any user. Leave it off and list each subdomain that serves
-    // passkeys unless every subdomain is under your control.
-    'allow_origin_subdomains' => false,
-
     /*
     |--------------------------------------------------------------------------
     | SPA Cookie Mode

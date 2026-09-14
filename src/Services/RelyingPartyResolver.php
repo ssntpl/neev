@@ -52,10 +52,9 @@ class RelyingPartyResolver
      * Origins permitted to complete a ceremony for this relying party.
      *
      * On the configured relying party this is the configured list, unchanged.
-     * A tenant's own domain is not in that list and never will be, so it
-     * admits its own origin instead — built from the domain record rather
-     * than from the request, so a call arriving over http or on an odd port
-     * cannot widen what the ceremony accepts.
+     * A tenant's own domain is added to that list — built from the domain
+     * record rather than from the request, so a call arriving over http or on
+     * an odd port cannot widen what the ceremony accepts.
      */
     public function allowedOrigins(): array
     {
@@ -71,14 +70,23 @@ class RelyingPartyResolver
     /**
      * Whether subdomains of an allowed origin may complete the ceremony.
      *
-     * Only the configured relying party honours the setting. A tenant's domain
-     * admits that host alone: verify the exact host you serve passkeys from.
+     * When a tenant has a verified custom domain (acme.com) the RP is that
+     * domain and only that exact origin is accepted — sibling subdomains of a
+     * third-party domain are not under your control.
+     *
+     * When a tenant is on a platform subdomain (acme.platform.com) the RP is
+     * the configured platform domain and every host under it is yours, so
+     * subdomain matching is on.
+     *
+     * To disable subdomain matching on the platform path — for example, you
+     * want to lock ceremonies to the exact origins in allowed_origins even
+     * for platform subdomains — override this method in a subclass and bind
+     * it in a service provider. That requires a deliberate code change, which
+     * is the right friction for tightening a security boundary.
      */
     public function allowSubdomains(): bool
     {
-        return $this->domain() !== null
-            ? false
-            : (bool) config('neev.allow_origin_subdomains', false);
+        return $this->domain() === null;
     }
 
     /**

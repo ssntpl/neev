@@ -11,7 +11,7 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## 0.6.0 → unreleased
+## 0.6.1 → unreleased
 
 **`type` on `POST {prefix}/tenant-domains` is ignored (action required if you
 hand out subdomains).**
@@ -89,33 +89,36 @@ reach the other sessions; attach Laravel's `AuthenticateSession` middleware to
 your authenticated routes to get the same effect there. Sessions are read from
 `session.connection`, so a separate session database works unchanged. See
 [docs/security.md](./docs/security.md#what-a-password-change-revokes).
-**Passkey origins are matched exactly (action required for subdomain
-setups).** `allowed_origins` was previously matched with subdomain
-matching hardcoded on, so a ceremony from any subdomain of a listed
-origin was accepted. It is now matched exactly, under the new
-`neev.allow_origin_subdomains` key:
+**Passkey origins are matched exactly for custom domains; platform
+subdomains match automatically (no action required in most cases).**
+Origin matching is now decided by context:
+
+- A tenant on a **platform subdomain** (`acme.platform.com`) uses the
+  configured `relying_party_id` and subdomain matching is on — every
+  host under your platform domain is yours.
+- A tenant on a **verified custom domain** (`acme.com`) uses that
+  domain as the RP and only `https://acme.com` is accepted as the
+  origin — sibling subdomains of a third-party domain are not under
+  your control.
+
+If you serve passkeys from more than one explicit origin, list each one
+in `allowed_origins` verbatim — that is unchanged. Apps serving passkeys
+only from `app.url` need no change.
+
+**Passkeys gain a per-credential relying party column (schema change).**
+The `passkeys` table gains an `rp_id` column so each credential records
+the relying party it was issued under. The package edits its migration
+in place, so existing installs add the column themselves:
 
 ```php
-// config/neev.php
-'allow_origin_subdomains' => false,
+Schema::table('passkeys', function (Blueprint $table) {
+    $table->string('rp_id')->nullable()->index()->after('credential_id');
+});
 ```
 
-If you serve passkeys from more than one host, either list each one in
-`allowed_origins` verbatim:
-
-```php
-'allowed_origins' => [
-    'https://example.com',
-    'https://acme.example.com',
-],
-```
-
-…or set `allow_origin_subdomains` to `true` to keep the old behaviour.
-Prefer the explicit list: a passkey is bound to `relying_party_id`, not
-to one origin, so with subdomain matching on, any host under that
-domain — including one you do not control, such as a tenant subdomain
-or a forgotten CNAME — can complete a ceremony for any user. Apps
-serving passkeys only from `app.url` need no change.
+The column is nullable, so existing rows are valid immediately — a null
+`rp_id` is read as the configured `relying_party_id`, which is where
+those credentials were enrolled. No data migration is needed.
 
 ---
 

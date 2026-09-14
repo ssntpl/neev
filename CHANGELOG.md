@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- **Re-registering an authenticator no longer overwrites an unrelated passkey** — registration matched an existing credential on `aaguid` alone, so enrolling the same device on a second domain replaced the first row instead of adding one, and every authenticator reporting the all-zero AAGUID (the privacy-preserving default for many platform authenticators) counted as the same device. The match is now scoped to the ceremony's relying party and skipped entirely for the all-zero AAGUID
+- **Re-registering the same credential no longer creates a duplicate row** — registration now matches on `credential_id` scoped to the RP, which is the credential's unique cryptographic identity per the W3C WebAuthn spec. The previous match on `aaguid` was incorrect: AAGUID identifies an authenticator make/model shared by every unit of the same product line, so two security keys of the same model would overwrite each other's row. Re-enrolling the exact same physical key on the same RP produces the same credential ID and correctly updates the existing row; a different key always produces a different ID and always creates a new row
 
 ### Security
 

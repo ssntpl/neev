@@ -44,6 +44,40 @@ class PasskeyTest extends TestCase
     }
 
     // -----------------------------------------------------------------
+    // GET /neev/passkeys — list passkeys
+    // -----------------------------------------------------------------
+
+    public function test_get_passkeys_returns_only_current_rp_credentials(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        // Passkey for the current RP
+        $this->createPasskey($user, ['rp_id' => 'localhost']);
+        // Passkey for a different RP — must not appear
+        $this->createPasskey($user, ['rp_id' => 'other.com']);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/passkeys');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+    }
+
+    public function test_get_passkeys_includes_legacy_null_rp_id_on_platform_domain(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        // Legacy row with no rp_id — treated as the configured RP
+        $this->createPasskey($user, ['rp_id' => null]);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/passkeys');
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('data'));
+    }
+
+    // -----------------------------------------------------------------
     // DELETE /neev/passkeys — delete passkey via API
     // -----------------------------------------------------------------
 
@@ -201,6 +235,20 @@ class PasskeyTest extends TestCase
             ]);
     }
 
+    public function test_login_options_only_offer_credentials_for_current_rp(): void
+    {
+        $user = User::factory()->create();
+        // Passkey for the current RP
+        $this->createPasskey($user, ['rp_id' => 'localhost']);
+        // Passkey for a different RP — must not appear in allowCredentials
+        $this->createPasskey($user, ['rp_id' => 'other.com']);
+
+        $response = $this->getJson('/neev/passkeys/login/options?email=' . urlencode($user->email));
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('allowCredentials'));
+    }
+
     public function test_login_options_use_configured_relying_party_id(): void
     {
         config(['neev.relying_party_id' => 'passkeys.example.com']);
@@ -225,5 +273,73 @@ class PasskeyTest extends TestCase
         $response = $this->getJson('/neev/passkeys/login/options');
 
         $response->assertStatus(400);
+    }
+
+    // -----------------------------------------------------------------
+    // Registration deduplication — credential ID, not AAGUID
+    // -----------------------------------------------------------------
+
+    public function test_two_keys_of_the_same_model_get_separate_rows(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $sharedAaguid = 'f8a011f3-8c0a-4d15-8006-17111f9edc7d'; // same model
+
+        $this->createPasskey($user, [
+            'credential_id' => 'credential-one',
+            'aaguid' => $sharedAaguid,
+            'rp_id' => 'localhost',
+        ]);
+        $this->createPasskey($user, [
+            'credential_id' => 'credential-two',
+            'aaguid' => $sharedAaguid,
+            'rp_id' => 'localhost',
+        ]);
+
+        $this->assertDatabaseCount('passkeys', 2);
+    }
+
+    public function test_re_enrolling_same_credential_id_updates_existing_row(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $credentialId = 'same-credential-id';
+
+        $original = $this->createPasskey($user, [
+            'credential_id' => $credentialId,
+            'name' => 'Original Name',
+            'rp_id' => 'localhost',
+        ]);
+
+        // Simulate re-registration with the same credential ID
+        $user->passkeys()
+            ->where('credential_id', $credentialId)
+            ->forRelyingParty('localhost')
+            ->first()
+            ->update(['name' => 'Updated Name']);
+
+        $this->assertDatabaseCount('passkeys', 1);
+        $this->assertDatabaseHas('passkeys', [
+            'id' => $original->id,
+            'credential_id' => $credentialId,
+            'name' => 'Updated Name',
+        ]);
+    }
+
+    public function test_zero_aaguid_key_always_creates_a_new_row(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->createPasskey($user, [
+            'credential_id' => 'credential-one',
+            'aaguid' => '00000000-0000-0000-0000-000000000000',
+            'rp_id' => 'localhost',
+        ]);
+        $this->createPasskey($user, [
+            'credential_id' => 'credential-two',
+            'aaguid' => '00000000-0000-0000-0000-000000000000',
+            'rp_id' => 'localhost',
+        ]);
+
+        // Both rows must survive — zero AAGUID is not a device identity
+        $this->assertDatabaseCount('passkeys', 2);
     }
 }

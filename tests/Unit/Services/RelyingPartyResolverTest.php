@@ -315,18 +315,16 @@ class RelyingPartyResolverTest extends TestCase
         $this->assertContains('https://acme.com', $this->resolver->allowedOrigins());
     }
 
-    public function test_subdomain_matching_follows_the_config_on_the_configured_domain(): void
+    public function test_subdomain_matching_is_on_when_no_custom_domain_is_resolved(): void
     {
-        config(['neev.allow_origin_subdomains' => true]);
         $this->resolveOn('example.com');
 
         $this->assertTrue($this->resolver->allowSubdomains());
     }
 
-    public function test_subdomain_matching_is_off_on_a_claimed_domain(): void
+    public function test_subdomain_matching_is_always_off_on_a_claimed_domain(): void
     {
         $this->enableTeams();
-        config(['neev.allow_origin_subdomains' => true]);
         $this->teamOwning('acme.com');
         $this->resolveOn('acme.com');
 
