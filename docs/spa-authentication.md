@@ -299,6 +299,10 @@ Your SPA route at `/login-link` forwards the opaque `token` to the API **via XHR
 GET /neev/loginUsingLink?token={token}
 ```
 
+Branch on `auth_state` here too: an account with MFA enrolled gets
+`mfa_required` and the JWT cookie, and continues through [§4.2](#42-mfa-verify)
+exactly as after a password.
+
 **Response** — cookie set:
 
 ```json

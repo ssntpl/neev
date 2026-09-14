@@ -54,7 +54,7 @@ Authenticator setups that are started but never verified remain in a `pending` s
 
 ### MFA JWT Settings
 
-After a password login that requires MFA, the API issues a short-lived JWT used only to complete verification:
+After a password or magic-link login that requires MFA, the API issues a short-lived JWT used only to complete verification:
 
 ```php
 // config/neev.php
@@ -351,6 +351,8 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 
 Only **active** methods trigger the MFA challenge — pending setups never gate login, and the verify endpoint rejects codes for pending methods.
 
+A magic link enters the same flow at step 3: `GET {prefix}/loginUsingLink` returns `mfa_required` with the JWT for an enrolled account, and the Blade `login.link` route redirects to the challenge page. Passkey and OAuth logins do not — see [OAuth / Social Login Bypass](./security.md#oauth--social-login-bypass).
+
 ### Web Flow
 
 ```php
@@ -517,6 +519,7 @@ $user->generateRecoveryCodes();
 | secret | text | TOTP secret (encrypted) |
 | preferred | boolean | Is this the preferred method |
 | otp | text | Current email OTP, stored hashed (if applicable) |
+| attempts | unsigned tinyint | Wrong guesses against the current email OTP; the code is spent at `MultiFactorAuth::MAX_ATTEMPTS` (5) and the count resets when a new code is issued |
 | expires_at | timestamp | OTP expiry time |
 | last_used | timestamp | Last successful verification |
 | created_at | timestamp | Creation time |
@@ -546,6 +549,8 @@ $user->generateRecoveryCodes();
 
 - Codes expire after `otp_expiry_time` minutes (default 15)
 - Used codes are immediately invalidated
+- A code is spent after `MultiFactorAuth::MAX_ATTEMPTS` (5) wrong guesses — a hard invariant, not configurable — and a fresh code must be requested (Blade: reopen the challenge page or `POST /otp/mfa/send`; API: log in again)
+- Reopening the challenge page does not extend a live code's expiry; a new code is issued only once the current one has expired or been spent
 - The verify endpoint is throttled to 5 requests per minute
 
 ### Recovery Code Security
@@ -601,7 +606,7 @@ $domain->rules()->where('name', 'mfa')->first();
 1. Check spam/junk folder
 2. Verify email configuration
 3. Check email delivery logs
-4. Ensure OTP hasn't expired
+4. Ensure OTP hasn't expired, or been spent by 5 wrong guesses — either way a fresh code must be requested
 
 ### Recovery Codes Not Working
 

@@ -10,6 +10,7 @@ use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\NewAccessToken;
 use Ssntpl\Neev\Tests\TestCase;
+use Ssntpl\LaravelAcl\Models\Permission;
 
 class HasAccessTokenTest extends TestCase
 {
@@ -107,6 +108,44 @@ class HasAccessTokenTest extends TestCase
         $result = $user->createApiToken('token', ['read', 'write']);
 
         $this->assertEquals(['read', 'write'], $result->accessToken->permissions);
+    }
+
+    /** Naming every registered permission is the same grant as '*'. */
+    public function test_naming_every_registered_permission_collapses_to_a_wildcard(): void
+    {
+        Permission::create(['name' => 'read']);
+        Permission::create(['name' => 'write']);
+        $user = User::factory()->create();
+
+        $token = $user->createApiToken('full', ['write', 'read'])->accessToken;
+
+        $this->assertSame(['*'], $token->permissions);
+    }
+
+    /**
+     * The collapse used to compare counts, so a list with the right *number*
+     * of entries — whatever they were — became a wildcard.
+     */
+    public function test_the_same_number_of_permissions_is_not_a_wildcard(): void
+    {
+        Permission::create(['name' => 'read']);
+        Permission::create(['name' => 'write']);
+        $user = User::factory()->create();
+
+        $token = $user->createApiToken('scoped', ['read', 'delete'])->accessToken;
+
+        $this->assertSame(['read', 'delete'], $token->permissions);
+    }
+
+    /** Zero registered permissions and an empty list matched by count too. */
+    public function test_an_empty_list_is_not_a_wildcard_when_nothing_is_registered(): void
+    {
+        $this->assertSame(0, Permission::count());
+        $user = User::factory()->create();
+
+        $token = $user->createApiToken('none', [])->accessToken;
+
+        $this->assertSame([], $token->permissions);
     }
 
     public function test_create_api_token_with_null_permissions_defaults_to_empty_array(): void

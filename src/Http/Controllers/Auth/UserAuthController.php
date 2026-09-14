@@ -5,7 +5,6 @@ namespace Ssntpl\Neev\Http\Controllers\Auth;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -233,6 +232,14 @@ class UserAuthController extends Controller
 
         $this->auth->login($request, $geoIP, $result->user, LoginAttempt::MagicAuth);
 
+        // A magic link is a first factor, not a way around the second. The
+        // attempt was recorded without a multi_factor_method — what
+        // NeevMiddleware reads as "not yet answered" — and the challenge page
+        // needs the account in the session, exactly as after a password.
+        if (count($user->activeMultiFactorAuths) > 0) {
+            return $this->redirectToMfaChallenge($request, $user);
+        }
+
         return redirect($this->auth->intendedUrl($request->redirect));
     }
 
@@ -263,19 +270,7 @@ class UserAuthController extends Controller
         $this->auth->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, attempt: $attempt, viaRequestAuth: true);
 
         if (count($user->activeMultiFactorAuths) > 0) {
-            session(['email' => $user->email]);
-
-            // Carry the explicit redirect across the MFA step. Any URL the
-            // auth middleware stashed in `url.intended` stays in the session
-            // and is picked up once MFA succeeds.
-            $redirect = $this->auth->safeRedirect($request->redirect);
-            if ($redirect) {
-                session(['mfa_redirect' => $redirect]);
-            } else {
-                session()->forget('mfa_redirect');
-            }
-
-            return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method));
+            return $this->redirectToMfaChallenge($request, $user);
         }
 
         if (!$user->hasVerifiedEmail()) {
@@ -283,6 +278,30 @@ class UserAuthController extends Controller
         }
 
         return redirect($this->auth->intendedUrl($request->redirect));
+    }
+
+    /**
+     * Park a signed-in session at the MFA challenge. Shared by every first
+     * factor — password and magic link alike — so none of them can skip the
+     * second: the challenge page and its POST read the account from
+     * `session('email')`, and NeevMiddleware keeps protected routes closed
+     * until the attempt carries a multi_factor_method.
+     */
+    private function redirectToMfaChallenge(Request $request, $user)
+    {
+        session(['email' => $user->email]);
+
+        // Carry the explicit redirect across the MFA step. Any URL the auth
+        // middleware stashed in `url.intended` stays in the session and is
+        // picked up once MFA succeeds.
+        $redirect = $this->auth->safeRedirect($request->redirect);
+        if ($redirect) {
+            session(['mfa_redirect' => $redirect]);
+        } else {
+            session()->forget('mfa_redirect');
+        }
+
+        return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method));
     }
 
     /**
@@ -547,10 +566,7 @@ class UserAuthController extends Controller
             }
 
             if (config('session.driver') === 'database') {
-                DB::table('sessions')
-                    ->where('user_id', $user->id)
-                    ->where('id', '!=', Session::getId())
-                    ->delete();
+                $this->auth->revokeOtherSessions($user, Session::getId());
             } else {
                 $request->session()->regenerate(true);
             }
@@ -560,10 +576,7 @@ class UserAuthController extends Controller
                     'error' => __('You cannot logout your current session.'),
                 ]);
             }
-            DB::table('sessions')
-                ->where('id', $request->session_id)
-                ->where('user_id', $user->id)
-                ->delete();
+            $this->auth->revokeSession($user, (string) $request->session_id);
         }
 
         event(new LoggedOut($user));
@@ -576,6 +589,14 @@ class UserAuthController extends Controller
         $email = session('email');
         $attemptID = session('attempt_id');
 
+        // The page is reachable directly — a bookmark, a back button, or a
+        // session that lapsed while the code was being fetched. Without a
+        // challenge in progress there is no account to show it for.
+        if (!$email) {
+            return redirect(route('login'))
+                ->withErrors(['message' => __('Your sign-in session has expired. Please sign in again.')]);
+        }
+
         if ($method === 'email') {
             $user = User::findByEmail($email);
             $auth = $user?->multiFactorAuth($method);
@@ -583,14 +604,14 @@ class UserAuthController extends Controller
                 return back()->withErrors(['message' => 'Invalid Email.']);
             }
             $expiryMinutes = config('neev.otp_expiry_time', 15);
-            if ($auth->expires_at && now()->lt($auth->expires_at)) {
-                $auth->expires_at = now()->addMinutes($expiryMinutes);
-                $auth->save();
-            } else {
+
+            // A code that is still live is left exactly as it is. Refreshing
+            // expires_at here without minting a new code kept one six-digit
+            // secret alive for as long as the page was reopened, which is what
+            // made it worth grinding through.
+            if (!$auth->expires_at || now()->gte($auth->expires_at)) {
                 $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
-                $auth->otp = $otp;
-                $auth->expires_at = now()->addMinutes($expiryMinutes);
-                $auth->save();
+                $auth->issueOtp($otp, $expiryMinutes);
                 Mail::to($email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
             }
         }
@@ -612,9 +633,7 @@ class UserAuthController extends Controller
         }
         $expiryMinutes = config('neev.otp_expiry_time', 15);
         $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
-        $auth->otp = $otp;
-        $auth->expires_at = now()->addMinutes($expiryMinutes);
-        $auth->save();
+        $auth->issueOtp($otp, $expiryMinutes);
         Mail::to($email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
         return back()->with('status', 'Verification code has been sent.');
     }

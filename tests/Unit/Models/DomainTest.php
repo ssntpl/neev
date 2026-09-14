@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use PHPUnit\Framework\Attributes\DataProvider;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\DomainRule;
 use Ssntpl\Neev\Models\Team;
@@ -413,5 +414,136 @@ class DomainTest extends TestCase
         ]);
 
         $this->assertFalse($domain->isVerificationStale(30));
+    }
+
+    // -----------------------------------------------------------------
+    // Platform zones
+    // -----------------------------------------------------------------
+
+    /**
+     * The boundary between "a host we issued" and "somebody else's property".
+     * Getting it wrong in the permissive direction hands an attacker a verified
+     * claim on a domain they do not own, so the look-alike cases matter as much
+     * as the happy path.
+     *
+     * @return array<string, array{0: string|null, 1: string, 2: bool}>
+     */
+    public static function platformHostProvider(): array
+    {
+        return [
+            'host below the zone'            => ['otper.com', 'acme.otper.com', true],
+            'deeper host below the zone'     => ['otper.com', 'eu.acme.otper.com', true],
+            'the apex itself'                => ['otper.com', 'otper.com', false],
+            'look-alike prefix'              => ['otper.com', 'evil-otper.com', false],
+            'zone name used as a prefix'     => ['otper.com', 'otper.com.evil.com', false],
+            'unrelated domain'               => ['otper.com', 'ssntpl.in', false],
+            'suffix without the dot'         => ['otper.com', 'notperotper.com', false],
+            'uppercase host'                 => ['otper.com', 'ACME.Otper.COM', true],
+            'fully qualified trailing dot'   => ['otper.com', 'acme.otper.com.', true],
+            'zone configured with a dot'     => ['.otper.com', 'acme.otper.com', true],
+            'no zones configured'            => [null, 'acme.otper.com', false],
+            'empty string configured'        => ['', 'acme.otper.com', false],
+            'whitespace-only zone'           => ['   ', 'acme.otper.com', false],
+            'empty host'                     => ['otper.com', '', false],
+        ];
+    }
+
+    #[DataProvider('platformHostProvider')]
+    public function test_platform_subdomain_matching(?string $configured, string $host, bool $expected): void
+    {
+        config(['neev.platform_domain' => $configured]);
+
+        $this->assertSame($expected, Domain::isPlatformSubdomain($host));
+    }
+
+    /**
+     * Several teams may hold pending claims on one domain; only a verified one
+     * counts. Reading the first row of any kind and then testing it would
+     * answer "no" whenever an unverified claim sorted first.
+     */
+    public function test_a_verified_claim_is_found_behind_an_unverified_one(): void
+    {
+        Domain::create(['owner_type' => 'team', 'owner_id' => 1, 'domain' => 'acme.com']);
+        Domain::create([
+            'owner_type' => 'team', 'owner_id' => 2, 'domain' => 'acme.com',
+            'verified_at' => now(),
+        ]);
+
+        $this->assertTrue(Domain::isVerifiedForEmail('someone@acme.com'));
+    }
+
+    public function test_an_unverified_claim_alone_is_not_enough(): void
+    {
+        Domain::create(['owner_type' => 'team', 'owner_id' => 1, 'domain' => 'acme.com']);
+
+        $this->assertFalse(Domain::isVerifiedForEmail('someone@acme.com'));
+    }
+
+    public function test_an_address_without_a_domain_is_not_verified(): void
+    {
+        $this->assertFalse(Domain::isVerifiedForEmail('not-an-address'));
+    }
+
+    /**
+     * The decision, the uniqueness reservation and the resolution lookup must
+     * compare the same spelling. Stored as written, `acme.otper.com.` is a
+     * different string from `acme.otper.com`, so a second team could claim an
+     * alias of a host another team already holds.
+     *
+     * @return array<string, array{0: string, 1: string}>
+     */
+    public static function hostAliasProvider(): array
+    {
+        return [
+            'trailing dot'   => ['acme.otper.com.', 'acme.otper.com'],
+            'several dots'   => ['acme.otper.com..', 'acme.otper.com'],
+            'leading dot'    => ['.acme.otper.com', 'acme.otper.com'],
+            'uppercase'      => ['ACME.Otper.COM', 'acme.otper.com'],
+            'surrounding ws' => ["  acme.otper.com \t", 'acme.otper.com'],
+            'already canonical' => ['acme.otper.com', 'acme.otper.com'],
+        ];
+    }
+
+    #[DataProvider('hostAliasProvider')]
+    public function test_a_host_is_stored_in_one_canonical_spelling(string $written, string $stored): void
+    {
+        $domain = Domain::create([
+            'owner_type' => 'team',
+            'owner_id' => 1,
+            'domain' => $written,
+        ]);
+
+        $this->assertSame($stored, $domain->fresh()->domain);
+    }
+
+    /**
+     * The claim is anchored to the claimant's own identity, not just the zone.
+     *
+     * @return array<string, array{0: string|null, 1: string, 2: string|null, 3: bool}>
+     */
+    public static function issuedHostProvider(): array
+    {
+        return [
+            'the team\'s own subdomain'      => ['otper.com', 'acme.otper.com', 'acme', true],
+            'an operational host'            => ['otper.com', 'app.otper.com', 'acme', false],
+            'another team\'s subdomain'      => ['otper.com', 'other.otper.com', 'acme', false],
+            'a deeper host under its own'    => ['otper.com', 'eu.acme.otper.com', 'acme', false],
+            'the apex'                       => ['otper.com', 'otper.com', 'acme', false],
+            'a look-alike zone'              => ['otper.com', 'acme.evil-otper.com', 'acme', false],
+            'outside every zone'             => ['otper.com', 'acme.example.com', 'acme', false],
+            'uppercase host'                 => ['otper.com', 'ACME.Otper.COM', 'acme', true],
+            'fully qualified trailing dot'   => ['otper.com', 'acme.otper.com.', 'acme', true],
+            'no slug'                        => ['otper.com', 'acme.otper.com', null, false],
+            'empty slug'                     => ['otper.com', 'acme.otper.com', '', false],
+            'no zones configured'            => [null, 'acme.otper.com', 'acme', false],
+        ];
+    }
+
+    #[DataProvider('issuedHostProvider')]
+    public function test_only_the_owners_own_subdomain_is_issued_to_it(?string $configured, string $host, ?string $slug, bool $expected): void
+    {
+        config(['neev.platform_domain' => $configured]);
+
+        $this->assertSame($expected, Domain::isPlatformSubdomainFor($host, $slug));
     }
 }

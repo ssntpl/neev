@@ -224,6 +224,10 @@ GET|POST /neev/loginUsingLink/validate?token={token}
 
 `status` is one of `valid`, `invalid`, `expired`, `binding_mismatch`,
 `pending_confirmation`, `inactive_user`.
+A magic link is a first factor. An account with MFA enrolled gets the same
+`auth_state: mfa_required` response as `POST /neev/login`, with the short-lived
+MFA JWT and `mfa_options`; complete it with `POST /neev/mfa/otp/verify` exactly
+as after a password.
 
 ---
 
@@ -334,6 +338,11 @@ POST /neev/resetPassword?id={user_id}&hash={email_hash}&signature={signature}&ex
     "message": "Password has been updated."
 }
 ```
+
+Resetting the password revokes the account's other login tokens and, on the
+database session driver, its other web sessions; other signed-in devices start
+receiving `401`. API tokens are unaffected — see
+[What a Password Change Revokes](./security.md#what-a-password-change-revokes).
 
 ---
 
@@ -987,6 +996,12 @@ Authorization: Bearer {token}
     "message": "Password has been successfully updated."
 }
 ```
+
+Changing the password revokes the account's other login tokens and, on the
+database session driver, its other web sessions; the token making this request
+survives, other signed-in devices start receiving `401`. API tokens are
+unaffected — see
+[What a Password Change Revokes](./security.md#what-a-password-change-revokes).
 
 **Errors:**
 
@@ -1744,6 +1759,12 @@ Authorization: Bearer {token}
     "domain": "custom.example.com"
 }
 ```
+
+Whether the domain needs DNS verification is derived from the host and the
+claiming team, against the `platform_domain` config — the request cannot
+influence it. A team's own subdomain (its slug under a platform domain) is
+verified immediately and the response carries no token; anything else comes back
+with `verification_token` and `dns_record` to publish.
 
 ---
 

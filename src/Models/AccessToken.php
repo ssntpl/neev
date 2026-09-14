@@ -50,6 +50,17 @@ class AccessToken extends Model
         'expires_at' => 'datetime',
     ];
 
+    protected static function booted(): void
+    {
+        // A token nobody typed is an API token — the scoped kind. The column's
+        // schema default says `login` for historical reasons, and with `can()`
+        // now trusting login tokens unconditionally, a row created outside
+        // `createLoginToken()` must not acquire that authority by omission.
+        static::creating(function (self $token) {
+            $token->token_type ??= self::api_token;
+        });
+    }
+
     public function user()
     {
         return $this->belongsTo(User::getClass(), 'user_id');
@@ -60,10 +71,24 @@ class AccessToken extends Model
         return $this->belongsTo(LoginAttempt::class, 'attempt_id');
     }
 
+    /**
+     * Whether this token carries an ability.
+     *
+     * A login token is the API's equivalent of a session — it is minted by
+     * authenticating with full credentials, so it carries the user's whole
+     * authority rather than a scope. Only an API token, which somebody created
+     * deliberately and chose abilities for, is scoped. Without this distinction
+     * an ability check would refuse every ordinary signed-in caller, since
+     * `createLoginToken()` sets no permissions at all.
+     */
     public function can(string $permission): bool
     {
+        if ($this->token_type === self::login) {
+            return true;
+        }
+
         $permissions = $this->permissions ?? [];
 
-        return in_array('*', $permissions) || in_array($permission, $permissions);
+        return in_array('*', $permissions, true) || in_array($permission, $permissions, true);
     }
 }

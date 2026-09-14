@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Services;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -21,7 +22,7 @@ use Ssntpl\Neev\Rules\PasswordHistory;
 
 class AuthService
 {
-    public function login(Request $request, GeoIP $geoIP, $user, $method, $mfa = null, $attempt = null, bool $viaRequestAuth = false)
+    public function login(Request $request, GeoIP $geoIP, $user, $method, ?string $mfa = null, ?LoginAttempt $attempt = null, bool $viaRequestAuth = false)
     {
         if (!$user?->active) {
             throw ValidationException::withMessages([
@@ -43,7 +44,7 @@ class AuthService
         session(['attempt_id' => $attempt->id ?? null]);
     }
 
-    public function recordLoginAttempt(Request $request, GeoIP $geoIP, $user, $method, $mfa = null, $attempt = null): ?LoginAttempt
+    public function recordLoginAttempt(Request $request, GeoIP $geoIP, $user, $method, ?string $mfa = null, ?LoginAttempt $attempt = null): ?LoginAttempt
     {
         try {
             if ($attempt) {
@@ -154,13 +155,34 @@ class AuthService
             ->where('owner_type', $user->getMorphClass())
             ->first();
 
-        if (!$record || $record->expires_at->isPast() || $record->attempts >= OTP::MAX_ATTEMPTS) {
+        if (!$record || $record->expires_at->isPast()) {
             $record?->delete();
             return false;
         }
 
+        // The guess is reserved with a conditional increment *before* the hash
+        // is compared, as HasMultiAuth::verifyMFAOTP() does: requests arriving
+        // together would otherwise each read a stale count, all pass the
+        // check, and all be evaluated against the same code.
+        $reserved = $record->newQueryWithoutScopes()
+            ->whereKey($record->getKey())
+            ->where('attempts', '<', OTP::MAX_ATTEMPTS)
+            ->increment('attempts');
+
+        if ($reserved === 0) {
+            $record->delete();
+            return false;
+        }
+
+        // Unlike the MFA row, which is only ever cleared, this row is deleted
+        // — by a concurrent success or by the guess that exhausted it — so the
+        // re-read may find nothing. That is a spent code, not an error.
+        $record = $record->fresh();
+        if (!$record) {
+            return false;
+        }
+
         if (!Hash::check($otp, $record->otp)) {
-            $record->increment('attempts');
             if ($record->attempts >= OTP::MAX_ATTEMPTS) {
                 $record->delete();
             }
@@ -239,7 +261,123 @@ class AuthService
             $user->save();
         });
 
+        // The transaction worked on its own locked copy. Bring the caller's
+        // instance up to date so whatever holds it — the auth guard, and through
+        // it AuthenticateSession's stored password hash — sees the new password
+        // rather than signing the caller out on their next request.
+        $user->refresh();
+
+        // The old password vouched for every session and login token this
+        // account holds; it no longer can. Revoked outside the transaction so a
+        // failure here leaves the password changed rather than silently rolling
+        // it back — a changed password with stale sessions is recoverable, the
+        // reverse looks like success and is not.
+        //
+        // API tokens are deliberately left alone: they are credentials the user
+        // minted deliberately, not a by-product of signing in, and killing a
+        // team's integrations because someone rotated their password is a
+        // product decision. `revokeApiTokens()` and the PasswordChanged event
+        // are there for applications that want it.
+        $request = request();
+
+        $this->revokeOtherSessions(
+            $user,
+            $request->hasSession() ? $request->session()->getId() : null,
+        );
+        $this->revokeLoginTokens($user, $request->attributes->get('token_id'));
+
         event(new PasswordChanged($user));
+    }
+
+    /**
+     * Drop this account's session records, optionally sparing one.
+     *
+     * Only the database session driver stores sessions where they can be
+     * enumerated. On file, redis or cookie drivers another session cannot be
+     * reached at all, so this reports 0 and the application should attach
+     * Laravel's `AuthenticateSession` middleware, which invalidates a session
+     * whose stored password hash no longer matches — driver-agnostic, and the
+     * only thing that works there.
+     *
+     * @return int rows removed
+     */
+    public function revokeOtherSessions(User $user, ?string $exceptSessionId = null): int
+    {
+        if (config('session.driver') !== 'database') {
+            return 0;
+        }
+
+        $query = $this->sessionsTable()->where('user_id', $user->id);
+
+        if ($exceptSessionId !== null) {
+            $query->where('id', '!=', $exceptSessionId);
+        }
+
+        return $query->delete();
+    }
+
+    /**
+     * Drop one of this account's sessions. A row belonging to anyone else is
+     * left alone whatever id is passed.
+     *
+     * @return int rows removed
+     */
+    public function revokeSession(User $user, string $sessionId): int
+    {
+        if (config('session.driver') !== 'database') {
+            return 0;
+        }
+
+        return $this->sessionsTable()
+            ->where('user_id', $user->id)
+            ->where('id', $sessionId)
+            ->delete();
+    }
+
+    /**
+     * The session store's table, on the connection the database driver
+     * actually uses. Laravel reads `session.connection`, which need not be the
+     * default connection; a query on the default one reads or deletes from a
+     * table the driver never writes to.
+     */
+    public function sessionsTable(): QueryBuilder
+    {
+        return DB::connection(config('session.connection'))
+            ->table(config('session.table', 'sessions'));
+    }
+
+    /**
+     * Drop this account's login tokens, optionally sparing the one in use.
+     *
+     * Login tokens are the API's equivalent of a session — minted by signing
+     * in, slid forward while active — so they answer to the password the same
+     * way a session does.
+     *
+     * @return int tokens removed
+     */
+    public function revokeLoginTokens(User $user, int|string|null $exceptTokenId = null): int
+    {
+        $query = $user->loginTokens();
+
+        if ($exceptTokenId !== null) {
+            $query->where('id', '!=', $exceptTokenId);
+        }
+
+        return $query->delete();
+    }
+
+    /**
+     * Drop the API tokens this account created.
+     *
+     * Not called on a password change — see changePassword(). This exists so an
+     * application that treats a password change as a compromise can revoke them
+     * from a PasswordChanged listener, rather than reaching into the table.
+     *
+     * @return int tokens removed
+     */
+    public function revokeApiTokens(User $user): int
+    {
+        return $user->apiTokens()->delete();
     }
 
     /**

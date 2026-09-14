@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
 use Ssntpl\Neev\Models\LoginAttempt;
+use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithMfaJwtToken;
@@ -176,6 +177,67 @@ class MFATest extends TestCase
             ]);
 
         $response->assertStatus(400);
+    }
+
+    /**
+     * The cap holds on the API path too: the last permitted wrong guess spends
+     * the code, and the correct code arriving after it is refused.
+     */
+    public function test_email_mfa_otp_is_spent_after_max_attempts(): void
+    {
+        $this->enableMFA();
+
+        $user = User::factory()->create();
+
+        $otpPlaintext = '654321';
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+            'otp' => $otpPlaintext,
+            'expires_at' => now()->addMinutes(15),
+            'attempts' => MultiFactorAuth::MAX_ATTEMPTS - 1,
+        ]);
+
+        $attempt = $user->loginAttempts()->create([
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => 'email',
+            'is_success' => false,
+        ]);
+        $fullToken = $this->createMfaJwtToken($user->id, $attempt->id);
+
+        $this->withHeader('Authorization', 'Bearer ' . $fullToken)
+            ->postJson('/neev/mfa/otp/verify', ['auth_method' => 'email', 'otp' => '000000'])
+            ->assertStatus(400);
+
+        $this->assertNull($auth->fresh()->otp, 'The last permitted wrong guess spends the code.');
+
+        $this->withHeader('Authorization', 'Bearer ' . $fullToken)
+            ->postJson('/neev/mfa/otp/verify', ['auth_method' => 'email', 'otp' => $otpPlaintext])
+            ->assertStatus(400);
+    }
+
+    /** An API password login issues a fresh code with a full budget. */
+    public function test_api_login_issues_a_fresh_code_and_resets_attempts(): void
+    {
+        $this->enableMFA();
+
+        $user = User::factory()->create(['password' => 'correct-password']);
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+            'otp' => '654321',
+            'expires_at' => now()->subMinute(),
+            'attempts' => 3,
+        ]);
+
+        $this->postJson('/neev/login', ['email' => $user->email, 'password' => 'correct-password'])
+            ->assertOk()
+            ->assertJsonPath('auth_state', 'mfa_required');
+
+        $fresh = $auth->fresh();
+        $this->assertSame(0, $fresh->attempts);
+        $this->assertTrue($fresh->expires_at->isFuture());
+        $this->assertNotNull($fresh->otp);
     }
 
     // -----------------------------------------------------------------

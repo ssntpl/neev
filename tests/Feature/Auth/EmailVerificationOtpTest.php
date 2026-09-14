@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\OTP;
@@ -81,6 +82,30 @@ class EmailVerificationOtpTest extends TestCase
     // -----------------------------------------------------------------
     // API endpoint
     // -----------------------------------------------------------------
+
+    /**
+     * The guess is counted before the code is compared, so requests arriving
+     * together cannot each read a stale count and all be evaluated. Observed
+     * from inside the comparison: by the time Hash::check() runs, the attempt
+     * is already on the row.
+     */
+    public function test_a_guess_is_reserved_before_the_code_is_compared(): void
+    {
+        $data = $this->unverifiedUserWithToken();
+        $this->sendAndCaptureOtp($data['user']);
+
+        Hash::partialMock()
+            ->shouldReceive('check')
+            ->once()
+            ->andReturnUsing(function () {
+                $this->assertSame(1, OTP::first()->attempts, 'The guess must be reserved before the hash comparison.');
+
+                return false;
+            });
+
+        $this->assertFalse(app(AuthService::class)->verifyEmailOtp($data['user'], '000000'));
+        $this->assertSame(1, OTP::first()->attempts);
+    }
 
     public function test_valid_code_verifies_the_email(): void
     {

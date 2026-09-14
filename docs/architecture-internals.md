@@ -217,6 +217,7 @@ Aliases are single-purpose checks you attach **in addition to** a group:
 | `neev-ensure-sso` | `EnsureContextSSO` | When the resolved tenant/team requires SSO, reject (API) or redirect (web) sessions that were not established via SSO |
 | `neev-password-not-expired` | `EnsurePasswordNotExpired` | Block access once the user's password has expired |
 | `neev-verified-email` | `EnsureEmailIsVerified` | Block access until the user's email is verified |
+| `neev-token-can` | `EnsureTokenCan` | Require the calling API token to hold every listed ability (`neev-token-can:read,write`); a request with no token is refused. Attach after `neev:api` |
 
 ### Ordering Rules
 

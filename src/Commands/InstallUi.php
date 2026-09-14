@@ -83,12 +83,44 @@ class InstallUi extends Command
 
         $contents = file_get_contents($file);
         $replacement = "'ui' => " . ($value === null ? "env('NEEV_UI')" : var_export($value, true)) . ',';
-        $updated = preg_replace("/'ui' => [^,]+,/", $replacement, $contents, 1, $count);
+
+        // Only a single-line entry is rewritten: `'ui'` at the start of its
+        // line, a value running to the comma that ends the line (an optional
+        // `//` comment may follow, and the line may end in CRLF). Stopping at
+        // the first comma in sight wrote `'ui' => 'blade', 'blade'),` against
+        // `env('NEEV_UI', 'blade')` — a parse error in the app's config. A
+        // value that spans lines, or a line carrying another key, is left
+        // exactly as it is and reported below rather than guessed at.
+        $count = 0;
+        $updated = preg_replace_callback(
+            "/^([ \t]*)'ui'\s*=>\s*(.*?),(?=[ \t]*(?:\/\/[^\r\n]*)?\r?$)/m",
+            function (array $m) use ($replacement, &$count) {
+                if (!$this->isSingleValue($m[2])) {
+                    return $m[0];
+                }
+                $count++;
+
+                return $m[1] . $replacement;
+            },
+            $contents,
+            1,
+        );
 
         if ($count === 1) {
             file_put_contents($file, $updated);
         } else {
             $this->warn("Could not update 'ui' in config/neev.php — set it to " . var_export($value, true) . ' manually.');
         }
+    }
+
+    /**
+     * One complete value: balanced brackets, and not another `key => value`
+     * sharing the line, which the lazy match would otherwise swallow.
+     */
+    protected function isSingleValue(string $value): bool
+    {
+        return !str_contains($value, '=>')
+            && substr_count($value, '(') === substr_count($value, ')')
+            && substr_count($value, '[') === substr_count($value, ']');
     }
 }
