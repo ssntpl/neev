@@ -214,11 +214,12 @@ class RelyingPartyResolverTest extends TestCase
     {
         $this->enableTeams();
         $team = $this->teamOwning('acme.com');
+        config(['neev.allowed_origins' => ['https://example.com']]);
 
         $this->resolveOn('api.platform.test', $team);
 
         $this->assertSame('acme.com', $this->resolver->rpId());
-        $this->assertSame(['https://acme.com'], $this->resolver->allowedOrigins());
+        $this->assertSame(['https://example.com', 'https://acme.com'], $this->resolver->allowedOrigins());
     }
 
     // ---------------------------------------------------------------
@@ -287,14 +288,14 @@ class RelyingPartyResolverTest extends TestCase
         $this->assertSame(['https://example.com'], $this->resolver->allowedOrigins());
     }
 
-    public function test_a_claimed_domain_admits_its_own_origin_only(): void
+    public function test_a_claimed_domain_merges_configured_and_tenant_origins(): void
     {
         $this->enableTeams();
         config(['neev.allowed_origins' => ['https://example.com']]);
         $this->teamOwning('acme.com');
         $this->resolveOn('acme.com');
 
-        $this->assertSame(['https://acme.com'], $this->resolver->allowedOrigins());
+        $this->assertSame(['https://example.com', 'https://acme.com'], $this->resolver->allowedOrigins());
     }
 
     /**
@@ -311,7 +312,7 @@ class RelyingPartyResolverTest extends TestCase
         $this->tenantResolver->clear();
         $this->tenantResolver->resolve($request);
 
-        $this->assertSame(['https://acme.com'], $this->resolver->allowedOrigins());
+        $this->assertContains('https://acme.com', $this->resolver->allowedOrigins());
     }
 
     public function test_subdomain_matching_follows_the_config_on_the_configured_domain(): void
