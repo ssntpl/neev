@@ -14,6 +14,7 @@ return new class () extends Migration {
             $table->id();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('credential_id')->unique();
+            $table->string('rp_id')->nullable()->index();
             $table->string('name')->nullable();
             $table->string('ip')->nullable();
             $table->text('location')->nullable();

@@ -43,6 +43,7 @@ use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Services\ContextManager;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\OAuthClients;
+use Ssntpl\Neev\Services\RelyingPartyResolver;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Services\TenantSSOManager;
 
@@ -179,6 +180,7 @@ class NeevServiceProvider extends ServiceProvider
 
         $this->app->scoped(ContextManager::class);
         $this->app->scoped(TenantResolver::class);
+        $this->app->scoped(RelyingPartyResolver::class);
         $this->app->singleton(TenantSSOManager::class);
         $this->app->singleton(EmailLinks::class);
         $this->app->singleton(OAuthClients::class);

@@ -174,7 +174,17 @@ The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host
 ],
 ```
 
-Origins permitted to complete WebAuthn ceremonies **under the relying party ID above**. List every allowed origin for multi-origin setups (e.g. app served from multiple domains), including each subdomain — subdomain matching is off, so a wildcard is not accepted. Listing an origin the relying party ID does not cover has no effect; the browser rejects those ceremonies before the server sees them.
+Origins permitted to complete WebAuthn ceremonies **under the relying party ID above**. List every allowed origin for multi-origin setups (e.g. app served from multiple domains), including each subdomain — subdomain matching is off by default, so a wildcard is not accepted. Listing an origin the relying party ID does not cover has no effect; the browser rejects those ceremonies before the server sees them.
+
+### WebAuthn Subdomain Origins
+
+```php
+'allow_origin_subdomains' => false,
+```
+
+Accept a ceremony from any subdomain of an entry in `allowed_origins`, instead of only from the listed origins themselves. Off by default.
+
+Turn it on only when every host under the domain is yours. A passkey is bound to the relying party ID, not to one origin, so a credential registered on one subdomain is valid on all of them; the origin list is what stops an assertion arriving from a host you did not intend to serve passkeys — a subdomain takeover, a staging box, or a tenant that can serve its own script. See [Supported Domains](./authentication.md#supported-domains).
 
 ---
 
@@ -503,6 +513,7 @@ return [
     'allowed_origins' => [
         config('app.url'),
     ],
+    'allow_origin_subdomains' => false,
 
     // MFA
     'multi_factor_auth' => ['authenticator', 'email'],

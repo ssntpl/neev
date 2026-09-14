@@ -89,6 +89,33 @@ reach the other sessions; attach Laravel's `AuthenticateSession` middleware to
 your authenticated routes to get the same effect there. Sessions are read from
 `session.connection`, so a separate session database works unchanged. See
 [docs/security.md](./docs/security.md#what-a-password-change-revokes).
+**Passkey origins are matched exactly (action required for subdomain
+setups).** `allowed_origins` was previously matched with subdomain
+matching hardcoded on, so a ceremony from any subdomain of a listed
+origin was accepted. It is now matched exactly, under the new
+`neev.allow_origin_subdomains` key:
+
+```php
+// config/neev.php
+'allow_origin_subdomains' => false,
+```
+
+If you serve passkeys from more than one host, either list each one in
+`allowed_origins` verbatim:
+
+```php
+'allowed_origins' => [
+    'https://example.com',
+    'https://acme.example.com',
+],
+```
+
+…or set `allow_origin_subdomains` to `true` to keep the old behaviour.
+Prefer the explicit list: a passkey is bound to `relying_party_id`, not
+to one origin, so with subdomain matching on, any host under that
+domain — including one you do not control, such as a tenant subdomain
+or a forgotten CNAME — can complete a ceremony for any user. Apps
+serving passkeys only from `app.url` need no change.
 
 ---
 

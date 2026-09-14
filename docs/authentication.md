@@ -288,41 +288,147 @@ For multi-origin setups (e.g. apex domain plus subdomains, or staging plus produ
 
 ### Supported Domains
 
-> **Passkeys are not supported on tenant custom domains.**
+WebAuthn requires the relying party ID to be the browser origin's host or a registrable suffix of it.
+A single app-wide value therefore locks passkeys to the platform domain. It is instead read off the
+request's context, by one rule:
 
-`relying_party_id` is a single application-wide value. WebAuthn requires the relying party ID to be
-the request origin's host or a registrable suffix of it, so passkeys work only on:
+> the resolved tenant/team's **primary domain** — or its **first verified domain** when none is
+> marked primary. No context, no verified domain, or a domain inside the platform's own zone, and
+> `relying_party_id` stands.
 
-- the configured domain itself — `example.com`
-- any subdomain of it — `acme.example.com`, `admin.example.com`
+The context is whichever one the request resolved — the `X-Tenant` header, a subdomain, a custom
+domain, all of them. The host the request arrived on plays no part beyond resolving that context, so
+the API may be deployed anywhere: a SPA on `acme.com` calling an API on `api.platform.com` sends
+`X-Tenant`, as it must for everything else to be scoped correctly, and the ceremony runs under
+`acme.com`.
 
-They do **not** work on a tenant's own domain (`acme.com`), even when that domain is DNS-verified and
-resolves the tenant correctly for every other purpose. The browser refuses the ceremony before the
-request reaches the server: `navigator.credentials.create()` / `.get()` rejects with a
-`SecurityError`, and nothing is logged server-side because nothing arrives.
+A domain inside the platform's own zone keeps the platform relying party. Subdomain tenants hold
+`domains` rows too — the tenant-domains API verifies `type: subdomain` on sight — so without that, a
+subdomain tenant would claim its own relying party and retire the passkeys already enrolled under the
+platform's.
 
-Adding the custom domain to `allowed_origins` does not help. That list is checked server-side, after
-the browser has already declined. It widens which origins may *complete* a ceremony under the
-configured relying party ID; it cannot change which relying party ID a browser will accept.
+Only verified rows count, and the row is read on every ceremony, so a domain that loses its
+verification stops granting a relying party on the very next request. The credential rows survive and
+are simply never selected again; nothing is deleted on a user's behalf.
 
-**Offer another factor to tenants on custom domains** — magic link, OAuth, or password with MFA. Gate
-the passkey option on the request host so those users are not shown a control that cannot work:
+#### A passkey belongs to one domain
+
+A credential is cryptographically bound to exactly one relying party ID for its lifetime. This is not
+a package limitation and no setting changes it:
+
+- a user's passkey on `example.com` will **never** authenticate them on `acme.com` — they enrol a
+  separate one per relying party, and the account page lists only that relying party's credentials
+- the relying party is recorded on each credential in `passkeys.rp_id`, and login offers and accepts
+  only the credentials belonging to the current one
+- subdomains of the configured domain always run under the platform's relying party, verified or
+  not, so a passkey enrolled on `acme.example.com` is the same credential as one enrolled on
+  `example.com`
+- a tenant's relying party covers its own subdomains for the same reason: with the row on
+  `acme.com`, a credential enrolled there is valid on `app.acme.com` too. The server-side origin
+  check is stricter than that, though — see [Origins](#origins) below
+
+Credentials created before this behaviour existed carry no relying party of their own and are read as
+belonging to the configured one — they keep working on the platform domain and are never offered on a
+tenant's domain.
+
+#### One relying party per tenant
+
+**A tenant gets one relying party: its primary domain.** That is the whole of the rule, and it has a
+consequence worth stating plainly.
+
+A tenant holding several domains with different registrable roots — `ssntpl.in` and `otper.com` —
+cannot run a ceremony from the second one. With `ssntpl.in` primary, a browser on `otper.com` is
+handed `rp.id = "ssntpl.in"`, which is neither its host nor a suffix of it, so
+`navigator.credentials.create()` / `.get()` rejects with a `SecurityError` before the request is
+made. Nothing is logged server-side, because nothing arrives.
+
+This is inherent to WebAuthn: no single credential can span two registrable roots, whoever owns them.
+The package picks one domain per tenant and holds to it. If a tenant needs passkeys on more than one
+of its domains, the application decides how:
+
+- **redirect to the primary domain to sign in**, then return — one credential, works in every
+  browser, and the model Auth0, Okta and WorkOS use
+- **serve `/.well-known/webauthn` on the primary** listing the other origins (WebAuthn L3 Related
+  Origin Requests), which lets a browser on `otper.com` run a ceremony for `ssntpl.in`. Chrome/Edge
+  128+ and Safari 18+ only, so it needs one of the other two as a fallback
+- **accept one passkey per domain**, by pointing each domain at its own context
+
+Subdomains are not affected: `acme.com` as the primary covers `app.acme.com` and every other host
+beneath it, so verify the apex and serve from wherever you like under it.
+
+#### Gating the UI
+
+The shipped Blade views show the passkey controls on every host, so where a ceremony cannot run the
+browser simply refuses it. To hide the control there instead, compare the host against the relying
+party:
 
 ```php
-$rpId = config('neev.relying_party_id');
-$host = request()->getHost();
+use Ssntpl\Neev\Services\RelyingPartyResolver;
 
-$passkeysAvailable = $host === $rpId || str_ends_with($host, '.' . $rpId);
+$resolver = app(RelyingPartyResolver::class);
+
+$passkeysAvailable = $resolver->usableFrom($resolver->rpId(), request()->getHost());
 ```
 
-Subdomain tenants need one piece of configuration: `CheckAllowedOrigins` is constructed without
-subdomain matching, so every tenant subdomain that serves passkeys must appear in `allowed_origins`
-verbatim. A wildcard is not accepted.
+A headless frontend cannot work this out itself, since it does not know which domains are verified.
+Return `rpId()` and that flag from whichever bootstrap endpoint the SPA already calls, and let it hide
+the control where no ceremony can run — offering another factor there instead: magic link, OAuth, or
+password with MFA.
 
-Supporting custom domains would mean deriving the relying party ID per request and recording it
-against each credential, since a passkey is cryptographically bound to exactly one relying party ID
-for its lifetime — a user would hold a separate passkey per domain. The `passkeys` table has no
-column for it today.
+#### Origins
+
+`allowed_origins` does **not** need to list a verified tenant domain. A ceremony under a relying party
+taken from the `domains` table admits exactly one origin — `https://` plus the domain record's own
+value — and nothing else. The configured list is not inherited, and `allow_origin_subdomains` is
+forced off there.
+
+That origin is built from the record, never from the request, so a call arriving over `http` or on a
+non-standard port cannot widen what the ceremony accepts. Serve verified tenant domains over HTTPS on
+the default port, which WebAuthn requires in any case.
+
+Because the check is exact, **verify the host you actually serve passkeys from**. A row on `acme.com`
+lets a browser on `app.acme.com` start a ceremony — the relying party covers it — but the server then
+refuses the assertion, since `https://app.acme.com` is not `https://acme.com`. Verify `app.acme.com`
+and make it primary if that is where users sign in.
+
+The configured list governs every host running under the configured relying party: the configured
+domain and all of its subdomains. Those are matched exactly by default, so each subdomain that serves
+passkeys must appear verbatim — a wildcard is not accepted:
+
+```php
+'allowed_origins' => [
+    'https://example.com',
+    'https://acme.example.com',
+    'https://globex.example.com',
+],
+```
+
+Setting `neev.allow_origin_subdomains` to `true` accepts a ceremony from any subdomain of a listed
+origin instead, which saves maintaining that list as tenants come and go. **Turn it on only when
+every host under the domain is yours.** A passkey is bound to the relying party ID, not to a single
+origin, so one credential is valid across every subdomain sharing that ID. With subdomain matching
+on, the server no longer rejects an assertion arriving from an unexpected host — so a subdomain
+takeover, an XSS on a marketing or staging subdomain, or a tenant able to serve its own script from
+its subdomain can request a challenge, run the ceremony from that origin, and be issued a session as
+the victim. With it off, the origin list is what stops that.
+
+The setting is matched on scheme and port as well as host, and a suffix alone does not qualify:
+`evil-example.com` is not a subdomain of `example.com`.
+
+#### Deployment
+
+A tenant domain serving passkeys needs the app served over HTTPS on that host, and the session to
+reach it — Laravel's default host-only cookie is fine, but pinning `session.domain` or
+`neev.spa.cookie_domain` to the platform domain means a user on `acme.com` never sends the auth
+cookie and cannot reach the authenticated registration endpoint.
+
+Passkeys also need a **shared cache store** (redis, memcached, database) across web nodes, as they
+always did: the ceremony's challenge is held in the cache between the options and verification
+requests, so a per-node `array` or `file` driver breaks passkeys on more than one node.
+
+Both steps of a ceremony must resolve the **same context**. The relying party is derived per request
+and not carried across, so a verification that resolves a different context than the options fails
+rather than completing under the wrong relying party.
 
 ### Registration Flow
 
