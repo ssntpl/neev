@@ -28,6 +28,9 @@ class MagicLinkResult
     /** Token is valid but needs an explicit confirmation step before consumption. */
     public const PENDING_CONFIRMATION = 'pending_confirmation';
 
+    /** Token was issued for a different channel than the one presented at redemption. */
+    public const CHANNEL_MISMATCH = 'channel_mismatch';
+
     /** The associated user account is inactive. */
     public const INACTIVE_USER = 'inactive_user';
 

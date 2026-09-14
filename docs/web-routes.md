@@ -59,14 +59,14 @@ destination cannot leak from an earlier attempt.
 | POST | `/login/link` | `login.link.send` | Send a single-use login link to email |
 | GET / POST | `/login-link/verify` | `login.link.verify` | Redeem the link (GET opens; POST confirms) |
 
-The link is single-use and redeemed via `token`. While
-`magic_link.require_confirmation` is on (the default), the `GET` only shows a
-confirmation page — never consuming the link, so a mail scanner's prefetch cannot
-burn it — and the user's `POST` completes the login (see
-[authentication.md](./authentication.md#magic-link-authentication)).
+The link is single-use and redeemed via `token`. `require_confirmation` is off
+by default — enable it for apps whose users sit behind scanning mail gateways
+(Outlook SafeLinks, Mimecast). When on, the `GET` only shows a confirmation
+page — never consuming the link — and the user's `POST` completes the login
+(see [authentication.md](./authentication.md#magic-link-authentication)).
 
-The legacy `GET /login/{id}` (`login.link`) route was removed along with the
-signed-URL flow.
+For an MFA-enrolled account, `login.link.verify` logs the session in and
+redirects to the MFA challenge (`otp.mfa.create`) rather than to `neev.home`.
 
 ---
 

@@ -447,7 +447,7 @@ class UserAuthApiController extends Controller
      */
     public function loginUsingLink(Request $request, GeoIP $geoIP, MagicLinkManager $magicLink)
     {
-        if (config('neev.magic_link.require_confirmation', false) && $request->isMethod('get')) {
+        if (config('neev.magic_link.require_confirmation', false) && ($request->isMethod('get') || $request->isMethod('head'))) {
             $result = $magicLink->validate($request);
         } else {
             $result = $magicLink->consume($request);
@@ -501,7 +501,7 @@ class UserAuthApiController extends Controller
             ], 403);
         }
 
-        $user = User::model()->find($request->id);
+        $user = $result->user;
         if (!$user) {
             return response()->json([
                 'message' => 'Invalid or expired verification link.',

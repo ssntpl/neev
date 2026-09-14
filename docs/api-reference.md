@@ -161,7 +161,7 @@ Returns `401` for an unknown email.
 
 Redeem a magic link. Login and the confirmation step share this route: `GET`
 opens the link, `POST` is the explicit confirm. While
-`magic_link.require_confirmation` is on (the default), a `GET` only validates
+`magic_link.require_confirmation` is on, a `GET` only validates
 and returns `{"auth_state": "confirmation_required"}` without logging in — this
 keeps a scanning mail gateway's prefetch from consuming the single-use link.
 Rate-limited (`throttle:10,1`).
@@ -182,7 +182,7 @@ GET|POST /neev/loginUsingLink?token={token}
 
 Render a confirm control and `POST` the same token back to complete login.
 
-**Response (success):**
+**Response (success — no MFA):**
 
 ```json
 {
@@ -194,10 +194,25 @@ Render a confirm control and `POST` the same token back to complete login.
 }
 ```
 
+**Response (success — MFA enrolled):**
+
+```json
+{
+    "auth_state": "mfa_required",
+    "token": "<mfa_jwt>",
+    "expires_in": 30,
+    "mfa_options": ["email"],
+    "email_verified": true
+}
+```
+
+A magic link is a first factor, not a way around the second. An account with
+MFA enrolled gets the same `mfa_required` response as `POST /neev/login`, with
+the short-lived MFA JWT and `mfa_options`; complete it with
+`POST /neev/mfa/otp/verify` exactly as after a password.
+
 - `403 { "message": "Invalid or expired verification link." }` — invalid, expired, replayed, or binding-mismatch token.
 - `422` with an `email` validation error — the account is deactivated.
-
-The token is single-use: the row is deleted on success, so replays return `403`.
 
 ---
 
@@ -224,10 +239,6 @@ GET|POST /neev/loginUsingLink/validate?token={token}
 
 `status` is one of `valid`, `invalid`, `expired`, `binding_mismatch`,
 `pending_confirmation`, `inactive_user`.
-A magic link is a first factor. An account with MFA enrolled gets the same
-`auth_state: mfa_required` response as `POST /neev/login`, with the short-lived
-MFA JWT and `mfa_options`; complete it with `POST /neev/mfa/otp/verify` exactly
-as after a password.
 
 ---
 

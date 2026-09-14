@@ -35,9 +35,9 @@ class MagicLinkTest extends TestCase
     /**
      * Generate a magic link for the user and return its plain token.
      */
-    private function magicLinkToken(User $user): array
+    private function magicLinkToken(User $user, string $channel = 'web'): array
     {
-        return app(MagicLinkManager::class)->forWeb($user);
+        return app(MagicLinkManager::class)->generate($user, $channel);
     }
 
     // -----------------------------------------------------------------
@@ -86,6 +86,8 @@ class MagicLinkTest extends TestCase
 
     public function test_get_returns_confirmation_required_without_consuming_the_token(): void
     {
+        config(['neev.magic_link.require_confirmation' => true]);
+
         $user = $this->createUser();
 
         $link = $this->magicLinkToken($user);
@@ -291,9 +293,9 @@ class MagicLinkTest extends TestCase
         $user = $this->createUser(['active' => false]);
         $user->addMultiFactorAuth('email');
 
-        $signedUrl = URL::temporarySignedRoute('loginUsingLink', now()->addMinutes(60), ['id' => $user->id]);
+        $link = $this->magicLinkToken($user);
 
-        $this->getJson($signedUrl)
+        $this->postJson('/neev/loginUsingLink', ['token' => $link['token']])
             ->assertUnprocessable()
             ->assertJsonValidationErrors(['email']);
 
@@ -306,6 +308,8 @@ class MagicLinkTest extends TestCase
 
     public function test_validate_reports_pending_confirmation_without_consuming(): void
     {
+        config(['neev.magic_link.require_confirmation' => true]);
+
         $user = $this->createUser();
 
         $link = $this->magicLinkToken($user);
@@ -640,9 +644,9 @@ class MagicLinkTest extends TestCase
         $user = $this->createUser();
         $user->addMultiFactorAuth('email');
 
-        $signedUrl = URL::temporarySignedRoute('loginUsingLink', now()->addMinutes(60), ['id' => $user->id]);
+        $link = $this->magicLinkToken($user);
 
-        $step1 = $this->getJson($signedUrl);
+        $step1 = $this->postJson('/neev/loginUsingLink', ['token' => $link['token']]);
 
         $step1->assertOk()
             ->assertJsonPath('auth_state', 'mfa_required')
@@ -686,9 +690,10 @@ class MagicLinkTest extends TestCase
         $user = $this->createUser();
         $user->addMultiFactorAuth('email');
 
-        $url = URL::temporarySignedRoute('login.link', now()->addMinutes(60), ['id' => $user->id]);
+        config(['neev.ui' => 'blade']);
+        $link = $this->magicLinkToken($user);
 
-        $this->get($url)->assertRedirect(route('otp.mfa.create', 'email'));
+        $this->get($link['url'])->assertRedirect(route('otp.mfa.create', 'email'));
         $this->assertSame($user->email, session('email'));
 
         $this->get('/mfa-protected')->assertRedirect(route('otp.mfa.create', 'email'));
@@ -700,6 +705,51 @@ class MagicLinkTest extends TestCase
             ->assertSessionHasNoErrors()
             ->assertRedirect();
         $this->get('/mfa-protected')->assertOk()->assertSee('PROTECTED-PAYLOAD');
+    }
+
+    /**
+     * bindingMatches() must fail closed when the stored fingerprint is null:
+     * a null means the link predates the bind_to_browser setting and must not
+     * bypass the check. Inverting this to fail-open would pass all other tests
+     * silently, so this test pins the behaviour explicitly.
+     */
+    public function test_binding_check_fails_closed_when_stored_fingerprint_is_null(): void
+    {
+        config(['neev.magic_link.bind_to_browser' => true]);
+
+        $user = $this->createUser();
+
+        // Insert a token row with a null fingerprint directly — simulates a
+        // link minted before bind_to_browser was enabled.
+        $token = MagicLinkToken::create([
+            'user_id' => $user->id,
+            'token' => hash('sha256', $plain = 'pre-binding-plain-token'),
+            'channel' => 'web',
+            'expires_at' => now()->addMinutes(10),
+            'meta' => null,
+        ]);
+
+        $this->postJson('/neev/loginUsingLink', ['token' => $plain])
+            ->assertStatus(403);
+
+        $this->assertDatabaseHas('magic_link_tokens', ['id' => $token->id]);
+    }
+
+    public function test_redeeming_a_token_with_a_mismatched_channel_is_rejected(): void
+    {
+        $user = $this->createUser();
+        $link = $this->magicLinkToken($user, channel: 'web');
+
+        // Present the token but claim it is for the mobile channel.
+        $this->postJson('/neev/loginUsingLink', [
+            'token' => $link['token'],
+            'channel' => 'mobile',
+        ])->assertStatus(403);
+
+        // The token must not have been consumed.
+        $this->assertDatabaseHas('magic_link_tokens', [
+            'user_id' => $user->id,
+        ]);
     }
 
 }

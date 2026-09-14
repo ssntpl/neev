@@ -222,7 +222,7 @@ return [
         // Mimecast) prefetch GET links; because links are single-use, a
         // prefetch would consume the link before the user ever clicks it and
         // lock them out. With confirmation on, GET only ever validates.
-        'require_confirmation' => env('NEEV_MAGIC_LINK_CONFIRMATION', true),
+        'require_confirmation' => env('NEEV_MAGIC_LINK_CONFIRMATION', false),
 
         // Channel-aware link generation. Neev builds the URL; it never renders
         // UI or handles deep-link routing — the host app does.

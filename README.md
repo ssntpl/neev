@@ -180,9 +180,15 @@ curl -X POST https://yourapp.com/neev/login \
 curl -X POST https://yourapp.com/neev/sendLoginLink \
   -d '{"email": "john@example.com", "channel": "web"}'
 
-# Login via link (opaque token from the email URL)
-curl -X GET "https://yourapp.com/neev/loginUsingLink?token=THE_OPAQUE_TOKEN"
+# Redeem the link (POST consumes it and logs in)
+curl -X POST https://yourapp.com/neev/loginUsingLink \
+  -H "Content-Type: application/json" \
+  -d '{"token": "THE_OPAQUE_TOKEN"}'
 ```
+
+A magic link is a **first factor, not a way around the second**. An account with MFA enrolled receives `auth_state: mfa_required` with a short-lived MFA JWT instead of a full token; complete it with `POST /neev/mfa/otp/verify` exactly as after a password login.
+
+When `require_confirmation` is enabled (recommended for apps behind corporate mail scanners), a `GET` only validates the token without consuming it — render a confirm button and `POST` the token back.
 
 ### Passkey / WebAuthn
 

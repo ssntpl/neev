@@ -202,7 +202,7 @@ class UserAuthController extends Controller
             return redirect(config('neev.home'));
         }
 
-        if (config('neev.magic_link.require_confirmation', false) && $request->isMethod('get')) {
+        if (config('neev.magic_link.require_confirmation', false) && ($request->isMethod('get') || $request->isMethod('head'))) {
             $result = $magicLink->validate($request);
 
             if ($result->needsConfirmation()) {
@@ -230,7 +230,9 @@ class UserAuthController extends Controller
             return redirect(app(EmailLinks::class)->loginUrl())->withErrors(['message' => 'Invalid or expired login link.']);
         }
 
-        $this->auth->login($request, $geoIP, $result->user, LoginAttempt::MagicAuth);
+        $user = $result->user;
+
+        $this->auth->login($request, $geoIP, $user, LoginAttempt::MagicAuth);
 
         // A magic link is a first factor, not a way around the second. The
         // attempt was recorded without a multi_factor_method — what

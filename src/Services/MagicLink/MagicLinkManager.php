@@ -13,6 +13,7 @@ use Ssntpl\Neev\Exceptions\MagicLinkChannelException;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\MagicLinkToken;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
 
@@ -287,6 +288,11 @@ class MagicLinkManager
 
         $channel = $record->channel;
 
+        $requestedChannel = $this->extractChannel($request, $context);
+        if ($requestedChannel !== null && $requestedChannel !== $channel) {
+            return MagicLinkResult::failure(MagicLinkResult::CHANNEL_MISMATCH, $channel, $record);
+        }
+
         if ($record->isExpired()) {
             return MagicLinkResult::failure(MagicLinkResult::EXPIRED, $channel, $record);
         }
@@ -344,6 +350,20 @@ class MagicLinkManager
         // and casting that to string raises "Array to string conversion" — a
         // 500 where a plain rejection belongs.
         return is_scalar($token) ? (string) $token : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $context
+     */
+    protected function extractChannel(Request $request, array $context = []): ?string
+    {
+        if (!empty($context['channel'])) {
+            return is_scalar($context['channel']) ? (string) $context['channel'] : null;
+        }
+
+        $channel = $request->input('channel');
+
+        return is_scalar($channel) ? (string) $channel : null;
     }
 
     // -----------------------------------------------------------------
@@ -492,7 +512,7 @@ class MagicLinkManager
      */
     protected function webBaseUrl(array $config): string
     {
-        $fallback = (string) ($config['base_url'] ?? config('app.url'));
+        $fallback = (string) ($config['base_url'] ?? app(EmailLinks::class)->base());
 
         if (!config('neev.tenant', false)) {
             return $fallback;

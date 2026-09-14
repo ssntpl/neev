@@ -214,29 +214,22 @@ leaves the app, inside the emailed URL). On successful use the row is **deleted*
 so a link can never be replayed, and issuing a new link **invalidates the user's
 previous link** for that channel.
 
-> A valid magic link completes login **without** enforcing MFA, even if the user
-> has MFA enabled (by design — same posture as OAuth login). See [security.md](./security.md).
+A magic link is a **first factor, not a way around the second**. An account with MFA enrolled stops at the same challenge it would after a password login — the link issues the short-lived MFA JWT instead of a full access token, and `POST /neev/mfa/otp/verify` completes it exactly as after a password.
 
 ### Flow
 
 1. User enters email and requests a link (`POST /neev/sendLoginLink`)
 2. Receives an email with a secure link
 3. Opens the link → the token is validated and consumed
-4. If the account has MFA enrolled, the MFA challenge follows — a magic link
-   is a first factor, not a way around the second
-5. Logged in
+4. If the account has MFA enrolled, returns `auth_state: mfa_required` with a short-lived MFA JWT — complete with `POST /neev/mfa/otp/verify`
+5. Otherwise, logged in with a full access token
 
 Following the link also **marks an unverified address verified**: the link was
 mailed to that address and came back signed, which proves inbox control just
 as the verification mail would. An unverified account is therefore not turned
 away from its own magic link.
 
-Where the link points depends on the frontend. Under the Blade kit it goes
-straight to `login.link`. Headless, following it mints an access token — and a
-token must not travel in a URL — so the link lands on your `/login-link` page
-carrying the signed query, which your page forwards to
-`GET {prefix}/loginUsingLink` to exchange for the token. Both are controlled
-by [`EmailLinks`](./email-links.md).
+Where the link points depends on the frontend. Under the Blade kit it goes to `login.link.verify` (`/login-link/verify`), which redeems the token server-side. Headless, the link lands on your `/login-link` page carrying the opaque token as a query parameter, which your page forwards to `POST {prefix}/loginUsingLink` to exchange for the token. Both are controlled by [`EmailLinks`](./email-links.md).
 
 ### API Example
 
@@ -251,7 +244,7 @@ curl -X POST https://yourapp.com/neev/sendLoginLink \
 **Use Link:**
 
 ```bash
-# Opening the link only validates it — the response asks for confirmation.
+# When require_confirmation is on, GET only validates — never consumes.
 curl -X GET "https://yourapp.com/neev/loginUsingLink?token=THE_OPAQUE_TOKEN"
 # => {"auth_state": "confirmation_required", "channel": "web", ...}
 
@@ -260,17 +253,20 @@ curl -X POST "https://yourapp.com/neev/loginUsingLink" \
   -H "Content-Type: application/json" \
   -d '{"token": "THE_OPAQUE_TOKEN"}'
 # => {"auth_state": "authenticated", "token": "...", ...}
+# or, for an MFA-enrolled account:
+# => {"auth_state": "mfa_required", "token": "<mfa_jwt>", "mfa_options": ["email"], ...}
 ```
 
 Login and the confirmation step share one route: `GET` opens the link, `POST` is
 the explicit confirm. `GET|POST /neev/loginUsingLink/validate` checks a token
 without consuming it. Redemption is rate-limited (`throttle:10,1`).
 
-A `GET` never consumes a link while `require_confirmation` is on (the default),
-and that matters because links are single-use: scanning mail gateways (Outlook
-SafeLinks, Mimecast) prefetch `GET` links, so a consuming `GET` would let the
-scanner burn the link before the user clicks it. Your frontend should treat
-`confirmation_required` as "render a confirm button that POSTs the token back".
+A `GET` never consumes a link while `require_confirmation` is on (`false` by
+default — enable it for apps whose users sit behind scanning mail gateways).
+Scanning gateways (Outlook SafeLinks, Mimecast) prefetch `GET` links; because
+links are single-use, a prefetch would burn the link before the user clicks it.
+With confirmation on, treat `confirmation_required` as "render a confirm button
+that POSTs the token back".
 
 ### Channels
 
@@ -292,7 +288,7 @@ Configured under `magic_link` in `config/neev.php`:
 'magic_link' => [
     'expires_in' => 10,             // minutes a link stays valid
     'bind_to_browser' => false,        // restrict redemption to the originating browser/device
-    'require_confirmation' => true,    // explicit confirm step; a GET never consumes the link
+    'require_confirmation' => false,   // set true for apps behind scanning mail gateways
     'channels' => [ /* web, mobile, ... */ ],
 ],
 ```
@@ -784,9 +780,9 @@ as to accepting it:
 - **Web** — the Blade kit's password page (`auth/login-password.blade.php`)
   shows the OAuth buttons, "Login Via Link" and the passkey button whatever
   the account's verification state, so an unverified user is not left with
-  only the password they may not have. The `login.link` and
+  only the password they may not have. The `login.link.verify` and
   `oauth.callback` routes sign the user straight in and land on
-  `neev.home`, not on `verification.notice` — or, for `login.link` on an
+  `neev.home`, not on `verification.notice` — or, for `login.link.verify` on an
   MFA-enrolled account, on the MFA challenge.
 
 Only password login still stops at the verification notice — a password says

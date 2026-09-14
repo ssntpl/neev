@@ -89,6 +89,8 @@ class MagicLinkWebTest extends TestCase
 
     public function test_get_renders_the_confirmation_page_without_consuming_the_token(): void
     {
+        config(['neev.magic_link.require_confirmation' => true]);
+
         $user = $this->createUser();
         $link = $this->magicLinkToken($user);
 
@@ -105,6 +107,8 @@ class MagicLinkWebTest extends TestCase
 
     public function test_scanner_prefetch_followed_by_a_real_click_still_logs_the_user_in(): void
     {
+        config(['neev.magic_link.require_confirmation' => true]);
+
         $user = $this->createUser();
         $link = $this->magicLinkToken($user);
 
@@ -234,11 +238,21 @@ class MagicLinkWebTest extends TestCase
         $this->assertDatabaseCount('magic_link_tokens', 1);
     }
 
-    public function test_the_legacy_signed_url_route_is_gone(): void
+    public function test_the_modern_web_login_flow_stays_on_the_confirmation_page_until_post_confirm(): void
     {
-        $user = $this->createUser();
+        config(['neev.magic_link.require_confirmation' => true]);
 
-        $this->get('/login/' . $user->id)->assertNotFound();
+        $user = $this->createUser();
+        $link = $this->magicLinkToken($user);
+
+        $this->get('/login-link/verify?token=' . $link['token'])
+            ->assertOk()
+            ->assertSee('Please confirm that you want to sign in.', escape: false);
+
+        $this->post('/login-link/verify', ['token' => $link['token']])
+            ->assertRedirect(config('neev.home'));
+
+        $this->assertAuthenticatedAs($user);
     }
 
     // -----------------------------------------------------------------
