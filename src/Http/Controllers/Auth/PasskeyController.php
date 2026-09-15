@@ -43,6 +43,7 @@ use Webauthn\AuthenticatorAssertionResponseValidator;
 use Webauthn\PublicKeyCredentialRequestOptions;
 use Webauthn\TrustPath\EmptyTrustPath;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\RelyingPartyResolver;
 use Ssntpl\Neev\Services\SpaCookieResponder;
 use Ssntpl\Neev\Http\Controllers\Controller;
 
@@ -50,6 +51,7 @@ class PasskeyController extends Controller
 {
     public function __construct(
         protected AuthService $auth,
+        protected RelyingPartyResolver $relyingParty,
     ) {
     }
 
@@ -77,14 +79,15 @@ class PasskeyController extends Controller
                 'message' => 'User not found',
             ], 400);
         }
-        $rpId = config('neev.relying_party_id');
+        $rpId = $this->relyingParty->rpId();
         $userId = strval($user->id);
 
         $challenge = random_bytes(32);
         $base64Challenge = Base64UrlSafe::encode($challenge);
 
-        // Store challenge server-side for verification
-        Cache::put("passkey_reg_challenge:{$user->id}", $base64Challenge, 300);
+        // Bound to the relying party so both halves of a ceremony run under
+        // the same context.
+        Cache::put("passkey_reg_challenge:{$user->id}", ['challenge' => $base64Challenge, 'rp_id' => $rpId], 300);
 
         $authenticatorSelection = new AuthenticatorSelectionCriteria(
             residentKey: 'required',
@@ -98,7 +101,7 @@ class PasskeyController extends Controller
 
         return response()->json([
             'rp' => [
-                'name' => $rpId,
+                'name' => $this->relyingParty->rpName(),
                 'id'   => $rpId,
             ],
             'user' => [
@@ -112,8 +115,11 @@ class PasskeyController extends Controller
                 'residentKey' => $authenticatorSelection->residentKey,
                 'userVerification' => $authenticatorSelection->userVerification,
             ],
-            'timeout' => 60000,
-            'excludeCredentials' => [],
+            'timeout' => 300000,
+            'excludeCredentials' => array_map(
+                fn (PublicKeyCredentialDescriptor $descriptor) => ['type' => $descriptor->type, 'id' => $descriptor->id],
+                $this->enrolledCredentials($user, $rpId)
+            ),
             'attestation' => 'none',
             'extensions' => (object) [],
         ]);
@@ -129,14 +135,10 @@ class PasskeyController extends Controller
         }
         $input = json_decode($request->attestation, true);
 
-        $rpId = config('neev.relying_party_id');
+        $rpId = $this->relyingParty->rpId();
 
         // Retrieve challenge from server-side storage (not from client)
-        $storedChallenge = Cache::pull("passkey_reg_challenge:{$user->id}");
-        if (!$storedChallenge) {
-            throw new Exception('Challenge expired or not found. Please try again.');
-        }
-        $challenge = Base64UrlSafe::decode($storedChallenge);
+        $challenge = $this->pullChallenge("passkey_reg_challenge:{$user->id}", $rpId);
 
         $clientDataJson = $input['response']['clientDataJSON'];
         $attestationObjectRaw = $input['response']['attestationObject'];
@@ -164,7 +166,7 @@ class PasskeyController extends Controller
 
         // Rebuild PublicKeyCredentialCreationOptions
         $rp = new PublicKeyCredentialRpEntity(
-            name: $rpId,
+            name: $this->relyingParty->rpName(),
             id: $rpId
         );
 
@@ -183,9 +185,9 @@ class PasskeyController extends Controller
             rp: $rp,
             user: $userEntity,
             challenge: $challenge,
-            excludeCredentials: [],
+            excludeCredentials: $this->enrolledCredentials($user, $rpId),
             pubKeyCredParams: $pubKeyCredParams,
-            timeout: 60000,
+            timeout: 300000,
             authenticatorSelection: new AuthenticatorSelectionCriteria(
                 residentKey: 'required',
                 userVerification: 'required'
@@ -197,7 +199,10 @@ class PasskeyController extends Controller
         try {
             $ceremonySteps = new CeremonyStepManager([
                 new CheckChallenge(),
-                new CheckAllowedOrigins(config('neev.allowed_origins')),
+                new CheckAllowedOrigins(
+                    $this->relyingParty->allowedOrigins(),
+                    $this->relyingParty->allowSubdomains()
+                ),
                 new CheckAlgorithm(),
                 new CheckSignature(),
                 new CheckCredentialId(),
@@ -221,10 +226,19 @@ class PasskeyController extends Controller
             throw $e;
         }
 
-        $passkey = $user->passkeys->where('aaguid', $credentialSource->aaguid->toRfc4122())->first();
+        $credentialId = Base64UrlSafe::encode($credentialSource->publicKeyCredentialId);
+
+        // Match on credential ID, not AAGUID: an AAGUID identifies a
+        // make/model, so two keys of the same model would overwrite each other.
+        $passkey = $user->passkeys()
+            ->where('credential_id', $credentialId)
+            ->forRelyingParty($rpId)
+            ->first();
+
         if ($passkey) {
             $passkey->name = $request->input('name', 'Default Device') ?? 'Default Device';
-            $passkey->credential_id = Base64UrlSafe::encode($credentialSource->publicKeyCredentialId);
+            $passkey->credential_id = $credentialId;
+            $passkey->rp_id = $rpId;
             $passkey->public_key = Base64UrlSafe::encode($credentialSource->credentialPublicKey);
             $passkey->transports = $input['response']['transports'] ?? [];
             $passkey->ip = $request->ip();
@@ -232,7 +246,8 @@ class PasskeyController extends Controller
             $passkey->save();
         } else {
             $passkey = $user->passkeys()->create([
-                'credential_id' => Base64UrlSafe::encode($credentialSource->publicKeyCredentialId),
+                'credential_id' => $credentialId,
+                'rp_id' => $rpId,
                 'public_key' => Base64UrlSafe::encode($credentialSource->credentialPublicKey),
                 'name' => $request->input('name', 'Default Device') ?? 'Default Device',
                 'aaguid' => $credentialSource->aaguid->toRfc4122(),
@@ -293,29 +308,26 @@ class PasskeyController extends Controller
             if (!$user) {
                 throw new Exception('User not found.');
             }
-            $allowCredentials = [];
+            $rpId = $this->relyingParty->rpId();
+            $allowCredentials = $this->enrolledCredentials($user, $rpId);
 
-            foreach ($user->passkeys as $passkey) {
-                $allowCredentials[] = new PublicKeyCredentialDescriptor(
-                    type: 'public-key',
-                    id: $passkey->credential_id,
-                );
+            if (empty($allowCredentials)) {
+                throw new Exception('User not found.');
             }
 
-            $rpId = config('neev.relying_party_id');
             $challenge = random_bytes(32);
             $base64Challenge = Base64UrlSafe::encode($challenge);
 
-            // Store challenge server-side for verification
+            // Bound to the relying party it was issued for.
             $cacheKey = 'passkey_login_challenge:' . hash('sha256', $request->email);
-            Cache::put($cacheKey, $base64Challenge, 300);
+            Cache::put($cacheKey, ['challenge' => $base64Challenge, 'rp_id' => $rpId], 300);
 
             $options = new PublicKeyCredentialRequestOptions(
                 challenge: $challenge,
                 rpId: $rpId,
                 allowCredentials: $allowCredentials,
                 userVerification: 'required',
-                timeout: 120000,
+                timeout: 300000,
                 extensions: []
             );
 
@@ -354,28 +366,23 @@ class PasskeyController extends Controller
             $input['response']['userHandle'] ?? null
         );
 
-        $rpId = config('neev.relying_party_id');
+        $user = User::findByEmail($request->email);
+        if (!$user) {
+            throw new Exception('Wrong Credentials.');
+        }
+
+        $rpId = $this->relyingParty->rpId();
 
         // Retrieve challenge from server-side storage (not from client)
-        $cacheKey = 'passkey_login_challenge:' . hash('sha256', $request->email);
-        $storedChallenge = Cache::pull($cacheKey);
-        if (!$storedChallenge) {
-            throw new Exception('Challenge expired or not found. Please try again.');
-        }
-        $challenge = Base64UrlSafe::decode($storedChallenge);
+        $challenge = $this->pullChallenge('passkey_login_challenge:' . hash('sha256', $request->email), $rpId);
 
         $options = new PublicKeyCredentialRequestOptions(
             challenge: $challenge,
             rpId: $rpId,
             allowCredentials: [],
             userVerification: 'required',
-            timeout: 120000
+            timeout: 300000
         );
-
-        $user = User::findByEmail($request->email);
-        if (!$user) {
-            throw new Exception('Wrong Credentials.');
-        }
 
         $attempt = null;
         if (config('neev.log_failed_logins')) {
@@ -393,7 +400,9 @@ class PasskeyController extends Controller
         }
         $passkey = $user->passkeys->where('credential_id', Base64UrlSafe::encode(Base64UrlSafe::decode($rawId)))->first();
 
-        if (!$passkey || $user->id != (int) base64_decode($input['response']['userHandle'])) {
+        if (!$passkey
+            || !$passkey->matchesRelyingParty($rpId)
+            || $user->id != (int) base64_decode($input['response']['userHandle'])) {
             throw new Exception('Wrong Credentials.');
         }
 
@@ -413,7 +422,10 @@ class PasskeyController extends Controller
         $validator = new AuthenticatorAssertionResponseValidator(
             new CeremonyStepManager([
                 new CheckChallenge(),
-                new CheckAllowedOrigins(config('neev.allowed_origins')),
+                new CheckAllowedOrigins(
+                    $this->relyingParty->allowedOrigins(),
+                    $this->relyingParty->allowSubdomains()
+                ),
                 new CheckAlgorithm(),
                 new CheckSignature(),
                 new CheckCredentialId(),
@@ -434,6 +446,46 @@ class PasskeyController extends Controller
         $passkey->save();
 
         return [$user, $attempt ?? null];
+    }
+
+    /**
+     * Take the stored challenge, refusing one issued for another relying
+     * party — options and completion are separate requests whose context can
+     * differ.
+     *
+     * @return string  The raw challenge bytes.
+     */
+    protected function pullChallenge(string $cacheKey, string $rpId): string
+    {
+        $stored = Cache::pull($cacheKey);
+
+        if (!is_array($stored) || empty($stored['challenge'])) {
+            throw new Exception('Challenge expired or not found. Please try again.');
+        }
+
+        if (($stored['rp_id'] ?? null) !== $rpId) {
+            throw new Exception('Challenge was issued for a different relying party.');
+        }
+
+        return Base64UrlSafe::decode($stored['challenge']);
+    }
+
+    /**
+     * The user's credentials on this relying party — `allowCredentials` on
+     * login, `excludeCredentials` on registration.
+     *
+     * @return array<int, PublicKeyCredentialDescriptor>
+     */
+    protected function enrolledCredentials(User $user, string $rpId): array
+    {
+        return $user->passkeys()
+            ->forRelyingParty($rpId)
+            ->get()
+            ->map(fn (Passkey $passkey) => new PublicKeyCredentialDescriptor(
+                type: 'public-key',
+                id: $passkey->credential_id,
+            ))
+            ->all();
     }
 
     public function registerViaWeb(Request $request, GeoIP $geoIP)

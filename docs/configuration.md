@@ -164,7 +164,7 @@ App-wide social login providers. Uncomment providers you want to enable. Each re
 'relying_party_id' => parse_url(config('app.url'), PHP_URL_HOST),
 ```
 
-The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host of `app.url`. This is a single application-wide value: passkeys work on this domain and its subdomains only, never on a tenant's custom domain. See [Supported Domains](./authentication.md#supported-domains).
+The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host of `app.url`. This is the platform's relying party — it covers this domain and every subdomain. A tenant on a verified custom domain gets that domain as its own relying party instead, resolved per request by `RelyingPartyResolver`. See [Supported Domains](./authentication.md#supported-domains).
 
 ### WebAuthn Allowed Origins
 
@@ -174,7 +174,11 @@ The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host
 ],
 ```
 
-Origins permitted to complete WebAuthn ceremonies **under the relying party ID above**. List every allowed origin for multi-origin setups (e.g. app served from multiple domains), including each subdomain — subdomain matching is off, so a wildcard is not accepted. Listing an origin the relying party ID does not cover has no effect; the browser rejects those ceremonies before the server sees them.
+Origins permitted to complete WebAuthn ceremonies. List every allowed origin for multi-origin setups (e.g. app served from multiple domains), including each subdomain. Listing a web origin the relying party ID does not cover has no effect; the browser rejects those ceremonies before the server sees them.
+
+The list applies on **every** relying party — a tenant's verified custom domain is added to it, never substituted for it. That is where native-app origins go: an Android app's `android:apk-key-hash:…` facet listed once here works on the platform domain and on every tenant's domain. See [Origins](./authentication.md#origins).
+
+Subdomain matching is **off on every relying party** and there is no config key to turn it on — a compromised sibling host would otherwise be able to complete a ceremony as any user. List your own operational hosts (`app.`, `login.`) here verbatim; a tenant's own hosts, platform subdomain or custom domain, are admitted from its verified `domains` rows and need no entry. To widen the check, override `allowSubdomains()` in a subclass of `RelyingPartyResolver` — see [Origins](./authentication.md#origins).
 
 ---
 

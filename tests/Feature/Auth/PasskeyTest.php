@@ -3,8 +3,11 @@
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Ssntpl\Neev\Models\Passkey;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\RelyingPartyResolver;
+use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
 
@@ -41,6 +44,65 @@ class PasskeyTest extends TestCase
             'transports' => ['usb'],
             'ip' => '127.0.0.1',
         ], $overrides));
+    }
+
+    // -----------------------------------------------------------------
+    // GET /neev/passkeys — list passkeys
+    // -----------------------------------------------------------------
+
+    /**
+     * The list is the page a user revokes from, so it shows every credential
+     * whichever relying party issued it — a passkey enrolled on a tenant's
+     * domain must stay revocable from the platform. `rp_id` is exposed so a
+     * UI can label them.
+     */
+    public function test_get_passkeys_lists_credentials_from_every_relying_party(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->createPasskey($user, ['rp_id' => 'localhost']);
+        $this->createPasskey($user, ['rp_id' => 'other.com']);
+        $this->createPasskey($user, ['rp_id' => null]);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/passkeys');
+
+        $response->assertOk();
+        $this->assertCount(3, $response->json('data'));
+        $this->assertEqualsCanonicalizing(
+            ['localhost', 'other.com', null],
+            array_column($response->json('data'), 'rp_id')
+        );
+    }
+
+    /**
+     * The same holds on a tenant's own relying party: the list is where a
+     * user revokes, not where they sign in, so the credentials enrolled on
+     * the platform stay visible from `acme.com` even though no ceremony
+     * there can use them.
+     */
+    public function test_get_passkeys_is_not_scoped_to_the_requests_relying_party(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->createPasskey($user, ['rp_id' => 'localhost']);
+        $this->createPasskey($user, ['rp_id' => 'acme.com']);
+
+        $this->app->instance(RelyingPartyResolver::class, new class (app(TenantResolver::class)) extends RelyingPartyResolver {
+            public function rpId(): string
+            {
+                return 'acme.com';
+            }
+        });
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/passkeys');
+
+        $response->assertOk();
+        $this->assertEqualsCanonicalizing(
+            ['localhost', 'acme.com'],
+            array_column($response->json('data'), 'rp_id')
+        );
     }
 
     // -----------------------------------------------------------------
@@ -169,6 +231,55 @@ class PasskeyTest extends TestCase
             ]);
     }
 
+    public function test_registration_options_exclude_credentials_already_on_this_relying_party(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $mine = $this->createPasskey($user, ['rp_id' => 'localhost']);
+        $legacy = $this->createPasskey($user, ['rp_id' => null]);
+        $this->createPasskey($user, ['rp_id' => 'other.com']);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/passkeys/register/options');
+
+        $response->assertOk();
+        $this->assertEqualsCanonicalizing(
+            [$mine->credential_id, $legacy->credential_id],
+            array_column($response->json('excludeCredentials'), 'id')
+        );
+        $this->assertSame('public-key', $response->json('excludeCredentials.0.type'));
+    }
+
+    public function test_registration_challenge_is_stored_with_its_relying_party(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/passkeys/register/options');
+
+        $response->assertOk();
+        $stored = Cache::get("passkey_reg_challenge:{$user->id}");
+        $this->assertSame($response->json('challenge'), $stored['challenge']);
+        $this->assertSame('localhost', $stored['rp_id']);
+    }
+
+    /**
+     * Options and completion are two requests, and the context that picks
+     * the relying party can differ between them. A challenge issued under
+     * one relying party must not complete a ceremony under another.
+     */
+    public function test_registration_refuses_a_challenge_issued_for_another_relying_party(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        Cache::put("passkey_reg_challenge:{$user->id}", ['challenge' => 'abc', 'rp_id' => 'other.com'], 300);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/passkeys/register', ['attestation' => '{}']);
+
+        $response->assertStatus(400)
+            ->assertJsonPath('message', 'Unable to register passkey.');
+        $this->assertNull(Cache::get("passkey_reg_challenge:{$user->id}"), 'a refused challenge is consumed');
+    }
+
     public function test_registration_options_use_configured_relying_party_id(): void
     {
         config(['neev.relying_party_id' => 'passkeys.example.com']);
@@ -201,6 +312,33 @@ class PasskeyTest extends TestCase
             ]);
     }
 
+    public function test_login_options_only_offer_credentials_for_current_rp(): void
+    {
+        $user = User::factory()->create();
+        // Passkey for the current RP
+        $this->createPasskey($user, ['rp_id' => 'localhost']);
+        // Passkey for a different RP — must not appear in allowCredentials
+        $this->createPasskey($user, ['rp_id' => 'other.com']);
+
+        $response = $this->getJson('/neev/passkeys/login/options?email=' . urlencode($user->email));
+
+        $response->assertOk();
+        $this->assertCount(1, $response->json('allowCredentials'));
+    }
+
+    public function test_login_challenge_is_stored_with_its_relying_party(): void
+    {
+        $user = User::factory()->create();
+        $this->createPasskey($user);
+
+        $response = $this->getJson('/neev/passkeys/login/options?email=' . urlencode($user->email));
+
+        $response->assertOk();
+        $stored = Cache::get('passkey_login_challenge:' . hash('sha256', $user->email));
+        $this->assertSame($response->json('challenge'), $stored['challenge']);
+        $this->assertSame('localhost', $stored['rp_id']);
+    }
+
     public function test_login_options_use_configured_relying_party_id(): void
     {
         config(['neev.relying_party_id' => 'passkeys.example.com']);
@@ -225,5 +363,73 @@ class PasskeyTest extends TestCase
         $response = $this->getJson('/neev/passkeys/login/options');
 
         $response->assertStatus(400);
+    }
+
+    // -----------------------------------------------------------------
+    // Registration deduplication — credential ID, not AAGUID
+    // -----------------------------------------------------------------
+
+    public function test_two_keys_of_the_same_model_get_separate_rows(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $sharedAaguid = 'f8a011f3-8c0a-4d15-8006-17111f9edc7d'; // same model
+
+        $this->createPasskey($user, [
+            'credential_id' => 'credential-one',
+            'aaguid' => $sharedAaguid,
+            'rp_id' => 'localhost',
+        ]);
+        $this->createPasskey($user, [
+            'credential_id' => 'credential-two',
+            'aaguid' => $sharedAaguid,
+            'rp_id' => 'localhost',
+        ]);
+
+        $this->assertDatabaseCount('passkeys', 2);
+    }
+
+    public function test_re_enrolling_same_credential_id_updates_existing_row(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $credentialId = 'same-credential-id';
+
+        $original = $this->createPasskey($user, [
+            'credential_id' => $credentialId,
+            'name' => 'Original Name',
+            'rp_id' => 'localhost',
+        ]);
+
+        // Simulate re-registration with the same credential ID
+        $user->passkeys()
+            ->where('credential_id', $credentialId)
+            ->forRelyingParty('localhost')
+            ->first()
+            ->update(['name' => 'Updated Name']);
+
+        $this->assertDatabaseCount('passkeys', 1);
+        $this->assertDatabaseHas('passkeys', [
+            'id' => $original->id,
+            'credential_id' => $credentialId,
+            'name' => 'Updated Name',
+        ]);
+    }
+
+    public function test_zero_aaguid_key_always_creates_a_new_row(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->createPasskey($user, [
+            'credential_id' => 'credential-one',
+            'aaguid' => '00000000-0000-0000-0000-000000000000',
+            'rp_id' => 'localhost',
+        ]);
+        $this->createPasskey($user, [
+            'credential_id' => 'credential-two',
+            'aaguid' => '00000000-0000-0000-0000-000000000000',
+            'rp_id' => 'localhost',
+        ]);
+
+        // Both rows must survive — zero AAGUID is not a device identity
+        $this->assertDatabaseCount('passkeys', 2);
     }
 }

@@ -92,10 +92,22 @@ return [
         // 'apple',
     ],
 
-    // WebAuthn relying party ID — the domain passkeys are bound to (e.g. "example.com").
+    // WebAuthn relying party ID — the platform domain passkeys are bound to
+    // (e.g. "example.com"). A tenant on a verified custom domain gets that
+    // domain instead, resolved per request by RelyingPartyResolver.
     'relying_party_id' => parse_url(config('app.url'), PHP_URL_HOST),
 
-    // Origins permitted to complete WebAuthn ceremonies. List every allowed origin for multi-origin setups.
+    // Origins permitted to complete WebAuthn ceremonies.
+    //
+    // Matched EXACTLY — subdomain matching is off and cannot be enabled, so
+    // list every one of your own hosts that serves passkeys ('app.', 'login.').
+    // Tenant hosts are admitted from their verified `domains` rows instead.
+    //
+    // This list applies on every relying party, tenant domains included. Web
+    // origins are inert there, but native-app facets
+    // ('android:apk-key-hash:<base64url sha256 of the signing cert>') are not
+    // — that is what lets one platform app serve all tenants. Keep it to
+    // production origins; anything here is inherited everywhere.
     'allowed_origins' => [
         config('app.url'),
     ],
