@@ -165,22 +165,40 @@ Unauthenticated requests pass through unchanged. Set `password_expiry_days` to `
 
 ---
 
-## OAuth / Social Login Bypass
+## MFA and the Login Method
 
-> **Warning:** everything in the sections above — and the MFA gate — applies only to password and magic-link login. OAuth/social login (the `oauth` providers list in `config/neev.php`) is a separate, complete authentication path:
->
-> - The OAuth callback logs the user in (web) or issues a full access token (API) **without checking the user's enrolled MFA methods**. A user with active TOTP or email MFA is never prompted for a second factor when signing in via OAuth.
-> - Accounts created via OAuth have **no password**, so strength rules, password history, and password expiry never apply to them. Their email is marked verified automatically.
->
-> The effective security of an OAuth-enabled account is therefore the security of the linked Google/GitHub/Microsoft/Apple account — your MFA and password policies do not add to it.
+The MFA gate applies to every first factor that is only a first factor —
+password, magic link and OAuth/social login alike. An enrolled account is
+parked at the challenge (`otp.mfa.create` on the web, `auth_state:
+mfa_required` with a short-lived JWT on the API) and reaches nothing
+protected until it answers.
 
-If MFA or organization-controlled credentials are a compliance requirement:
+The one exception is a **passkey**. Its ceremony runs with
+`userVerification: 'required'` and is validated with `CheckUserVerification`,
+so a successful login already proves possession of the authenticator *and* a
+local user check (biometric or device PIN). That is the second factor, so
+asking for another one is asking the same question twice, and a passkey login
+goes straight through.
+
+A federated login gets no such credit. Whether Google, GitHub, Microsoft or
+Apple asked for MFA of its own is the provider's business and invisible to
+this application, so OAuth is treated as a single factor and challenged.
+
+> **Warning:** OAuth still bypasses the *password* policies. Accounts created
+> via OAuth have **no password**, so strength rules, password history, and
+> password expiry never apply to them, and their email is marked verified
+> automatically.
+
+If organization-controlled credentials are a compliance requirement:
 
 - **Keep the `oauth` list empty or minimal.** Providers not in the list return 404 on both the redirect and callback routes, which fully disables the path.
 - **For per-organization enforcement, use tenant/team SSO with the `neev-ensure-sso` middleware.** It rejects (API) or redirects (web) any authenticated session that was not established via SSO, closing the OAuth side door for that organization.
-- **If MFA must be universal across all login methods**, implement an application-level step-up check after login — Neev does not provide one for OAuth sessions.
 
-See [Authentication → OAuth / Social Login](./authentication.md#security-warning-oauth-bypasses-mfa-and-password-policies) for details.
+Note that tenant/team SSO (`LoginAttempt::SSO`) is itself outside the MFA gate
+on the API side — it issues a full token directly, on the assumption that the
+identity provider owns the authentication policy for that organization.
+
+See [Authentication → OAuth and the MFA Gate](./authentication.md#oauth-and-the-mfa-gate) for details.
 
 ---
 

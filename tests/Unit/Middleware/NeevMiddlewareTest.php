@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 use Ssntpl\Neev\Database\Factories\LoginAttemptFactory;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
 use Ssntpl\Neev\Http\Middleware\NeevMiddleware;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -106,6 +107,71 @@ class NeevMiddlewareTest extends TestCase
 
         $attempt = LoginAttemptFactory::new()->create([
             'user_id' => $user->id,
+            'multi_factor_method' => null,
+        ]);
+
+        $request = $this->buildRequest('/test', $user);
+        session(['attempt_id' => $attempt->id]);
+
+        $response = $this->middleware->handle($request, $this->passThrough());
+
+        $this->assertTrue($response->isRedirection());
+        $this->assertLocationContains('/mfa/', $response);
+    }
+
+    // -----------------------------------------------------------------
+    // MFA: the login method itself carried the second factor
+    // -----------------------------------------------------------------
+
+    /**
+     * A passkey is verified with `userVerification: 'required'`, so the
+     * ceremony already proves possession of the authenticator plus a local
+     * user check. Asking for a second factor on top of it is asking the same
+     * question twice.
+     */
+    public function test_passes_through_when_user_has_mfa_and_logged_in_with_a_passkey(): void
+    {
+        $user = User::factory()->create();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'preferred' => true,
+        ]);
+
+        $attempt = LoginAttemptFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => LoginAttempt::Passkey,
+            'multi_factor_method' => null,
+        ]);
+
+        $request = $this->buildRequest('/test', $user);
+        session(['attempt_id' => $attempt->id]);
+
+        $response = $this->middleware->handle($request, $this->passThrough());
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertEquals('OK', $response->getContent());
+    }
+
+    /**
+     * A federated login proves nothing about a second factor — whether the
+     * provider asked for one is invisible here — so it is challenged like any
+     * other single factor.
+     */
+    public function test_redirects_to_mfa_form_when_user_has_mfa_and_logged_in_with_oauth(): void
+    {
+        $user = User::factory()->create();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'preferred' => true,
+        ]);
+
+        $attempt = LoginAttemptFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'google',
             'multi_factor_method' => null,
         ]);
 

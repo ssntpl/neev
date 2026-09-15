@@ -127,10 +127,10 @@ class UserAuthApiController extends Controller
      * Park a login at the MFA step: record the attempt as pending, send the
      * emailed code if that is the method, and hand back the short-lived MFA
      * JWT that `POST {prefix}/mfa/otp/verify` accepts. Shared by every first
-     * factor — password and magic link alike — so none of them can skip the
-     * second.
+     * factor — password, magic link and OAuth alike — so none of them can skip
+     * the second.
      */
-    private function mfaChallenge(Request $request, GeoIP $geoIP, User $user, string $loginMethod, string $mfaMethod)
+    public function mfaChallenge(Request $request, GeoIP $geoIP, User $user, string $loginMethod, string $mfaMethod)
     {
         // The same refusal AuthService::createApiToken() gives a deactivated
         // account at the end of the flow, given here at the start — before an

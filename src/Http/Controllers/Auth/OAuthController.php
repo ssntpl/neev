@@ -70,6 +70,19 @@ class OAuthController extends Controller
 
         $this->auth->login($request, $geoIP, $user, $service);
 
+        // The provider is a first factor, not a way around the second. Whether
+        // it asked for MFA of its own is the provider's business and invisible
+        // here, so an enrolled account answers the same challenge it would
+        // after a password: the attempt was recorded without a
+        // multi_factor_method, and the challenge page needs the account in the
+        // session. No login token cookie is issued until that is answered.
+        if (count($user->activeMultiFactorAuths) > 0) {
+            session(['email' => $user->email]);
+            session()->forget('mfa_redirect');
+
+            return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method));
+        }
+
         $response = redirect($this->auth->intendedUrl());
 
         // Same-origin SPA monolith: also issue a login token in the

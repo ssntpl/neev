@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\ContextManager;
 use Ssntpl\Neev\Services\EmailLinks;
@@ -48,7 +49,11 @@ class NeevMiddleware
         $attemptID = session('attempt_id');
         $attempt = $user->loginAttempts()->where('id', $attemptID)->first();
         if ($attempt && count($user->activeMultiFactorAuths ?? []) > 0) {
-            if (!$attempt->multi_factor_method) {
+            // A passkey is already multi-factor on its own: the ceremony runs
+            // with `userVerification: 'required'`, so it proves possession of
+            // the authenticator and a local user check (biometric or device
+            // PIN) in one step. Every other first factor still owes a second.
+            if (!$attempt->multi_factor_method && $attempt->method !== LoginAttempt::Passkey) {
                 if ($request->expectsJson()) {
                     return response()->json([
                         'message' => 'MFA verification required.',

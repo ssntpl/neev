@@ -13,6 +13,34 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.0 → unreleased
 
+**OAuth logins are now challenged for MFA (action required if you enable OAuth
+providers).**
+The OAuth callback used to sign an MFA-enrolled account straight in. It now
+stops at the same challenge a password login does, so:
+
+- **API clients** must handle `auth_state: mfa_required` from
+  `POST {prefix}/oauth/{service}/callback`. The response carries the
+  short-lived MFA JWT in `token` and the enrolled factors in `mfa_options`,
+  exactly as the password login does; complete it with
+  `POST {prefix}/mfa/otp/verify` to get the real login token. A client that
+  assumes `token` is always a login token will send an unusable credential.
+- **Web flows** are redirected to `otp.mfa.create` instead of to the intended
+  URL (`config('neev.home')` when nothing was stashed); the intended URL is
+  picked up once the challenge passes. On a same-origin SPA monolith the
+  `neev_session` login-token cookie is no longer attached by the callback — it
+  is attached by `POST {prefix}/otp/mfa` once the challenge passes.
+
+Accounts with no active MFA method are unaffected, and tenant/team SSO is
+deliberately unchanged.
+
+**A passkey login now satisfies the MFA gate.**
+The passkey ceremony runs with `userVerification: 'required'`, so it already
+proves possession plus a local user check. A web passkey login by an
+MFA-enrolled account used to be parked at the challenge page; it now reaches
+protected routes directly, which is what the API already did. Nothing to do on
+upgrade — if your application requires a second factor on top of a passkey,
+gate it in your own middleware.
+
 **`type` on `POST {prefix}/tenant-domains` is ignored (action required if you
 hand out subdomains).**
 Whether a claimed domain is verified immediately or has to publish a DNS TXT

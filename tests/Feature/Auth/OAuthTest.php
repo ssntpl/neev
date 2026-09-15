@@ -3,11 +3,14 @@
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\SocialiteServiceProvider;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Mockery;
+use OTPHP\TOTP;
+use ParagonIE\ConstantTime\Base32;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
@@ -425,6 +428,127 @@ class OAuthTest extends TestCase
         $this->get('/neev/oauth/google/callback?code=test-auth-code');
 
         $this->assertSame('Grace Hopper', User::where('email', 'named@example.com')->first()->name);
+    }
+
+    // -----------------------------------------------------------------
+    // MFA: a provider login is a first factor, not a way around the second
+    // -----------------------------------------------------------------
+
+    /** Enrol a TOTP factor and return the secret alongside the user. */
+    private function userWithTotp(): array
+    {
+        $this->enableMFA();
+
+        $user = User::factory()->create();
+        $secret = Base32::encodeUpper(random_bytes(32));
+
+        $user->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'preferred' => true,
+            'secret' => $secret,
+            'verified_at' => now(),
+        ]);
+
+        return [$user, $secret];
+    }
+
+    public function test_callback_stops_at_the_mfa_challenge_for_an_enrolled_account(): void
+    {
+        [$user] = $this->userWithTotp();
+
+        $this->mockSocialiteUser($user->email);
+
+        $this->get('/neev/oauth/google/callback?code=test-auth-code')
+            ->assertRedirect(route('otp.mfa.create', 'authenticator'));
+
+        // The attempt is on record but unanswered, so protected routes stay shut.
+        $this->assertNull($user->loginAttempts()->latest('id')->first()->multi_factor_method);
+
+        Route::middleware(['web', 'neev:web'])->get('/mfa-protected', fn () => response('PROTECTED'));
+
+        $this->get('/mfa-protected')->assertRedirect(route('otp.mfa.create', 'authenticator'));
+    }
+
+    /**
+     * The SPA monolith cookie is a full login token, so it must not be handed
+     * out before the second factor is answered — only after.
+     */
+    public function test_callback_on_stateful_host_defers_the_spa_cookie_until_mfa_passes(): void
+    {
+        config(['neev.spa.stateful' => ['localhost']]);
+
+        [$user, $secret] = $this->userWithTotp();
+
+        $this->mockSocialiteUser($user->email);
+
+        $response = $this->get('/neev/oauth/google/callback?code=test-auth-code');
+
+        $this->assertNull(
+            collect($response->headers->getCookies())->firstWhere(fn ($c) => $c->getName() === 'neev_session')
+        );
+
+        $verified = $this->post('/otp/mfa', [
+            'email' => $user->email,
+            'auth_method' => 'authenticator',
+            'otp' => TOTP::create(secret: $secret)->now(),
+            'attempt_id' => session('attempt_id'),
+        ]);
+
+        $verified->assertSessionHasNoErrors();
+
+        $cookie = collect($verified->headers->getCookies())
+            ->firstWhere(fn ($c) => $c->getName() === 'neev_session');
+        $this->assertNotNull($cookie);
+
+        $this->withCredentials()
+            ->withHeader('Origin', 'http://localhost')
+            ->withUnencryptedCookie('neev_session', $cookie->getValue())
+            ->getJson('/neev/users')
+            ->assertOk();
+    }
+
+    public function test_api_callback_returns_an_mfa_challenge_instead_of_a_login_token(): void
+    {
+        [$user] = $this->userWithTotp();
+
+        $this->mockStatelessSocialiteUser($user->email);
+
+        $response = $this->postJson('/neev/oauth/google/callback', ['code' => 'test-auth-code']);
+
+        $response->assertOk();
+        $response->assertJson([
+            'auth_state' => 'mfa_required',
+            'mfa_options' => ['authenticator'],
+        ]);
+
+        // The JWT it hands back is only good for the OTP step, not for the API.
+        $this->withHeader('Authorization', 'Bearer ' . $response->json('token'))
+            ->getJson('/neev/users')
+            ->assertUnauthorized();
+    }
+
+    public function test_api_callback_mfa_token_completes_the_login_after_the_otp(): void
+    {
+        [$user, $secret] = $this->userWithTotp();
+
+        $this->mockStatelessSocialiteUser($user->email);
+
+        $tempToken = $this->postJson('/neev/oauth/google/callback', ['code' => 'test-auth-code'])
+            ->assertOk()
+            ->json('token');
+
+        $token = $this->withHeader('Authorization', 'Bearer ' . $tempToken)
+            ->postJson('/neev/mfa/otp/verify', [
+                'auth_method' => 'authenticator',
+                'otp' => TOTP::create(secret: $secret)->now(),
+            ])
+            ->assertOk()
+            ->assertJson(['auth_state' => 'authenticated'])
+            ->json('token');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/users')
+            ->assertOk();
     }
 
 }

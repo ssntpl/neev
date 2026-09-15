@@ -506,15 +506,25 @@ The top-level block is optional: an installation that configures only platform c
 (a mobile-only app) resolves too. The browser flow (`GET {prefix}/oauth/{service}`) always
 uses the default client.
 
-### Security Warning: OAuth Bypasses MFA and Password Policies
+### OAuth and the MFA Gate
 
-> **Warning — OAuth is a complete authentication path that skips the MFA gate.**
->
-> Password login checks the user's enrolled MFA methods and, when any are active, withholds the session/token until a second factor is verified (`mfa_required` state with a temporary JWT on the API; redirect to the OTP page on the web). The OAuth callback does **not** perform this check: once the provider returns a verified email that matches an account, the user is logged in (web) or issued a full access token (API) immediately — even if that user has TOTP or email MFA enabled. A compromised Google/GitHub/Microsoft/Apple account therefore grants access without the second factor.
->
-> Password policies are also inapplicable to OAuth-created accounts: they are created **without a password**, so complexity rules, password history, and password expiry never apply to them, and their email is marked verified automatically (it was verified by the provider).
+OAuth is a first factor, not a way around the second. When the provider returns
+a verified email that matches an account with active MFA, the callback withholds
+the session/token exactly as password login does — the API returns the
+`mfa_required` state with a temporary JWT, and the web callback redirects to the
+OTP challenge page. Whether the provider asked for MFA of its own is the
+provider's business and invisible here, so it earns no credit.
 
-**What this means for enterprise policy:** if your compliance posture requires MFA for all users (or organization-controlled credentials), enabling app-wide OAuth providers undermines that guarantee — every enabled provider is an alternate front door that skips your MFA and password controls.
+A **passkey** is the one login method that does satisfy the gate on its own: its
+ceremony runs with `userVerification: 'required'`, which proves possession of the
+authenticator plus a local user check in a single step. See
+[Security → MFA and the Login Method](./security.md#mfa-and-the-login-method).
+
+> **Warning — OAuth still skips the password policies.**
+>
+> OAuth-created accounts are created **without a password**, so complexity rules,
+> password history, and password expiry never apply to them, and their email is
+> marked verified automatically (it was verified by the provider).
 
 > **A previously unverified address is adopted, not refused.** When the
 > provider returns an address that matches an existing account whose email was
@@ -529,7 +539,7 @@ uses the default client.
 
 - **Limit or empty the `oauth` providers list** in `config/neev.php`. Providers not in the list 404 on both redirect and callback, so this fully disables the path.
 - **Use tenant SSO instead for organizations that need enforced IdP login.** Tenant/team SSO is database-configured per organization, and the `neev-ensure-sso` middleware rejects (API) or redirects (web) any authenticated session that was not established via SSO — including sessions created through app-wide OAuth. See [Multi-Tenancy → Enterprise SSO](./multi-tenancy.md#enterprise-sso).
-- **Add an application-level step-up check** after login if MFA must be universal regardless of login method (Neev does not provide this out of the box).
+- **Note that tenant/team SSO is itself outside the MFA gate** on the API side — it issues a full token directly, on the assumption that the IdP owns the authentication policy for that organization.
 
 ### Flow
 
@@ -540,7 +550,8 @@ uses the default client.
 5. System exchanges code for user info
 6. User is created or matched
 7. If the matched account's address was not yet verified, it is marked verified — the provider authenticated it
-8. Logged in and redirected (MFA is skipped)
+8. If the account has an active MFA method, the login stops at the challenge — the web callback redirects to the OTP page, the API returns `auth_state: mfa_required` with the step-up JWT
+9. Otherwise, logged in and redirected
 
 The provider buttons are offered to unverified accounts too, on the Blade
 password page and through `GET {prefix}/oauth/{service}/redirect` for headless
@@ -692,9 +703,10 @@ as to accepting it:
   `email_verified_at`. The callback and the magic-link exchange return
   `"email_verified": true` because completing them verified the address, and
   the token they issue is a full login token, not a restricted one — except
-  that a magic link for an MFA-enrolled account issues the MFA step-up JWT
-  instead, exactly as a password login would (see
-  [Magic Link Authentication](#magic-link-authentication)).
+  that a magic link or OAuth callback for an MFA-enrolled account issues the
+  MFA step-up JWT instead, exactly as a password login would (see
+  [Magic Link Authentication](#magic-link-authentication) and
+  [OAuth and the MFA Gate](#oauth-and-the-mfa-gate)).
 - **Web** — the Blade kit's password page (`auth/login-password.blade.php`)
   shows the OAuth buttons, "Login Via Link" and the passkey button whatever
   the account's verification state, so an unverified user is not left with
@@ -919,7 +931,7 @@ class LogSuccessfulLogout
 5. **Monitor login attempts** for suspicious activity
 6. **Use session database** driver for logout-all-devices functionality
 7. **Keep GeoIP database** updated for accurate location tracking
-8. **Be aware that OAuth bypasses MFA and password policies** — see [the OAuth security warning](#security-warning-oauth-bypasses-mfa-and-password-policies) for mitigations
+8. **Be aware that OAuth bypasses the password policies** (MFA still applies) — see [OAuth and the MFA Gate](#oauth-and-the-mfa-gate) for mitigations
 
 ---
 
