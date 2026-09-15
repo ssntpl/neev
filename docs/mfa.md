@@ -351,7 +351,7 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 
 Only **active** methods trigger the MFA challenge — pending setups never gate login, and the verify endpoint rejects codes for pending methods.
 
-A magic link enters the same flow at step 3: `GET {prefix}/loginUsingLink` returns `mfa_required` with the JWT for an enrolled account, and the Blade `login.link` route redirects to the challenge page. Passkey and OAuth logins do not — see [OAuth / Social Login Bypass](./security.md#oauth--social-login-bypass).
+A magic link enters the same flow at step 3: `POST {prefix}/loginUsingLink` returns `mfa_required` with the JWT for an enrolled account, and the Blade `login.link.verify` route redirects to the challenge page. Passkey and OAuth logins do not — see [OAuth / Social Login Bypass](./security.md#oauth--social-login-bypass).
 
 ### Web Flow
 

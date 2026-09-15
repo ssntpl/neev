@@ -31,9 +31,10 @@ use Ssntpl\Neev\Traits\NeevAuthenticatable;
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read MultiFactorAuth|null $preferredMultiFactorAuth
- * @property-read Collection<int, Passkey> $passkeys
- * @property-read Collection<int, MultiFactorAuth> $multiFactorAuths
- * @property-read Collection<int, MultiFactorAuth> $activeMultiFactorAuths
+* @property-read Collection<int, Passkey> $passkeys
+* @property-read Collection<int, MultiFactorAuth> $multiFactorAuths
+* @property-read Collection<int, MultiFactorAuth> $activeMultiFactorAuths
+* @property-read Collection<int, MagicLinkToken> $magicLinkTokens
  * @property-read Collection<int, RecoveryCode> $recoveryCodes
  * @property-read Collection<int, LoginAttempt> $loginAttempts
  * @property-read Collection<int, AccessToken> $accessTokens
@@ -170,5 +171,10 @@ class User extends Authenticatable
     {
         $this->active = false;
         return $this->save();
+    }
+
+    public function magicLinkTokens()
+    {
+        return $this->hasMany(MagicLinkToken::class, 'user_id');
     }
 }

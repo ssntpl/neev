@@ -42,7 +42,7 @@ ships the pages that a headless install has to provide itself.
 | Email verification | `verification.verify` (signed) | `mail.verify` (signed) |
 | Email change | `email.change.verify` (signed) | `neev.email.change.verify` (signed) |
 | Password reset | `reset.request` (signed) | `{base}/reset-password?{signed query}` |
-| Magic link | `login.link` (signed) | `{base}/login-link?{signed query}` |
+| Magic link | `login.link.verify` (token query param) | `{base}/login-link?{token query}` |
 | Team invitation | `register` (signed) | `{base}/register?invitation_id=…&hash=…` |
 | OAuth callback | `{base}/{route_prefix}/oauth/{service}/callback` | same |
 | Sign-in page | `login` | `{base}/login` |
@@ -146,7 +146,6 @@ class AppEmailLinks extends EmailLinks
 | `verificationUrl()` | `(User $user, DateTimeInterface $expiresAt): string` |
 | `emailChangeUrl()` | `(User $user, string $newEmail, DateTimeInterface $expiresAt): string` |
 | `passwordResetUrl()` | `(User $user, DateTimeInterface $expiresAt): string` |
-| `magicLinkUrl()` | `(User $user, DateTimeInterface $expiresAt): string` |
 | `invitationUrl()` | `(int\|string $invitationId, string $email, DateTimeInterface $expiresAt): string` |
 | `oauthCallbackUrl()` | `(string $service): string` |
 | `loginUrl()` | `(): string` |

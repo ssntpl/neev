@@ -81,22 +81,6 @@ class EmailLinks
     }
 
     /**
-     * Following this logs the person in. The Blade kit starts a session; other
-     * apps get a token, which must not travel in a URL — so the link lands on
-     * your page, which exchanges the query for it.
-     */
-    public function magicLinkUrl(User $user, DateTimeInterface $expiresAt): string
-    {
-        $signed = $this->signed(
-            $this->blade() ? 'login.link' : 'loginUsingLink',
-            ['id' => $user->id],
-            $expiresAt,
-        );
-
-        return $this->blade() ? $signed : $this->page('/login-link', $signed);
-    }
-
-    /**
      * Accepting an invitation needs a registration form, so this lands on a
      * page too.
      *
