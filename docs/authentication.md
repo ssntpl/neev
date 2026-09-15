@@ -553,6 +553,15 @@ authenticator plus a local user check in a single step. See
 8. If the account has an active MFA method, the login stops at the challenge — the web callback redirects to the OTP page, the API returns `auth_state: mfa_required` with the step-up JWT
 9. Otherwise, logged in and redirected
 
+Step 8's redirect target is `EmailLinks::mfaChallengeUrl()` — the Blade kit's
+`otp.mfa.create` page when the kit is installed, otherwise
+`{base}/mfa-challenge/{method}` on your own frontend. These OAuth routes are
+registered whether or not the kit is, so a headless install reaches this hand-off
+too; override the method alongside `loginUrl()` if your page lives elsewhere. A
+headless frontend that wants to complete the challenge itself should drive the API
+callback, which returns the step-up JWT instead of redirecting. See
+[Email Links](./email-links.md).
+
 The provider buttons are offered to unverified accounts too, on the Blade
 password page and through `GET {prefix}/oauth/{service}/redirect` for headless
 frontends. Step 7 is why: an unverified address is adopted, not refused.

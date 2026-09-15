@@ -80,7 +80,12 @@ class OAuthController extends Controller
             session(['email' => $user->email]);
             session()->forget('mfa_redirect');
 
-            return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method));
+            // These routes are registered kit or not, so the challenge page
+            // cannot be assumed to exist: EmailLinks points a headless install
+            // at its own page instead of throwing on a missing route.
+            return redirect(app(EmailLinks::class)->mfaChallengeUrl(
+                $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method
+            ));
         }
 
         $response = redirect($this->auth->intendedUrl());

@@ -263,7 +263,9 @@ class UserAuthController extends Controller
             session()->forget('mfa_redirect');
         }
 
-        return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method));
+        return redirect(app(EmailLinks::class)->mfaChallengeUrl(
+            $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method
+        ));
     }
 
     /**
