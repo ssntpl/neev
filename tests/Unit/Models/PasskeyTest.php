@@ -41,6 +41,28 @@ class PasskeyTest extends TestCase
         $this->assertSame('platform.com', $passkey->effectiveRpId());
     }
 
+    /**
+     * The resolver canonicalises the configured value (lowercase, no
+     * trailing dot) before it becomes a ceremony's relying party; a legacy
+     * row must be read in the same spelling or it never matches again.
+     */
+    public function test_effective_rp_id_canonicalises_the_configured_value(): void
+    {
+        config(['neev.relying_party_id' => 'Platform.COM.']);
+        $passkey = $this->makePasskey(['rp_id' => null]);
+
+        $this->assertSame('platform.com', $passkey->effectiveRpId());
+        $this->assertTrue($passkey->matchesRelyingParty('platform.com'));
+    }
+
+    public function test_scope_includes_legacy_rows_when_configured_value_is_not_canonical(): void
+    {
+        config(['neev.relying_party_id' => 'Platform.COM.']);
+        $passkey = $this->makePasskey(['rp_id' => null]);
+
+        $this->assertTrue(Passkey::forRelyingParty('platform.com')->whereKey($passkey->id)->exists());
+    }
+
     // -----------------------------------------------------------------
     // matchesRelyingParty()
     // -----------------------------------------------------------------

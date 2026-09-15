@@ -299,6 +299,59 @@ class RelyingPartyResolverTest extends TestCase
     }
 
     /**
+     * Native apps complete a ceremony with a non-URL facet as their origin —
+     * Android sends `android:apk-key-hash:…` — and the platform's app serves
+     * every tenant. Keeping the configured list whole is what lets that one
+     * entry hold on a tenant's own relying party.
+     */
+    public function test_a_claimed_domain_keeps_configured_native_app_facets(): void
+    {
+        $this->enableTeams();
+        config(['neev.allowed_origins' => ['https://example.com', 'android:apk-key-hash:abc123']]);
+        $this->teamOwning('acme.com');
+        $this->resolveOn('acme.com');
+
+        $this->assertSame(
+            ['https://example.com', 'android:apk-key-hash:abc123', 'https://acme.com'],
+            $this->resolver->allowedOrigins()
+        );
+    }
+
+    /**
+     * Pins the documented rule: a credential on `acme.com` is offered to a
+     * browser on `app.acme.com` by WebAuthn, but the server refuses the
+     * origin. Verify the host users sign in on and make it primary.
+     */
+    public function test_a_subdomain_of_a_claimed_domain_is_not_an_allowed_origin(): void
+    {
+        $this->enableTeams();
+        $this->teamOwning('acme.com');
+        $this->resolveOn('acme.com');
+
+        $this->assertNotContains('https://app.acme.com', $this->resolver->allowedOrigins());
+        $this->assertFalse($this->resolver->allowSubdomains());
+    }
+
+    public function test_rp_name_is_the_tenants_name_on_its_own_domain(): void
+    {
+        $this->enableTeams();
+        config(['app.name' => 'Platform']);
+        $team = $this->teamOwning('acme.com');
+        $team->forceFill(['name' => 'Acme Corp'])->save();
+        $this->resolveOn('acme.com');
+
+        $this->assertSame('Acme Corp', $this->resolver->rpName());
+    }
+
+    public function test_rp_name_is_the_app_name_on_the_platform(): void
+    {
+        config(['app.name' => 'Platform']);
+        $this->resolveOn('example.com');
+
+        $this->assertSame('Platform', $this->resolver->rpName());
+    }
+
+    /**
      * The origin is built from the domain record, not from the request — so a
      * request arriving over http, or on an odd port, cannot widen what the
      * ceremony will accept.
@@ -315,11 +368,107 @@ class RelyingPartyResolverTest extends TestCase
         $this->assertContains('https://acme.com', $this->resolver->allowedOrigins());
     }
 
-    public function test_subdomain_matching_is_on_when_no_custom_domain_is_resolved(): void
+    /**
+     * A security invariant, not a setting: every admitted origin is named,
+     * on every relying party.
+     */
+    public function test_subdomain_matching_is_off_on_the_configured_relying_party(): void
     {
         $this->resolveOn('example.com');
 
-        $this->assertTrue($this->resolver->allowSubdomains());
+        $this->assertFalse($this->resolver->allowSubdomains());
+    }
+
+    /**
+     * What replaces subdomain matching: a tenant on a platform subdomain
+     * runs under the platform relying party, and its origin is admitted
+     * because its own verified row says so.
+     */
+    public function test_a_verified_platform_subdomain_is_an_explicit_origin(): void
+    {
+        $this->enableTeams();
+        config(['neev.allowed_origins' => ['https://example.com']]);
+        $this->teamOwning('acme.example.com');
+        $this->resolveOn('acme.example.com');
+
+        $this->assertSame('example.com', $this->resolver->rpId());
+        $this->assertSame(
+            ['https://example.com', 'https://acme.example.com'],
+            $this->resolver->allowedOrigins()
+        );
+    }
+
+    /** One tenant's verified subdomain does not admit a sibling. */
+    public function test_a_sibling_platform_subdomain_is_not_an_allowed_origin(): void
+    {
+        $this->enableTeams();
+        $this->teamOwning('acme.example.com');
+        $this->resolveOn('acme.example.com');
+
+        $this->assertNotContains('https://other.example.com', $this->resolver->allowedOrigins());
+    }
+
+    public function test_an_unverified_platform_subdomain_is_not_an_allowed_origin(): void
+    {
+        $this->enableTeams();
+        $team = $this->teamOwning('acme.example.com');
+        DomainFactory::new()->create([
+            'owner_type' => $team->getContextType(),
+            'owner_id' => $team->getKey(),
+            'domain' => 'pending.example.com',
+            'verified_at' => null,
+        ]);
+        $this->resolveOn('acme.example.com');
+
+        $this->assertNotContains('https://pending.example.com', $this->resolver->allowedOrigins());
+    }
+
+    public function test_every_verified_host_under_the_relying_party_is_admitted(): void
+    {
+        $this->enableTeams();
+        $team = $this->teamOwning('acme.example.com');
+        $this->domainFor($team, 'eu.acme.example.com');
+        $this->resolveOn('acme.example.com');
+
+        $origins = $this->resolver->allowedOrigins();
+        $this->assertContains('https://acme.example.com', $origins);
+        $this->assertContains('https://eu.acme.example.com', $origins);
+    }
+
+    /**
+     * Rows are read from the resolved context, not the request's host, so a
+     * client calling an API elsewhere with `X-Tenant` gets the same origins.
+     */
+    public function test_platform_origins_follow_the_context_not_the_host(): void
+    {
+        $this->enableTeams();
+        $team = $this->teamOwning('acme.example.com');
+
+        $this->resolveOn('api.example.com', $team);
+
+        $this->assertContains('https://acme.example.com', $this->resolver->allowedOrigins());
+    }
+
+    /**
+     * With a custom domain primary the ceremony runs under it, and the
+     * tenant's platform-zone host is inert — no browser there can run a
+     * ceremony for `acme.com`.
+     */
+    public function test_a_custom_domain_primary_does_not_carry_the_platform_host(): void
+    {
+        $this->enableTeams();
+        config(['neev.allowed_origins' => ['https://example.com']]);
+        $team = TeamFactory::new()->create();
+        $this->domainFor($team, 'acme.example.com');
+        $this->domainFor($team, 'acme.com', primary: true);
+
+        $this->resolveOn('acme.com');
+
+        $this->assertSame('acme.com', $this->resolver->rpId());
+        $this->assertSame(
+            ['https://example.com', 'https://acme.com'],
+            $this->resolver->allowedOrigins()
+        );
     }
 
     public function test_subdomain_matching_is_always_off_on_a_claimed_domain(): void

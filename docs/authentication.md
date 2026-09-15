@@ -317,15 +317,20 @@ A credential is cryptographically bound to exactly one relying party ID for its 
 a package limitation and no setting changes it:
 
 - a user's passkey on `example.com` will **never** authenticate them on `acme.com` — they enrol a
-  separate one per relying party, and the account page lists only that relying party's credentials
+  separate one per relying party
 - the relying party is recorded on each credential in `passkeys.rp_id`, and login offers and accepts
   only the credentials belonging to the current one
+- listing a user's passkeys (`GET /neev/passkeys`, the account page) is deliberately *not* scoped
+  that way: it returns every credential the user holds, whichever relying party issued it, so one
+  enrolled on a tenant's domain stays revocable from the platform. `rp_id` is on each row — label
+  them by it, and expect a credential the user cannot sign in with from the domain they are on
 - subdomains of the configured domain always run under the platform's relying party, verified or
   not, so a passkey enrolled on `acme.example.com` is the same credential as one enrolled on
   `example.com`
-- a tenant's relying party covers its own subdomains for the same reason: with the row on
-  `acme.com`, a credential enrolled there is valid on `app.acme.com` too. The server-side origin
-  check is stricter than that, though — see [Origins](#origins) below
+- every origin a ceremony admits is named — nothing is matched by suffix, on any relying party.
+  WebAuthn would let a browser on `app.acme.com` use a credential bound to `acme.com`, but the
+  server-side origin check refuses it unless that host is admitted explicitly — see
+  [Origins](#origins) below. Verify the host users sign in on and make that one primary
 
 Credentials created before this behaviour existed carry no relying party of their own and are read as
 belonging to the configured one — they keep working on the platform domain and are never offered on a
@@ -349,12 +354,16 @@ of its domains, the application decides how:
 - **redirect to the primary domain to sign in**, then return — one credential, works in every
   browser, and the model Auth0, Okta and WorkOS use
 - **serve `/.well-known/webauthn` on the primary** listing the other origins (WebAuthn L3 Related
-  Origin Requests), which lets a browser on `otper.com` run a ceremony for `ssntpl.in`. Chrome/Edge
-  128+ and Safari 18+ only, so it needs one of the other two as a fallback
+  Origin Requests), which lets a browser on `otper.com` run a ceremony for `ssntpl.in`. The server
+  checks the origin too, so list the related origins in `allowed_origins` as well — that list
+  applies on every relying party. Chrome/Edge 128+ and Safari 18+ only, so it needs one of the
+  other two as a fallback
 - **accept one passkey per domain**, by pointing each domain at its own context
 
-Subdomains are not affected: `acme.com` as the primary covers `app.acme.com` and every other host
-beneath it, so verify the apex and serve from wherever you like under it.
+Subdomains are a separate matter: WebAuthn lets a browser on `app.acme.com` run a ceremony for
+`acme.com`, but the server matches the primary's origin exactly — no subdomain matching on a
+tenant's domain — so verify the host users sign in on — `app.acme.com` if that is where the login
+page lives — and make it primary.
 
 #### Gating the UI
 
@@ -378,39 +387,77 @@ password with MFA.
 #### Origins
 
 `allowed_origins` does **not** need to list a verified tenant domain. A ceremony under a relying party
-taken from the `domains` table admits exactly one origin — `https://` plus the domain record's own
-value — and the configured list is merged in alongside it.
+taken from the `domains` table admits `https://` plus the domain record's own value, added to the
+configured list — which is kept whole on every relying party.
 
 That origin is built from the record, never from the request, so a call arriving over `http` or on a
 non-standard port cannot widen what the ceremony accepts. Serve verified tenant domains over HTTPS on
 the default port, which WebAuthn requires in any case.
 
-Because the check is exact for custom domains, **verify the host you actually serve passkeys from**.
+The configured list is kept whole because it is where **native-app origins** belong. An Android app
+completes a ceremony with `android:apk-key-hash:<base64url SHA-256 of the signing certificate>` as its
+origin, and the platform's app serves every tenant — so list it once in `allowed_origins` and it holds
+on a tenant's domain too. (iOS sends `https://<rpId>`, which the tenant's own origin already covers.)
+The web origins in that list are harmless on a tenant's relying party: a browser on a platform origin
+cannot run a ceremony for `acme.com` in the first place.
+
+The OS side has its own requirements, per relying party, that the package cannot supply:
+
+- **Android** — the tenant's domain must serve `https://acme.com/.well-known/assetlinks.json`
+  naming the app's package and signing-certificate fingerprint (Digital Asset Links) with
+  `delegate_permission/common.get_login_creds`
+- **iOS** — the app's Associated Domains entitlement must carry `webcredentials:acme.com`, and the
+  domain must serve `https://acme.com/.well-known/apple-app-site-association` with a
+  `webcredentials` block naming the app. The entitlement ships with the app, so a new custom domain
+  needs an app update before its users can use passkeys from the iOS app
+
+Because origins are matched exactly, **verify the host you actually serve passkeys from**.
 A row on `acme.com` lets a browser on `app.acme.com` start a ceremony — the relying party covers it
 — but the server then refuses the assertion, since `https://app.acme.com` is not `https://acme.com`.
 Verify `app.acme.com` and make it primary if that is where users sign in.
 
-The configured list governs every host running under the configured relying party. For tenants on
-platform subdomains, subdomain matching is on automatically — every host under your platform domain
-is yours. For the configured relying party, each origin that serves passkeys must appear verbatim:
+**Subdomain matching is off on every relying party**, and there is no config key to turn it on. A
+passkey is bound to the relying party rather than to an origin, so the origin list is the only thing
+standing between a compromised sibling host — a dangling CNAME, an XSS on a staging or marketing
+host, a tenant able to serve its own script from its subdomain — and an assertion accepted as the
+victim. On a multi-tenant installation a host under your platform domain is a *tenant's*, so "every
+host beneath it is mine" does not hold. That makes it a
+[security invariant](./design-principles.md): enforced, not offered.
 
-```php
-'allowed_origins' => [
-    'https://example.com',
-    'https://acme.example.com',
-    'https://globex.example.com',
-],
-```
+Every admitted origin is therefore named, and comes from one of two places:
 
-To disable subdomain matching on the platform path — for example, to lock ceremonies to the exact
-origins listed above — override `allowSubdomains()` in a subclass of `RelyingPartyResolver` and bind
-it in a service provider:
+1. **`allowed_origins`** — your own operational hosts. Each one that serves passkeys appears
+   verbatim:
+
+   ```php
+   'allowed_origins' => [
+       'https://example.com',
+       'https://app.example.com',
+       'https://login.example.com',
+   ],
+   ```
+
+2. **The context's own verified `domains` rows.** A tenant on `acme.example.com` is admitted because
+   its verified row says so — not because the host ends in your platform domain. Tenant subdomains
+   therefore need no entry in `allowed_origins`, and one tenant's subdomain never admits a sibling it
+   has no claim to. A tenant's verified **custom** domain (`acme.com`) works the same way, and
+   becomes the relying party as well.
+
+An installation where every host under the platform domain really is its own may widen the check by
+overriding `allowSubdomains()` in a subclass and binding it in a service provider — a deliberate code
+change, which is the right friction for loosening a boundary. Restrict the widening to **your**
+relying party; a tenant's `acme.com` is not yours, and admitting `app.acme.com` there would trust a
+host you do not control:
 
 ```php
 // app/Services/RelyingPartyResolver.php
 class RelyingPartyResolver extends \Ssntpl\Neev\Services\RelyingPartyResolver
 {
-    public function allowSubdomains(): bool { return false; }
+    public function allowSubdomains(): bool
+    {
+        // Only under the configured relying party — never a tenant's own domain.
+        return $this->rpId() === $this->configured();
+    }
 }
 
 // AppServiceProvider::register()

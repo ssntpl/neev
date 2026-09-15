@@ -2,33 +2,28 @@
 
 namespace Ssntpl\Neev\Services;
 
+use Illuminate\Database\Eloquent\Model;
 use Ssntpl\Neev\Models\Domain;
 
 /**
- * Decides which WebAuthn relying party ID a ceremony may use.
+ * Resolves the WebAuthn relying party for the current request's context.
  *
- * A passkey is bound to exactly one relying party ID for its lifetime, and the
- * browser only runs a ceremony when that ID is the origin's host or a
- * registrable suffix of it. A single app-wide value therefore locks passkeys
- * to the platform domain; reading it off the request's context is what lets a
- * tenant on its own verified domain use them.
- *
- * The rule is one line: the resolved context's primary domain, or its first
- * verified domain when none is primary. No context, no domain, or a domain
- * inside the platform's own zone, and the configured value stands.
+ * The context's primary verified domain, or its first verified one. With no
+ * context, no domain, or only domains inside the platform's own zone, the
+ * configured value stands.
  */
 class RelyingPartyResolver
 {
-    /**
-     * The settled domain, and whether it has been settled.
-     *
-     * A ceremony asks for the relying party, the allowed origin and the
-     * subdomain rule, which are three readings of one answer. The resolver is
-     * bound per request, so this holds the lookup to once per ceremony while
-     * still re-reading on the next request — which is what lets a domain that
-     * loses its verification stop answering immediately.
-     */
+    /** Resolved once per request (the resolver is request-scoped). */
     protected ?Domain $domain = null;
+
+    /**
+     * Verified hosts under the configured relying party (`acme.platform.com`),
+     * admitted as exact origins instead of by subdomain matching.
+     *
+     * @var array<int, string>
+     */
+    protected array $platformHosts = [];
 
     protected bool $settled = false;
 
@@ -51,94 +46,115 @@ class RelyingPartyResolver
     /**
      * Origins permitted to complete a ceremony for this relying party.
      *
-     * On the configured relying party this is the configured list, unchanged.
-     * A tenant's own domain is added to that list — built from the domain
-     * record rather than from the request, so a call arriving over http or on
-     * an odd port cannot widen what the ceremony accepts.
+     * Every origin is named exactly; nothing is matched by suffix. The
+     * configured list is kept on every path (it carries native-app facets,
+     * which apply to all tenants) plus either the tenant's own domain or its
+     * verified hosts under the platform domain. Built from the domain records,
+     * never from the request.
+     *
+     * @return array<int, string>
      */
     public function allowedOrigins(): array
     {
         $domain = $this->domain();
 
-        $configured = (array) config('neev.allowed_origins', []);
+        $own = $domain !== null
+            ? [Domain::canonicalHost($domain->domain)]
+            : $this->platformHosts;
 
-        return $domain !== null
-            ? array_unique(array_merge($configured, ['https://' . Domain::canonicalHost($domain->domain)]))
-            : $configured;
+        return array_values(array_unique(array_merge(
+            (array) config('neev.allowed_origins', []),
+            array_map(fn (string $host) => 'https://' . $host, $own)
+        )));
+    }
+
+    /**
+     * Name authenticators display: the tenant's on its own domain, otherwise
+     * the application's.
+     */
+    public function rpName(): string
+    {
+        $context = $this->domain() !== null ? $this->tenants->resolvedContext() : null;
+
+        // The context interfaces declare no name; Team and Tenant carry one as
+        // an Eloquent attribute, and a custom context may not.
+        $name = $context instanceof Model ? $context->getAttribute('name') : null;
+
+        return is_string($name) && $name !== ''
+            ? $name
+            : (string) (config('app.name') ?: $this->configured());
     }
 
     /**
      * Whether subdomains of an allowed origin may complete the ceremony.
      *
-     * When a tenant has a verified custom domain (acme.com) the RP is that
-     * domain and only that exact origin is accepted — sibling subdomains of a
-     * third-party domain are not under your control.
-     *
-     * When a tenant is on a platform subdomain (acme.platform.com) the RP is
-     * the configured platform domain and every host under it is yours, so
-     * subdomain matching is on.
-     *
-     * To disable subdomain matching on the platform path — for example, you
-     * want to lock ceremonies to the exact origins in allowed_origins even
-     * for platform subdomains — override this method in a subclass and bind
-     * it in a service provider. That requires a deliberate code change, which
-     * is the right friction for tightening a security boundary.
+     * Never: a compromised sibling host would otherwise assert as any user.
+     * Security invariant, so no config key — override this method and rebind
+     * the class to widen it.
      */
     public function allowSubdomains(): bool
     {
-        return $this->domain() === null;
+        return false;
     }
 
-    /**
-     * The application-wide relying party ID.
-     */
+    /** The application-wide relying party ID. */
     public function configured(): string
     {
         return Domain::canonicalHost((string) config('neev.relying_party_id'));
     }
 
     /**
-     * Whether a browser on this host can run a ceremony for this relying
-     * party — the WebAuthn rule, exposed so a UI can hide a control that
-     * would only fail.
+     * The WebAuthn host rule, exposed so a UI can hide a control that would
+     * only fail.
      */
     public function usableFrom(string $rpId, string $host): bool
     {
         return $rpId !== '' && ($host === $rpId || str_ends_with($host, '.' . $rpId));
     }
 
-    /**
-     * The domain this request's context offers, if any.
-     */
+    /** The domain this request's context offers, if any. */
     protected function domain(): ?Domain
     {
         if (! $this->settled) {
-            $this->domain = $this->settle();
+            $this->settle();
             $this->settled = true;
         }
 
         return $this->domain;
     }
 
-    protected function settle(): ?Domain
+    /**
+     * Sort the context's verified domains: hosts under the configured relying
+     * party become extra origins on it, the first host outside it becomes the
+     * tenant's own relying party. Keeping subdomain tenants on the platform
+     * relying party preserves passkeys already enrolled there.
+     */
+    protected function settle(): void
     {
+        $this->domain = null;
+        $this->platformHosts = [];
+
         $context = $this->tenants->resolvedContext();
 
         if ($context === null) {
-            return null;
+            return;
         }
 
-        $domain = Domain::where('owner_type', $context->getContextType())
+        $verified = Domain::where('owner_type', $context->getContextType())
             ->where('owner_id', $context->getContextId())
             ->whereNotNull('verified_at')
             ->orderByDesc('is_primary')
             ->orderBy('id')
-            ->first();
+            ->get();
 
-        if ($domain === null || $this->usableFrom($this->configured(), Domain::canonicalHost($domain->domain))) {
-            return null;
+        foreach ($verified as $row) {
+            $host = Domain::canonicalHost($row->domain);
+
+            if ($this->usableFrom($this->configured(), $host)) {
+                $this->platformHosts[] = $host;
+            } elseif ($this->domain === null) {
+                $this->domain = $row;
+            }
         }
-
-        return $domain;
     }
 }

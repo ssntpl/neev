@@ -64,7 +64,7 @@ class PasskeyController extends Controller
             ], 404);
         }
 
-        $passkeys = $user->passkeys()->forRelyingParty($this->relyingParty->rpId())->get();
+        $passkeys = $user->passkeys()->get();
 
         return response()->json([
             'data' => $passkeys
@@ -85,8 +85,9 @@ class PasskeyController extends Controller
         $challenge = random_bytes(32);
         $base64Challenge = Base64UrlSafe::encode($challenge);
 
-        // Store challenge server-side for verification
-        Cache::put("passkey_reg_challenge:{$user->id}", $base64Challenge, 300);
+        // Bound to the relying party so both halves of a ceremony run under
+        // the same context.
+        Cache::put("passkey_reg_challenge:{$user->id}", ['challenge' => $base64Challenge, 'rp_id' => $rpId], 300);
 
         $authenticatorSelection = new AuthenticatorSelectionCriteria(
             residentKey: 'required',
@@ -100,7 +101,7 @@ class PasskeyController extends Controller
 
         return response()->json([
             'rp' => [
-                'name' => $rpId,
+                'name' => $this->relyingParty->rpName(),
                 'id'   => $rpId,
             ],
             'user' => [
@@ -115,7 +116,10 @@ class PasskeyController extends Controller
                 'userVerification' => $authenticatorSelection->userVerification,
             ],
             'timeout' => 300000,
-            'excludeCredentials' => [],
+            'excludeCredentials' => array_map(
+                fn (PublicKeyCredentialDescriptor $descriptor) => ['type' => $descriptor->type, 'id' => $descriptor->id],
+                $this->enrolledCredentials($user, $rpId)
+            ),
             'attestation' => 'none',
             'extensions' => (object) [],
         ]);
@@ -134,11 +138,7 @@ class PasskeyController extends Controller
         $rpId = $this->relyingParty->rpId();
 
         // Retrieve challenge from server-side storage (not from client)
-        $storedChallenge = Cache::pull("passkey_reg_challenge:{$user->id}");
-        if (!$storedChallenge) {
-            throw new Exception('Challenge expired or not found. Please try again.');
-        }
-        $challenge = Base64UrlSafe::decode($storedChallenge);
+        $challenge = $this->pullChallenge("passkey_reg_challenge:{$user->id}", $rpId);
 
         $clientDataJson = $input['response']['clientDataJSON'];
         $attestationObjectRaw = $input['response']['attestationObject'];
@@ -166,7 +166,7 @@ class PasskeyController extends Controller
 
         // Rebuild PublicKeyCredentialCreationOptions
         $rp = new PublicKeyCredentialRpEntity(
-            name: $rpId,
+            name: $this->relyingParty->rpName(),
             id: $rpId
         );
 
@@ -185,7 +185,7 @@ class PasskeyController extends Controller
             rp: $rp,
             user: $userEntity,
             challenge: $challenge,
-            excludeCredentials: [],
+            excludeCredentials: $this->enrolledCredentials($user, $rpId),
             pubKeyCredParams: $pubKeyCredParams,
             timeout: 300000,
             authenticatorSelection: new AuthenticatorSelectionCriteria(
@@ -228,12 +228,8 @@ class PasskeyController extends Controller
 
         $credentialId = Base64UrlSafe::encode($credentialSource->publicKeyCredentialId);
 
-        // The credential ID is the unique identity of a credential for its
-        // lifetime — re-enrolling the same physical key on the same RP
-        // produces the same ID and should update the row rather than add a
-        // duplicate. AAGUID identifies a make/model, not a device: two keys
-        // of the same model share an AAGUID, so matching on it would let one
-        // overwrite the other.
+        // Match on credential ID, not AAGUID: an AAGUID identifies a
+        // make/model, so two keys of the same model would overwrite each other.
         $passkey = $user->passkeys()
             ->where('credential_id', $credentialId)
             ->forRelyingParty($rpId)
@@ -313,14 +309,7 @@ class PasskeyController extends Controller
                 throw new Exception('User not found.');
             }
             $rpId = $this->relyingParty->rpId();
-            $allowCredentials = [];
-
-            foreach ($user->passkeys()->forRelyingParty($rpId)->get() as $passkey) {
-                $allowCredentials[] = new PublicKeyCredentialDescriptor(
-                    type: 'public-key',
-                    id: $passkey->credential_id,
-                );
-            }
+            $allowCredentials = $this->enrolledCredentials($user, $rpId);
 
             if (empty($allowCredentials)) {
                 throw new Exception('User not found.');
@@ -329,9 +318,9 @@ class PasskeyController extends Controller
             $challenge = random_bytes(32);
             $base64Challenge = Base64UrlSafe::encode($challenge);
 
-            // Store challenge server-side for verification
+            // Bound to the relying party it was issued for.
             $cacheKey = 'passkey_login_challenge:' . hash('sha256', $request->email);
-            Cache::put($cacheKey, $base64Challenge, 300);
+            Cache::put($cacheKey, ['challenge' => $base64Challenge, 'rp_id' => $rpId], 300);
 
             $options = new PublicKeyCredentialRequestOptions(
                 challenge: $challenge,
@@ -385,12 +374,7 @@ class PasskeyController extends Controller
         $rpId = $this->relyingParty->rpId();
 
         // Retrieve challenge from server-side storage (not from client)
-        $cacheKey = 'passkey_login_challenge:' . hash('sha256', $request->email);
-        $storedChallenge = Cache::pull($cacheKey);
-        if (!$storedChallenge) {
-            throw new Exception('Challenge expired or not found. Please try again.');
-        }
-        $challenge = Base64UrlSafe::decode($storedChallenge);
+        $challenge = $this->pullChallenge('passkey_login_challenge:' . hash('sha256', $request->email), $rpId);
 
         $options = new PublicKeyCredentialRequestOptions(
             challenge: $challenge,
@@ -462,6 +446,46 @@ class PasskeyController extends Controller
         $passkey->save();
 
         return [$user, $attempt ?? null];
+    }
+
+    /**
+     * Take the stored challenge, refusing one issued for another relying
+     * party — options and completion are separate requests whose context can
+     * differ.
+     *
+     * @return string  The raw challenge bytes.
+     */
+    protected function pullChallenge(string $cacheKey, string $rpId): string
+    {
+        $stored = Cache::pull($cacheKey);
+
+        if (!is_array($stored) || empty($stored['challenge'])) {
+            throw new Exception('Challenge expired or not found. Please try again.');
+        }
+
+        if (($stored['rp_id'] ?? null) !== $rpId) {
+            throw new Exception('Challenge was issued for a different relying party.');
+        }
+
+        return Base64UrlSafe::decode($stored['challenge']);
+    }
+
+    /**
+     * The user's credentials on this relying party — `allowCredentials` on
+     * login, `excludeCredentials` on registration.
+     *
+     * @return array<int, PublicKeyCredentialDescriptor>
+     */
+    protected function enrolledCredentials(User $user, string $rpId): array
+    {
+        return $user->passkeys()
+            ->forRelyingParty($rpId)
+            ->get()
+            ->map(fn (Passkey $passkey) => new PublicKeyCredentialDescriptor(
+                type: 'public-key',
+                id: $passkey->credential_id,
+            ))
+            ->all();
     }
 
     public function registerViaWeb(Request $request, GeoIP $geoIP)

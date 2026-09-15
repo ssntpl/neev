@@ -51,21 +51,25 @@ class Passkey extends Model
     }
 
     /**
-     * The relying party this credential authenticates against.
-     *
-     * A null column means the row predates per-domain relying parties, and
-     * such a credential can only have been issued under the configured value.
+     * The relying party this credential authenticates against. A null column
+     * predates per-domain relying parties, so it was issued under the
+     * configured value.
      */
     public function effectiveRpId(): string
     {
-        return $this->rp_id ?? (string) config('neev.relying_party_id');
+        return $this->rp_id ?? static::configuredRpId();
     }
 
     /**
-     * Whether this credential belongs to the given relying party. A passkey
-     * is valid for exactly one, so a mismatch is not an authentication that
-     * merely fails later — it is the wrong credential entirely.
+     * The configured relying party, canonicalised the way the resolver spells
+     * it, so `App.Example.com.` still matches `app.example.com`.
      */
+    public static function configuredRpId(): string
+    {
+        return Domain::canonicalHost((string) config('neev.relying_party_id'));
+    }
+
+    /** Whether this credential belongs to the given relying party. */
     public function matchesRelyingParty(string $rpId): bool
     {
         return $this->effectiveRpId() === $rpId;
@@ -73,10 +77,7 @@ class Passkey extends Model
 
     /**
      * Restrict to the credentials a ceremony for this relying party may use.
-     *
-     * Legacy rows join the configured relying party, where they were issued.
-     * They are deliberately absent from every other one: a credential minted
-     * for the platform domain is not offered on a tenant's own domain.
+     * Legacy (null) rows join the configured relying party only.
      *
      * @param  \Illuminate\Database\Eloquent\Builder<Passkey>  $query
      * @return \Illuminate\Database\Eloquent\Builder<Passkey>
@@ -86,7 +87,7 @@ class Passkey extends Model
         return $query->where(function ($query) use ($rpId) {
             $query->where('rp_id', $rpId);
 
-            if ($rpId === (string) config('neev.relying_party_id')) {
+            if ($rpId === static::configuredRpId()) {
                 $query->orWhereNull('rp_id');
             }
         });

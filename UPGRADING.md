@@ -89,21 +89,27 @@ reach the other sessions; attach Laravel's `AuthenticateSession` middleware to
 your authenticated routes to get the same effect there. Sessions are read from
 `session.connection`, so a separate session database works unchanged. See
 [docs/security.md](./docs/security.md#what-a-password-change-revokes).
-**Passkey origins are matched exactly for custom domains; platform
-subdomains match automatically (no action required in most cases).**
-Origin matching is now decided by context:
+**A tenant's own hosts are now admitted as passkey origins (no action
+required).** Every admitted origin is still named exactly, as before —
+subdomain matching was already off, so a host under `relying_party_id`
+never completed a ceremony on its own. What is new is where the names
+come from:
 
-- A tenant on a **platform subdomain** (`acme.platform.com`) uses the
-  configured `relying_party_id` and subdomain matching is on — every
-  host under your platform domain is yours.
-- A tenant on a **verified custom domain** (`acme.com`) uses that
-  domain as the RP and only `https://acme.com` is accepted as the
-  origin — sibling subdomains of a third-party domain are not under
-  your control.
+- **A tenant's hosts** come from its verified `domains` rows, so a
+  tenant on `acme.example.com` or on its own `acme.com` needs no entry
+  in `allowed_origins`. One tenant's subdomain never admits a sibling.
+- **Your own hosts** still come from `allowed_origins`, unchanged. If
+  you serve passkeys from `app.example.com` or `login.example.com` as
+  well as the apex, each must be listed verbatim — as it had to be
+  before. Apps serving passkeys only from `app.url` need no change.
 
-If you serve passkeys from more than one explicit origin, list each one
-in `allowed_origins` verbatim — that is unchanged. Apps serving passkeys
-only from `app.url` need no change.
+`allowed_origins` applies on every relying party, which is where a
+native app's `android:apk-key-hash:…` facet goes. If every host under
+your platform domain really is your own, you may widen the check by
+overriding `allowSubdomains()` in a subclass of `RelyingPartyResolver`
+and binding it in a service provider. That loosens a security boundary
+beyond what any released version did — see
+[docs/authentication.md](./docs/authentication.md#origins).
 
 **Passkeys gain a per-credential relying party column (schema change).**
 The `passkeys` table gains an `rp_id` column so each credential records
