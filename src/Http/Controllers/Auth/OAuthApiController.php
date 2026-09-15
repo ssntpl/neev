@@ -108,6 +108,16 @@ class OAuthApiController extends Controller
                     ->registerViaOAuth($oauthUser->name ?: $oauthUser->getNickname(), $oauthUser->email);
             }
 
+            // The provider is a first factor, not a way around the second.
+            // Whether it asked for MFA of its own is the provider's business
+            // and invisible here, so an enrolled account answers the same
+            // challenge it would after a password, and gets the same
+            // short-lived JWT instead of a login token.
+            $mfaMethod = $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method;
+            if ($mfaMethod) {
+                return app(UserAuthApiController::class)->mfaChallenge($request, $geoIP, $user, $service, $mfaMethod);
+            }
+
             $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
             $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, $service, $expiryMinutes);
 

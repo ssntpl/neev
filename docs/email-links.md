@@ -47,17 +47,28 @@ ships the pages that a headless install has to provide itself.
 | OAuth callback | `{base}/{route_prefix}/oauth/{service}/callback` | same |
 | Sign-in page | `login` | `{base}/login` |
 | Verify-email page | `verification.notice` | `{base}/verify-email` |
+| MFA challenge page | `otp.mfa.create` | `{base}/mfa-challenge/{method}` |
 
 `{base}` is `EmailLinks::base()`, which defaults to `config('app.url')` with
 any trailing slash removed.
 
-The last two rows are not emailed — they are where the package sends a browser
-that cannot go on: an expired session, an unverified address, a failed SSO
-callback, a team the user may not reach, a spent magic link. Only the Blade kit
-registers `login` and `verification.notice`, so these live here alongside the
-emailed links: everything that has to name one of your pages asks `EmailLinks`,
-and a headless install overrides `base()` — or the two methods — instead of
-registering routes under names the package expects.
+The last three rows are not emailed — they are where the package sends a browser
+that cannot go on: an expired session, an unverified address, a second factor
+still owed, a failed SSO callback, a team the user may not reach, a spent magic
+link. Only the Blade kit registers `login`, `verification.notice` and
+`otp.mfa.create`, so these live here alongside the emailed links: everything that
+has to name one of your pages asks `EmailLinks`, and a headless install overrides
+`base()` — or the individual methods — instead of registering routes under names
+the package expects.
+
+The MFA challenge row is the one a headless install is most likely to reach
+without meaning to: the OAuth redirect and callback routes are registered whether
+or not the kit is, so an MFA-enrolled account signing in through the *web* OAuth
+flow lands on this page. The session-based verify endpoint behind the kit's page
+(`POST {prefix}/otp/mfa`) does not exist there, so on a stateful host the callback
+hands your page the step-up JWT in the auth cookie instead — complete the
+challenge with `POST {prefix}/mfa/otp/verify`, which swaps it for a real login
+token.
 
 > **Note on the invitation link.** The headless invitation URL carries no
 > signature — only `invitation_id` and `sha1(email)` — yet holding it is
@@ -151,6 +162,7 @@ class AppEmailLinks extends EmailLinks
 | `oauthCallbackUrl()` | `(string $service): string` |
 | `loginUrl()` | `(): string` |
 | `verifyEmailUrl()` | `(): string` |
+| `mfaChallengeUrl()` | `(?string $method): string` |
 
 Expiry is passed in, not decided here — callers derive it from
 `config('neev.url_expiry_time')` (60 minutes by default).

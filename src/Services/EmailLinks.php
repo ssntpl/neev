@@ -142,6 +142,22 @@ class EmailLinks
         return $this->blade() ? route('verification.notice') : $this->base() . '/verify-email';
     }
 
+    /**
+     * Where to send a browser that still owes a second factor — an OAuth or
+     * magic-link callback for an enrolled account, or a session NeevMiddleware
+     * turned back.
+     *
+     * The Blade kit registers the challenge page; the OAuth callback routes are
+     * registered either way, so a headless install reaches this too and lands on
+     * /mfa-challenge under your base URL. Override if yours lives elsewhere.
+     */
+    public function mfaChallengeUrl(?string $method): string
+    {
+        return $this->blade()
+            ? route('otp.mfa.create', $method)
+            : $this->base() . '/mfa-challenge/' . $method;
+    }
+
     public function verified(Request $request, User $user): Response
     {
         return $this->response($request, __('Email verification done.'));

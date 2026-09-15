@@ -26,6 +26,8 @@ use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\RegistrationService;
+use Ssntpl\Neev\Services\SpaCookieResponder;
+use Ssntpl\Neev\Services\StatefulOriginResolver;
 use Ssntpl\Neev\Services\TenantResolver;
 
 class UserAuthController extends Controller
@@ -261,7 +263,9 @@ class UserAuthController extends Controller
             session()->forget('mfa_redirect');
         }
 
-        return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method));
+        return redirect(app(EmailLinks::class)->mfaChallengeUrl(
+            $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method
+        ));
     }
 
     /**
@@ -655,9 +659,27 @@ class UserAuthController extends Controller
             $attempt->save();
         }
 
-        $this->auth->login($request, $geoIP, $user, LoginAttempt::Password, $method, $attempt);
+        $this->auth->login($request, $geoIP, $user, $attempt->method ?? LoginAttempt::Password, $method, $attempt);
 
-        return redirect($this->auth->intendedUrl(session()->pull('mfa_redirect')));
+        $response = redirect($this->auth->intendedUrl(session()->pull('mfa_redirect')));
+
+        // Same-origin SPA monolith: an OAuth callback defers its login token
+        // cookie until the second factor is answered, so it is issued here
+        // rather than in the callback. The attempt opened by the first factor
+        // is reused, so the token hangs off that row rather than a second one.
+        if ($attempt
+            && in_array($attempt->method, config('neev.oauth', []), true)
+            && app(StatefulOriginResolver::class)->isStatefulHost($request)) {
+            $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
+            $newToken = $user->createLoginToken($expiryMinutes);
+            $newToken->accessToken->forceFill(['attempt_id' => $attempt->id])->save();
+
+            $response->withCookie(
+                app(SpaCookieResponder::class)->authCookie($newToken->plainTextToken, $expiryMinutes)
+            );
+        }
+
+        return $response;
     }
 
 }
