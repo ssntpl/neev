@@ -64,10 +64,11 @@ the package expects.
 The MFA challenge row is the one a headless install is most likely to reach
 without meaning to: the OAuth redirect and callback routes are registered whether
 or not the kit is, so an MFA-enrolled account signing in through the *web* OAuth
-flow lands on this page. There is no session-based verify endpoint behind it on a
-headless install (`POST {prefix}/otp/mfa` ships with the kit), so a frontend that
-wants to complete the challenge itself should drive the API OAuth callback, which
-returns the step-up JWT for `POST {prefix}/mfa/otp/verify`.
+flow lands on this page. The session-based verify endpoint behind the kit's page
+(`POST {prefix}/otp/mfa`) does not exist there, so on a stateful host the callback
+hands your page the step-up JWT in the auth cookie instead — complete the
+challenge with `POST {prefix}/mfa/otp/verify`, which swaps it for a real login
+token.
 
 > **Note on the invitation link.** The headless invitation URL carries no
 > signature — only `invitation_id` and `sha1(email)` — yet holding it is

@@ -11,6 +11,7 @@ use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\MfaJwt;
 use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\SpaCookieResponder;
 use Ssntpl\Neev\Services\StatefulOriginResolver;
@@ -83,9 +84,28 @@ class OAuthController extends Controller
             // These routes are registered kit or not, so the challenge page
             // cannot be assumed to exist: EmailLinks points a headless install
             // at its own page instead of throwing on a missing route.
-            return redirect(app(EmailLinks::class)->mfaChallengeUrl(
+            $response = redirect(app(EmailLinks::class)->mfaChallengeUrl(
                 $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method
             ));
+
+            // Same-origin SPA monolith: the login token is withheld until the
+            // second factor, but the page that answers the challenge still
+            // needs something to answer it with. The cookie carries the
+            // step-up JWT in the meantime — the same credential the API
+            // callback hands back, good only for the OTP step — which
+            // `POST {prefix}/mfa/otp/verify` trades for the real login token.
+            // A headless install has no challenge page of ours, so this is the
+            // only way its frontend can finish what the callback started.
+            if (app(StatefulOriginResolver::class)->isStatefulHost($request)) {
+                $mfaJwt = app(MfaJwt::class);
+
+                $response->withCookie(app(SpaCookieResponder::class)->authCookie(
+                    $mfaJwt->issue($user, session('attempt_id')),
+                    $mfaJwt->expiryMinutes(),
+                ));
+            }
+
+            return $response;
         }
 
         $response = redirect($this->auth->intendedUrl());

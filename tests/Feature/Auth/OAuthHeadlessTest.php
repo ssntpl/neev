@@ -9,8 +9,10 @@ use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\SocialiteServiceProvider;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Mockery;
+use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\SpaCsrfToken;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
 
@@ -116,6 +118,62 @@ class OAuthHeadlessTest extends TestCase
 
         $this->get('/mfa-protected')
             ->assertRedirect('http://localhost/mfa-challenge/authenticator');
+    }
+
+    /**
+     * The whole point of the redirect: a headless frontend has no challenge
+     * page of ours and no session-based verify endpoint, so the cookie has to
+     * carry the step-up JWT for it to finish the login at all.
+     */
+    public function test_a_headless_spa_completes_the_challenge_with_the_cookie_it_was_given(): void
+    {
+        config(['neev.spa.stateful' => ['localhost']]);
+
+        $user = $this->userWithTotp();
+        $secret = $user->multiFactorAuths()->first()->secret;
+
+        $this->mockSocialiteUser($user->email);
+
+        $parked = collect($this->get('/neev/oauth/google/callback?code=test-auth-code')->headers->getCookies())
+            ->firstWhere(fn ($c) => $c->getName() === 'neev_session');
+
+        $this->assertNotNull($parked, 'the callback must hand the SPA something to answer with');
+
+        // It is a step-up JWT, not a login token: it opens nothing on its own.
+        $this->withCredentials()
+            ->withHeader('Origin', 'http://localhost')
+            ->withUnencryptedCookie('neev_session', $parked->getValue())
+            ->getJson('/neev/users')
+            ->assertUnauthorized();
+
+        $csrf = app(SpaCsrfToken::class)->issue();
+
+        $verified = $this->withCredentials()
+            ->withHeader('Origin', 'http://localhost')
+            ->withHeader('X-XSRF-TOKEN', $csrf)
+            ->withUnencryptedCookie('neev_session', $parked->getValue())
+            ->withUnencryptedCookie('XSRF-TOKEN', $csrf)
+            ->postJson('/neev/mfa/otp/verify', [
+                'auth_method' => 'authenticator',
+                'otp' => TOTP::create(secret: $secret)->now(),
+            ]);
+
+        $verified->assertOk()->assertJsonPath('auth_state', 'authenticated');
+
+        $login = collect($verified->headers->getCookies())
+            ->firstWhere(fn ($c) => $c->getName() === 'neev_session');
+        $this->assertNotNull($login);
+
+        $this->withCredentials()
+            ->withHeader('Origin', 'http://localhost')
+            ->withUnencryptedCookie('neev_session', $login->getValue())
+            ->getJson('/neev/users')
+            ->assertOk();
+
+        // The completed login is on record as OAuth, not as a password login.
+        $attempt = $user->loginAttempts()->latest('id')->first();
+        $this->assertSame('google', $attempt->method);
+        $this->assertSame('authenticator', $attempt->multi_factor_method);
     }
 
     /** An account with no second factor is unaffected by any of this. */

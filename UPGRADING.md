@@ -24,11 +24,19 @@ stops at the same challenge a password login does, so:
   exactly as the password login does; complete it with
   `POST {prefix}/mfa/otp/verify` to get the real login token. A client that
   assumes `token` is always a login token will send an unusable credential.
-- **Web flows** are redirected to `otp.mfa.create` instead of to the intended
-  URL (`config('neev.home')` when nothing was stashed); the intended URL is
-  picked up once the challenge passes. On a same-origin SPA monolith the
-  `neev_session` login-token cookie is no longer attached by the callback — it
-  is attached by `POST {prefix}/otp/mfa` once the challenge passes.
+- **Web flows** are redirected to `EmailLinks::mfaChallengeUrl()` instead of to
+  the intended URL (`config('neev.home')` when nothing was stashed); the
+  intended URL is picked up once the challenge passes. That is the Blade kit's
+  `otp.mfa.create` page when the kit is installed, and `{base}/mfa-challenge/{method}`
+  on your own frontend otherwise — the OAuth routes are registered either way,
+  so a headless install reaches this too. Override the method alongside
+  `loginUrl()` if your page lives elsewhere.
+- **On a same-origin SPA monolith** the `neev_session` cookie no longer carries
+  a login token out of the callback. It carries the short-lived MFA JWT, which
+  `POST {prefix}/mfa/otp/verify` swaps for the real login token; the Blade
+  challenge page's own `POST {prefix}/otp/mfa` does the same for a session
+  flow. A frontend that read that cookie expecting a login token will find a
+  credential that is only good for the OTP step until the challenge passes.
 
 Accounts with no active MFA method are unaffected, and tenant/team SSO is
 deliberately unchanged.

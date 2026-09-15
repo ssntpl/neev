@@ -3,13 +3,11 @@
 namespace Ssntpl\Neev\Http\Controllers\Auth;
 
 use Exception;
-use Firebase\JWT\JWT;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
@@ -23,7 +21,7 @@ use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
-use Ssntpl\Neev\Services\JwtSecret;
+use Ssntpl\Neev\Services\MfaJwt;
 use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\SpaCookieResponder;
 
@@ -157,10 +155,9 @@ class UserAuthApiController extends Controller
             $this->sendMfaEmailOTP($user);
         }
 
-        $expiryMinutes = config('neev.mfa_jwt_expiry_minutes', 30);
-        $tempToken = $this->getJwtToken($user->id, "mfa", $expiryMinutes * 60, [
-            'attempt_id' => $attempt->id
-        ]);
+        $mfaJwt = app(MfaJwt::class);
+        $expiryMinutes = $mfaJwt->expiryMinutes();
+        $tempToken = $mfaJwt->issue($user, $attempt->id);
 
         // SPA callers get the short-lived MFA JWT in the cookie; it is
         // replaced by the real login token after OTP verification.
@@ -176,19 +173,6 @@ class UserAuthApiController extends Controller
     private function getMfaOptions(User $user): array
     {
         return $user->activeMultiFactorAuths()->pluck('method')->values()->all();
-    }
-
-    private function getJwtToken(int $userId, string $type, int $ttlSeconds, array $extraClaims = []): string
-    {
-        $now = time();
-        $payload = array_merge([
-            'jti' => Str::uuid()->toString(),
-            'user_id' => $userId,
-            'type' => $type,
-            'iat' => $now,
-            'exp' => $now + $ttlSeconds,
-        ], $extraClaims);
-        return JWT::encode($payload, JwtSecret::get(), 'HS256');
     }
 
     private function sendMfaEmailOTP(User $user): void
@@ -557,7 +541,7 @@ class UserAuthApiController extends Controller
             $attempt->save();
         }
 
-        $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::Password, $expiryMinutes, $attempt);
+        $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, $attempt->method ?? LoginAttempt::Password, $expiryMinutes, $attempt);
 
         // Replaces the MFA JWT cookie with the real login token for SPAs.
         return app(SpaCookieResponder::class)->attach($request, response()->json([

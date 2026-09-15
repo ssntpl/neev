@@ -659,7 +659,7 @@ class UserAuthController extends Controller
             $attempt->save();
         }
 
-        $this->auth->login($request, $geoIP, $user, LoginAttempt::Password, $method, $attempt);
+        $this->auth->login($request, $geoIP, $user, $attempt->method ?? LoginAttempt::Password, $method, $attempt);
 
         $response = redirect($this->auth->intendedUrl(session()->pull('mfa_redirect')));
 

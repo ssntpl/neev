@@ -557,9 +557,10 @@ Step 8's redirect target is `EmailLinks::mfaChallengeUrl()` — the Blade kit's
 `otp.mfa.create` page when the kit is installed, otherwise
 `{base}/mfa-challenge/{method}` on your own frontend. These OAuth routes are
 registered whether or not the kit is, so a headless install reaches this hand-off
-too; override the method alongside `loginUrl()` if your page lives elsewhere. A
-headless frontend that wants to complete the challenge itself should drive the API
-callback, which returns the step-up JWT instead of redirecting. See
+too; override the method alongside `loginUrl()` if your page lives elsewhere. On a
+stateful host the callback also puts the step-up JWT in the auth cookie, so that
+page can complete the challenge against `POST {prefix}/mfa/otp/verify` — see
+[SPA Authentication](./spa-authentication.md#52-app-wide-oauth-social-login-on-a-stateful-host) and
 [Email Links](./email-links.md).
 
 The provider buttons are offered to unverified accounts too, on the Blade

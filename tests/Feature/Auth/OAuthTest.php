@@ -483,9 +483,17 @@ class OAuthTest extends TestCase
 
         $response = $this->get('/neev/oauth/google/callback?code=test-auth-code');
 
-        $this->assertNull(
-            collect($response->headers->getCookies())->firstWhere(fn ($c) => $c->getName() === 'neev_session')
-        );
+        // A cookie is set, but it is the step-up JWT, not a login token: it
+        // opens nothing on the API until the second factor is answered.
+        $parked = collect($response->headers->getCookies())
+            ->firstWhere(fn ($c) => $c->getName() === 'neev_session');
+        $this->assertNotNull($parked);
+
+        $this->withCredentials()
+            ->withHeader('Origin', 'http://localhost')
+            ->withUnencryptedCookie('neev_session', $parked->getValue())
+            ->getJson('/neev/users')
+            ->assertUnauthorized();
 
         $verified = $this->post('/otp/mfa', [
             'email' => $user->email,
