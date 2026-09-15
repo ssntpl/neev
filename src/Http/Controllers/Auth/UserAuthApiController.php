@@ -447,7 +447,7 @@ class UserAuthApiController extends Controller
      */
     public function loginUsingLink(Request $request, GeoIP $geoIP, MagicLinkManager $magicLink)
     {
-        if (config('neev.magic_link.require_confirmation', false) && ($request->isMethod('get') || $request->isMethod('head'))) {
+        if (config('neev.magic_link.require_confirmation', true) && ($request->isMethod('get') || $request->isMethod('head'))) {
             $result = $magicLink->validate($request);
         } else {
             $result = $magicLink->consume($request);

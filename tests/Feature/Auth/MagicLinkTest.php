@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\URL;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
 use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
 use Ssntpl\Neev\Tests\TestCase;
@@ -119,6 +120,43 @@ class MagicLinkTest extends TestCase
         $response->assertOk();
         $response->assertJson(['auth_state' => 'authenticated']);
         $this->assertDatabaseCount('magic_link_tokens', 0);
+    }
+
+    /**
+     * Runs on the shipped configuration, with no override — and again with the
+     * key removed, to exercise the code-level fallback an app upgrading from an
+     * older published config hits. Both must refuse to consume: links are
+     * single-use, so a scanning mail gateway's prefetch would otherwise burn
+     * the only usable link before the human ever clicked it.
+     */
+    public function test_get_never_consumes_on_the_shipped_default(): void
+    {
+        $this->assertTrue(
+            config('neev.magic_link.require_confirmation'),
+            'The shipped default must require confirmation.'
+        );
+
+        foreach ([null, 'absent'] as $case) {
+            if ($case === 'absent') {
+                // offsetUnset() would store null, which is a value, not absence.
+                $magicLink = config('neev.magic_link');
+                unset($magicLink['require_confirmation']);
+                config(['neev.magic_link' => $magicLink]);
+            }
+
+            $user = $this->createUser();
+            $link = $this->magicLinkToken($user);
+
+            $response = $this->getJson('/neev/loginUsingLink?token=' . $link['token']);
+
+            $response->assertOk();
+            $response->assertJson(['auth_state' => 'confirmation_required']);
+            $response->assertJsonMissingPath('token');
+            $this->assertNotNull(
+                MagicLinkToken::findByToken($link['token']),
+                "A GET consumed the link ({$case} config)."
+            );
+        }
     }
 
     // -----------------------------------------------------------------
@@ -570,15 +608,20 @@ class MagicLinkTest extends TestCase
      * two concurrent sends both delete before either inserts and the user ends
      * up with two live links for one channel.
      *
-     * The lock has to be taken on the token rows. Locking the user row looked
-     * equivalent but User carries TenantScope: generation with no resolved
-     * tenant (CLI, queued jobs) searched `tenant_id is null`, matched nothing
-     * for a tenant's user, and locked no row at all — silently, because the
-     * result was discarded.
+     * The lock is taken on the owner row, not on the token rows: on PostgreSQL
+     * a SELECT ... FOR UPDATE matching no row locks nothing, so the very first
+     * issuance — the case with no previous token to lock — was not serialized
+     * at all and two sends could each insert a live link.
+     *
+     * It is issued against the users table directly. Going through the User
+     * model would carry TenantScope, and generation with no resolved tenant
+     * (CLI, queued jobs) would search `tenant_id is null`, match nothing for a
+     * tenant's user, and silently lock no row.
      */
-    public function test_replacement_locks_the_token_rows_it_is_about_to_delete(): void
+    public function test_first_issuance_locks_the_owner_row_before_replacing(): void
     {
         $user = User::factory()->create();
+        $this->assertDatabaseCount('magic_link_tokens', 0);
 
         $queries = [];
         DB::listen(function ($event) use (&$queries) {
@@ -592,29 +635,23 @@ class MagicLinkTest extends TestCase
         foreach ($queries as $position => $sql) {
             if ($lock === null
                 && str_starts_with($sql, 'select')
-                && str_contains($sql, 'magic_link_tokens')
-                && str_contains($sql, 'user_id')
-                && str_contains($sql, 'channel')) {
+                && str_contains($sql, '"users"')
+                && str_contains($sql, '"id"')) {
                 $lock = $position;
+                $this->assertStringNotContainsString(
+                    'tenant_id',
+                    $sql,
+                    'The owner lock must not be tenant-scoped, or it locks nothing off-tenant.'
+                );
             }
             if ($delete === null && str_starts_with($sql, 'delete')) {
                 $delete = $position;
             }
         }
 
-        $this->assertNotNull($lock, 'Replacement must take a lock on the token rows.');
-        $this->assertNotNull($delete, 'Replacement must delete the previous link.');
+        $this->assertNotNull($lock, 'Replacement must lock the owner row.');
+        $this->assertNotNull($delete, 'Replacement must delete any previous link.');
         $this->assertLessThan($delete, $lock, 'The lock must precede the delete.');
-
-        // A select against users here would be the tenant-scoped lock that
-        // silently matched nothing.
-        foreach ($queries as $sql) {
-            $this->assertStringNotContainsString(
-                'from "users"',
-                $sql,
-                'The lock must not be taken on the tenant-scoped users table.'
-            );
-        }
     }
 
     public function test_generating_twice_leaves_exactly_one_live_link(): void
@@ -693,7 +730,10 @@ class MagicLinkTest extends TestCase
         config(['neev.ui' => 'blade']);
         $link = $this->magicLinkToken($user);
 
-        $this->get($link['url'])->assertRedirect(route('otp.mfa.create', 'email'));
+        // Confirmation is on by default, so the GET only offers the page.
+        $this->get($link['url'])->assertOk();
+        $this->post($link['url'], ['token' => $link['token']])
+            ->assertRedirect(route('otp.mfa.create', 'email'));
         $this->assertSame($user->email, session('email'));
 
         $this->get('/mfa-protected')->assertRedirect(route('otp.mfa.create', 'email'));
@@ -733,6 +773,76 @@ class MagicLinkTest extends TestCase
             ->assertStatus(403);
 
         $this->assertDatabaseHas('magic_link_tokens', ['id' => $token->id]);
+    }
+
+    /**
+     * A scanner that probes with HEAD is the same threat as one that probes
+     * with GET, and `Request::isMethod('get')` is false for a HEAD request —
+     * so a HEAD-only check of the GET branch would consume the link.
+     */
+    public function test_head_never_consumes_the_token(): void
+    {
+        $user = $this->createUser();
+        $link = $this->magicLinkToken($user);
+
+        $this->call('HEAD', '/neev/loginUsingLink?token=' . $link['token'])->assertOk();
+
+        $this->assertNotNull(
+            MagicLinkToken::findByToken($link['token']),
+            'A HEAD prefetch consumed the link.'
+        );
+
+        // Still redeemable by the human who follows it.
+        $this->postJson('/neev/loginUsingLink', ['token' => $link['token']])
+            ->assertOk()
+            ->assertJsonPath('auth_state', 'authenticated');
+    }
+
+    /**
+     * EmailLinks is the only source of the host. A leftover per-channel
+     * `base_url` in a published config must not shadow it, or an app that
+     * overrides EmailLinks for a separate frontend keeps mailing backend links.
+     */
+    public function test_web_channel_host_comes_from_emaillinks_alone(): void
+    {
+        $user = $this->createUser();
+
+        $this->app->bind(EmailLinks::class, fn () => new class () extends EmailLinks {
+            public function base(): string
+            {
+                return 'https://frontend.example';
+            }
+        });
+
+        // A stale key from an older published config is ignored, not honoured.
+        config(['neev.magic_link.channels.web.base_url' => 'https://stale.example']);
+
+        $this->assertStringStartsWith(
+            'https://frontend.example/',
+            $this->magicLinkToken($user)['url']
+        );
+    }
+
+    /**
+     * Channels select the URL shape, not who may redeem. An omitted channel
+     * accepts the stored one, so a mobile-channel token redeems at the web
+     * endpoint: both links were mailed to the same inbox, and nothing about
+     * holding one grants access the other does not. Pinning this so a future
+     * change that starts treating channels as an authorization boundary has to
+     * say so deliberately.
+     */
+    public function test_omitting_the_channel_accepts_the_stored_one(): void
+    {
+        $user = $this->createUser();
+        config(['neev.magic_link.channels.mobile.scheme' => 'myapp://login']);
+
+        $link = $this->magicLinkToken($user, channel: 'mobile');
+
+        $this->postJson('/neev/loginUsingLink', ['token' => $link['token']])
+            ->assertOk()
+            ->assertJsonPath('auth_state', 'authenticated');
+
+        $this->assertDatabaseCount('magic_link_tokens', 0);
     }
 
     public function test_redeeming_a_token_with_a_mismatched_channel_is_rejected(): void

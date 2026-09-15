@@ -222,18 +222,22 @@ return [
         // Mimecast) prefetch GET links; because links are single-use, a
         // prefetch would consume the link before the user ever clicks it and
         // lock them out. With confirmation on, GET only ever validates.
-        'require_confirmation' => env('NEEV_MAGIC_LINK_CONFIRMATION', false),
+        'require_confirmation' => env('NEEV_MAGIC_LINK_CONFIRMATION', true),
 
         // Channel-aware link generation. Neev builds the URL; it never renders
         // UI or handles deep-link routing — the host app does.
         //
         // Add your own channels here (e.g. 'desktop') — no code changes needed.
         // A channel with a 'scheme'/'universal_link' is built as a deep link;
-        // otherwise it is a web URL built from 'base_url' + 'path'.
+        // otherwise it is a web URL built from the EmailLinks host + 'path'.
         'channels' => [
             'web' => [
-                'base_url' => env('APP_URL'),
-                // Path appended to base_url for the redemption link. Left unset
+                // The host comes from the EmailLinks service — the one place an
+                // app declares where its own pages live — so magic links land
+                // wherever the rest of Neev's mailed links do. Point them at a
+                // separate frontend by overriding EmailLinks::base().
+                //
+                // Path appended to that host for the redemption link. Left unset
                 // it follows the UI mode: '/login-link/verify' for the Blade kit
                 // (which redeems the token on its own route), '/login-link' for
                 // headless installs (your page reads the token and posts it).

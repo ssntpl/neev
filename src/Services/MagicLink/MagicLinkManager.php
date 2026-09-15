@@ -93,11 +93,7 @@ class MagicLinkManager
         // sends both invalidate before either inserts, leaving two live links
         // for the same user and channel.
         $token = DB::transaction(function () use ($user, $channel, $metaData, $request, $plain) {
-            MagicLinkToken::query()
-                ->where('user_id', $user->id)
-                ->where('channel', $channel)
-                ->lockForUpdate()
-                ->get();
+            $this->lockOwner($user);
 
             $this->invalidatePrevious($user->id, $channel);
 
@@ -115,6 +111,26 @@ class MagicLinkManager
         event(MagicLinkGenerated::fromToken($user, $token));
 
         return $this->linkPayload($token, $plain);
+    }
+
+    /**
+     * Take a row lock on the link owner for the rest of the transaction.
+     *
+     * Locking the token rows themselves cannot serialize the FIRST issuance:
+     * on PostgreSQL a SELECT ... FOR UPDATE that matches no row locks nothing,
+     * so two concurrent sends would both find none, delete none and insert a
+     * token each. The user row always exists, so every issuance for that user
+     * queues behind the same lock.
+     *
+     * Queried on the table directly: a tenant-scoped model query can filter the
+     * row out of the current tenant's scope and silently lock nothing.
+     */
+    protected function lockOwner(object $user): void
+    {
+        DB::table(User::model()->getTable())
+            ->where('id', $user->id)
+            ->lockForUpdate()
+            ->first();
     }
 
     /**
@@ -311,7 +327,7 @@ class MagicLinkManager
             return MagicLinkResult::failure(MagicLinkResult::INACTIVE_USER, $channel, $record, $user);
         }
 
-        if (config('neev.magic_link.require_confirmation', false)) {
+        if (config('neev.magic_link.require_confirmation', true)) {
             return MagicLinkResult::failure(MagicLinkResult::PENDING_CONFIRMATION, $channel, $record, $user);
         }
 
@@ -450,7 +466,7 @@ class MagicLinkManager
      *
      * A channel whose config declares a `scheme` or `universal_link` is treated
      * as a deep link (mobile/desktop/...). Otherwise it is a web URL built from
-     * `base_url` + `path`. Works for any channel the host adds to config.
+     * the EmailLinks host + `path`. Works for any channel the host adds to config.
      *
      * @throws MagicLinkChannelException
      */
@@ -474,7 +490,7 @@ class MagicLinkManager
         }
 
         // Web-style channels: base URL + path.
-        $base = rtrim($this->webBaseUrl($config), '/');
+        $base = rtrim($this->webBaseUrl(), '/');
         $path = (string) ($config['path'] ?? $this->defaultWebPath());
 
         return $base . '/' . ltrim($path, '/');
@@ -504,15 +520,15 @@ class MagicLinkManager
      * Host, and trusting that header would mail the bearer token to a host the
      * attacker controls.
      *
-     * Falls back to the configured `base_url` (or app.url) in shared mode, when
-     * the tenant has no verified domain, and whenever there is no resolved
-     * tenant (CLI / queued generation).
-     *
-     * @param  array<string, mixed>  $config
+     * Falls back to EmailLinks in shared mode, when the tenant has no verified
+     * domain, and whenever there is no resolved tenant (CLI / queued
+     * generation). EmailLinks is the single place a host app says where its own
+     * pages live, so magic links land wherever the rest of Neev's mailed links
+     * do — there is no per-channel host to keep in step with it.
      */
-    protected function webBaseUrl(array $config): string
+    protected function webBaseUrl(): string
     {
-        $fallback = (string) ($config['base_url'] ?? app(EmailLinks::class)->base());
+        $fallback = (string) app(EmailLinks::class)->base();
 
         if (!config('neev.tenant', false)) {
             return $fallback;

@@ -105,6 +105,28 @@ class MagicLinkWebTest extends TestCase
         $this->assertDatabaseCount('magic_link_tokens', 1);
     }
 
+    /**
+     * The Blade route is the URL that actually lands in the inbox, so it is the
+     * one a gateway prefetches — and some probe with HEAD rather than GET.
+     * `Request::isMethod('get')` is false for HEAD, so guarding only the GET
+     * branch would let a HEAD probe fall through and consume the link.
+     */
+    public function test_head_prefetch_does_not_consume_the_token(): void
+    {
+        $user = $this->createUser();
+        $link = $this->magicLinkToken($user);
+
+        $this->call('HEAD', '/login-link/verify?token=' . $link['token'])->assertOk();
+
+        $this->assertGuest();
+        $this->assertDatabaseCount('magic_link_tokens', 1);
+
+        // The human who follows the same link still gets in.
+        $this->post('/login-link/verify', ['token' => $link['token']])
+            ->assertRedirect(config('neev.home'));
+        $this->assertAuthenticatedAs($user);
+    }
+
     public function test_scanner_prefetch_followed_by_a_real_click_still_logs_the_user_in(): void
     {
         config(['neev.magic_link.require_confirmation' => true]);

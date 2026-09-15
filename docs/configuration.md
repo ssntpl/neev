@@ -289,15 +289,14 @@ Stateful, single-use passwordless login. See
 
     // Require an explicit confirm step before consuming, so a GET never uses up
     // a single-use link. Keep on unless your users are not behind a mail scanner.
-    'require_confirmation' => env('NEEV_MAGIC_LINK_CONFIRMATION', false),
+    'require_confirmation' => env('NEEV_MAGIC_LINK_CONFIRMATION', true),
 
     // Channel-aware URL building. Add your own channels (e.g. 'desktop') here
     // with no code change. A channel with a 'scheme'/'universal_link' is built
-    // as a deep link; otherwise a web URL from 'base_url' + 'path'.
+    // as a deep link; otherwise a web URL from the EmailLinks host + 'path'.
     'channels' => [
         'web' => [
-            'base_url' => env('APP_URL'),   // point at your frontend for a decoupled SPA
-            'path' => '/login-link',
+            'path' => '/login-link',        // host comes from EmailLinks::base()
         ],
         'mobile' => [
             'scheme' => env('NEEV_MOBILE_SCHEME'),           // e.g. myapp://login
@@ -311,12 +310,14 @@ Stateful, single-use passwordless login. See
 |---|---|---|
 | `expires_in` | `10` | Minutes a link is valid. |
 | `bind_to_browser` | `false` | Only redeem from the originating browser/device. |
-| `require_confirmation` | `false` | Require an explicit `POST` confirm; a `GET` never consumes. |
+| `require_confirmation` | `true` | Require an explicit `POST` confirm; a `GET` never consumes. |
 | `channels` | web + mobile | Per-channel URL building (extensible). |
 
 Notes:
 - Tokens are single-use (deleted on redemption); a new link invalidates the previous one.
 - Because links are single-use, **`require_confirmation` should stay on** for any app whose users may sit behind a scanning mail gateway (Outlook SafeLinks, Mimecast). Those gateways prefetch `GET` links, which would consume the link before the user ever clicks it and lock them out. With confirmation on, a `GET` only ever validates.
+- The host of a web-style channel comes from `EmailLinks::base()` (default `app.url`) — there is no per-channel `base_url`. Override `EmailLinks` to point every mailed link, magic links included, at a separate frontend.
+- Channels decide the URL shape, not who may redeem: a named `channel` must match the token's, but omitting it accepts the stored one. Channels are not an authorization boundary.
 - With `bind_to_browser` on, generation throws `MagicLinkBindingException` if the request has no binding source (`X-Device-Id` header, `binding` field, or session). Session-less API clients must send `X-Device-Id`.
 - An unverified address is not refused: the link goes to that address, so following it proves inbox control just as the verification mail does, and redemption marks the email verified. A refusal (`bind_to_browser` with no binding source) happens **before** the previous link is invalidated, so it never costs the user the link already in their inbox.
 - A magic link is a **first factor, not a way around the second**. An account with MFA enrolled stops at the same `mfa_required` challenge it would after a password login — the link issues the short-lived MFA JWT, and `POST /neev/mfa/otp/verify` completes it.

@@ -261,9 +261,9 @@ Login and the confirmation step share one route: `GET` opens the link, `POST` is
 the explicit confirm. `GET|POST /neev/loginUsingLink/validate` checks a token
 without consuming it. Redemption is rate-limited (`throttle:10,1`).
 
-A `GET` never consumes a link while `require_confirmation` is on (`false` by
-default — enable it for apps whose users sit behind scanning mail gateways).
-Scanning gateways (Outlook SafeLinks, Mimecast) prefetch `GET` links; because
+A `GET` never consumes a link while `require_confirmation` is on (`true` by
+default; turn it off only if you are certain no user sits behind a scanning
+mail gateway). Scanning gateways (Outlook SafeLinks, Mimecast) prefetch `GET` links; because
 links are single-use, a prefetch would burn the link before the user clicks it.
 With confirmation on, treat `confirmation_required` as "render a confirm button
 that POSTs the token back".
@@ -273,6 +273,12 @@ that POSTs the token back".
 `sendLoginLink` accepts a `channel` (default `web`). Channels are config-driven —
 add your own (e.g. `desktop`) under `magic_link.channels` with no code change. A
 channel with a `scheme`/`universal_link` builds a deep link; otherwise a web URL.
+
+Channels select the **URL shape, not who may redeem**. A redemption request
+that names a `channel` must match the token's, but omitting it accepts whatever
+the token stored — so a mobile-channel token redeems at the web endpoint and
+vice versa. Both links are mailed to the same inbox, so neither grants access
+the other does not; do not rely on channels as an authorization boundary.
 
 A channel that cannot produce a usable URL is rejected at send time with
 `MagicLinkChannelException` (HTTP `422`) rather than quietly falling back to a
@@ -288,7 +294,7 @@ Configured under `magic_link` in `config/neev.php`:
 'magic_link' => [
     'expires_in' => 10,             // minutes a link stays valid
     'bind_to_browser' => false,        // restrict redemption to the originating browser/device
-    'require_confirmation' => false,   // set true for apps behind scanning mail gateways
+    'require_confirmation' => true,    // GET only validates; an explicit POST consumes
     'channels' => [ /* web, mobile, ... */ ],
 ],
 ```

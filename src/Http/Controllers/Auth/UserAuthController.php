@@ -202,7 +202,7 @@ class UserAuthController extends Controller
             return redirect(config('neev.home'));
         }
 
-        if (config('neev.magic_link.require_confirmation', false) && ($request->isMethod('get') || $request->isMethod('head'))) {
+        if (config('neev.magic_link.require_confirmation', true) && ($request->isMethod('get') || $request->isMethod('head'))) {
             $result = $magicLink->validate($request);
 
             if ($result->needsConfirmation()) {

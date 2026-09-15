@@ -29,9 +29,16 @@ superseded whenever a newer link is issued for the same channel.
 - **Redemption now takes a `token` parameter**, not signed-URL query
   params. Frontends must forward the `token` from the link to
   `POST /neev/loginUsingLink`. The emailed URL points at
-  `{magic_link.channels.web.base_url}{path}?token=...` (default
+  `{EmailLinks::base()}{path}?token=...` (default
   `{app.url}/login-link`), so your `/login-link` page reads `token` from
   the query string and posts it.
+- **The magic-link host comes from `EmailLinks::base()`.** The web
+  channel has no `base_url` key any more. The default is unchanged
+  (`app.url`), but an app that published `config/neev.php` and set
+  `magic_link.channels.web.base_url` to a separate frontend must move
+  that origin into an `EmailLinks::base()` override — the stale config
+  key is ignored, not honoured, so the links would otherwise quietly go
+  back to pointing at the backend.
 - **Clients must handle `confirmation_required`.** Because links are
   single-use, a GET must never consume one: mail-scanning gateways
   (Outlook SafeLinks, Mimecast) prefetch links and would burn them

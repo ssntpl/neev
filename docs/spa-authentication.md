@@ -290,8 +290,8 @@ POST /neev/sendLoginLink
 { "message": "Login link has been sent." }
 ```
 
-The emailed link points at your frontend (`{base_url}/login-link?token=…`, where
-`base_url` is `magic_link.channels.web.base_url` — set it to your frontend origin).
+The emailed link points at your frontend (`{base}/login-link?token=…`, where
+`base` is `EmailLinks::base()` — override it to return your frontend origin).
 Your SPA route at `/login-link` forwards the opaque `token` to the API **via XHR**
 (the XHR carries your stateful `Origin`, which is what triggers the cookie):
 
