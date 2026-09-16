@@ -173,6 +173,94 @@ as after a password.
 
 ---
 
+### OAuth Redirect URL
+
+Get the provider authorization URL to send the browser to. Only services listed in
+`config('neev.oauth')` are accepted — anything else answers **404**
+(`"OAuth provider not supported."`).
+
+```http
+GET /neev/oauth/{service}/redirect
+```
+
+**Query Parameters:**
+
+- `platform` *(optional)* — selects the per-platform client configured under the provider's
+  `clients` key (`android`, `ios`, … — the names are yours to choose). Omit it to use the
+  provider's default client. A platform with no configured client answers **404** with
+  the `platforms` that are configured. See
+  [Authentication → Per-platform clients](./authentication.md#per-platform-clients-web-android-ios).
+- `email` *(optional)* — passed to the provider as `login_hint`.
+
+**Response:**
+
+```json
+{
+    "url": "https://accounts.google.com/o/oauth2/auth?..."
+}
+```
+
+---
+
+### OAuth Callback
+
+Exchange the authorization code the provider returned for a login token.
+
+```http
+POST /neev/oauth/{service}/callback
+```
+
+**Request Body:**
+
+```json
+{
+    "code": "4/0Ae...",
+    "platform": "android"
+}
+```
+
+`code` is required (**400** without it); `platform` must be the same one used for the redirect,
+because the code was issued to that client.
+
+**Response:**
+
+```json
+{
+    "auth_state": "authenticated",
+    "token": "1|abc123...",
+    "expires_in": 1440,
+    "mfa_options": null,
+    "email_verified": true
+}
+```
+
+**Response (with MFA):**
+
+```json
+{
+    "auth_state": "mfa_required",
+    "token": "jwt_mfa_token...",
+    "expires_in": 30,
+    "mfa_options": [
+        "authenticator",
+        "email"
+    ],
+    "email_verified": true
+}
+```
+
+OAuth is a first factor, not a way around the second. An account with MFA enrolled gets the same
+`auth_state: mfa_required` response as `POST /neev/login`, with the short-lived MFA JWT and
+`mfa_options`; complete it with `POST /neev/mfa/otp/verify` exactly as after a password. A client
+that assumes `token` is always a login token will send an unusable credential. See
+[Authentication → OAuth and the MFA Gate](./authentication.md#oauth-and-the-mfa-gate).
+
+An account matched by email is signed in, and its address marked verified if it was not already; an
+email with no match is registered as a new account, without a password. A failed exchange answers
+**500** (`"OAuth authentication failed."`).
+
+---
+
 ### Logout
 
 Logout the current session.
@@ -586,6 +674,34 @@ Authorization: Bearer {mfa_jwt_token}
     "email_verified": true
 }
 ```
+
+---
+
+### Resend MFA OTP
+
+Send another emailed MFA code for a challenge already in progress. The first
+code is mailed by the login response, so this is only for a resend. Email
+method only; the account comes from the JWT, so there is no request body.
+
+```http
+POST /neev/mfa/otp/send
+```
+
+**Headers:**
+```http
+Authorization: Bearer {mfa_jwt_token}
+```
+
+**Response:**
+
+```json
+{
+    "message": "Verification code has been sent."
+}
+```
+
+Answers `400` if the account has no active `email` method. Shares the
+`throttle:5,1` bucket with `POST /neev/mfa/otp/verify`.
 
 ---
 

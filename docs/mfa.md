@@ -54,7 +54,7 @@ Authenticator setups that are started but never verified remain in a `pending` s
 
 ### MFA JWT Settings
 
-After a password or magic-link login that requires MFA, the API issues a short-lived JWT used only to complete verification:
+After a password, magic-link or OAuth login that requires MFA, the API issues a short-lived JWT used only to complete verification:
 
 ```php
 // config/neev.php
@@ -247,13 +247,18 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 
 ### Sending the OTP
 
-There is no standalone API endpoint to send the MFA email OTP. During API login, when the user's MFA method is `email`, the OTP is generated and emailed automatically as part of the `auth_state: mfa_required` response.
+You never ask for the first code. During API login, when the user's MFA method is `email`, the OTP is generated and emailed automatically as part of the `auth_state: mfa_required` response — the same is true of the Blade challenge page, which sends on arrival.
 
-In the web (Blade) flow, users on the MFA verification page can request a resend:
+To send **another** one — the first was lost, or the user waited out its expiry — there is a resend endpoint on each side:
 
 ```http
-POST /neev/otp/mfa/send   (route: otp.mfa.send)
+POST /neev/mfa/otp/send    (API, Authorization: Bearer {mfa_jwt_token})
+POST /otp/mfa/send         (Blade, route: otp.mfa.send — kit pages are unprefixed)
 ```
+
+The API endpoint takes no body: the account comes from the MFA JWT, so a code can only ever be sent to the address of whoever passed the first factor. It answers `400` for an account with no active email factor. Each send mints a new code and resets the guess budget, and it shares the `throttle:5,1` bucket with `POST /neev/mfa/otp/verify` — a resend spends one of those five, so don't call it on a timer.
+
+The two differ in one respect. The Blade *page* leaves a still-valid code alone when it is reopened, so a bookmark or a back button does not extend one code's life; both `send` routes always mint a new one.
 
 ### Verify OTP
 
@@ -351,7 +356,7 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 
 Only **active** methods trigger the MFA challenge — pending setups never gate login, and the verify endpoint rejects codes for pending methods.
 
-A magic link enters the same flow at step 3: `GET {prefix}/loginUsingLink` returns `mfa_required` with the JWT for an enrolled account, and the Blade `login.link` route redirects to the challenge page. Passkey and OAuth logins do not — see [OAuth / Social Login Bypass](./security.md#oauth--social-login-bypass).
+Magic links and OAuth enter the same flow at step 3: `GET {prefix}/loginUsingLink` and the OAuth callback return `mfa_required` with the JWT for an enrolled account, and their Blade counterparts redirect to the challenge page. A passkey does not — it already carries the second factor, see [MFA and the Login Method](./security.md#mfa-and-the-login-method).
 
 ### Web Flow
 
@@ -549,7 +554,7 @@ $user->generateRecoveryCodes();
 
 - Codes expire after `otp_expiry_time` minutes (default 15)
 - Used codes are immediately invalidated
-- A code is spent after `MultiFactorAuth::MAX_ATTEMPTS` (5) wrong guesses — a hard invariant, not configurable — and a fresh code must be requested (Blade: reopen the challenge page or `POST /otp/mfa/send`; API: log in again)
+- A code is spent after `MultiFactorAuth::MAX_ATTEMPTS` (5) wrong guesses — a hard invariant, not configurable — and a fresh code must be requested (API: `POST /neev/mfa/otp/send`; Blade: reopen the challenge page or `POST /otp/mfa/send`)
 - Reopening the challenge page does not extend a live code's expiry; a new code is issued only once the current one has expired or been spent
 - The verify endpoint is throttled to 5 requests per minute
 

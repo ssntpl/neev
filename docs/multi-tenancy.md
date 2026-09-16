@@ -448,7 +448,7 @@ This section summarizes the middleware from a tenancy perspective. The authorita
 |------------|-------------|
 | `neev:web` | Session authentication for web routes (includes tenant resolution when enabled) |
 | `neev:api` | Token authentication for API routes (includes tenant resolution when enabled) |
-| `neev:login` | MFA JWT authentication (used for `POST /neev/mfa/otp/verify`) |
+| `neev:login` | MFA JWT authentication (used for `POST /neev/mfa/otp/verify` and `POST /neev/mfa/otp/send`) |
 | `neev:tenant` | Tenant resolution only, no auth — uses `TenantMiddleware:required`, returns 404 when no tenant resolves |
 
 ### Middleware Aliases
