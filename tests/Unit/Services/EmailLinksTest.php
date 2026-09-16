@@ -165,35 +165,6 @@ class EmailLinksTest extends TestCase
     }
 
     // =================================================================
-    // magicLinkUrl()
-    // =================================================================
-
-    public function test_magic_link_url_uses_the_blade_login_route_under_the_blade_kit(): void
-    {
-        $user = User::factory()->create();
-
-        $url = $this->links->magicLinkUrl($user, $this->expiry());
-
-        $this->assertStringStartsWith(url('/login/' . $user->id), $url);
-    }
-
-    /**
-     * Following the link mints a token, and a token must not travel in a URL,
-     * so a headless link lands on the app's page which exchanges the query.
-     */
-    public function test_magic_link_url_lands_on_the_app_page_when_headless(): void
-    {
-        $this->headless();
-        config(['app.url' => 'https://app.test']);
-        $user = User::factory()->create();
-
-        $url = $this->links->magicLinkUrl($user, $this->expiry());
-
-        $this->assertStringStartsWith('https://app.test/login-link?', $url);
-        $this->assertSame((string) $user->id, $this->queryOf($url)['id']);
-    }
-
-    // =================================================================
     // invitationUrl()
     // =================================================================
 
@@ -384,7 +355,6 @@ class EmailLinksTest extends TestCase
 
         $this->assertSame('https://app.example.com', $links->base());
         $this->assertStringStartsWith('https://app.example.com/reset-password?', $links->passwordResetUrl($user, $this->expiry()));
-        $this->assertStringStartsWith('https://app.example.com/login-link?', $links->magicLinkUrl($user, $this->expiry()));
         $this->assertStringStartsWith('https://app.example.com/register?', $links->invitationUrl(1, 'a@b.test', $this->expiry()));
     }
 

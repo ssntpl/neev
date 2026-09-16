@@ -11,7 +11,95 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## 0.6.0 → unreleased
+## 0.6.3 → Unreleased
+
+**Magic links are now stateful and single-use (action required).**
+The stateless signed-URL flow is gone. Links are opaque tokens stored
+hashed in the new `magic_link_tokens` table, deleted on redemption, and
+superseded whenever a newer link is issued for the same channel.
+
+- **Run `php artisan migrate`** — the new `magic_link_tokens` table is
+  required. Any signed magic links already in users' inboxes stop
+  working on deploy; users simply request a new one.
+- **Links are single-use and expire faster.** A link can be redeemed
+  exactly once, and the default expiry drops from 60 to 10 minutes
+  (`magic_link.expires_in`, `NEEV_MAGIC_LINK_EXPIRY`). The legacy
+  `url_expiry_time` no longer governs magic links — it still applies to
+  password-reset and email-verification links.
+- **Redemption now takes a `token` parameter**, not signed-URL query
+  params. Frontends must forward the `token` from the link to
+  `POST /neev/loginUsingLink`. The emailed URL points at
+  `{EmailLinks::base()}{path}?token=...` (default
+  `{app.url}/login-link`), so your `/login-link` page reads `token` from
+  the query string and posts it.
+- **The magic-link host comes from `EmailLinks::base()`.** The web
+  channel has no `base_url` key any more. The default is unchanged
+  (`app.url`), but an app that published `config/neev.php` and set
+  `magic_link.channels.web.base_url` to a separate frontend must move
+  that origin into an `EmailLinks::base()` override — the stale config
+  key is ignored, not honoured, so the links would otherwise quietly go
+  back to pointing at the backend.
+- **Clients must handle `confirmation_required`.** Because links are
+  single-use, a GET must never consume one: mail-scanning gateways
+  (Outlook SafeLinks, Mimecast) prefetch links and would burn them
+  before the user clicks. `GET /neev/loginUsingLink` therefore returns
+  `{"auth_state": "confirmation_required"}` — render a "confirm sign-in"
+  button and `POST` the same token back to complete login.
+  `GET|POST /neev/loginUsingLink/validate` checks a token without
+  consuming it. To restore one-click GET redemption, set
+  `NEEV_MAGIC_LINK_CONFIRMATION=false` — only do this if you are certain
+  your users are not behind a scanning mail gateway.
+- **Blade users:** the legacy `GET /login/{id}` route (`login.link`) is
+  removed; redemption is `GET|POST /login-link/verify`
+  (`login.link.verify`). Re-run `php artisan neev:ui blade` or apply the
+  new `auth/confirm-login-link.blade.php` view if you ejected the kit.
+  Apps that published `routes/neev.php` must re-apply the route change.
+- **Unverified addresses are unaffected (no action required).** A magic
+  link is still mailed to an unverified address, and redeeming it still
+  marks the email verified and fires `EmailVerified` — following the link
+  proves inbox control just as the verification mail would. This matches
+  0.6.0 exactly; nothing about it changed.
+- **Malformed input is now a rejection, not a 500.**
+  `POST /neev/sendLoginLink` without an `email` returns `422` (it raised
+  a `TypeError` before), and a non-scalar `token` on the redemption and
+  validate endpoints is treated as an invalid token rather than raising
+  "Array to string conversion".
+- **Browser binding** (`magic_link.bind_to_browser`, default off) binds
+  a link to the device that requested it. When enabled, generation
+  throws `MagicLinkBindingException` if the request has no binding
+  source (`X-Device-Id` header, a `binding` field, or a session) —
+  rather than minting a link that could never be redeemed. Session-less
+  API clients must send `X-Device-Id` before enabling it.
+- Both refusals above happen **before** the previous link is
+  invalidated, so a rejected send never costs the user the working link
+  already in their inbox.
+- **An unusable channel is now rejected, not silently downgraded.**
+  `POST /neev/sendLoginLink` returns `422` ("Unsupported login link
+  channel.") and `MagicLinkManager::generate()` throws
+  `MagicLinkChannelException` when the requested channel is not declared
+  under `magic_link.channels`, or is a deep-link channel whose `scheme`
+  and `universal_link` are both empty. Previously both cases fell through
+  to a web URL: a client asking for `channel=mobile` got a `200` and an
+  emailed link that opens a browser instead of the app, with nothing
+  logged. **If you send mobile links, set `NEEV_MOBILE_SCHEME` or
+  `NEEV_MOBILE_UNIVERSAL_LINK` before deploying** — a mobile send that
+  used to appear to work will now fail loudly.
+- **The magic-link host no longer follows the request.** The Blade flow
+  built its emailed URL with `route()`, which takes the host from the
+  `Host` header — an unauthenticated attacker could have the application
+  mail a working login token pointing at a host of their choosing. The
+  URL is now built by `MagicLinkManager` from configuration (and, in
+  tenant mode, the tenant's own verified domain). `channels.web.path` now
+  defaults to unset and follows the UI mode: `/login-link/verify` for the
+  Blade kit, `/login-link` for headless. Set `NEEV_MAGIC_LINK_WEB_PATH`
+  to override.
+- Redemption routes are now rate-limited (`throttle:10,1`).
+- Schedule `neev:clean-magic-links` alongside `neev:clean-login-attempts`
+  to purge expired tokens.
+
+---
+
+## 0.6.2 → 0.6.3
 
 **OAuth logins are now challenged for MFA (action required if you enable OAuth
 providers).**
@@ -83,6 +171,10 @@ after the *first* factor; both halves now follow the API's convention.
   alongside `mfa:` if you have a custom first factor that parks at the
   challenge, or the login will be recorded as complete before the second
   factor.
+
+---
+
+## 0.6.1 → 0.6.2
 
 **`type` on `POST {prefix}/tenant-domains` is ignored (action required if you
 hand out subdomains).**
@@ -160,6 +252,46 @@ reach the other sessions; attach Laravel's `AuthenticateSession` middleware to
 your authenticated routes to get the same effect there. Sessions are read from
 `session.connection`, so a separate session database works unchanged. See
 [docs/security.md](./docs/security.md#what-a-password-change-revokes).
+
+---
+
+## 0.6.0 → 0.6.1
+
+All four changes in this release are security fixes. None needs a schema or
+config change, but three alter behaviour a consuming application may have been
+relying on.
+
+**An `X-Team` header now requires membership (action required if you used it to
+act across teams).** `ResolveTeamMiddleware` accepted the header on every route
+in the neev groups and made the named team the request context, and `TeamScope`
+then scoped every team-owned model to it — so any signed-in user could read
+another team's records by setting one header. `BindContextMiddleware` now
+refuses a header-named team the caller is not a member of. Two other sources are
+deliberately untouched: a team resolved from the **host** still serves
+non-members, so team-branded pages stay reachable, and a team named by a **route
+parameter** is still the controller's to authorize. If an admin or support tool
+of yours sets `X-Team` to a team its operator does not belong to, give that
+operator membership or reach the team through a route parameter with your own
+authorization.
+
+**`DELETE {prefix}/teams/members/leave` (Blade) is gated on membership (no
+action required).** It took both the team and the subject from the request and
+checked neither against the caller. `TeamApiController::leave()` was fixed in
+0.6.0; the web twin carries the same rules now.
+
+**The Blade MFA challenge answers for the session, not the request body (action
+required only if you posted to it directly).** `POST /otp/mfa` resolved the
+account from an `email` field in the request and signed it in without a
+credential check — one second factor for an address was a complete standalone
+credential. The account now comes from `session('email')`, set by the password
+step, and `auth_method` must name a factor the account has actually enrolled. A
+custom login page must go through the package's password step to open the
+challenge rather than posting an `email` of its own.
+
+**A rejected MFA code no longer opens the gate (no action required).**
+`verifyMFAOTPStore()` stamped `login_attempts.multi_factor_method` before
+verifying the code and left it set on failure, which `NeevMiddleware` read as
+proof the challenge had been answered.
 
 ---
 
