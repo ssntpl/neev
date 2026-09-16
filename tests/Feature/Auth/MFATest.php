@@ -3,8 +3,10 @@
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
+use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\User;
@@ -238,6 +240,68 @@ class MFATest extends TestCase
         $this->assertSame(0, $fresh->attempts);
         $this->assertTrue($fresh->expires_at->isFuture());
         $this->assertNotNull($fresh->otp);
+    }
+
+    // -----------------------------------------------------------------
+    // POST /neev/mfa/otp/send
+    // -----------------------------------------------------------------
+
+    /** A resend mints a new code, restores the guess budget and mails it. */
+    public function test_resend_issues_a_fresh_email_mfa_code(): void
+    {
+        $this->enableMFA();
+        Mail::fake();
+
+        $user = User::factory()->create();
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+            'otp' => '654321',
+            'expires_at' => now()->subMinute(),
+            'attempts' => MultiFactorAuth::MAX_ATTEMPTS,
+        ]);
+        $stale = $auth->otp;
+
+        $attempt = $user->loginAttempts()->create([
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => 'email',
+            'is_success' => false,
+        ]);
+        $fullToken = $this->createMfaJwtToken($user->id, $attempt->id);
+
+        $this->withHeader('Authorization', 'Bearer ' . $fullToken)
+            ->postJson('/neev/mfa/otp/send')
+            ->assertOk();
+
+        $fresh = $auth->fresh();
+        $this->assertSame(0, $fresh->attempts);
+        $this->assertTrue($fresh->expires_at->isFuture());
+        $this->assertNotSame($stale, $fresh->otp);
+
+        Mail::assertSent(EmailOTP::class, fn ($mail) => $mail->hasTo($user->email));
+    }
+
+    /** Nothing is mailed for an account that has not enrolled email OTP. */
+    public function test_resend_is_refused_without_an_email_method(): void
+    {
+        $this->enableMFA();
+        Mail::fake();
+
+        $data = $this->createUserWithMFAToken('authenticator');
+
+        $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
+            ->postJson('/neev/mfa/otp/send')
+            ->assertStatus(400);
+
+        Mail::assertNothingSent();
+    }
+
+    /** The login token from a completed login is not a key to this endpoint. */
+    public function test_resend_rejects_a_request_without_the_mfa_jwt(): void
+    {
+        $this->enableMFA();
+
+        $this->postJson('/neev/mfa/otp/send')->assertStatus(401);
     }
 
     // -----------------------------------------------------------------

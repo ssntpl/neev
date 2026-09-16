@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\ContextManager;
 use Ssntpl\Neev\Services\EmailLinks;
@@ -48,14 +49,30 @@ class NeevMiddleware
         $attemptID = session('attempt_id');
         $attempt = $user->loginAttempts()->where('id', $attemptID)->first();
         if ($attempt && count($user->activeMultiFactorAuths ?? []) > 0) {
-            if (!$attempt->multi_factor_method) {
+            // A passkey answers for itself — the ceremony runs with
+            // `userVerification: 'required'` — and tenant/team SSO leaves the
+            // second factor to the organization's IdP, as the API side always
+            // has. Neither is ever parked at the challenge.
+            $answersForItself = in_array(
+                $attempt->method,
+                [LoginAttempt::Passkey, LoginAttempt::SSO],
+                true,
+            );
+
+            $answered = $attempt->is_success
+                && ($attempt->multi_factor_method || $answersForItself);
+
+            if (!$answered) {
+                $method = $attempt->multi_factor_method
+                    ?? $user->preferredMultiFactorAuth?->method
+                    ?? $user->activeMultiFactorAuths()->first()?->method;
                 if ($request->expectsJson()) {
                     return response()->json([
                         'message' => 'MFA verification required.',
-                        'mfa_method' => $user->preferredMultiFactorAuth?->method ?? $user->activeMultiFactorAuths()->first()?->method,
+                        'mfa_method' => $method,
                     ], 403);
                 }
-                return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth?->method ?? $user->activeMultiFactorAuths()->first()?->method));
+                return redirect(app(EmailLinks::class)->mfaChallengeUrl($method));
             }
         } elseif (!$attempt && count($user->activeMultiFactorAuths ?? []) > 0) {
             return $this->unauthenticated($request, 'Unauthenticated.');

@@ -11,6 +11,7 @@ use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\MfaJwt;
 use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\SpaCookieResponder;
 use Ssntpl\Neev\Services\StatefulOriginResolver;
@@ -68,7 +69,45 @@ class OAuthController extends Controller
             }
         }
 
-        $this->auth->login($request, $geoIP, $user, $service);
+        // The provider is a first factor, not a way around the second. Whether
+        // it asked for MFA of its own is the provider's business and invisible
+        // here, so an enrolled account answers the same challenge it would
+        // after a password: the attempt names the factor it is waiting on and
+        // stays unsuccessful, and the challenge page needs the account in the
+        // session. No login token cookie is issued until that is answered.
+        $mfaMethod = $user->preferredMultiFactorAuth->method
+            ?? $user->activeMultiFactorAuths()->first()?->method;
+
+        $this->auth->login($request, $geoIP, $user, $service, mfa: $mfaMethod, pendingMfa: (bool) $mfaMethod);
+
+        if ($mfaMethod) {
+            session(['email' => $user->email]);
+            session()->forget('mfa_redirect');
+
+            // These routes are registered kit or not, so the challenge page
+            // cannot be assumed to exist: EmailLinks points a headless install
+            // at its own page instead of throwing on a missing route.
+            $response = redirect(app(EmailLinks::class)->mfaChallengeUrl($mfaMethod));
+
+            // Same-origin SPA monolith: the login token is withheld until the
+            // second factor, but the page that answers the challenge still
+            // needs something to answer it with. The cookie carries the
+            // step-up JWT in the meantime — the same credential the API
+            // callback hands back, good only for the OTP step — which
+            // `POST {prefix}/mfa/otp/verify` trades for the real login token.
+            // A headless install has no challenge page of ours, so this is the
+            // only way its frontend can finish what the callback started.
+            if (app(StatefulOriginResolver::class)->isStatefulHost($request)) {
+                $mfaJwt = app(MfaJwt::class);
+
+                $response->withCookie(app(SpaCookieResponder::class)->authCookie(
+                    $mfaJwt->issue($user, session('attempt_id')),
+                    $mfaJwt->expiryMinutes(),
+                ));
+            }
+
+            return $response;
+        }
 
         $response = redirect($this->auth->intendedUrl());
 

@@ -29,6 +29,8 @@ use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
 use Ssntpl\Neev\Services\RegistrationService;
+use Ssntpl\Neev\Services\SpaCookieResponder;
+use Ssntpl\Neev\Services\StatefulOriginResolver;
 use Ssntpl\Neev\Services\TenantResolver;
 
 class UserAuthController extends Controller
@@ -232,14 +234,16 @@ class UserAuthController extends Controller
 
         $user = $result->user;
 
-        $this->auth->login($request, $geoIP, $user, LoginAttempt::MagicAuth);
-
         // A magic link is a first factor, not a way around the second. The
-        // attempt was recorded without a multi_factor_method — what
-        // NeevMiddleware reads as "not yet answered" — and the challenge page
-        // needs the account in the session, exactly as after a password.
-        if (count($user->activeMultiFactorAuths) > 0) {
-            return $this->redirectToMfaChallenge($request, $user);
+        // attempt names the factor it is waiting on and stays unsuccessful —
+        // what NeevMiddleware reads as "not yet answered" — and the challenge
+        // page needs the account in the session, exactly as after a password.
+        $mfaMethod = $this->mfaMethodFor($user);
+
+        $this->auth->login($request, $geoIP, $user, LoginAttempt::MagicAuth, mfa: $mfaMethod, pendingMfa: (bool) $mfaMethod);
+
+        if ($mfaMethod) {
+            return $this->redirectToMfaChallenge($request, $user, $mfaMethod);
         }
 
         return redirect($this->auth->intendedUrl($request->redirect));
@@ -255,6 +259,8 @@ class UserAuthController extends Controller
             return back()->withErrors(['message' => 'Credentials are wrong.']);
         }
 
+        $mfaMethod = $this->mfaMethodFor($user);
+
         $attempt = null;
         if (config('neev.log_failed_logins')) {
             $clientDetails = LoginAttempt::getClientDetails($request);
@@ -269,10 +275,10 @@ class UserAuthController extends Controller
                 'is_success' => false,
             ]);
         }
-        $this->auth->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, attempt: $attempt, viaRequestAuth: true);
+        $this->auth->login(request: $request, geoIP: $geoIP, user: $user, method: LoginAttempt::Password, mfa: $mfaMethod, attempt: $attempt, viaRequestAuth: true, pendingMfa: (bool) $mfaMethod);
 
-        if (count($user->activeMultiFactorAuths) > 0) {
-            return $this->redirectToMfaChallenge($request, $user);
+        if ($mfaMethod) {
+            return $this->redirectToMfaChallenge($request, $user, $mfaMethod);
         }
 
         if (!$user->hasVerifiedEmail()) {
@@ -283,13 +289,23 @@ class UserAuthController extends Controller
     }
 
     /**
-     * Park a signed-in session at the MFA challenge. Shared by every first
-     * factor — password and magic link alike — so none of them can skip the
-     * second: the challenge page and its POST read the account from
-     * `session('email')`, and NeevMiddleware keeps protected routes closed
-     * until the attempt carries a multi_factor_method.
+     * The second factor this account will be challenged for, or null if it has
+     * none enrolled.
      */
-    private function redirectToMfaChallenge(Request $request, $user)
+    private function mfaMethodFor(User $user): ?string
+    {
+        return $user->preferredMultiFactorAuth->method
+            ?? $user->activeMultiFactorAuths()->first()?->method;
+    }
+
+    /**
+     * Park a signed-in session at the MFA challenge. Shared by every first
+     * factor — password, magic link and OAuth alike — so none of them can skip
+     * the second: the challenge page and its POST read the account from
+     * `session('email')`, and NeevMiddleware keeps protected routes closed
+     * until the attempt succeeds.
+     */
+    private function redirectToMfaChallenge(Request $request, $user, ?string $mfaMethod = null)
     {
         session(['email' => $user->email]);
 
@@ -303,7 +319,9 @@ class UserAuthController extends Controller
             session()->forget('mfa_redirect');
         }
 
-        return redirect(route('otp.mfa.create', $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method));
+        return redirect(app(EmailLinks::class)->mfaChallengeUrl(
+            $mfaMethod ?? $this->mfaMethodFor($user)
+        ));
     }
 
     /**
@@ -697,9 +715,27 @@ class UserAuthController extends Controller
             $attempt->save();
         }
 
-        $this->auth->login($request, $geoIP, $user, LoginAttempt::Password, $method, $attempt);
+        $this->auth->login($request, $geoIP, $user, $attempt->method ?? LoginAttempt::Password, $method, $attempt);
 
-        return redirect($this->auth->intendedUrl(session()->pull('mfa_redirect')));
+        $response = redirect($this->auth->intendedUrl(session()->pull('mfa_redirect')));
+
+        // Same-origin SPA monolith: an OAuth callback defers its login token
+        // cookie until the second factor is answered, so it is issued here
+        // rather than in the callback. The attempt opened by the first factor
+        // is reused, so the token hangs off that row rather than a second one.
+        if ($attempt
+            && in_array($attempt->method, config('neev.oauth', []), true)
+            && app(StatefulOriginResolver::class)->isStatefulHost($request)) {
+            $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
+            $newToken = $user->createLoginToken($expiryMinutes);
+            $newToken->accessToken->forceFill(['attempt_id' => $attempt->id])->save();
+
+            $response->withCookie(
+                app(SpaCookieResponder::class)->authCookie($newToken->plainTextToken, $expiryMinutes)
+            );
+        }
+
+        return $response;
     }
 
 }

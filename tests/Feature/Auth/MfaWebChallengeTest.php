@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
+use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -65,6 +66,46 @@ class MfaWebChallengeTest extends TestCase
 
         $this->get('/mfa-protected')
             ->assertRedirect(route('otp.mfa.create', 'authenticator'));
+    }
+
+    /**
+     * The convention the gate depends on: `multi_factor_method` names the
+     * factor the login demands, `is_success` says whether it was supplied.
+     */
+    public function test_a_parked_login_names_its_factor_and_stays_unsuccessful(): void
+    {
+        $user = $this->userWithTotp();
+
+        $this->post('/login', ['email' => $user->email, 'password' => 'correct-password']);
+
+        $attempt = $user->loginAttempts()->latest('id')->first();
+        $this->assertSame('authenticator', $attempt->multi_factor_method);
+        $this->assertFalse($attempt->is_success);
+
+        $this->post('/otp/mfa', [
+            'email' => $user->email,
+            'auth_method' => 'authenticator',
+            'otp' => $this->currentTotp(),
+        ]);
+
+        $attempt->refresh();
+        $this->assertSame('authenticator', $attempt->multi_factor_method);
+        $this->assertTrue($attempt->is_success);
+    }
+
+    /** A rejected code leaves the attempt unsuccessful, so the gate holds. */
+    public function test_a_rejected_code_leaves_the_attempt_unsuccessful(): void
+    {
+        $user = $this->userWithTotp();
+
+        $this->post('/login', ['email' => $user->email, 'password' => 'correct-password']);
+        $this->post('/otp/mfa', [
+            'email' => $user->email,
+            'auth_method' => 'authenticator',
+            'otp' => '000000',
+        ]);
+
+        $this->assertFalse($user->loginAttempts()->latest('id')->first()->is_success);
     }
 
     /**
@@ -221,4 +262,30 @@ class MfaWebChallengeTest extends TestCase
         $this->assertTrue($fresh->expires_at->isFuture());
         $this->assertSame(0, $fresh->attempts);
     }
+
+    /**
+     * Enrolling a factor must not strand the session that did the enrolling:
+     * it has no challenge to answer, and the challenge page has no account in
+     * the session to show one for.
+     */
+    public function test_enrolling_a_factor_keeps_the_enrolling_session_signed_in(): void
+    {
+        $user = User::factory()->create(['password' => bcrypt('correct-password')]);
+
+        $this->post('/login', ['email' => $user->email, 'password' => 'correct-password']);
+        $this->get('/mfa-protected')->assertOk();
+
+        $this->post(route('multi.auth'), ['auth_method' => 'authenticator'])
+            ->assertSessionHasNoErrors();
+
+        // The attempt now names the factor, so the gate stays open for it.
+        $attempt = $user->loginAttempts()->latest('id')->first();
+        $this->assertSame('authenticator', $attempt->multi_factor_method);
+
+        $user->multiFactorAuths()->where('method', 'authenticator')
+            ->update(['status' => MultiFactorAuth::STATUS_ACTIVE]);
+
+        $this->get('/mfa-protected')->assertOk()->assertSee('PROTECTED-PAYLOAD');
+    }
+
 }

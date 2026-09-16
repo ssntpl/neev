@@ -239,6 +239,7 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
 
     Route::middleware(['neev:login', 'throttle:5,1'])->group(function () {
         Route::post('/mfa/otp/verify', [UserAuthApiController::class, 'verifyMFAOTP']);
+        Route::post('/mfa/otp/send', [UserAuthApiController::class, 'sendMFAOTP']);
     });
 
     Route::middleware('neev:api')->group(function () {

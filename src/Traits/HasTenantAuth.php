@@ -29,10 +29,19 @@ trait HasTenantAuth
      */
     public function getCachedAuthSettings(): ?TeamAuthSettings
     {
-        /** @var TeamAuthSettings|null */
-        return Cache::remember("neev:auth_settings:{$this->getContextType()}:{$this->getContextId()}", 1800, function (): ?TeamAuthSettings {
-            return $this->authSettings;
-        });
+        // Cache the raw attributes, never the model: a serialized object cannot be
+        // rehydrated when the app restricts cache.serializable_classes.
+        $attributes = Cache::remember(
+            "neev:auth_settings:{$this->getContextType()}:{$this->getContextId()}",
+            1800,
+            fn (): array => $this->authSettings?->getAttributes() ?? []
+        );
+
+        if ($attributes === []) {
+            return null;
+        }
+
+        return (new TeamAuthSettings())->newFromBuilder($attributes);
     }
 
     /**
