@@ -11,7 +11,207 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## 0.6.1 → unreleased
+## 0.6.3 → Unreleased
+
+**Magic links are now stateful and single-use (action required).**
+The stateless signed-URL flow is gone. Links are opaque tokens stored
+hashed in the new `magic_link_tokens` table, deleted on redemption, and
+superseded whenever a newer link is issued for the same channel.
+
+- **Run `php artisan migrate`** — the new `magic_link_tokens` table is
+  required. Any signed magic links already in users' inboxes stop
+  working on deploy; users simply request a new one.
+- **Links are single-use and expire faster.** A link can be redeemed
+  exactly once, and the default expiry drops from 60 to 10 minutes
+  (`magic_link.expires_in`, `NEEV_MAGIC_LINK_EXPIRY`). The legacy
+  `url_expiry_time` no longer governs magic links — it still applies to
+  password-reset and email-verification links.
+- **Redemption now takes a `token` parameter**, not signed-URL query
+  params. Frontends must forward the `token` from the link to
+  `POST /neev/loginUsingLink`. The emailed URL points at
+  `{EmailLinks::base()}{path}?token=...` (default
+  `{app.url}/login-link`), so your `/login-link` page reads `token` from
+  the query string and posts it.
+- **The magic-link host comes from `EmailLinks::base()`.** The web
+  channel has no `base_url` key any more. The default is unchanged
+  (`app.url`), but an app that published `config/neev.php` and set
+  `magic_link.channels.web.base_url` to a separate frontend must move
+  that origin into an `EmailLinks::base()` override — the stale config
+  key is ignored, not honoured, so the links would otherwise quietly go
+  back to pointing at the backend.
+- **Clients must handle `confirmation_required`.** Because links are
+  single-use, a GET must never consume one: mail-scanning gateways
+  (Outlook SafeLinks, Mimecast) prefetch links and would burn them
+  before the user clicks. `GET /neev/loginUsingLink` therefore returns
+  `{"auth_state": "confirmation_required"}` — render a "confirm sign-in"
+  button and `POST` the same token back to complete login.
+  `GET|POST /neev/loginUsingLink/validate` checks a token without
+  consuming it. To restore one-click GET redemption, set
+  `NEEV_MAGIC_LINK_CONFIRMATION=false` — only do this if you are certain
+  your users are not behind a scanning mail gateway.
+- **Blade users:** the legacy `GET /login/{id}` route (`login.link`) is
+  removed; redemption is `GET|POST /login-link/verify`
+  (`login.link.verify`). Re-run `php artisan neev:ui blade` or apply the
+  new `auth/confirm-login-link.blade.php` view if you ejected the kit.
+  Apps that published `routes/neev.php` must re-apply the route change.
+- **Unverified addresses are unaffected (no action required).** A magic
+  link is still mailed to an unverified address, and redeeming it still
+  marks the email verified and fires `EmailVerified` — following the link
+  proves inbox control just as the verification mail would. This matches
+  0.6.0 exactly; nothing about it changed.
+- **Malformed input is now a rejection, not a 500.**
+  `POST /neev/sendLoginLink` without an `email` returns `422` (it raised
+  a `TypeError` before), and a non-scalar `token` on the redemption and
+  validate endpoints is treated as an invalid token rather than raising
+  "Array to string conversion".
+- **Browser binding** (`magic_link.bind_to_browser`, default off) binds
+  a link to the device that requested it. When enabled, generation
+  throws `MagicLinkBindingException` if the request has no binding
+  source (`X-Device-Id` header, a `binding` field, or a session) —
+  rather than minting a link that could never be redeemed. Session-less
+  API clients must send `X-Device-Id` before enabling it.
+- Both refusals above happen **before** the previous link is
+  invalidated, so a rejected send never costs the user the working link
+  already in their inbox.
+- **An unusable channel is now rejected, not silently downgraded.**
+  `POST /neev/sendLoginLink` returns `422` ("Unsupported login link
+  channel.") and `MagicLinkManager::generate()` throws
+  `MagicLinkChannelException` when the requested channel is not declared
+  under `magic_link.channels`, or is a deep-link channel whose `scheme`
+  and `universal_link` are both empty. Previously both cases fell through
+  to a web URL: a client asking for `channel=mobile` got a `200` and an
+  emailed link that opens a browser instead of the app, with nothing
+  logged. **If you send mobile links, set `NEEV_MOBILE_SCHEME` or
+  `NEEV_MOBILE_UNIVERSAL_LINK` before deploying** — a mobile send that
+  used to appear to work will now fail loudly.
+- **The magic-link host no longer follows the request.** The Blade flow
+  built its emailed URL with `route()`, which takes the host from the
+  `Host` header — an unauthenticated attacker could have the application
+  mail a working login token pointing at a host of their choosing. The
+  URL is now built by `MagicLinkManager` from configuration (and, in
+  tenant mode, the tenant's own verified domain). `channels.web.path` now
+  defaults to unset and follows the UI mode: `/login-link/verify` for the
+  Blade kit, `/login-link` for headless. Set `NEEV_MAGIC_LINK_WEB_PATH`
+  to override.
+- Redemption routes are now rate-limited (`throttle:10,1`).
+- Schedule `neev:clean-magic-links` alongside `neev:clean-login-attempts`
+  to purge expired tokens.
+
+**A tenant's own hosts are now admitted as passkey origins (no action
+required).** Every admitted origin is still named exactly, as before —
+subdomain matching was already off, so a host under `relying_party_id`
+never completed a ceremony on its own. What is new is where the names
+come from:
+
+- **A tenant's hosts** come from its verified `domains` rows, so a
+  tenant on `acme.example.com` or on its own `acme.com` needs no entry
+  in `allowed_origins`. One tenant's subdomain never admits a sibling.
+- **Your own hosts** still come from `allowed_origins`, unchanged. If
+  you serve passkeys from `app.example.com` or `login.example.com` as
+  well as the apex, each must be listed verbatim — as it had to be
+  before. Apps serving passkeys only from `app.url` need no change.
+
+`allowed_origins` applies on every relying party, which is where a
+native app's `android:apk-key-hash:…` facet goes. If every host under
+your platform domain really is your own, you may widen the check by
+overriding `allowSubdomains()` in a subclass of `RelyingPartyResolver`
+and binding it in a service provider. That loosens a security boundary
+beyond what any released version did — see
+[docs/authentication.md](./docs/authentication.md#origins).
+
+**Passkeys gain a per-credential relying party column (schema change).**
+The `passkeys` table gains an `rp_id` column so each credential records
+the relying party it was issued under. The package edits its migration
+in place, so existing installs add the column themselves:
+
+```php
+Schema::table('passkeys', function (Blueprint $table) {
+    $table->string('rp_id')->nullable()->index()->after('credential_id');
+});
+```
+
+The column is nullable, so existing rows are valid immediately — a null
+`rp_id` is read as the configured `relying_party_id`, which is where
+those credentials were enrolled. No data migration is needed.
+
+---
+
+## 0.6.2 → 0.6.3
+
+**OAuth logins are now challenged for MFA (action required if you enable OAuth
+providers).**
+The OAuth callback used to sign an MFA-enrolled account straight in. It now
+stops at the same challenge a password login does, so:
+
+- **API clients** must handle `auth_state: mfa_required` from
+  `POST {prefix}/oauth/{service}/callback`. The response carries the
+  short-lived MFA JWT in `token` and the enrolled factors in `mfa_options`,
+  exactly as the password login does; complete it with
+  `POST {prefix}/mfa/otp/verify` to get the real login token. A client that
+  assumes `token` is always a login token will send an unusable credential.
+- **Web flows** are redirected to `EmailLinks::mfaChallengeUrl()` instead of to
+  the intended URL (`config('neev.home')` when nothing was stashed); the
+  intended URL is picked up once the challenge passes. That is the Blade kit's
+  `otp.mfa.create` page when the kit is installed, and `{base}/mfa-challenge/{method}`
+  on your own frontend otherwise — the OAuth routes are registered either way,
+  so a headless install reaches this too. Override the method alongside
+  `loginUrl()` if your page lives elsewhere.
+- **On a same-origin SPA monolith** the `neev_session` cookie no longer carries
+  a login token out of the callback. It carries the short-lived MFA JWT, which
+  `POST {prefix}/mfa/otp/verify` swaps for the real login token; the Blade
+  challenge page's own `POST /otp/mfa` does the same for a session
+  flow. A frontend that read that cookie expecting a login token will find a
+  credential that is only good for the OTP step until the challenge passes.
+
+Accounts with no active MFA method are unaffected.
+
+**A passkey login now satisfies the MFA gate.**
+The passkey ceremony runs with `userVerification: 'required'`, so it already
+proves possession plus a local user check. A web passkey login by an
+MFA-enrolled account used to be parked at the challenge page; it now reaches
+protected routes directly, which is what the API already did. Nothing to do on
+upgrade — if your application requires a second factor on top of a passkey,
+gate it in your own middleware.
+
+**Tenant/team SSO now satisfies the MFA gate on the web too (fixes a lockout).**
+The API side has always issued a full token straight from the SSO callback, on
+the grounds that the organization's identity provider owns its authentication
+policy. The web side was gated by `NeevMiddleware` and then stranded, because
+`TenantSSOController::callback()` never sets `session('email')` — the challenge
+page had no account to act on and bounced to the login screen, so an
+MFA-enrolled member could not sign in through their organization's provider at
+all. Both sides now let an SSO login through.
+
+If you were relying on the web gate as a second factor for SSO members, it was
+not working — it locked them out rather than challenging them. Enforce MFA at
+the identity provider, where the policy and the enrollment already live, or
+gate it in your own middleware.
+
+**`login_attempts.multi_factor_method` now means "the factor this login
+demands", not "the factor it used".**
+It is written when the challenge opens rather than when the code verifies, and
+`is_success` carries whether the login completed. `NeevMiddleware` checks both
+and either one closes the gate, so a session parked at the challenge when you
+deploy is still challenged rather than let through on a row written the old way
+round. The web flow previously left
+`multi_factor_method` null while parked and marked the attempt successful
+after the *first* factor; both halves now follow the API's convention.
+
+- **Reporting on `login_attempts` needs a second look.** A row with
+  `multi_factor_method` set no longer means the second factor was supplied —
+  pair it with `is_success` to tell a completed login from an abandoned
+  challenge. An abandoned web challenge is now recorded as unsuccessful, where
+  it used to be recorded as a success.
+- **`AuthService::login()` and `recordLoginAttempt()` take a trailing
+  `bool $pendingMfa = false`.** Both new parameters are last and default to the
+  old behaviour, so existing calls are unaffected. Pass `pendingMfa: true`
+  alongside `mfa:` if you have a custom first factor that parks at the
+  challenge, or the login will be recorded as complete before the second
+  factor.
+
+---
+
+## 0.6.1 → 0.6.2
 
 **`type` on `POST {prefix}/tenant-domains` is ignored (action required if you
 hand out subdomains).**
@@ -89,42 +289,46 @@ reach the other sessions; attach Laravel's `AuthenticateSession` middleware to
 your authenticated routes to get the same effect there. Sessions are read from
 `session.connection`, so a separate session database works unchanged. See
 [docs/security.md](./docs/security.md#what-a-password-change-revokes).
-**A tenant's own hosts are now admitted as passkey origins (no action
-required).** Every admitted origin is still named exactly, as before —
-subdomain matching was already off, so a host under `relying_party_id`
-never completed a ceremony on its own. What is new is where the names
-come from:
 
-- **A tenant's hosts** come from its verified `domains` rows, so a
-  tenant on `acme.example.com` or on its own `acme.com` needs no entry
-  in `allowed_origins`. One tenant's subdomain never admits a sibling.
-- **Your own hosts** still come from `allowed_origins`, unchanged. If
-  you serve passkeys from `app.example.com` or `login.example.com` as
-  well as the apex, each must be listed verbatim — as it had to be
-  before. Apps serving passkeys only from `app.url` need no change.
+---
 
-`allowed_origins` applies on every relying party, which is where a
-native app's `android:apk-key-hash:…` facet goes. If every host under
-your platform domain really is your own, you may widen the check by
-overriding `allowSubdomains()` in a subclass of `RelyingPartyResolver`
-and binding it in a service provider. That loosens a security boundary
-beyond what any released version did — see
-[docs/authentication.md](./docs/authentication.md#origins).
+## 0.6.0 → 0.6.1
 
-**Passkeys gain a per-credential relying party column (schema change).**
-The `passkeys` table gains an `rp_id` column so each credential records
-the relying party it was issued under. The package edits its migration
-in place, so existing installs add the column themselves:
+All four changes in this release are security fixes. None needs a schema or
+config change, but three alter behaviour a consuming application may have been
+relying on.
 
-```php
-Schema::table('passkeys', function (Blueprint $table) {
-    $table->string('rp_id')->nullable()->index()->after('credential_id');
-});
-```
+**An `X-Team` header now requires membership (action required if you used it to
+act across teams).** `ResolveTeamMiddleware` accepted the header on every route
+in the neev groups and made the named team the request context, and `TeamScope`
+then scoped every team-owned model to it — so any signed-in user could read
+another team's records by setting one header. `BindContextMiddleware` now
+refuses a header-named team the caller is not a member of. Two other sources are
+deliberately untouched: a team resolved from the **host** still serves
+non-members, so team-branded pages stay reachable, and a team named by a **route
+parameter** is still the controller's to authorize. If an admin or support tool
+of yours sets `X-Team` to a team its operator does not belong to, give that
+operator membership or reach the team through a route parameter with your own
+authorization.
 
-The column is nullable, so existing rows are valid immediately — a null
-`rp_id` is read as the configured `relying_party_id`, which is where
-those credentials were enrolled. No data migration is needed.
+**`DELETE {prefix}/teams/members/leave` (Blade) is gated on membership (no
+action required).** It took both the team and the subject from the request and
+checked neither against the caller. `TeamApiController::leave()` was fixed in
+0.6.0; the web twin carries the same rules now.
+
+**The Blade MFA challenge answers for the session, not the request body (action
+required only if you posted to it directly).** `POST /otp/mfa` resolved the
+account from an `email` field in the request and signed it in without a
+credential check — one second factor for an address was a complete standalone
+credential. The account now comes from `session('email')`, set by the password
+step, and `auth_method` must name a factor the account has actually enrolled. A
+custom login page must go through the package's password step to open the
+challenge rather than posting an `email` of its own.
+
+**A rejected MFA code no longer opens the gate (no action required).**
+`verifyMFAOTPStore()` stamped `login_attempts.multi_factor_method` before
+verifying the code and left it set on failure, which `NeevMiddleware` read as
+proof the challenge had been answered.
 
 ---
 

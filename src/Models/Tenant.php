@@ -87,10 +87,19 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
      */
     public function getCachedAuthSettings(): ?TenantAuthSettings
     {
-        /** @var TenantAuthSettings|null */
-        return Cache::remember("neev:auth_settings:{$this->getContextType()}:{$this->getContextId()}", 1800, function (): ?TenantAuthSettings {
-            return $this->authSettings;
-        });
+        // Cache the raw attributes, never the model: a serialized object cannot be
+        // rehydrated when the app restricts cache.serializable_classes.
+        $attributes = Cache::remember(
+            "neev:auth_settings:{$this->getContextType()}:{$this->getContextId()}",
+            1800,
+            fn (): array => $this->authSettings?->getAttributes() ?? []
+        );
+
+        if ($attributes === []) {
+            return null;
+        }
+
+        return (new TenantAuthSettings())->newFromBuilder($attributes);
     }
 
     public function domains(): MorphMany

@@ -208,27 +208,28 @@ confirmation dialog drops the password input and asks for a plain yes.
 
 Passwordless login via secure email links. Always available — no config toggle.
 
+Magic links are **stateful and single-use**: an opaque, high-entropy token is
+stored **hashed** in the `magic_link_tokens` table (only the plain token ever
+leaves the app, inside the emailed URL). On successful use the row is **deleted**,
+so a link can never be replayed, and issuing a new link **invalidates the user's
+previous link** for that channel.
+
+A magic link is a **first factor, not a way around the second**. An account with MFA enrolled stops at the same challenge it would after a password login — the link issues the short-lived MFA JWT instead of a full access token, and `POST /neev/mfa/otp/verify` completes it exactly as after a password.
+
 ### Flow
 
-1. User enters email on login page
-2. Clicks "Send Login Link"
-3. Receives email with secure link
-4. Clicks link to authenticate
-5. If the account has MFA enrolled, the MFA challenge follows — a magic link
-   is a first factor, not a way around the second
-6. Logged in
+1. User enters email and requests a link (`POST /neev/sendLoginLink`)
+2. Receives an email with a secure link
+3. Opens the link → the token is validated and consumed
+4. If the account has MFA enrolled, returns `auth_state: mfa_required` with a short-lived MFA JWT — complete with `POST /neev/mfa/otp/verify`
+5. Otherwise, logged in with a full access token
 
 Following the link also **marks an unverified address verified**: the link was
 mailed to that address and came back signed, which proves inbox control just
 as the verification mail would. An unverified account is therefore not turned
 away from its own magic link.
 
-Where the link points depends on the frontend. Under the Blade kit it goes
-straight to `login.link`. Headless, following it mints an access token — and a
-token must not travel in a URL — so the link lands on your `/login-link` page
-carrying the signed query, which your page forwards to
-`GET {prefix}/loginUsingLink` to exchange for the token. Both are controlled
-by [`EmailLinks`](./email-links.md).
+Where the link points depends on the frontend. Under the Blade kit it goes to `login.link.verify` (`/login-link/verify`), which redeems the token server-side. Headless, the link lands on your `/login-link` page carrying the opaque token as a query parameter, which your page forwards to `POST {prefix}/loginUsingLink` to exchange for the token. Both are controlled by [`EmailLinks`](./email-links.md).
 
 ### API Example
 
@@ -237,22 +238,109 @@ by [`EmailLinks`](./email-links.md).
 ```bash
 curl -X POST https://yourapp.com/neev/sendLoginLink \
   -H "Content-Type: application/json" \
-  -d '{"email": "john@example.com"}'
+  -d '{"email": "john@example.com", "channel": "web"}'
 ```
 
 **Use Link:**
 
 ```bash
-curl -X GET "https://yourapp.com/neev/loginUsingLink?id=1&signature=abc123&expires=1234567890"
+# When require_confirmation is on, GET only validates — never consumes.
+curl -X GET "https://yourapp.com/neev/loginUsingLink?token=THE_OPAQUE_TOKEN"
+# => {"auth_state": "confirmation_required", "channel": "web", ...}
+
+# The user's explicit confirm consumes the link and logs them in.
+curl -X POST "https://yourapp.com/neev/loginUsingLink" \
+  -H "Content-Type: application/json" \
+  -d '{"token": "THE_OPAQUE_TOKEN"}'
+# => {"auth_state": "authenticated", "token": "...", ...}
+# or, for an MFA-enrolled account:
+# => {"auth_state": "mfa_required", "token": "<mfa_jwt>", "mfa_options": ["email"], ...}
 ```
 
-### Link Expiry
+Login and the confirmation step share one route: `GET` opens the link, `POST` is
+the explicit confirm. `GET|POST /neev/loginUsingLink/validate` checks a token
+without consuming it. Redemption is rate-limited (`throttle:10,1`).
 
-Configure in `config/neev.php`:
+A `GET` never consumes a link while `require_confirmation` is on (`true` by
+default; turn it off only if you are certain no user sits behind a scanning
+mail gateway). Scanning gateways (Outlook SafeLinks, Mimecast) prefetch `GET` links; because
+links are single-use, a prefetch would burn the link before the user clicks it.
+With confirmation on, treat `confirmation_required` as "render a confirm button
+that POSTs the token back".
+
+### Channels
+
+`sendLoginLink` accepts a `channel` (default `web`). Channels are config-driven —
+add your own (e.g. `desktop`) under `magic_link.channels` with no code change. A
+channel with a `scheme`/`universal_link` builds a deep link; otherwise a web URL.
+
+Channels select the **URL shape, not who may redeem**. A redemption request
+that names a `channel` must match the token's, but omitting it accepts whatever
+the token stored — so a mobile-channel token redeems at the web endpoint and
+vice versa. Both links are mailed to the same inbox, so neither grants access
+the other does not; do not rely on channels as an authorization boundary.
+
+A channel that cannot produce a usable URL is rejected at send time with
+`MagicLinkChannelException` (HTTP `422`) rather than quietly falling back to a
+web link: either the channel is not declared under `magic_link.channels`, or it
+declares `scheme`/`universal_link` and both are empty. So `channel=mobile` fails
+loudly until `NEEV_MOBILE_SCHEME` (or `NEEV_MOBILE_UNIVERSAL_LINK`) is set.
+
+### Configuration & options
+
+Configured under `magic_link` in `config/neev.php`:
 
 ```php
-'url_expiry_time' => 60,  // Minutes
+'magic_link' => [
+    'expires_in' => 10,             // minutes a link stays valid
+    'bind_to_browser' => false,        // restrict redemption to the originating browser/device
+    'require_confirmation' => true,    // GET only validates; an explicit POST consumes
+    'channels' => [ /* web, mobile, ... */ ],
+],
 ```
+
+See [configuration.md](./configuration.md#magic-link) for the full block.
+
+### Calling it in code
+
+Inject the `MagicLinkManager` service (there is no facade):
+
+```php
+use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
+
+$link = $magicLink->forWeb($user);   // ['url', 'token', 'channel', 'expires_at', 'expires_in', 'model']
+$result = $magicLink->consume($request);
+if ($result->isValid()) { /* $result->user is authenticated */ }
+```
+
+`forWeb()`/`forMobile()`/`generate()` refuse rather than mint a link the
+recipient could never use. Both checks run **before** the previous link is
+invalidated, so a refused send never costs the user the link already in their
+inbox:
+
+| Exception | Thrown when |
+|---|---|
+| `MagicLinkBindingException` | `bind_to_browser` is on but the request has no binding source (`X-Device-Id`, `binding`, or session). |
+
+An unverified address is **not** refused. The link is mailed to that address, so
+following it proves control of the inbox exactly as the verification mail would —
+redeeming therefore marks the email verified and fires `EmailVerified`. Gating
+sends on verification would remove the one path an unverified user has to become
+verified, stranding anyone who never received their verification mail.
+
+Lifecycle events `MagicLinkGenerated` (`Ssntpl\Neev\Events\`), `MagicLinkConsumed`,
+and `MagicLinkRejected` are fired for auditing/notifications. Prune expired tokens
+with `php artisan neev:clean-magic-links`.
+
+The events describe the token with scalars (`$tokenId`, `$channel`, `$expiresAt`)
+rather than carrying the `MagicLinkToken` model, so they are safe to handle from a
+queue. Carrying the model would break on both counts: the row is deleted the
+moment the link is redeemed, so a queued listener restoring it would throw
+`ModelNotFoundException`; and a model reachable other than as a top-level property
+is serialized by value, which would put the account's password hash and the stored
+token hash into the queue payload — and into `failed_jobs`, which is retained
+indefinitely. `$user` is a model, which `SerializesModels` reduces to a
+class-and-id reference; call `->fresh()` if you need attributes as of the click.
 
 ---
 
@@ -667,15 +755,25 @@ The top-level block is optional: an installation that configures only platform c
 (a mobile-only app) resolves too. The browser flow (`GET {prefix}/oauth/{service}`) always
 uses the default client.
 
-### Security Warning: OAuth Bypasses MFA and Password Policies
+### OAuth and the MFA Gate
 
-> **Warning — OAuth is a complete authentication path that skips the MFA gate.**
->
-> Password login checks the user's enrolled MFA methods and, when any are active, withholds the session/token until a second factor is verified (`mfa_required` state with a temporary JWT on the API; redirect to the OTP page on the web). The OAuth callback does **not** perform this check: once the provider returns a verified email that matches an account, the user is logged in (web) or issued a full access token (API) immediately — even if that user has TOTP or email MFA enabled. A compromised Google/GitHub/Microsoft/Apple account therefore grants access without the second factor.
->
-> Password policies are also inapplicable to OAuth-created accounts: they are created **without a password**, so complexity rules, password history, and password expiry never apply to them, and their email is marked verified automatically (it was verified by the provider).
+OAuth is a first factor, not a way around the second. When the provider returns
+a verified email that matches an account with active MFA, the callback withholds
+the session/token exactly as password login does — the API returns the
+`mfa_required` state with a temporary JWT, and the web callback redirects to the
+OTP challenge page. Whether the provider asked for MFA of its own is the
+provider's business and invisible here, so it earns no credit.
 
-**What this means for enterprise policy:** if your compliance posture requires MFA for all users (or organization-controlled credentials), enabling app-wide OAuth providers undermines that guarantee — every enabled provider is an alternate front door that skips your MFA and password controls.
+A **passkey** is the one login method that does satisfy the gate on its own: its
+ceremony runs with `userVerification: 'required'`, which proves possession of the
+authenticator plus a local user check in a single step. See
+[Security → MFA and the Login Method](./security.md#mfa-and-the-login-method).
+
+> **Warning — OAuth still skips the password policies.**
+>
+> OAuth-created accounts are created **without a password**, so complexity rules,
+> password history, and password expiry never apply to them, and their email is
+> marked verified automatically (it was verified by the provider).
 
 > **A previously unverified address is adopted, not refused.** When the
 > provider returns an address that matches an existing account whose email was
@@ -690,7 +788,7 @@ uses the default client.
 
 - **Limit or empty the `oauth` providers list** in `config/neev.php`. Providers not in the list 404 on both redirect and callback, so this fully disables the path.
 - **Use tenant SSO instead for organizations that need enforced IdP login.** Tenant/team SSO is database-configured per organization, and the `neev-ensure-sso` middleware rejects (API) or redirects (web) any authenticated session that was not established via SSO — including sessions created through app-wide OAuth. See [Multi-Tenancy → Enterprise SSO](./multi-tenancy.md#enterprise-sso).
-- **Add an application-level step-up check** after login if MFA must be universal regardless of login method (Neev does not provide this out of the box).
+- **Note that tenant/team SSO is itself outside the MFA gate**, on both the API and the web side — it issues a full token (API) or an unchallenged session (web) directly, on the assumption that the IdP owns the authentication policy for that organization. Enforce a second factor there if you need one.
 
 ### Flow
 
@@ -701,7 +799,19 @@ uses the default client.
 5. System exchanges code for user info
 6. User is created or matched
 7. If the matched account's address was not yet verified, it is marked verified — the provider authenticated it
-8. Logged in and redirected (MFA is skipped)
+8. If the account has an active MFA method, the login stops at the challenge — the web callback redirects to the OTP page, the API returns `auth_state: mfa_required` with the step-up JWT
+9. Otherwise, logged in and redirected
+
+Step 8's redirect target is `EmailLinks::mfaChallengeUrl()` — the Blade kit's
+`otp.mfa.create` page when the kit is installed, otherwise
+`{base}/mfa-challenge/{method}` on your own frontend. These OAuth routes are
+registered whether or not the kit is, so a headless install reaches this hand-off
+too; override the method alongside `loginUrl()` if your page lives elsewhere. On a
+stateful host the callback also puts the step-up JWT in the auth cookie, so that
+page can complete the challenge against `POST {prefix}/mfa/otp/verify`, or ask for a
+fresh code with `POST {prefix}/mfa/otp/send` — see
+[SPA Authentication](./spa-authentication.md#52-app-wide-oauth-social-login-on-a-stateful-host) and
+[Email Links](./email-links.md).
 
 The provider buttons are offered to unverified accounts too, on the Blade
 password page and through `GET {prefix}/oauth/{service}/redirect` for headless
@@ -853,15 +963,16 @@ as to accepting it:
   `email_verified_at`. The callback and the magic-link exchange return
   `"email_verified": true` because completing them verified the address, and
   the token they issue is a full login token, not a restricted one — except
-  that a magic link for an MFA-enrolled account issues the MFA step-up JWT
-  instead, exactly as a password login would (see
-  [Magic Link Authentication](#magic-link-authentication)).
+  that a magic link or OAuth callback for an MFA-enrolled account issues the
+  MFA step-up JWT instead, exactly as a password login would (see
+  [Magic Link Authentication](#magic-link-authentication) and
+  [OAuth and the MFA Gate](#oauth-and-the-mfa-gate)).
 - **Web** — the Blade kit's password page (`auth/login-password.blade.php`)
   shows the OAuth buttons, "Login Via Link" and the passkey button whatever
   the account's verification state, so an unverified user is not left with
-  only the password they may not have. The `login.link` and
+  only the password they may not have. The `login.link.verify` and
   `oauth.callback` routes sign the user straight in and land on
-  `neev.home`, not on `verification.notice` — or, for `login.link` on an
+  `neev.home`, not on `verification.notice` — or, for `login.link.verify` on an
   MFA-enrolled account, on the MFA challenge.
 
 Only password login still stops at the verification notice — a password says
@@ -974,7 +1085,7 @@ For each login attempt, Neev records:
 | Field | Description |
 |-------|-------------|
 | `method` | Login method used (password, passkey, sso, etc.) |
-| `multi_factor_method` | MFA method used (if any) |
+| `multi_factor_method` | Second factor the login demands, named when the challenge opens (null if none) |
 | `ip_address` | User's IP address |
 | `platform` | Operating system |
 | `browser` | Browser name |
@@ -1080,7 +1191,7 @@ class LogSuccessfulLogout
 5. **Monitor login attempts** for suspicious activity
 6. **Use session database** driver for logout-all-devices functionality
 7. **Keep GeoIP database** updated for accurate location tracking
-8. **Be aware that OAuth bypasses MFA and password policies** — see [the OAuth security warning](#security-warning-oauth-bypasses-mfa-and-password-policies) for mitigations
+8. **Be aware that OAuth bypasses the password policies** (MFA still applies) — see [OAuth and the MFA Gate](#oauth-and-the-mfa-gate) for mitigations
 
 ---
 

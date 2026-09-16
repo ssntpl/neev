@@ -290,10 +290,13 @@ POST /neev/sendLoginLink
 { "message": "Login link has been sent." }
 ```
 
-The emailed link points at your frontend (`{APP_URL}/login-link?id=…&signature=…&expires=…`). Your SPA route at `/login-link` forwards the query string to the API **via XHR** (the XHR carries your stateful `Origin`, which is what triggers the cookie):
+The emailed link points at your frontend (`{base}/login-link?token=…`, where
+`base` is `EmailLinks::base()` — override it to return your frontend origin).
+Your SPA route at `/login-link` forwards the opaque `token` to the API **via XHR**
+(the XHR carries your stateful `Origin`, which is what triggers the cookie):
 
 ```http
-GET /neev/loginUsingLink?id={id}&expires={timestamp}&signature={signature}
+GET /neev/loginUsingLink?token={token}
 ```
 
 Branch on `auth_state` here too: an account with MFA enrolled gets
@@ -462,9 +465,9 @@ Note `email_verified` is the string `"true"`/`"false"` here (URL parameter), not
 
 For providers listed in `config('neev.oauth')` there are two paths:
 
-- **API flow (recommended for SPAs):** `GET /neev/oauth/{service}/redirect` returns `{ "url": "…" }`; send the browser there; the provider redirects back to your frontend with a `code`, which you POST to `/neev/oauth/{service}/callback`. Because that POST is an XHR from your stateful origin, the response sets the cookie and omits `token` — the same `authenticated` body as login.
+- **API flow (recommended for SPAs):** `GET /neev/oauth/{service}/redirect` returns `{ "url": "…" }`; send the browser there; the provider redirects back to your frontend with a `code`, which you POST to `/neev/oauth/{service}/callback`. Because that POST is an XHR from your stateful origin, the response sets the cookie and omits `token` — the same `authenticated` body as login. For an MFA-enrolled account the body is `mfa_required` instead, and the cookie carries the step-up JWT until `POST /neev/mfa/otp/verify` replaces it with the real login token — the same two-step the password login has.
 
-- **Web flow:** a full-page navigation to `GET /neev/oauth/{service}` ends in a server-side callback that logs the user into the web session and redirects to `config('neev.home')`. When the request host is itself on the stateful list (SPA served from the Laravel monolith), the callback **also issues a login token in the auth cookie**, so the SPA that loads after the redirect is already authenticated for API calls.
+- **Web flow:** a full-page navigation to `GET /neev/oauth/{service}` ends in a server-side callback that logs the user into the web session and redirects to `config('neev.home')`. When the request host is itself on the stateful list (SPA served from the Laravel monolith), the callback **also issues a login token in the auth cookie**, so the SPA that loads after the redirect is already authenticated for API calls. An MFA-enrolled account is redirected to the challenge page first, and the cookie is issued by `POST /otp/mfa` once the code verifies — a login token is never handed out ahead of the second factor. Which page that is comes from `EmailLinks::mfaChallengeUrl()`: the Blade kit's under `ui = 'blade'`, otherwise `{base}/mfa-challenge/{method}` on your own frontend, which you override alongside `loginUrl()`. On a stateful host the cookie is not simply withheld in the meantime — it carries the **step-up JWT**, the same credential the API callback returns, so the page you land on can finish the login with `POST /neev/mfa/otp/verify` and get the real login token back in the cookie. Until then that cookie opens nothing: the JWT is accepted for the OTP step — verifying a code, and asking for another one at `POST /neev/mfa/otp/send` — and for no other endpoint.
 
 ---
 

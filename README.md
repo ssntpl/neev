@@ -176,13 +176,19 @@ curl -X POST https://yourapp.com/neev/login \
 ### Magic Link (Passwordless)
 
 ```bash
-# Send login link
+# Send login link (single-use token; optional channel, default "web")
 curl -X POST https://yourapp.com/neev/sendLoginLink \
-  -d '{"email": "john@example.com"}'
+  -d '{"email": "john@example.com", "channel": "web"}'
 
-# Login via link
-curl -X GET "https://yourapp.com/neev/loginUsingLink?id=1&signature=..."
+# Redeem the link (POST consumes it and logs in)
+curl -X POST https://yourapp.com/neev/loginUsingLink \
+  -H "Content-Type: application/json" \
+  -d '{"token": "THE_OPAQUE_TOKEN"}'
 ```
+
+A magic link is a **first factor, not a way around the second**. An account with MFA enrolled receives `auth_state: mfa_required` with a short-lived MFA JWT instead of a full token; complete it with `POST /neev/mfa/otp/verify` exactly as after a password login.
+
+When `require_confirmation` is enabled (recommended for apps behind corporate mail scanners), a `GET` only validates the token without consuming it — render a confirm button and `POST` the token back.
 
 ### Passkey / WebAuthn
 
@@ -227,7 +233,8 @@ All API routes are prefixed with `/neev` — the prefix is configurable via `rou
 | POST | `/neev/register` | Register new user | No |
 | POST | `/neev/login` | Login with credentials | No |
 | POST | `/neev/sendLoginLink` | Send magic link | No |
-| GET | `/neev/loginUsingLink` | Login via magic link | No |
+| GET / POST | `/neev/loginUsingLink` | Redeem magic link (GET opens, POST confirms) | No |
+| GET / POST | `/neev/loginUsingLink/validate` | Validate a magic-link token without using it | No |
 | POST | `/neev/logout` | Logout current session | Yes |
 | POST | `/neev/logoutAll` | Logout all other sessions | Yes |
 | POST | `/neev/forgotPassword` | Send password reset link | No |
@@ -251,6 +258,7 @@ All API routes are prefixed with `/neev` — the prefix is configurable via `rou
 | PUT | `/neev/mfa/preferred` | Set preferred MFA method | Yes |
 | DELETE | `/neev/mfa/delete` | Disable MFA method | Yes |
 | POST | `/neev/mfa/otp/verify` | Verify MFA code | MFA JWT |
+| POST | `/neev/mfa/otp/send` | Resend the emailed MFA code | MFA JWT |
 | POST | `/neev/recoveryCodes` | Generate recovery codes | Yes |
 
 ### Passkey Endpoints
@@ -346,7 +354,7 @@ The Blade page routes below (everything except the OAuth/SSO endpoints) register
 | PUT | `/login` | `login.password` | Show password form |
 | POST | `/login` | - | Process login |
 | POST | `/login/link` | `login.link.send` | Send magic link |
-| GET | `/login/{id}` | `login.link` | Login via magic link |
+| GET / POST | `/login-link/verify` | `login.link.verify` | Redeem magic link (GET opens, POST confirms) |
 | GET | `/forgot-password` | `password.request` | Forgot password form |
 | POST | `/forgot-password` | `password.email` | Send reset link |
 | GET | `/update-password/{id}/{hash}` | `reset.request` | Reset password form |
@@ -457,6 +465,10 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
   -H "Authorization: Bearer {mfa_jwt_token}" \
   -d '{"auth_method": "authenticator", "otp": "123456"}'
+
+# Resend the emailed code (email method only)
+curl -X POST https://yourapp.com/neev/mfa/otp/send \
+  -H "Authorization: Bearer {mfa_jwt_token}"
 ```
 
 ---
@@ -670,7 +682,8 @@ Email verification is enforced by applying the opt-in `neev-verified-email` midd
 ```php
 'login_token_expiry_minutes' => 1440,  // Login access tokens
 'mfa_jwt_expiry_minutes' => 30,        // Temporary MFA JWTs
-'url_expiry_time' => 60,               // Magic links, reset links
+'url_expiry_time' => 60,               // Password-reset & email-verification links
+'magic_link' => ['expires_in' => 10],  // Magic links (single-use, stateful)
 'otp_expiry_time' => 15,               // OTP codes
 ```
 

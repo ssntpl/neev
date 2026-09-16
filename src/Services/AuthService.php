@@ -22,7 +22,12 @@ use Ssntpl\Neev\Rules\PasswordHistory;
 
 class AuthService
 {
-    public function login(Request $request, GeoIP $geoIP, $user, $method, ?string $mfa = null, ?LoginAttempt $attempt = null, bool $viaRequestAuth = false)
+    /**
+     * @param bool $pendingMfa The login still owes a second factor, so the
+     *                         attempt is left unsuccessful for the MFA step to
+     *                         complete.
+     */
+    public function login(Request $request, GeoIP $geoIP, $user, $method, ?string $mfa = null, ?LoginAttempt $attempt = null, bool $viaRequestAuth = false, bool $pendingMfa = false)
     {
         if (!$user?->active) {
             throw ValidationException::withMessages([
@@ -40,16 +45,27 @@ class AuthService
 
         event(new LoggedIn($user));
 
-        $attempt = $this->recordLoginAttempt($request, $geoIP, $user, $method, $mfa, $attempt);
+        $attempt = $this->recordLoginAttempt($request, $geoIP, $user, $method, $mfa, $attempt, $pendingMfa);
         session(['attempt_id' => $attempt->id ?? null]);
     }
 
-    public function recordLoginAttempt(Request $request, GeoIP $geoIP, $user, $method, ?string $mfa = null, ?LoginAttempt $attempt = null): ?LoginAttempt
+    /**
+     * `multi_factor_method` records which second factor the login demands;
+     * `is_success` records whether the login completed. A login parked at the
+     * challenge therefore names its factor straight away and stays
+     * unsuccessful until the code verifies.
+     */
+    public function recordLoginAttempt(Request $request, GeoIP $geoIP, $user, $method, ?string $mfa = null, ?LoginAttempt $attempt = null, bool $pendingMfa = false): ?LoginAttempt
     {
         try {
             if ($attempt) {
-                if (!$attempt->is_success) {
+                if ($mfa !== null) {
+                    $attempt->multi_factor_method = $mfa;
+                }
+                if (!$pendingMfa) {
                     $attempt->is_success = true;
+                }
+                if ($attempt->isDirty()) {
                     $attempt->save();
                 }
                 return $attempt;
@@ -65,7 +81,7 @@ class AuthService
                 'browser'  => $clientDetails['browser'] ?? '',
                 'device'   => $clientDetails['device'] ?? '',
                 'ip_address' => $request->ip(),
-                'is_success' => true,
+                'is_success' => !$pendingMfa,
             ]);
         } catch (Exception $e) {
             Log::error($e);

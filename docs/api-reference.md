@@ -123,7 +123,9 @@ do not slide.
 
 ### Send Login Link
 
-Send a magic link to the user's email for passwordless login.
+Send a magic link to the user's email for passwordless login. Issues a
+single-use token (stored hashed) and invalidates the user's previous link for
+the channel.
 
 ```http
 POST /neev/sendLoginLink
@@ -133,9 +135,15 @@ POST /neev/sendLoginLink
 
 ```json
 {
-    "email": "john@example.com"
+    "email": "john@example.com",
+    "channel": "web"
 }
 ```
+
+`channel` is optional (default `web`); it must be a channel defined in
+`magic_link.channels`, and a deep-link channel must have a `scheme` or
+`universal_link` set. Anything else returns `422` ("Unsupported login link
+channel.") — an unusable channel is never downgraded to a web link.
 
 **Response:**
 
@@ -145,15 +153,143 @@ POST /neev/sendLoginLink
 }
 ```
 
+Returns `401` for an unknown email.
+
 ---
 
 ### Login Using Link
 
-Authenticate using a magic link.
+Redeem a magic link. Login and the confirmation step share this route: `GET`
+opens the link, `POST` is the explicit confirm. While
+`magic_link.require_confirmation` is on, a `GET` only validates
+and returns `{"auth_state": "confirmation_required"}` without logging in — this
+keeps a scanning mail gateway's prefetch from consuming the single-use link.
+Rate-limited (`throttle:10,1`).
 
 ```http
-GET /neev/loginUsingLink?id={email_id}&signature={signature}&expires={timestamp}
+GET|POST /neev/loginUsingLink?token={token}
 ```
+
+**Response (confirmation required):**
+
+```json
+{
+    "auth_state": "confirmation_required",
+    "channel": "web",
+    "message": "Please confirm this login to continue."
+}
+```
+
+Render a confirm control and `POST` the same token back to complete login.
+
+**Response (success — no MFA):**
+
+```json
+{
+    "auth_state": "authenticated",
+    "token": "1|abc123...",
+    "expires_in": 1440,
+    "mfa_options": null,
+    "email_verified": true
+}
+```
+
+**Response (success — MFA enrolled):**
+
+```json
+{
+    "auth_state": "mfa_required",
+    "token": "<mfa_jwt>",
+    "expires_in": 30,
+    "mfa_options": ["email"],
+    "email_verified": true
+}
+```
+
+A magic link is a first factor, not a way around the second. An account with
+MFA enrolled gets the same `mfa_required` response as `POST /neev/login`, with
+the short-lived MFA JWT and `mfa_options`; complete it with
+`POST /neev/mfa/otp/verify` exactly as after a password.
+
+- `403 { "message": "Invalid or expired verification link." }` — invalid, expired, replayed, or binding-mismatch token.
+- `422` with an `email` validation error — the account is deactivated.
+
+---
+
+### Validate Login Link
+
+Check a magic-link token **without** consuming it (e.g. to render a
+confirmation screen). Never authenticates.
+
+```http
+GET|POST /neev/loginUsingLink/validate?token={token}
+```
+
+**Response:**
+
+```json
+{
+    "status": "pending_confirmation",
+    "valid": false,
+    "requires_confirmation": true,
+    "channel": "web",
+    "email_verified": true
+}
+```
+
+`status` is one of `valid`, `invalid`, `expired`, `binding_mismatch`,
+`pending_confirmation`, `inactive_user`.
+
+---
+
+### OAuth Redirect URL
+
+Get the provider authorization URL to send the browser to. Only services listed in
+`config('neev.oauth')` are accepted — anything else answers **404**
+(`"OAuth provider not supported."`).
+
+```http
+GET /neev/oauth/{service}/redirect
+```
+
+**Query Parameters:**
+
+- `platform` *(optional)* — selects the per-platform client configured under the provider's
+  `clients` key (`android`, `ios`, … — the names are yours to choose). Omit it to use the
+  provider's default client. A platform with no configured client answers **404** with
+  the `platforms` that are configured. See
+  [Authentication → Per-platform clients](./authentication.md#per-platform-clients-web-android-ios).
+- `email` *(optional)* — passed to the provider as `login_hint`.
+
+**Response:**
+
+```json
+{
+    "url": "https://accounts.google.com/o/oauth2/auth?..."
+}
+```
+
+---
+
+### OAuth Callback
+
+Exchange the authorization code the provider returned for a login token.
+
+```http
+POST /neev/oauth/{service}/callback
+```
+
+**Request Body:**
+
+```json
+{
+    "code": "4/0Ae...",
+    "platform": "android"
+}
+```
+
+`code` is required (**400** without it); `platform` must be the same one used for the redirect,
+because the code was issued to that client.
 
 **Response:**
 
@@ -162,14 +298,35 @@ GET /neev/loginUsingLink?id={email_id}&signature={signature}&expires={timestamp}
     "auth_state": "authenticated",
     "token": "1|abc123...",
     "expires_in": 1440,
+    "mfa_options": null,
     "email_verified": true
 }
 ```
 
-A magic link is a first factor. An account with MFA enrolled gets the same
-`auth_state: mfa_required` response as `POST /neev/login`, with the short-lived
-MFA JWT and `mfa_options`; complete it with `POST /neev/mfa/otp/verify` exactly
-as after a password.
+**Response (with MFA):**
+
+```json
+{
+    "auth_state": "mfa_required",
+    "token": "jwt_mfa_token...",
+    "expires_in": 30,
+    "mfa_options": [
+        "authenticator",
+        "email"
+    ],
+    "email_verified": true
+}
+```
+
+OAuth is a first factor, not a way around the second. An account with MFA enrolled gets the same
+`auth_state: mfa_required` response as `POST /neev/login`, with the short-lived MFA JWT and
+`mfa_options`; complete it with `POST /neev/mfa/otp/verify` exactly as after a password. A client
+that assumes `token` is always a login token will send an unusable credential. See
+[Authentication → OAuth and the MFA Gate](./authentication.md#oauth-and-the-mfa-gate).
+
+An account matched by email is signed in, and its address marked verified if it was not already; an
+email with no match is registered as a new account, without a password. A failed exchange answers
+**500** (`"OAuth authentication failed."`).
 
 ---
 
@@ -586,6 +743,34 @@ Authorization: Bearer {mfa_jwt_token}
     "email_verified": true
 }
 ```
+
+---
+
+### Resend MFA OTP
+
+Send another emailed MFA code for a challenge already in progress. The first
+code is mailed by the login response, so this is only for a resend. Email
+method only; the account comes from the JWT, so there is no request body.
+
+```http
+POST /neev/mfa/otp/send
+```
+
+**Headers:**
+```http
+Authorization: Bearer {mfa_jwt_token}
+```
+
+**Response:**
+
+```json
+{
+    "message": "Verification code has been sent."
+}
+```
+
+Answers `400` if the account has no active `email` method. Shares the
+`throttle:5,1` bucket with `POST /neev/mfa/otp/verify`.
 
 ---
 
