@@ -48,7 +48,9 @@ return new class () extends Migration {
     {
         Schema::dropIfExists('team_user');
         Schema::table('users', function (Blueprint $table) {
-            $table->dropConstrainedForeignId('default_team_id');
+            $table->dropForeign(['default_team_id']);
+            $table->dropIndex(['default_team_id']);
+            $table->dropColumn('default_team_id');
         });
         Schema::dropIfExists('teams');
     }
