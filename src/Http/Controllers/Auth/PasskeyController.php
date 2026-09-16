@@ -49,6 +49,21 @@ use Ssntpl\Neev\Http\Controllers\Controller;
 
 class PasskeyController extends Controller
 {
+    /**
+     * How long the browser may spend on a ceremony. Long enough for the
+     * hybrid (QR) transport, where the user walks the credential over to a
+     * phone.
+     */
+    protected const CEREMONY_TIMEOUT_MS = 300000;
+
+    /**
+     * How long the server holds the challenge. Deliberately longer than the
+     * ceremony itself: an authenticator that answers on the last second of
+     * the timeout must still find its challenge waiting, or the user is told
+     * to try again after they have already touched their key.
+     */
+    protected const CHALLENGE_TTL_SECONDS = self::CEREMONY_TIMEOUT_MS / 1000 + 60;
+
     public function __construct(
         protected AuthService $auth,
         protected RelyingPartyResolver $relyingParty,
@@ -87,7 +102,7 @@ class PasskeyController extends Controller
 
         // Bound to the relying party so both halves of a ceremony run under
         // the same context.
-        Cache::put("passkey_reg_challenge:{$user->id}", ['challenge' => $base64Challenge, 'rp_id' => $rpId], 300);
+        Cache::put("passkey_reg_challenge:{$user->id}", ['challenge' => $base64Challenge, 'rp_id' => $rpId], self::CHALLENGE_TTL_SECONDS);
 
         $authenticatorSelection = new AuthenticatorSelectionCriteria(
             residentKey: 'required',
@@ -115,7 +130,7 @@ class PasskeyController extends Controller
                 'residentKey' => $authenticatorSelection->residentKey,
                 'userVerification' => $authenticatorSelection->userVerification,
             ],
-            'timeout' => 300000,
+            'timeout' => self::CEREMONY_TIMEOUT_MS,
             'excludeCredentials' => array_map(
                 fn (PublicKeyCredentialDescriptor $descriptor) => ['type' => $descriptor->type, 'id' => $descriptor->id],
                 $this->enrolledCredentials($user, $rpId)
@@ -187,7 +202,7 @@ class PasskeyController extends Controller
             challenge: $challenge,
             excludeCredentials: $this->enrolledCredentials($user, $rpId),
             pubKeyCredParams: $pubKeyCredParams,
-            timeout: 300000,
+            timeout: self::CEREMONY_TIMEOUT_MS,
             authenticatorSelection: new AuthenticatorSelectionCriteria(
                 residentKey: 'required',
                 userVerification: 'required'
@@ -320,14 +335,14 @@ class PasskeyController extends Controller
 
             // Bound to the relying party it was issued for.
             $cacheKey = 'passkey_login_challenge:' . hash('sha256', $request->email);
-            Cache::put($cacheKey, ['challenge' => $base64Challenge, 'rp_id' => $rpId], 300);
+            Cache::put($cacheKey, ['challenge' => $base64Challenge, 'rp_id' => $rpId], self::CHALLENGE_TTL_SECONDS);
 
             $options = new PublicKeyCredentialRequestOptions(
                 challenge: $challenge,
                 rpId: $rpId,
                 allowCredentials: $allowCredentials,
                 userVerification: 'required',
-                timeout: 300000,
+                timeout: self::CEREMONY_TIMEOUT_MS,
                 extensions: []
             );
 
@@ -381,7 +396,7 @@ class PasskeyController extends Controller
             rpId: $rpId,
             allowCredentials: [],
             userVerification: 'required',
-            timeout: 300000
+            timeout: self::CEREMONY_TIMEOUT_MS
         );
 
         $attempt = null;
@@ -453,11 +468,20 @@ class PasskeyController extends Controller
      * party — options and completion are separate requests whose context can
      * differ.
      *
+     * A ceremony that began before this version was deployed stored the
+     * challenge as a bare string, with no relying party alongside it. Those
+     * were all issued under the configured relying party, so read them as
+     * such rather than failing every ceremony in flight across the deploy.
+     *
      * @return string  The raw challenge bytes.
      */
     protected function pullChallenge(string $cacheKey, string $rpId): string
     {
         $stored = Cache::pull($cacheKey);
+
+        if (is_string($stored) && $stored !== '') {
+            $stored = ['challenge' => $stored, 'rp_id' => $this->relyingParty->configured()];
+        }
 
         if (!is_array($stored) || empty($stored['challenge'])) {
             throw new Exception('Challenge expired or not found. Please try again.');

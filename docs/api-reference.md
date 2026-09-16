@@ -831,6 +831,49 @@ Authorization: Bearer {token}
 
 ## Passkeys (WebAuthn)
 
+### List Passkeys
+
+```http
+GET /neev/passkeys
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Response:**
+
+```json
+{
+    "data": [
+        {
+            "id": 1,
+            "user_id": 7,
+            "credential_id": "base64url_credential_id",
+            "rp_id": "acme.com",
+            "name": "My MacBook",
+            "ip": "203.0.113.4",
+            "location": null,
+            "last_used": "2024-01-15T10:00:00Z",
+            "aaguid": "00000000-0000-0000-0000-000000000000",
+            "transports": ["internal"],
+            "created_at": "2024-01-15T10:00:00Z",
+            "updated_at": "2024-01-15T10:00:00Z"
+        }
+    ]
+}
+```
+
+`rp_id` is the relying party the credential was enrolled under, and a
+credential can only be used in a ceremony for that same relying party. It is
+null on credentials enrolled before per-domain relying parties existed, which
+are read as `relying_party_id`. The public key is never returned. The list is
+the user's whole set, across relying parties — unlike `excludeCredentials` and
+`allowCredentials` below, which are filtered to the current one.
+
+---
+
 ### Generate Registration Options
 
 ```http
@@ -861,10 +904,24 @@ Authorization: Bearer {token}
         "residentKey": "required",
         "userVerification": "required"
     },
-    "timeout": 60000,
-    "attestation": "none"
+    "timeout": 300000,
+    "excludeCredentials": [
+        { "type": "public-key", "id": "base64url_credential_id" }
+    ],
+    "attestation": "none",
+    "extensions": {}
 }
 ```
+
+`rp.id` and `rp.name` are resolved from the request's context, not from
+configuration alone: a tenant reached on its own verified domain gets that
+domain and its own name, and everything else gets `relying_party_id` and the
+app name. Pass the whole object through to the browser rather than hard-coding
+either. See [Supported Domains](./authentication.md#supported-domains).
+
+`excludeCredentials` lists the credentials this user already holds **on that
+relying party**, so an authenticator refuses to enrol the same key twice.
+Forward it to `navigator.credentials.create()`.
 
 ---
 
@@ -914,12 +971,21 @@ GET /neev/passkeys/login/options?email=john@example.com
 ```json
 {
     "challenge": "base64_challenge",
-    "timeout": 120000,
+    "timeout": 300000,
     "rpId": "yourapp.com",
-    "allowCredentials": [...],
-    "userVerification": "required"
+    "allowCredentials": [
+        { "type": "public-key", "id": "base64url_credential_id" }
+    ],
+    "userVerification": "required",
+    "extensions": []
 }
 ```
+
+`rpId` follows the request's context in the same way `rp.id` does above, and
+`allowCredentials` is filtered to the credentials enrolled under it — a user
+with passkeys on both the platform domain and their own gets only the ones the
+current ceremony can use. An account with no credentials on this relying party
+is answered with the same `400` as an unknown address.
 
 ---
 

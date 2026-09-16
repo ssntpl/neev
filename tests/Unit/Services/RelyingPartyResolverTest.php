@@ -471,6 +471,38 @@ class RelyingPartyResolverTest extends TestCase
         );
     }
 
+    public function test_a_verified_custom_domain_takes_the_relying_party_from_a_platform_primary(): void
+    {
+        $this->enableTeams();
+        config(['neev.allowed_origins' => ['https://example.com']]);
+        $team = TeamFactory::new()->create();
+        $this->domainFor($team, 'acme.example.com', primary: true);
+        $this->domainFor($team, 'acme.com');
+
+        $this->resolveOn('acme.example.com');
+
+        $this->assertSame('acme.com', $this->resolver->rpId());
+
+        $this->assertSame(
+            ['https://example.com', 'https://acme.com'],
+            $this->resolver->allowedOrigins()
+        );
+    }
+
+    /**
+     * Rank plays no part in that: with nothing marked primary at all, the
+     * older platform subdomain still yields to the custom domain.
+     */
+    public function test_an_unpromoted_custom_domain_outranks_an_older_platform_subdomain(): void
+    {
+        $this->enableTeams();
+        $team = TeamFactory::new()->create();
+        $this->domainFor($team, 'acme.example.com');
+        $this->domainFor($team, 'acme.com');
+
+        $this->assertSame('acme.com', $this->forHost('acme.example.com'));
+    }
+
     public function test_subdomain_matching_is_always_off_on_a_claimed_domain(): void
     {
         $this->enableTeams();
