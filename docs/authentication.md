@@ -539,7 +539,7 @@ authenticator plus a local user check in a single step. See
 
 - **Limit or empty the `oauth` providers list** in `config/neev.php`. Providers not in the list 404 on both redirect and callback, so this fully disables the path.
 - **Use tenant SSO instead for organizations that need enforced IdP login.** Tenant/team SSO is database-configured per organization, and the `neev-ensure-sso` middleware rejects (API) or redirects (web) any authenticated session that was not established via SSO — including sessions created through app-wide OAuth. See [Multi-Tenancy → Enterprise SSO](./multi-tenancy.md#enterprise-sso).
-- **Note that tenant/team SSO is itself outside the MFA gate** on the API side — it issues a full token directly, on the assumption that the IdP owns the authentication policy for that organization.
+- **Note that tenant/team SSO is itself outside the MFA gate**, on both the API and the web side — it issues a full token (API) or an unchallenged session (web) directly, on the assumption that the IdP owns the authentication policy for that organization. Enforce a second factor there if you need one.
 
 ### Flow
 

@@ -4,8 +4,10 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Exception;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Route;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Mockery;
+use ParagonIE\ConstantTime\Base32;
 use Ssntpl\Neev\Database\Factories\TeamAuthSettingsFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Models\User;
@@ -210,6 +212,57 @@ class TenantSSOTest extends TestCase
         $response = $this->get('/neev/sso/callback?code=auth-code-123');
 
         $response->assertRedirect('/dashboard');
+    }
+
+    /**
+     * Regression: an MFA-enrolled member used to be turned back here and then
+     * stranded, because the callback leaves no `session('email')` for the
+     * challenge page to act on, so it bounced straight to login.
+     */
+    public function test_callback_web_login_reaches_protected_routes_for_an_mfa_enrolled_member(): void
+    {
+        $this->enableMFA();
+
+        Route::middleware(['web', 'neev:web'])
+            ->get('/sso-protected', fn () => response('PROTECTED-PAYLOAD'));
+
+        $team = TeamFactory::new()->create();
+        TeamAuthSettingsFactory::new()
+            ->sso('entra')
+            ->autoProvision('member')
+            ->create(['team_id' => $team->id]);
+
+        $this->setCurrentTenant($team);
+
+        $user = User::factory()->create();
+        $team->users()->attach($user, ['joined' => true]);
+
+        $user->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'preferred' => true,
+            'secret' => Base32::encodeUpper(random_bytes(32)),
+            'verified_at' => now(),
+        ]);
+
+        $ssoUser = Mockery::mock(SocialiteUser::class);
+        $ssoUser->shouldReceive('getEmail')->andReturn($user->email);
+        $ssoUser->shouldReceive('getName')->andReturn($user->name);
+        $ssoUser->shouldReceive('getId')->andReturn('sso-123');
+        $ssoUser->shouldReceive('getAvatar')->andReturn(null);
+        $ssoUser->shouldReceive('getNickname')->andReturn(null);
+
+        $manager = Mockery::mock(TenantSSOManager::class);
+        $manager->shouldReceive('handleCallback')->andReturn($ssoUser);
+        $manager->shouldReceive('findOrCreateUser')->andReturn($user);
+        $manager->shouldReceive('ensureMembership')->once();
+        $this->app->instance(TenantSSOManager::class, $manager);
+
+        $this->get('/neev/sso/callback?code=auth-code-123')
+            ->assertRedirect('/dashboard');
+
+        $this->get('/sso-protected')
+            ->assertOk()
+            ->assertSee('PROTECTED-PAYLOAD');
     }
 
     public function test_callback_successful_spa_login_with_redirect_uri(): void

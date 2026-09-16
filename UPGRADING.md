@@ -38,8 +38,7 @@ stops at the same challenge a password login does, so:
   flow. A frontend that read that cookie expecting a login token will find a
   credential that is only good for the OTP step until the challenge passes.
 
-Accounts with no active MFA method are unaffected, and tenant/team SSO is
-deliberately unchanged.
+Accounts with no active MFA method are unaffected.
 
 **A passkey login now satisfies the MFA gate.**
 The passkey ceremony runs with `userVerification: 'required'`, so it already
@@ -47,6 +46,20 @@ proves possession plus a local user check. A web passkey login by an
 MFA-enrolled account used to be parked at the challenge page; it now reaches
 protected routes directly, which is what the API already did. Nothing to do on
 upgrade — if your application requires a second factor on top of a passkey,
+gate it in your own middleware.
+
+**Tenant/team SSO now satisfies the MFA gate on the web too (fixes a lockout).**
+The API side has always issued a full token straight from the SSO callback, on
+the grounds that the organization's identity provider owns its authentication
+policy. The web side was gated by `NeevMiddleware` and then stranded, because
+`TenantSSOController::callback()` never sets `session('email')` — the challenge
+page had no account to act on and bounced to the login screen, so an
+MFA-enrolled member could not sign in through their organization's provider at
+all. Both sides now let an SSO login through.
+
+If you were relying on the web gate as a second factor for SSO members, it was
+not working — it locked them out rather than challenging them. Enforce MFA at
+the identity provider, where the policy and the enrollment already live, or
 gate it in your own middleware.
 
 **`type` on `POST {prefix}/tenant-domains` is ignored (action required if you

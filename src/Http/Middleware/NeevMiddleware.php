@@ -49,11 +49,18 @@ class NeevMiddleware
         $attemptID = session('attempt_id');
         $attempt = $user->loginAttempts()->where('id', $attemptID)->first();
         if ($attempt && count($user->activeMultiFactorAuths ?? []) > 0) {
-            // A passkey is already multi-factor on its own: the ceremony runs
-            // with `userVerification: 'required'`, so it proves possession of
-            // the authenticator and a local user check (biometric or device
-            // PIN) in one step. Every other first factor still owes a second.
-            if (!$attempt->multi_factor_method && $attempt->method !== LoginAttempt::Passkey) {
+            // Two first factors answer for themselves. A passkey runs with
+            // `userVerification: 'required'`, so it already proves possession
+            // plus a local user check. Tenant/team SSO leaves the second
+            // factor to the organization's IdP, as the API side always has.
+            // Every other first factor still owes a second.
+            $answersForItself = in_array(
+                $attempt->method,
+                [LoginAttempt::Passkey, LoginAttempt::SSO],
+                true,
+            );
+
+            if (!$attempt->multi_factor_method && !$answersForItself) {
                 $method = $user->preferredMultiFactorAuth?->method ?? $user->activeMultiFactorAuths()->first()?->method;
                 if ($request->expectsJson()) {
                     return response()->json([

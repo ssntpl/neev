@@ -173,16 +173,26 @@ parked at the challenge (`otp.mfa.create` on the web, `auth_state:
 mfa_required` with a short-lived JWT on the API) and reaches nothing
 protected until it answers.
 
-The one exception is a **passkey**. Its ceremony runs with
-`userVerification: 'required'` and is validated with `CheckUserVerification`,
-so a successful login already proves possession of the authenticator *and* a
-local user check (biometric or device PIN). That is the second factor, so
-asking for another one is asking the same question twice, and a passkey login
-goes straight through.
+Two first factors are exempt, because they answer for themselves.
 
-A federated login gets no such credit. Whether Google, GitHub, Microsoft or
-Apple asked for MFA of its own is the provider's business and invisible to
-this application, so OAuth is treated as a single factor and challenged.
+A **passkey** ceremony runs with `userVerification: 'required'` and is
+validated with `CheckUserVerification`, so a successful login already proves
+possession of the authenticator *and* a local user check (biometric or device
+PIN). That is the second factor, so asking for another one is asking the same
+question twice, and a passkey login goes straight through.
+
+**Tenant/team SSO** (`LoginAttempt::SSO`) hands the organization's identity
+provider the authentication policy for its own members, second factor
+included. Both the web session and the API token go straight through. If your
+organization requires a second factor on top of SSO, enforce it at the
+identity provider, where the policy and the enrollment already live.
+
+A public OAuth/social login gets no such credit. Whether Google, GitHub,
+Microsoft or Apple asked for MFA of its own is the provider's business and
+invisible to this application, so OAuth is treated as a single factor and
+challenged. The difference from SSO is who owns the policy: an organization
+configures its own SSO connection and can require MFA on it, while a personal
+Google account is outside your control entirely.
 
 > **Warning:** OAuth still bypasses the *password* policies. Accounts created
 > via OAuth have **no password**, so strength rules, password history, and
@@ -193,10 +203,6 @@ If organization-controlled credentials are a compliance requirement:
 
 - **Keep the `oauth` list empty or minimal.** Providers not in the list return 404 on both the redirect and callback routes, which fully disables the path.
 - **For per-organization enforcement, use tenant/team SSO with the `neev-ensure-sso` middleware.** It rejects (API) or redirects (web) any authenticated session that was not established via SSO, closing the OAuth side door for that organization.
-
-Note that tenant/team SSO (`LoginAttempt::SSO`) is itself outside the MFA gate
-on the API side — it issues a full token directly, on the assumption that the
-identity provider owns the authentication policy for that organization.
 
 See [Authentication → OAuth and the MFA Gate](./authentication.md#oauth-and-the-mfa-gate) for details.
 

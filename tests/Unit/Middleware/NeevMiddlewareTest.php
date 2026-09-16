@@ -155,6 +155,38 @@ class NeevMiddlewareTest extends TestCase
     }
 
     /**
+     * Tenant/team SSO hands the organization's identity provider the
+     * authentication policy for its own members. The API side has always
+     * treated it that way; the web side used to challenge it and then strand
+     * it, because the SSO callback leaves no `session('email')` for the
+     * challenge page to work with.
+     */
+    public function test_passes_through_when_user_has_mfa_and_logged_in_via_tenant_sso(): void
+    {
+        $user = User::factory()->create();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'preferred' => true,
+        ]);
+
+        $attempt = LoginAttemptFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => LoginAttempt::SSO,
+            'multi_factor_method' => null,
+        ]);
+
+        $request = $this->buildRequest('/test', $user);
+        session(['attempt_id' => $attempt->id]);
+
+        $response = $this->middleware->handle($request, $this->passThrough());
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertEquals('OK', $response->getContent());
+    }
+
+    /**
      * A federated login proves nothing about a second factor — whether the
      * provider asked for one is invisible here — so it is challenged like any
      * other single factor.
