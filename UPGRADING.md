@@ -62,6 +62,28 @@ not working — it locked them out rather than challenging them. Enforce MFA at
 the identity provider, where the policy and the enrollment already live, or
 gate it in your own middleware.
 
+**`login_attempts.multi_factor_method` now means "the factor this login
+demands", not "the factor it used".**
+It is written when the challenge opens rather than when the code verifies, and
+`is_success` carries whether the login completed. `NeevMiddleware` checks both
+and either one closes the gate, so a session parked at the challenge when you
+deploy is still challenged rather than let through on a row written the old way
+round. The web flow previously left
+`multi_factor_method` null while parked and marked the attempt successful
+after the *first* factor; both halves now follow the API's convention.
+
+- **Reporting on `login_attempts` needs a second look.** A row with
+  `multi_factor_method` set no longer means the second factor was supplied —
+  pair it with `is_success` to tell a completed login from an abandoned
+  challenge. An abandoned web challenge is now recorded as unsuccessful, where
+  it used to be recorded as a success.
+- **`AuthService::login()` and `recordLoginAttempt()` take a trailing
+  `bool $pendingMfa = false`.** Both new parameters are last and default to the
+  old behaviour, so existing calls are unaffected. Pass `pendingMfa: true`
+  alongside `mfa:` if you have a custom first factor that parks at the
+  challenge, or the login will be recorded as complete before the second
+  factor.
+
 **`type` on `POST {prefix}/tenant-domains` is ignored (action required if you
 hand out subdomains).**
 Whether a claimed domain is verified immediately or has to publish a DNS TXT

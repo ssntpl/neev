@@ -69,24 +69,25 @@ class OAuthController extends Controller
             }
         }
 
-        $this->auth->login($request, $geoIP, $user, $service);
-
         // The provider is a first factor, not a way around the second. Whether
         // it asked for MFA of its own is the provider's business and invisible
         // here, so an enrolled account answers the same challenge it would
-        // after a password: the attempt was recorded without a
-        // multi_factor_method, and the challenge page needs the account in the
+        // after a password: the attempt names the factor it is waiting on and
+        // stays unsuccessful, and the challenge page needs the account in the
         // session. No login token cookie is issued until that is answered.
-        if (count($user->activeMultiFactorAuths) > 0) {
+        $mfaMethod = $user->preferredMultiFactorAuth->method
+            ?? $user->activeMultiFactorAuths()->first()?->method;
+
+        $this->auth->login($request, $geoIP, $user, $service, mfa: $mfaMethod, pendingMfa: (bool) $mfaMethod);
+
+        if ($mfaMethod) {
             session(['email' => $user->email]);
             session()->forget('mfa_redirect');
 
             // These routes are registered kit or not, so the challenge page
             // cannot be assumed to exist: EmailLinks points a headless install
             // at its own page instead of throwing on a missing route.
-            $response = redirect(app(EmailLinks::class)->mfaChallengeUrl(
-                $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method
-            ));
+            $response = redirect(app(EmailLinks::class)->mfaChallengeUrl($mfaMethod));
 
             // Same-origin SPA monolith: the login token is withheld until the
             // second factor, but the page that answers the challenge still

@@ -835,7 +835,7 @@ For each login attempt, Neev records:
 | Field | Description |
 |-------|-------------|
 | `method` | Login method used (password, passkey, sso, etc.) |
-| `multi_factor_method` | MFA method used (if any) |
+| `multi_factor_method` | Second factor the login demands, named when the challenge opens (null if none) |
 | `ip_address` | User's IP address |
 | `platform` | Operating system |
 | `browser` | Browser name |

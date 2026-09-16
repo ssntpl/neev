@@ -102,8 +102,10 @@ class OAuthHeadlessTest extends TestCase
         $this->get('/neev/oauth/google/callback?code=test-auth-code')
             ->assertRedirect('http://localhost/mfa-challenge/authenticator');
 
-        // The gate still holds: the attempt is on record but unanswered.
-        $this->assertNull($user->loginAttempts()->latest('id')->first()->multi_factor_method);
+        // The gate still holds: the attempt names its factor but has not succeeded.
+        $attempt = $user->loginAttempts()->latest('id')->first();
+        $this->assertSame('authenticator', $attempt->multi_factor_method);
+        $this->assertFalse($attempt->is_success);
     }
 
     /** NeevMiddleware turns a parked session back to the same page. */

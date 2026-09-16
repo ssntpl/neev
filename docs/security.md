@@ -173,6 +173,12 @@ parked at the challenge (`otp.mfa.create` on the web, `auth_state:
 mfa_required` with a short-lived JWT on the API) and reaches nothing
 protected until it answers.
 
+A login parked at the challenge records both halves of its state on the
+`login_attempts` row: `multi_factor_method` names the factor it is waiting on,
+and `is_success` stays false until the code verifies. `NeevMiddleware` checks both
+and either one closes the gate, so an unanswered challenge reaches nothing
+protected.
+
 Two first factors are exempt, because they answer for themselves.
 
 A **passkey** ceremony runs with `userVerification: 'required'` and is
@@ -258,7 +264,7 @@ For each login attempt:
 | Field | Description |
 |-------|-------------|
 | `method` | Login method (password, passkey, sso, etc.) |
-| `multi_factor_method` | MFA method used |
+| `multi_factor_method` | Second factor the login demands, named when the challenge opens |
 | `ip_address` | User's IP address |
 | `platform` | Operating system |
 | `browser` | Browser name and version |

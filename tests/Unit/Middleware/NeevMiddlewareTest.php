@@ -95,7 +95,7 @@ class NeevMiddlewareTest extends TestCase
     // MFA: user has MFA, attempt exists but no multi_factor_method
     // -----------------------------------------------------------------
 
-    public function test_redirects_to_mfa_form_when_user_has_mfa_and_attempt_has_no_multi_factor_method(): void
+    public function test_redirects_to_mfa_form_when_the_attempt_has_not_succeeded_yet(): void
     {
         $user = User::factory()->create();
 
@@ -107,7 +107,8 @@ class NeevMiddlewareTest extends TestCase
 
         $attempt = LoginAttemptFactory::new()->create([
             'user_id' => $user->id,
-            'multi_factor_method' => null,
+            'multi_factor_method' => 'authenticator',
+            'is_success' => false,
         ]);
 
         $request = $this->buildRequest('/test', $user);
@@ -152,6 +153,65 @@ class NeevMiddlewareTest extends TestCase
 
         $this->assertEquals(200, $response->getStatusCode());
         $this->assertEquals('OK', $response->getContent());
+    }
+
+    /**
+     * Either signal closes the gate. A row written before the current
+     * convention reports a parked login the other way round - successful from
+     * the first factor, with no `multi_factor_method` yet - so a session
+     * already in flight at deploy time must still be challenged.
+     */
+    public function test_redirects_to_mfa_form_for_a_legacy_row_that_succeeded_without_a_factor(): void
+    {
+        $user = User::factory()->create();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'preferred' => true,
+        ]);
+
+        $attempt = LoginAttemptFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => null,
+            'is_success' => true,
+        ]);
+
+        $request = $this->buildRequest('/test', $user);
+        session(['attempt_id' => $attempt->id]);
+
+        $response = $this->middleware->handle($request, $this->passThrough());
+
+        $this->assertTrue($response->isRedirection());
+        $this->assertLocationContains('/mfa/', $response);
+    }
+
+    /** The mirror case: a factor named, but the login never completed. */
+    public function test_redirects_to_mfa_form_when_a_named_factor_was_never_supplied(): void
+    {
+        $user = User::factory()->create();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'preferred' => true,
+        ]);
+
+        $attempt = LoginAttemptFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => 'authenticator',
+            'is_success' => false,
+        ]);
+
+        $request = $this->buildRequest('/test', $user);
+        session(['attempt_id' => $attempt->id]);
+
+        $response = $this->middleware->handle($request, $this->passThrough());
+
+        $this->assertTrue($response->isRedirection());
+        $this->assertLocationContains('/mfa/', $response);
     }
 
     /**
@@ -204,7 +264,8 @@ class NeevMiddlewareTest extends TestCase
         $attempt = LoginAttemptFactory::new()->create([
             'user_id' => $user->id,
             'method' => 'google',
-            'multi_factor_method' => null,
+            'multi_factor_method' => 'authenticator',
+            'is_success' => false,
         ]);
 
         $request = $this->buildRequest('/test', $user);

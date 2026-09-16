@@ -461,8 +461,11 @@ class OAuthTest extends TestCase
         $this->get('/neev/oauth/google/callback?code=test-auth-code')
             ->assertRedirect(route('otp.mfa.create', 'authenticator'));
 
-        // The attempt is on record but unanswered, so protected routes stay shut.
-        $this->assertNull($user->loginAttempts()->latest('id')->first()->multi_factor_method);
+        // The attempt names the factor it is waiting on and stays unsuccessful,
+        // so protected routes stay shut.
+        $attempt = $user->loginAttempts()->latest('id')->first();
+        $this->assertSame('authenticator', $attempt->multi_factor_method);
+        $this->assertFalse($attempt->is_success);
 
         Route::middleware(['web', 'neev:web'])->get('/mfa-protected', fn () => response('PROTECTED'));
 
