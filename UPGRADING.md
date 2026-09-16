@@ -11,7 +11,7 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## 0.6.1 → Unreleased
+## 0.6.3 → Unreleased
 
 **Magic links are now stateful and single-use (action required).**
 The stateless signed-URL flow is gone. Links are opaque tokens stored
@@ -97,6 +97,10 @@ superseded whenever a newer link is issued for the same channel.
 - Schedule `neev:clean-magic-links` alongside `neev:clean-login-attempts`
   to purge expired tokens.
 
+---
+
+## 0.6.2 → 0.6.3
+
 **OAuth logins are now challenged for MFA (action required if you enable OAuth
 providers).**
 The OAuth callback used to sign an MFA-enrolled account straight in. It now
@@ -167,6 +171,10 @@ after the *first* factor; both halves now follow the API's convention.
   alongside `mfa:` if you have a custom first factor that parks at the
   challenge, or the login will be recorded as complete before the second
   factor.
+
+---
+
+## 0.6.1 → 0.6.2
 
 **`type` on `POST {prefix}/tenant-domains` is ignored (action required if you
 hand out subdomains).**
@@ -244,6 +252,47 @@ reach the other sessions; attach Laravel's `AuthenticateSession` middleware to
 your authenticated routes to get the same effect there. Sessions are read from
 `session.connection`, so a separate session database works unchanged. See
 [docs/security.md](./docs/security.md#what-a-password-change-revokes).
+
+---
+
+## 0.6.0 → 0.6.1
+
+All four changes in this release are security fixes. None needs a schema or
+config change, but three alter behaviour a consuming application may have been
+relying on.
+
+**An `X-Team` header now requires membership (action required if you used it to
+act across teams).** `ResolveTeamMiddleware` accepted the header on every route
+in the neev groups and made the named team the request context, and `TeamScope`
+then scoped every team-owned model to it — so any signed-in user could read
+another team's records by setting one header. `BindContextMiddleware` now
+refuses a header-named team the caller is not a member of. Two other sources are
+deliberately untouched: a team resolved from the **host** still serves
+non-members, so team-branded pages stay reachable, and a team named by a **route
+parameter** is still the controller's to authorize. If an admin or support tool
+of yours sets `X-Team` to a team its operator does not belong to, give that
+operator membership or reach the team through a route parameter with your own
+authorization.
+
+**`DELETE {prefix}/teams/members/leave` (Blade) is gated on membership (no
+action required).** It took both the team and the subject from the request and
+checked neither against the caller. `TeamApiController::leave()` was fixed in
+0.6.0; the web twin carries the same rules now.
+
+**The Blade MFA challenge answers for the session, not the request body (action
+required only if you posted to it directly).** `POST /otp/mfa` resolved the
+account from an `email` field in the request and signed it in without a
+credential check — one second factor for an address was a complete standalone
+credential. The account now comes from `session('email')`, set by the password
+step, and `auth_method` must name a factor the account has actually enrolled. A
+custom login page must go through the package's password step to open the
+challenge rather than posting an `email` of its own.
+
+**A rejected MFA code no longer opens the gate (no action required).**
+`verifyMFAOTPStore()` stamped `login_attempts.multi_factor_method` before
+verifying the code and left it set on failure, which `NeevMiddleware` read as
+proof the challenge had been answered.
+
 ---
 
 ## 0.5.0 → 0.6.0
