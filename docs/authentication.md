@@ -559,7 +559,8 @@ Step 8's redirect target is `EmailLinks::mfaChallengeUrl()` — the Blade kit's
 registered whether or not the kit is, so a headless install reaches this hand-off
 too; override the method alongside `loginUrl()` if your page lives elsewhere. On a
 stateful host the callback also puts the step-up JWT in the auth cookie, so that
-page can complete the challenge against `POST {prefix}/mfa/otp/verify` — see
+page can complete the challenge against `POST {prefix}/mfa/otp/verify`, or ask for a
+fresh code with `POST {prefix}/mfa/otp/send` — see
 [SPA Authentication](./spa-authentication.md#52-app-wide-oauth-social-login-on-a-stateful-host) and
 [Email Links](./email-links.md).
 

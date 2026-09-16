@@ -503,6 +503,30 @@ class UserAuthApiController extends Controller
         return $links->emailChanged($request, $user);
     }
 
+    public function sendMFAOTP(Request $request)
+    {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'message' => 'Credentials are wrong.',
+            ], 403);
+        }
+
+        // Only an enrolled, active email factor gets a code. A pending setup
+        // cannot answer a challenge, so mailing for one would be noise.
+        if (!in_array('email', $this->getMfaOptions($user), true)) {
+            return response()->json([
+                'message' => 'Invalid auth method.',
+            ], 400);
+        }
+
+        $this->sendMfaEmailOTP($user);
+
+        return response()->json([
+            'message' => 'Verification code has been sent.',
+        ]);
+    }
+
     public function verifyMFAOTP(Request $request, GeoIP $geoIP)
     {
         $request->validate([

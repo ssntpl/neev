@@ -677,6 +677,34 @@ Authorization: Bearer {mfa_jwt_token}
 
 ---
 
+### Resend MFA OTP
+
+Send another emailed MFA code for a challenge already in progress. The first
+code is mailed by the login response, so this is only for a resend. Email
+method only; the account comes from the JWT, so there is no request body.
+
+```http
+POST /neev/mfa/otp/send
+```
+
+**Headers:**
+```http
+Authorization: Bearer {mfa_jwt_token}
+```
+
+**Response:**
+
+```json
+{
+    "message": "Verification code has been sent."
+}
+```
+
+Answers `400` if the account has no active `email` method. Shares the
+`throttle:5,1` bucket with `POST /neev/mfa/otp/verify`.
+
+---
+
 ### Delete MFA Method
 
 ```http

@@ -25,7 +25,7 @@ class UserController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
-            return redirect()->route('neev.login');
+            return redirect()->route('login');
         }
         $user->loadMissing('multiFactorAuths', 'passkeys');
 
@@ -41,7 +41,7 @@ class UserController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
-            return redirect()->route('neev.login');
+            return redirect()->route('login');
         }
 
         return view('neev::account.teams', ['user' => $user, 'join_team' => true]);
@@ -75,7 +75,7 @@ class UserController extends Controller
     {
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
-            return redirect()->route('neev.login');
+            return redirect()->route('login');
         }
         $attempts = $user->loginAttempts()->orderBy('created_at', 'desc')->get();
         return view('neev::account.login-attempt', [

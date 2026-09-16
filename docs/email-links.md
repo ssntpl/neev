@@ -65,7 +65,7 @@ The MFA challenge row is the one a headless install is most likely to reach
 without meaning to: the OAuth redirect and callback routes are registered whether
 or not the kit is, so an MFA-enrolled account signing in through the *web* OAuth
 flow lands on this page. The session-based verify endpoint behind the kit's page
-(`POST {prefix}/otp/mfa`) does not exist there, so on a stateful host the callback
+(`POST /otp/mfa`) does not exist there, so on a stateful host the callback
 hands your page the step-up JWT in the auth cookie instead — complete the
 challenge with `POST {prefix}/mfa/otp/verify`, which swaps it for a real login
 token.

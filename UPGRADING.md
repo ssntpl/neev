@@ -34,7 +34,7 @@ stops at the same challenge a password login does, so:
 - **On a same-origin SPA monolith** the `neev_session` cookie no longer carries
   a login token out of the callback. It carries the short-lived MFA JWT, which
   `POST {prefix}/mfa/otp/verify` swaps for the real login token; the Blade
-  challenge page's own `POST {prefix}/otp/mfa` does the same for a session
+  challenge page's own `POST /otp/mfa` does the same for a session
   flow. A frontend that read that cookie expecting a login token will find a
   credential that is only good for the OTP step until the challenge passes.
 

@@ -251,6 +251,7 @@ All API routes are prefixed with `/neev` — the prefix is configurable via `rou
 | PUT | `/neev/mfa/preferred` | Set preferred MFA method | Yes |
 | DELETE | `/neev/mfa/delete` | Disable MFA method | Yes |
 | POST | `/neev/mfa/otp/verify` | Verify MFA code | MFA JWT |
+| POST | `/neev/mfa/otp/send` | Resend the emailed MFA code | MFA JWT |
 | POST | `/neev/recoveryCodes` | Generate recovery codes | Yes |
 
 ### Passkey Endpoints
@@ -457,6 +458,10 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 curl -X POST https://yourapp.com/neev/mfa/otp/verify \
   -H "Authorization: Bearer {mfa_jwt_token}" \
   -d '{"auth_method": "authenticator", "otp": "123456"}'
+
+# Resend the emailed code (email method only)
+curl -X POST https://yourapp.com/neev/mfa/otp/send \
+  -H "Authorization: Bearer {mfa_jwt_token}"
 ```
 
 ---
