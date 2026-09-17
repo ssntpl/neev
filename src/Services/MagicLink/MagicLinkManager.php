@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Services\MagicLink;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
 use Ssntpl\Neev\Events\MagicLinkConsumed;
 use Ssntpl\Neev\Events\MagicLinkGenerated;
@@ -100,9 +101,10 @@ class MagicLinkManager
         $request = $context['request'] ?? null;
 
         // Both refusals run before invalidating: a refused send must not cost
-        // the user the link they already have.
-        $this->reserveIssuance($user, $channel);
+        // the user the link they already have. The binding check comes first
+        // so a send that mints nothing does not spend the account's budget.
         $metaData = $this->buildMetaData($request, $context);
+        $this->reserveIssuance($user, $channel);
 
         $plain = MagicLinkToken::generateToken();
 
@@ -133,7 +135,9 @@ class MagicLinkManager
     /**
      * Count this issuance against the account's budget for the channel, or
      * refuse. Keyed on the account, not the caller: the point is to bound how
-     * often one address can have its link replaced, whoever asks.
+     * often one address can have its link replaced, whoever asks. A send that
+     * fails inside the transaction afterwards still counts; that is rare and
+     * costs at most one of the three.
      *
      * @throws MagicLinkThrottledException
      */
@@ -200,7 +204,6 @@ class MagicLinkManager
      * @return array<string, mixed>|null
      *
      * @throws MagicLinkBindingException
-     * @throws MagicLinkThrottledException
      */
     protected function buildMetaData(?Request $request, array $context): ?array
     {
@@ -572,7 +575,22 @@ class MagicLinkManager
 
         $host = $this->verifiedTenantHost();
 
-        return $host === null ? $fallback : $this->schemeFor($fallback) . '://' . $host;
+        if ($host === null) {
+            // A resolved tenant with no verified host at all: the link goes to
+            // the platform host, where the tenant-scoped token cannot be found.
+            // Loud rather than silent, because the user will only see "invalid".
+            if ($this->container->bound(TenantResolver::class)
+                && $this->container->make(TenantResolver::class)->resolvedContext() !== null) {
+                Log::warning('Magic link built on the platform host: the resolved tenant has no verified domain, so the link cannot be redeemed.', [
+                    'context_type' => $this->container->make(TenantResolver::class)->resolvedContext()->getContextType(),
+                    'context_id' => $this->container->make(TenantResolver::class)->resolvedContext()->getContextId(),
+                ]);
+            }
+
+            return $fallback;
+        }
+
+        return $this->schemeFor($fallback) . '://' . $host;
     }
 
     /**

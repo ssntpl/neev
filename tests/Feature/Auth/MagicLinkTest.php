@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Events\MagicLinkConsumed;
 use Ssntpl\Neev\Events\MagicLinkGenerated;
@@ -896,6 +897,55 @@ class MagicLinkTest extends TestCase
         // Scheme follows the configured app URL; the host is what matters here.
         $this->assertStringContainsString('://portal.acme.test/login-link', $link['url']);
         $this->assertSame($tenant->id, $link['model']->tenant_id);
+    }
+
+    /**
+     * The branch the fix exists for: no host resolved the request (X-Tenant
+     * header, or CLI/queued generation) and the tenant owns no domain record,
+     * so a verified domain of one of its teams is the only host that can
+     * redeem the tenant-scoped token.
+     */
+    public function test_a_tenant_named_by_header_gets_links_on_one_of_its_teams_hosts(): void
+    {
+        $this->enableTenantIsolation();
+
+        $owner = User::factory()->create();
+        $tenant = TenantFactory::new()->create(['slug' => 'globex']);
+        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'tenant_id' => $tenant->id]);
+        DomainFactory::new()->forTeam($team)->verified()->create(['domain' => 'portal.acme.test']);
+
+        // Another tenant's team holds a verified domain too; it must never be chosen.
+        $otherOwner = User::factory()->create();
+        $otherTenant = TenantFactory::new()->create(['slug' => 'initech']);
+        $otherTeam = TeamFactory::new()->create(['user_id' => $otherOwner->id, 'tenant_id' => $otherTenant->id]);
+        DomainFactory::new()->forTeam($otherTeam)->verified()->create(['domain' => 'portal.initech.test']);
+
+        $resolver = app(TenantResolver::class);
+        $resolver->resolve(Request::create('http://localhost/api', 'GET', [], [], [], ['HTTP_X_TENANT' => 'globex']));
+        $this->assertNull($resolver->currentDomain(), 'A header-resolved tenant has no current domain.');
+
+        $link = app(MagicLinkManager::class)->generate($owner);
+
+        $this->assertStringContainsString('://portal.acme.test/login-link', $link['url']);
+        $this->assertStringNotContainsString('initech', $link['url']);
+    }
+
+    /** With no verified host anywhere, the platform host is all that is left — and it is logged. */
+    public function test_a_tenant_with_no_verified_domain_falls_back_to_the_platform_host_with_a_warning(): void
+    {
+        $this->enableTenantIsolation();
+
+        $owner = User::factory()->create();
+        TenantFactory::new()->create(['slug' => 'globex']);
+
+        $resolver = app(TenantResolver::class);
+        $resolver->resolve(Request::create('http://localhost/api', 'GET', [], [], [], ['HTTP_X_TENANT' => 'globex']));
+
+        Log::shouldReceive('warning')->once()->withArgs(fn ($message) => str_contains($message, 'platform host'));
+
+        $link = app(MagicLinkManager::class)->generate($owner);
+
+        $this->assertStringStartsWith(app(EmailLinks::class)->base() . '/', $link['url']);
     }
 
     /** The host the request came in on wins over the tenant's other domains. */
