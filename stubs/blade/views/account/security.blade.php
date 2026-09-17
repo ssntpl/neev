@@ -238,6 +238,8 @@
                             </x-neev-component::button>
                         </div>
                     </form>
+                    {{-- Ceremonies that fail in the browser never reach the server, so they are reported here. --}}
+                    <p id="passkey-error" class="text-sm text-red-600 dark:text-red-400" role="alert" x-show="openPasskey" hidden></p>
                     @if (count($user->passkeys) > 0)
                         <x-neev-component::table>
                             <x-slot name="head">
@@ -346,7 +348,17 @@
 <script src="https://unpkg.com/@simplewebauthn/browser/dist/bundle/index.es5.umd.min.js"></script>
 <script>
     const { startRegistration } = SimpleWebAuthnBrowser;
+    const passkeyError = document.getElementById('passkey-error');
+
+    const showPasskeyError = (message) => {
+        passkeyError.textContent = message;
+        passkeyError.hidden = false;
+    };
+
     document.getElementById('start').addEventListener('click', async () => {
+        passkeyError.hidden = true;
+        passkeyError.textContent = '';
+
         const resp = await fetch('{{ route('passkeys.register.options') }}', {
             method: 'POST',
             headers: {
@@ -354,9 +366,31 @@
                 'Accept': 'application/json',
             },
         });
+
+        if (!resp.ok) {
+            showPasskeyError('{{ __('Could not start passkey registration. Please try again.') }}');
+            return;
+        }
+
         const res = await resp.json();
 
-        const attestation = await startRegistration({optionsJSON: res});
+        let attestation;
+        try {
+            attestation = await startRegistration({optionsJSON: res});
+        } catch (e) {
+            {{-- Registration options carry excludeCredentials, so an authenticator already
+                 enrolled on this relying party refuses the ceremony with InvalidStateError. --}}
+            if (e.name === 'InvalidStateError' || e.code === 'ERROR_AUTHENTICATOR_PREVIOUSLY_REGISTERED') {
+                showPasskeyError('{{ __('This device already has a passkey for this account. Use it to sign in, or delete it below before adding a new one.') }}');
+            {{-- SimpleWebAuthn wraps the browser's error, so the original name is on e.cause. --}}
+            } else if (e.name === 'NotAllowedError' || e.cause?.name === 'NotAllowedError') {
+                showPasskeyError('{{ __('Passkey registration was cancelled or timed out.') }}');
+            } else {
+                showPasskeyError('{{ __('Could not register a passkey on this device.') }}' + (e.message ? ' ' + e.message : ''));
+            }
+
+            return;
+        }
 
         const attestationInput = document.getElementById('attestation-input');
         attestationInput.value = JSON.stringify({

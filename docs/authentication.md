@@ -380,15 +380,46 @@ WebAuthn requires the relying party ID to be the browser origin's host or a regi
 A single app-wide value therefore locks passkeys to the platform domain. It is instead read off the
 request's context, by one rule:
 
-> the resolved tenant/team's **primary domain** — or its **first verified domain** when none is
-> marked primary. No context, no verified domain, or a domain inside the platform's own zone, and
-> `relying_party_id` stands.
+> the **verified domain that equals the request's origin** — the row the request resolved through,
+> or one the resolved context owns. The match is exact: a row covers the host it names and no other.
+> No context, no such domain, or an origin inside the platform's own zone, and `relying_party_id`
+> stands.
 
-The context is whichever one the request resolved — the `X-Tenant` header, a subdomain, a custom
-domain, all of them. The host the request arrived on plays no part beyond resolving that context, so
-the API may be deployed anywhere: a SPA on `acme.com` calling an API on `api.platform.com` sends
-`X-Tenant`, as it must for everything else to be scoped correctly, and the ceremony runs under
+The origin is the browser's `Origin` header, and only that — the request's host is the host the
+request was *addressed to*, which on a shared API is not where the ceremony would run. The context is
+whichever one the request resolved — the `X-Tenant` header, a subdomain, a custom domain, all of
+them — so the API may be deployed anywhere: a SPA on `acme.com` calling an API on `api.platform.com`
+sends `X-Tenant`, as it must for everything else to be scoped correctly, sends
+`Origin: https://acme.com` as every browser does cross-origin, and the ceremony runs under
 `acme.com`.
+
+> **The ceremony options request has to carry `Origin`.** Browsers set it themselves on every
+> cross-origin request and on every POST, so a SPA calling an API on another host, and the package's
+> own web routes — whose options endpoints are POST — always name their origin. They omit it on a
+> same-origin GET, and `Origin` is a forbidden header name, so client JavaScript cannot put it back:
+> `fetch()` and `XMLHttpRequest` drop any attempt to set it. A same-origin
+> `GET /neev/passkeys/register/options` or `GET /neev/passkeys/login/options` therefore names no
+> origin and runs under `relying_party_id`, which the browser then refuses on the tenant's own host.
+> On a Blade starter kit install, where the pages and the API share a host, reach the ceremony through
+> the session-authenticated kit routes (`POST /account/passkeys/register/options`,
+> `POST /passkeys/login/options` — unprefixed, and registered only when `neev.ui` is `blade`), which
+> the browser gives an origin for you. A headless install has no POST options route: its only remedy
+> is to serve the API from a host of its own, so the calls are cross-origin — the layout the shared-API
+> note above describes. A caller that legitimately has no host origin — a native app, whose origin is an
+> app facet — keeps the configured relying party, the only one it can hold platform assets for.
+
+**The row the request resolved through counts, whoever owns it.** With both tenants and teams on,
+a team-owned host routes through that team's tenant, so the resolved context holds no row naming the
+host — reading only its rows would drop the ceremony to `relying_party_id`, which the browser on that
+host then refuses. The resolving row is taken first, and `rp.name` is its owner's name (the team's,
+not the tenant's it routes to).
+
+**A verified row is not by itself a serving host**, which is why the origin decides. `domains` is
+also the federation registry: a team reached at `acme.example.com` federates `acme.com` so that
+`@acme.com` staff auto-join, with nothing ever served there. Handing that row the relying party would
+break the host users do sign in on — `navigator.credentials.create()` rejects `rp.id = "acme.com"` on
+`acme.example.com` with a `SecurityError`, and every credential already enrolled drops out of
+`allowCredentials` — so a domain the origin cannot use is never taken.
 
 A domain inside the platform's own zone keeps the platform relying party. Subdomain tenants hold
 `domains` rows too — the tenant-domains API verifies `type: subdomain` on sight — so without that, a
@@ -415,10 +446,10 @@ a package limitation and no setting changes it:
 - subdomains of the configured domain always run under the platform's relying party, verified or
   not, so a passkey enrolled on `acme.example.com` is the same credential as one enrolled on
   `example.com`
-- every origin a ceremony admits is named — nothing is matched by suffix, on any relying party.
-  WebAuthn would let a browser on `app.acme.com` use a credential bound to `acme.com`, but the
-  server-side origin check refuses it unless that host is admitted explicitly — see
-  [Origins](#origins) below. Verify the host users sign in on and make that one primary
+- nothing is matched by suffix, on any relying party — not the relying party a host is given, and
+  not the origins a ceremony admits. WebAuthn would let a browser on `app.acme.com` use a credential
+  bound to `acme.com`; this package does not offer it one, and would refuse the origin if it did.
+  Verify every host users sign in on — see [Origins](#origins) below
 
 Credentials created before this behaviour existed carry no relying party of their own and are read as
 belonging to the configured one — they keep working on the platform domain and are never offered on a
@@ -426,18 +457,16 @@ tenant's domain.
 
 #### One relying party per tenant
 
-**A tenant gets one relying party: its primary domain.** That is the whole of the rule, and it has a
-consequence worth stating plainly.
+**A tenant gets one relying party per origin it is reached on.** A tenant holding several domains
+with different registrable roots — `ssntpl.in` and `otper.com` — runs under `ssntpl.in` on
+`ssntpl.in` and under `otper.com` on `otper.com`, because `rp.id = "ssntpl.in"` is neither the host
+nor a suffix of the host on the second, and a browser there would reject it with a `SecurityError`
+before any request was made.
 
-A tenant holding several domains with different registrable roots — `ssntpl.in` and `otper.com` —
-cannot run a ceremony from the second one. With `ssntpl.in` primary, a browser on `otper.com` is
-handed `rp.id = "ssntpl.in"`, which is neither its host nor a suffix of it, so
-`navigator.credentials.create()` / `.get()` rejects with a `SecurityError` before the request is
-made. Nothing is logged server-side, because nothing arrives.
-
-This is inherent to WebAuthn: no single credential can span two registrable roots, whoever owns them.
-The package picks one domain per tenant and holds to it. If a tenant needs passkeys on more than one
-of its domains, the application decides how:
+The consequence is a credential per root, not a credential that spans them: a user who enrols on
+`ssntpl.in` has no passkey on `otper.com` and is prompted to enrol again. That much is inherent to
+WebAuthn — no single credential can span two registrable roots, whoever owns them. Where a tenant
+needs *one* credential across its domains, the application decides how:
 
 - **redirect to the primary domain to sign in**, then return — one credential, works in every
   browser, and the model Auth0, Okta and WorkOS use
@@ -446,12 +475,12 @@ of its domains, the application decides how:
   checks the origin too, so list the related origins in `allowed_origins` as well — that list
   applies on every relying party. Chrome/Edge 128+ and Safari 18+ only, so it needs one of the
   other two as a fallback
-- **accept one passkey per domain**, by pointing each domain at its own context
+- **accept one passkey per host**, which is what happens by default — each verified host the tenant
+  is served on enrols and offers its own credentials
 
-Subdomains are a separate matter: WebAuthn lets a browser on `app.acme.com` run a ceremony for
-`acme.com`, but the server matches the primary's origin exactly — no subdomain matching on a
-tenant's domain — so verify the host users sign in on — `app.acme.com` if that is where the login
-page lives — and make it primary.
+Subdomains are a separate matter, and they are domains like any other here: a verified
+`app.acme.com` is its own relying party, with its own credentials, and an unverified one gets
+`relying_party_id` — which its browser then refuses. Verify the host the login page lives on.
 
 #### Gating the UI
 
@@ -499,10 +528,10 @@ The OS side has its own requirements, per relying party, that the package cannot
   `webcredentials` block naming the app. The entitlement ships with the app, so a new custom domain
   needs an app update before its users can use passkeys from the iOS app
 
-Because origins are matched exactly, **verify the host you actually serve passkeys from**.
-A row on `acme.com` lets a browser on `app.acme.com` start a ceremony — the relying party covers it
-— but the server then refuses the assertion, since `https://app.acme.com` is not `https://acme.com`.
-Verify `app.acme.com` and make it primary if that is where users sign in.
+Because both the relying party and the origins are matched exactly, **verify the host you actually
+serve passkeys from**. A row on `acme.com` does nothing for a browser on `app.acme.com`: it is handed
+`relying_party_id`, which is not its host either, and the ceremony never starts. Verify
+`app.acme.com` as well if that is where users sign in.
 
 **Subdomain matching is off on every relying party**, and there is no config key to turn it on. A
 passkey is bound to the relying party rather than to an origin, so the origin list is the only thing
@@ -525,11 +554,20 @@ Every admitted origin is therefore named, and comes from one of two places:
    ],
    ```
 
-2. **The context's own verified `domains` rows.** A tenant on `acme.example.com` is admitted because
-   its verified row says so — not because the host ends in your platform domain. Tenant subdomains
-   therefore need no entry in `allowed_origins`, and one tenant's subdomain never admits a sibling it
-   has no claim to. A tenant's verified **custom** domain (`acme.com`) works the same way, and
-   becomes the relying party as well.
+2. **The verified `domains` row the request itself names.** A tenant on `acme.example.com` is
+   admitted because its verified row says so — not because the host ends in your platform domain.
+   Tenant subdomains therefore need no entry in `allowed_origins`. Inside the platform's zone only
+   the single host the request's `Origin` names is admitted, never every platform-zone row the
+   context happens to hold: those hosts all share `relying_party_id`, so admitting a sibling would
+   let a ceremony run there complete against a credential enrolled here. A tenant's verified
+   **custom** domain (`acme.com`) works the same way, and becomes the relying party as well.
+
+   What this leaves is the platform's own boundary. Every host in your zone shares one relying party,
+   which is WebAuthn's rule and not something an origin list can undo — so script execution on any
+   host you serve there can run a ceremony for it. Because the platform serves every host in its own
+   zone, that is the same boundary an XSS on the apex would cross. It holds only as long as tenants
+   cannot serve their own script from a host under your platform domain; if yours can, give those
+   hosts their own relying party rather than relying on the origin list.
 
 An installation where every host under the platform domain really is its own may widen the check by
 overriding `allowSubdomains()` in a subclass and binding it in a service provider — a deliberate code

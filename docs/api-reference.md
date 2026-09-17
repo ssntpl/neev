@@ -913,11 +913,23 @@ Authorization: Bearer {token}
 }
 ```
 
-`rp.id` and `rp.name` are resolved from the request's context, not from
-configuration alone: a tenant reached on its own verified domain gets that
-domain and its own name, and everything else gets `relying_party_id` and the
-app name. Pass the whole object through to the browser rather than hard-coding
-either. See [Supported Domains](./authentication.md#supported-domains).
+`rp.id` and `rp.name` are resolved from the request's context *and its
+`Origin` header*, not from configuration alone: a tenant reached on its own
+verified domain gets that domain and its own name, and everything else gets
+`relying_party_id` and the app name. Pass the whole object through to the
+browser rather than hard-coding either. See
+[Supported Domains](./authentication.md#supported-domains).
+
+**This endpoint needs `Origin`.** The relying party is the context's verified
+domain equal to the origin the request names, so a request without one — a
+browser's same-origin `GET`, where the header is omitted and cannot be added
+back from JavaScript — is answered with `relying_party_id`, which the browser
+then refuses on a tenant's own host. Browsers attach it themselves on
+cross-origin requests, and on the Blade starter kit's session-authenticated
+`POST /account/passkeys/register/options`; a headless install has no POST
+options route, so serve the API from its own host to keep these calls
+cross-origin. See
+[Supported Domains](./authentication.md#supported-domains).
 
 `excludeCredentials` lists the credentials this user already holds **on that
 relying party**, so an authenticator refuses to enrol the same key twice.
@@ -981,8 +993,11 @@ GET /neev/passkeys/login/options?email=john@example.com
 }
 ```
 
-`rpId` follows the request's context in the same way `rp.id` does above, and
-`allowCredentials` is filtered to the credentials enrolled under it — a user
+`rpId` follows the request's context and `Origin` header in the same way
+`rp.id` does above — including the requirement that the request name an origin,
+so send this one cross-origin, or, on a Blade starter kit install, use the
+kit's `POST /passkeys/login/options` — and `allowCredentials` is filtered to the
+credentials enrolled under it — a user
 with passkeys on both the platform domain and their own gets only the ones the
 current ceremony can use. An account with no credentials on this relying party
 is answered with the same `400` as an unknown address.

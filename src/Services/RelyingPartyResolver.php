@@ -8,9 +8,10 @@ use Ssntpl\Neev\Models\Domain;
 /**
  * Resolves the WebAuthn relying party for the current request's context.
  *
- * The context's primary verified domain, or its first verified one. With no
- * context, no domain, or only domains inside the platform's own zone, the
- * configured value stands.
+ * The verified domain equal to the request's origin — the row the request
+ * resolved through, or one the resolved context owns. With no context, no
+ * such domain, or only domains inside the platform's own zone, the configured
+ * value stands.
  */
 class RelyingPartyResolver
 {
@@ -18,8 +19,15 @@ class RelyingPartyResolver
     protected ?Domain $domain = null;
 
     /**
-     * Verified hosts under the configured relying party (`acme.platform.com`),
-     * admitted as exact origins instead of by subdomain matching.
+     * The request's own verified host under the configured relying party
+     * (`acme.platform.com`), admitted as an exact origin instead of by
+     * subdomain matching.
+     *
+     * Only the host the request names, never every platform-zone row the
+     * context holds: those hosts all share the configured relying party, so
+     * admitting a sibling would let a ceremony run there complete against a
+     * credential enrolled here. What remains is the platform's own boundary —
+     * the platform serves every host in its zone.
      *
      * @var array<int, string>
      */
@@ -48,9 +56,9 @@ class RelyingPartyResolver
      *
      * Every origin is named exactly; nothing is matched by suffix. The
      * configured list is kept on every path (it carries native-app facets,
-     * which apply to all tenants) plus either the tenant's own domain or its
-     * verified hosts under the platform domain. Built from the domain records,
-     * never from the request.
+     * which apply to all tenants) plus either the tenant's own domain or the
+     * one verified host under the platform domain the request names. Built
+     * from the domain records, never from the request.
      *
      * @return array<int, string>
      */
@@ -69,12 +77,18 @@ class RelyingPartyResolver
     }
 
     /**
-     * Name authenticators display: the tenant's on its own domain, otherwise
-     * the application's.
+     * Name authenticators display: the domain owner's on its own domain,
+     * otherwise the application's.
      */
     public function rpName(): string
     {
-        $context = $this->domain() !== null ? $this->tenants->resolvedContext() : null;
+        $domain = $this->domain();
+
+        // The domain may belong to a team that routes through the resolved
+        // tenant, and the name to show is the one that owns the host.
+        $context = $domain !== null
+            ? ($domain->owner ?? $this->tenants->resolvedContext())
+            : null;
 
         // The context interfaces declare no name; Team and Tenant carry one as
         // an Eloquent attribute, and a custom context may not.
@@ -124,10 +138,16 @@ class RelyingPartyResolver
     }
 
     /**
-     * Sort the context's verified domains: hosts under the configured relying
-     * party become extra origins on it, the first host outside it becomes the
-     * tenant's own relying party. Keeping subdomain tenants on the platform
-     * relying party preserves passkeys already enrolled there.
+     * The relying party: the verified domain equal to the request's origin,
+     * else `configured()`. The row the request resolved through is taken
+     * first, because it need not belong to the resolved context — in tenant
+     * mode a team-owned host routes through that team's tenant. The match is
+     * exact — a row covers the host it names and no other — because `domains`
+     * is also the federation registry, so `acme.com` may sit there only so
+     * `@acme.com` staff auto-join, never served. A row in the platform's own
+     * zone keeps the platform relying party, so a subdomain tenant does not
+     * displace it; that host becomes an extra origin only when it is the one
+     * the request names, never a sibling's.
      */
     protected function settle(): void
     {
@@ -138,6 +158,28 @@ class RelyingPartyResolver
 
         if ($context === null) {
             return;
+        }
+
+        $origin = $this->originHost();
+
+        // The row the request resolved through, which is not always among the
+        // context's own: in tenant mode a team-owned host routes through that
+        // team's tenant, so the tenant holds no row naming it. It is still the
+        // host the browser is on, so it is still the relying party.
+        $resolved = $this->tenants->currentDomain();
+
+        if ($resolved !== null && $resolved->verified_at !== null) {
+            $host = Domain::canonicalHost($resolved->domain);
+
+            if ($this->usableFrom($this->configured(), $host)) {
+                if ($host === $origin) {
+                    $this->platformHosts[] = $host;
+                }
+            } elseif ($host === $origin) {
+                $this->domain = $resolved;
+
+                return;
+            }
         }
 
         $verified = Domain::where('owner_type', $context->getContextType())
@@ -151,10 +193,34 @@ class RelyingPartyResolver
             $host = Domain::canonicalHost($row->domain);
 
             if ($this->usableFrom($this->configured(), $host)) {
-                $this->platformHosts[] = $host;
-            } elseif ($this->domain === null) {
+                if ($host === $origin) {
+                    $this->platformHosts[] = $host;
+                }
+            } elseif ($this->domain === null && $host === $origin) {
                 $this->domain = $row;
             }
         }
+
+        $this->platformHosts = array_values(array_unique($this->platformHosts));
+    }
+
+    /**
+     * The host the browser is on, per its `Origin` header — never the request's
+     * host, which is only where the request was addressed. No origin, or one
+     * that is not a host (`null` from a sandboxed frame, a native app's facet),
+     * matches nothing and leaves `configured()`. Browsers attach `Origin`
+     * themselves on cross-origin requests and on every POST, and omit it on a
+     * same-origin GET, where it is a forbidden header name a client cannot add
+     * back — so such a request runs under `configured()`.
+     */
+    protected function originHost(): string
+    {
+        $origin = (string) request()->headers->get('Origin');
+
+        if ($origin === '') {
+            return '';
+        }
+
+        return Domain::canonicalHost((string) (parse_url($origin, PHP_URL_HOST) ?: ''));
     }
 }
