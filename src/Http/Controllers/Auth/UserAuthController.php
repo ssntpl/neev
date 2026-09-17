@@ -14,6 +14,7 @@ use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
+use Ssntpl\Neev\Exceptions\MagicLinkThrottledException;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
@@ -174,6 +175,8 @@ class UserAuthController extends Controller
         // Single-use token redeemed server-side by the Blade flow.
         try {
             $link = $magicLink->forWeb($user, ['request' => $request]);
+        } catch (MagicLinkThrottledException $e) {
+            return back()->withErrors(['message' => $e->getMessage()]);
         } catch (MagicLinkBindingException $e) {
             Log::warning('Magic link refused: no binding source on the request.', [
                 'user_id' => $user->id,

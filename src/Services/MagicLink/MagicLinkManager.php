@@ -5,13 +5,16 @@ namespace Ssntpl\Neev\Services\MagicLink;
 use Illuminate\Contracts\Container\Container;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Ssntpl\Neev\Events\MagicLinkConsumed;
 use Ssntpl\Neev\Events\MagicLinkGenerated;
 use Ssntpl\Neev\Events\MagicLinkRejected;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
 use Ssntpl\Neev\Exceptions\MagicLinkChannelException;
+use Ssntpl\Neev\Exceptions\MagicLinkThrottledException;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\MagicLinkToken;
+use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\TenantResolver;
@@ -29,6 +32,16 @@ use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
  */
 class MagicLinkManager
 {
+    /**
+     * Links one account may be issued per channel inside ISSUANCE_WINDOW
+     * seconds. A hard invariant, not config: every issuance invalidates the
+     * previous link, so an unbounded rate lets anyone who knows an address keep
+     * its owner's link permanently dead and the inbox flooded.
+     */
+    public const ISSUANCE_LIMIT = 3;
+
+    public const ISSUANCE_WINDOW = 300;
+
     public function __construct(
         protected Container $container,
     ) {
@@ -76,6 +89,9 @@ class MagicLinkManager
      * @throws MagicLinkChannelException     When the channel is not configured,
      *                                       or is a deep-link channel with no
      *                                       scheme/universal link set.
+     * @throws MagicLinkThrottledException   When the account has been issued
+     *                                       ISSUANCE_LIMIT links for the channel
+     *                                       inside ISSUANCE_WINDOW seconds.
      */
     public function generate(object $user, string $channel = 'web', array $context = []): array
     {
@@ -83,8 +99,9 @@ class MagicLinkManager
         $context = $this->withRequest($context);
         $request = $context['request'] ?? null;
 
-        // Runs before invalidating: a refused send must not cost the user the
-        // link they already have.
+        // Both refusals run before invalidating: a refused send must not cost
+        // the user the link they already have.
+        $this->reserveIssuance($user, $channel);
         $metaData = $this->buildMetaData($request, $context);
 
         $plain = MagicLinkToken::generateToken();
@@ -111,6 +128,24 @@ class MagicLinkManager
         event(MagicLinkGenerated::fromToken($user, $token));
 
         return $this->linkPayload($token, $plain);
+    }
+
+    /**
+     * Count this issuance against the account's budget for the channel, or
+     * refuse. Keyed on the account, not the caller: the point is to bound how
+     * often one address can have its link replaced, whoever asks.
+     *
+     * @throws MagicLinkThrottledException
+     */
+    protected function reserveIssuance(object $user, string $channel): void
+    {
+        $key = 'neev:magic-link:issue:' . $user->id . ':' . $channel;
+
+        if (RateLimiter::tooManyAttempts($key, self::ISSUANCE_LIMIT)) {
+            throw new MagicLinkThrottledException(RateLimiter::availableIn($key));
+        }
+
+        RateLimiter::hit($key, self::ISSUANCE_WINDOW);
     }
 
     /**
@@ -165,6 +200,7 @@ class MagicLinkManager
      * @return array<string, mixed>|null
      *
      * @throws MagicLinkBindingException
+     * @throws MagicLinkThrottledException
      */
     protected function buildMetaData(?Request $request, array $context): ?array
     {
@@ -540,10 +576,17 @@ class MagicLinkManager
     }
 
     /**
-     * The current tenant's own verified host, preferring its primary domain.
+     * A verified host the resolved tenant can be reached at.
      *
-     * Only DNS-verified domains owned by the resolved tenant qualify: those are
-     * the hosts the tenant has proven control of.
+     * Only verified domain records qualify — hosts the tenant, or one of its
+     * teams, has proven control of — never the request's Host header. In order
+     * of preference: the record this request actually resolved through (that
+     * is where the user is, and it resolves back to the same tenant the token
+     * is scoped to); the tenant's own verified domain, primary first; and in
+     * isolated mode a verified domain of one of the tenant's teams, since a
+     * tenant reached only through its teams' hosts owns no record of its own.
+     * A link mailed to any other host could never find the tenant-scoped
+     * token.
      */
     protected function verifiedTenantHost(): ?string
     {
@@ -551,13 +594,19 @@ class MagicLinkManager
             return null;
         }
 
-        $context = $this->container->make(TenantResolver::class)->resolvedContext();
+        $resolver = $this->container->make(TenantResolver::class);
+        $context = $resolver->resolvedContext();
 
         if ($context === null) {
             return null;
         }
 
-        $domain = Domain::query()
+        $current = $resolver->currentDomain();
+        if ($current !== null && $current->verified_at !== null) {
+            return $current->domain;
+        }
+
+        $own = Domain::query()
             ->where('owner_type', $context->getContextType())
             ->where('owner_id', $context->getContextId())
             ->whereNotNull('verified_at')
@@ -565,7 +614,27 @@ class MagicLinkManager
             ->orderBy('id')
             ->first();
 
-        return $domain?->domain;
+        if ($own !== null) {
+            return $own->domain;
+        }
+
+        if ($context->getContextType() !== 'tenant') {
+            return null;
+        }
+
+        $teamIds = Team::getClass()::withoutTenantScope()
+            ->where('tenant_id', $context->getContextId())
+            ->pluck('id');
+
+        $team = Domain::query()
+            ->where('owner_type', 'team')
+            ->whereIn('owner_id', $teamIds)
+            ->whereNotNull('verified_at')
+            ->orderByDesc('is_primary')
+            ->orderBy('id')
+            ->first();
+
+        return $team?->domain;
     }
 
     /**

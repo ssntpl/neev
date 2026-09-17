@@ -73,6 +73,23 @@ class MagicLinkWebTest extends TestCase
         });
     }
 
+    /** The per-account cap answers on the form the same way a bad address does. */
+    public function test_send_login_link_reports_an_error_once_the_accounts_budget_is_spent(): void
+    {
+        Mail::fake();
+        $user = $this->createUser();
+
+        for ($i = 0; $i < MagicLinkManager::ISSUANCE_LIMIT; $i++) {
+            $this->post('/login/link', ['email' => $user->email])->assertSessionHas('status');
+        }
+
+        $this->post('/login/link', ['email' => $user->email])
+            ->assertRedirect()
+            ->assertSessionHasErrors('message');
+
+        Mail::assertSent(LoginUsingLink::class, MagicLinkManager::ISSUANCE_LIMIT);
+    }
+
     public function test_send_login_link_with_unknown_email_reports_an_error(): void
     {
         Mail::fake();

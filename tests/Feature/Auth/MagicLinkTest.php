@@ -9,7 +9,11 @@ use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Events\MagicLinkConsumed;
 use Ssntpl\Neev\Events\MagicLinkGenerated;
 use Ssntpl\Neev\Events\MagicLinkRejected;
+use Ssntpl\Neev\Database\Factories\DomainFactory;
+use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
+use Ssntpl\Neev\Exceptions\MagicLinkThrottledException;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Models\MagicLinkToken;
 use Illuminate\Support\Facades\Route;
@@ -19,6 +23,7 @@ use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
+use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -862,4 +867,104 @@ class MagicLinkTest extends TestCase
         ]);
     }
 
+
+    // -----------------------------------------------------------------
+    // Tenant mode: the link must land on a host that resolves the tenant
+    // -----------------------------------------------------------------
+
+    /**
+     * A tenant reached only through a team-owned domain owns no domain record
+     * of its own. The token is scoped to the tenant, so a link mailed to the
+     * platform host could never find it: on that host no tenant resolves and
+     * the scope narrows the lookup to `tenant_id IS NULL`.
+     */
+    public function test_tenant_reached_through_a_team_domain_gets_links_on_that_host(): void
+    {
+        $this->enableTenantIsolation();
+
+        $owner = User::factory()->create();
+        $tenant = TenantFactory::new()->create(['slug' => 'globex']);
+        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'tenant_id' => $tenant->id]);
+        DomainFactory::new()->forTeam($team)->verified()->create(['domain' => 'portal.acme.test']);
+
+        $resolver = app(TenantResolver::class);
+        $this->assertNotNull($resolver->resolve(Request::create('https://portal.acme.test/login')));
+        $this->assertSame('tenant', $resolver->resolvedContext()->getContextType());
+
+        $link = app(MagicLinkManager::class)->generate($owner);
+
+        // Scheme follows the configured app URL; the host is what matters here.
+        $this->assertStringContainsString('://portal.acme.test/login-link', $link['url']);
+        $this->assertSame($tenant->id, $link['model']->tenant_id);
+    }
+
+    /** The host the request came in on wins over the tenant's other domains. */
+    public function test_the_link_prefers_the_host_the_request_resolved_through(): void
+    {
+        $this->enableTenantIsolation();
+
+        $owner = User::factory()->create();
+        $tenant = TenantFactory::new()->create(['slug' => 'globex']);
+        DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'tenant',
+            'owner_id' => $tenant->id,
+            'domain' => 'globex.test',
+        ]);
+        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'tenant_id' => $tenant->id]);
+        DomainFactory::new()->forTeam($team)->verified()->create(['domain' => 'portal.acme.test']);
+
+        app(TenantResolver::class)->resolve(Request::create('https://portal.acme.test/login'));
+
+        $link = app(MagicLinkManager::class)->generate($owner);
+
+        // Scheme follows the configured app URL; the host is what matters here.
+        $this->assertStringContainsString('://portal.acme.test/login-link', $link['url']);
+    }
+
+    // -----------------------------------------------------------------
+    // Issuance is bounded per account
+    // -----------------------------------------------------------------
+
+    /**
+     * Every issuance invalidates the previous link, so an unbounded rate lets
+     * anyone who knows an address keep its owner's link permanently dead. The
+     * refusal comes before anything is invalidated: the live link survives.
+     */
+    public function test_issuance_is_capped_per_account_and_the_live_link_survives_a_refusal(): void
+    {
+        $user = $this->createUser();
+        $manager = app(MagicLinkManager::class);
+
+        for ($i = 0; $i < MagicLinkManager::ISSUANCE_LIMIT; $i++) {
+            $manager->generate($user);
+        }
+        $live = MagicLinkToken::where('user_id', $user->id)->first();
+        $this->assertNotNull($live);
+
+        try {
+            $manager->generate($user);
+            $this->fail('The issuance over the cap must be refused.');
+        } catch (MagicLinkThrottledException $e) {
+            $this->assertGreaterThan(0, $e->retryAfter);
+        }
+
+        $this->assertSame($live->id, MagicLinkToken::where('user_id', $user->id)->first()?->id);
+    }
+
+    public function test_send_login_link_returns_429_once_the_accounts_budget_is_spent(): void
+    {
+        Mail::fake();
+        $user = $this->createUser();
+
+        for ($i = 0; $i < MagicLinkManager::ISSUANCE_LIMIT; $i++) {
+            $this->postJson('/neev/sendLoginLink', ['email' => $user->email])->assertOk();
+        }
+
+        $this->postJson('/neev/sendLoginLink', ['email' => $user->email])
+            ->assertStatus(429)
+            ->assertHeader('Retry-After')
+            ->assertJsonStructure(['message', 'retry_after']);
+
+        Mail::assertSent(LoginUsingLink::class, MagicLinkManager::ISSUANCE_LIMIT);
+    }
 }

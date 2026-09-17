@@ -3,6 +3,8 @@
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Exception;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Route;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Facades\Socialite;
@@ -11,7 +13,9 @@ use Laravel\Socialite\Two\User as SocialiteUser;
 use Mockery;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
+use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\SpaCsrfToken;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -90,6 +94,44 @@ class OAuthHeadlessTest extends TestCase
         ]);
 
         return $user;
+    }
+
+    /**
+     * Under the kit the challenge page mails the code when it opens. There is
+     * no page of ours here, so the code has to leave from the callback or the
+     * account is parked at a challenge it can never answer.
+     */
+    public function test_callback_mails_the_email_code_for_an_email_mfa_account(): void
+    {
+        Mail::fake();
+        $this->enableMFA();
+
+        $user = User::factory()->create();
+        $user->addMultiFactorAuth('email');
+
+        $this->mockSocialiteUser($user->email);
+
+        $this->get('/neev/oauth/google/callback?code=test-auth-code')
+            ->assertRedirect('http://localhost/mfa-challenge/email');
+
+        Mail::assertSent(EmailOTP::class, fn (EmailOTP $mail) => $mail->hasTo($user->email));
+
+        $auth = $user->multiFactorAuths()->where('method', 'email')->first();
+        $this->assertNotNull($auth->otp);
+        $this->assertTrue($auth->expires_at->isFuture());
+    }
+
+    /** No `register` route exists headless; the app's own page is used instead. */
+    public function test_a_failed_oauth_sign_up_lands_on_the_apps_own_register_page(): void
+    {
+        $this->mock(RegistrationService::class)
+            ->shouldReceive('registerViaOAuth')
+            ->andThrow(new Exception('boom'));
+
+        $this->mockSocialiteUser('newcomer@example.com');
+
+        $this->get('/neev/oauth/google/callback?code=test-auth-code')
+            ->assertRedirect('http://localhost/register');
     }
 
     /** The kit page does not exist here, so the app's own page is used instead. */

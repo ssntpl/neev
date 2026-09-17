@@ -296,7 +296,9 @@ Stateful, single-use passwordless login. See
     // as a deep link; otherwise a web URL from the EmailLinks host + 'path'.
     'channels' => [
         'web' => [
-            'path' => '/login-link',        // host comes from EmailLinks::base()
+            // Host comes from EmailLinks::base(). Left unset the path follows the
+            // UI mode: '/login-link/verify' (Blade kit) or '/login-link' (headless).
+            'path' => env('NEEV_MAGIC_LINK_WEB_PATH'),
         ],
         'mobile' => [
             'scheme' => env('NEEV_MOBILE_SCHEME'),           // e.g. myapp://login
