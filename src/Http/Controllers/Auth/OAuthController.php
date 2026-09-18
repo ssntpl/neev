@@ -86,7 +86,7 @@ class OAuthController extends Controller
 
             // The Blade challenge page mails a code when it opens; a headless
             // install has no page of ours, so the code has to leave from here
-            // or the account has nothing to answer with. The page leaves a
+            // or the account has nothing to answer with. The helper leaves a
             // live code alone, so under the kit this is not a second mail.
             if ($mfaMethod === 'email') {
                 $this->auth->sendMfaEmailCode($user);

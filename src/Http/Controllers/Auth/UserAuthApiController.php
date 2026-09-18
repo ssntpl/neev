@@ -179,9 +179,9 @@ class UserAuthApiController extends Controller
         return $user->activeMultiFactorAuths()->pluck('method')->values()->all();
     }
 
-    private function sendMfaEmailOTP(User $user): void
+    private function sendMfaEmailOTP(User $user, bool $force = false): void
     {
-        app(AuthService::class)->sendMfaEmailCode($user);
+        app(AuthService::class)->sendMfaEmailCode($user, $force);
     }
 
     public function sendMailVerificationLink(Request $request)
@@ -602,7 +602,11 @@ class UserAuthApiController extends Controller
             ], 400);
         }
 
-        $this->sendMfaEmailOTP($user);
+        // A deliberate resend: the caller is telling us the first code did not
+        // arrive, so this mints a fresh one even if the old one is still live.
+        // Answering "sent" without mailing anything would strand exactly the
+        // client this endpoint exists for.
+        $this->sendMfaEmailOTP($user, force: true);
 
         return response()->json([
             'message' => 'Verification code has been sent.',

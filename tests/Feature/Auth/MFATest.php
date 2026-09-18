@@ -281,6 +281,41 @@ class MFATest extends TestCase
         Mail::assertSent(EmailOTP::class, fn ($mail) => $mail->hasTo($user->email));
     }
 
+    /**
+     * The shared helper leaves a live code alone so the several challenge
+     * entry points do not each mail one. A resend is the deliberate exception:
+     * the caller is saying the first mail never arrived, so answering "sent"
+     * without mailing would strand exactly the client this endpoint is for.
+     */
+    public function test_resend_replaces_a_code_that_is_still_live(): void
+    {
+        $this->enableMFA();
+        Mail::fake();
+
+        $user = User::factory()->create();
+        $auth = $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+            'otp' => '654321',
+            'expires_at' => now()->addMinutes(10),
+            'attempts' => 0,
+        ]);
+        $live = $auth->otp;
+
+        $attempt = $user->loginAttempts()->create([
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => 'email',
+            'is_success' => false,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $this->createMfaJwtToken($user->id, $attempt->id))
+            ->postJson('/neev/mfa/otp/send')
+            ->assertOk();
+
+        $this->assertNotSame($live, $auth->fresh()->otp);
+        Mail::assertSent(EmailOTP::class, fn ($mail) => $mail->hasTo($user->email));
+    }
+
     /** Nothing is mailed for an account that has not enrolled email OTP. */
     public function test_resend_is_refused_without_an_email_method(): void
     {
