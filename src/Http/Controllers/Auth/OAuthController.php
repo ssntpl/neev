@@ -65,7 +65,7 @@ class OAuthController extends Controller
                     ->registerViaOAuth($oauthUser->name ?: $oauthUser->getNickname(), $oauthUser->email);
             } catch (Exception $e) {
                 Log::error($e);
-                return redirect(route('register'));
+                return redirect(app(EmailLinks::class)->registerUrl());
             }
         }
 
@@ -83,6 +83,14 @@ class OAuthController extends Controller
         if ($mfaMethod) {
             session(['email' => $user->email]);
             session()->forget('mfa_redirect');
+
+            // The Blade challenge page mails a code when it opens; a headless
+            // install has no page of ours, so the code has to leave from here
+            // or the account has nothing to answer with. The page leaves a
+            // live code alone, so under the kit this is not a second mail.
+            if ($mfaMethod === 'email') {
+                $this->auth->sendMfaEmailCode($user);
+            }
 
             // These routes are registered kit or not, so the challenge page
             // cannot be assumed to exist: EmailLinks points a headless install

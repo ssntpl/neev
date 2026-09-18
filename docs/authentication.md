@@ -212,7 +212,17 @@ Magic links are **stateful and single-use**: an opaque, high-entropy token is
 stored **hashed** in the `magic_link_tokens` table (only the plain token ever
 leaves the app, inside the emailed URL). On successful use the row is **deleted**,
 so a link can never be replayed, and issuing a new link **invalidates the user's
-previous link** for that channel.
+previous link** for that channel. Because of that, issuance is **capped per
+account**: `MagicLinkManager::ISSUANCE_LIMIT` (3) links per channel per
+`ISSUANCE_WINDOW` (5 minutes), refused with `429` on the API and an error on the
+Blade form *before* anything is invalidated, so the link already held survives.
+Without the cap, anyone who knew an address could keep its owner's link
+permanently dead. In tenant mode the link is built on a verified host that
+resolves the tenant — the one the request came in on, the tenant's own domain,
+or one of its teams'. A tenant with **no** verified domain at all still gets the
+platform host, where the tenant-scoped token cannot be found and the link is
+dead; a warning is logged when that happens. Give every tenant a verified
+domain before offering magic links.
 
 A magic link is a **first factor, not a way around the second**. An account with MFA enrolled stops at the same challenge it would after a password login — the link issues the short-lived MFA JWT instead of a full access token, and `POST /neev/mfa/otp/verify` completes it exactly as after a password.
 

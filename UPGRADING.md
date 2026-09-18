@@ -70,7 +70,17 @@ superseded whenever a newer link is issued for the same channel.
   source (`X-Device-Id` header, a `binding` field, or a session) —
   rather than minting a link that could never be redeemed. Session-less
   API clients must send `X-Device-Id` before enabling it.
-- Both refusals above happen **before** the previous link is
+- **Issuance is capped per account** — `MagicLinkManager::ISSUANCE_LIMIT`
+  (3) links per channel per `ISSUANCE_WINDOW` (5 minutes), a code
+  constant rather than config. `POST /neev/sendLoginLink` answers `429`
+  with a `Retry-After` header and a `retry_after` field; the Blade form
+  redirects back with the message in the error bag; a direct caller of
+  `MagicLinkManager::generate()` (your own job or command) must handle
+  the new `MagicLinkThrottledException`. Every issuance invalidates the
+  previous link, so without a cap anyone who knew an address could keep
+  its owner's link permanently dead. To widen it, extend the manager,
+  override `reserveIssuance()`, and rebind the singleton.
+- All of these refusals happen **before** the previous link is
   invalidated, so a rejected send never costs the user the working link
   already in their inbox.
 - **An unusable channel is now rejected, not silently downgraded.**

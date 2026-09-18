@@ -153,7 +153,10 @@ channel.") — an unusable channel is never downgraded to a web link.
 }
 ```
 
-Returns `401` for an unknown email.
+Returns `401` for an unknown email, and `429` (with a `Retry-After` header
+and a `retry_after` field) once the account has been issued
+`MagicLinkManager::ISSUANCE_LIMIT` (3) links for the channel inside five
+minutes — the link already issued stays valid.
 
 ---
 

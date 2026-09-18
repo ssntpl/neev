@@ -12,9 +12,9 @@ use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
+use Ssntpl\Neev\Exceptions\MagicLinkThrottledException;
 use Ssntpl\Neev\Exceptions\MagicLinkChannelException;
 use Ssntpl\Neev\Http\Controllers\Controller;
-use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
 use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
@@ -181,14 +181,7 @@ class UserAuthApiController extends Controller
 
     private function sendMfaEmailOTP(User $user): void
     {
-        $auth = $user->multiFactorAuth('email');
-        if (!$auth) {
-            return;
-        }
-        $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
-        $expiryMinutes = config('neev.otp_expiry_time', 15);
-        $auth->issueOtp($otp, $expiryMinutes);
-        Mail::to($user->email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
+        app(AuthService::class)->sendMfaEmailCode($user);
     }
 
     public function sendMailVerificationLink(Request $request)
@@ -396,6 +389,11 @@ class UserAuthApiController extends Controller
 
         try {
             $link = $magicLink->generate($user, $channel, ['request' => $request]);
+        } catch (MagicLinkThrottledException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+                'retry_after' => $e->retryAfter,
+            ], 429)->header('Retry-After', (string) $e->retryAfter);
         } catch (MagicLinkBindingException $e) {
             Log::warning('Magic link refused: no binding source on the request.', [
                 'user_id' => $user->id,

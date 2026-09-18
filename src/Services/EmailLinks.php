@@ -120,6 +120,12 @@ class EmailLinks
         return $this->blade() ? route('login') : $this->base() . '/login';
     }
 
+    /** Where to send a browser whose OAuth sign-up could not be completed. */
+    public function registerUrl(): string
+    {
+        return $this->blade() ? route('register') : $this->base() . '/register';
+    }
+
     /** Where to send a browser whose email is not verified yet. */
     public function verifyEmailUrl(): string
     {

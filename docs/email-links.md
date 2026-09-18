@@ -46,6 +46,7 @@ ships the pages that a headless install has to provide itself.
 | Team invitation | `register` (signed) | `{base}/register?invitation_id=…&hash=…` |
 | OAuth callback | `{base}/{route_prefix}/oauth/{service}/callback` | same |
 | Sign-in page | `login` | `{base}/login` |
+| Sign-up page (failed OAuth sign-up) | `register` | `{base}/register` |
 | Verify-email page | `verification.notice` | `{base}/verify-email` |
 | MFA challenge page | `otp.mfa.create` | `{base}/mfa-challenge/{method}` |
 
@@ -160,6 +161,7 @@ class AppEmailLinks extends EmailLinks
 | `invitationUrl()` | `(int\|string $invitationId, string $email, DateTimeInterface $expiresAt): string` |
 | `oauthCallbackUrl()` | `(string $service): string` |
 | `loginUrl()` | `(): string` |
+| `registerUrl()` | `(): string` |
 | `verifyEmailUrl()` | `(): string` |
 | `mfaChallengeUrl()` | `(?string $method): string` |
 

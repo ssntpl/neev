@@ -310,6 +310,18 @@ class EmailLinksTest extends TestCase
         $this->assertSame($this->links->base() . '/login', $this->links->loginUrl());
     }
 
+    public function test_register_url_uses_the_blade_kit_route_when_the_kit_is_installed(): void
+    {
+        $this->assertSame(route('register'), $this->links->registerUrl());
+    }
+
+    public function test_register_url_falls_back_to_the_base_url_when_headless(): void
+    {
+        $this->headless();
+
+        $this->assertSame($this->links->base() . '/register', $this->links->registerUrl());
+    }
+
     public function test_verify_email_url_uses_the_blade_kit_route_when_the_kit_is_installed(): void
     {
         $this->assertSame(route('verification.notice'), $this->links->verifyEmailUrl());

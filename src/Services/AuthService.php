@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\URL;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedIn;
 use Ssntpl\Neev\Events\PasswordChanged;
+use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\OTP;
@@ -117,6 +118,26 @@ class AuthService
             Log::error($e);
             return null;
         }
+    }
+
+    /**
+     * Issue a fresh email MFA code and mail it. Every first factor that parks
+     * a login at the challenge for the email method calls this, so the user
+     * has a code to answer with whether or not a page of ours follows.
+     */
+    public function sendMfaEmailCode(User $user): void
+    {
+        $auth = $user->multiFactorAuth('email');
+        if (!$auth) {
+            return;
+        }
+
+        $length = (int) config('neev.otp_length', 6);
+        $otp = random_int(10 ** ($length - 1), (10 ** $length) - 1);
+        $expiryMinutes = (int) config('neev.otp_expiry_time', 15);
+
+        $auth->issueOtp($otp, $expiryMinutes);
+        Mail::to($user->email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
     }
 
     /**
