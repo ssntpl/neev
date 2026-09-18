@@ -629,6 +629,9 @@ the session/token exactly as password login does — the API returns the
 OTP challenge page. Whether the provider asked for MFA of its own is the
 provider's business and invisible here, so it earns no credit.
 
+The attempt is recorded as `oauth:{provider}` — `oauth:google` — so a provider
+named after a built-in method cannot pass for it.
+
 A **passkey** is the one login method that does satisfy the gate on its own: its
 ceremony runs with `userVerification: 'required'`, which proves possession of the
 authenticator plus a local user check in a single step. See

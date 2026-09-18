@@ -283,6 +283,12 @@ LoginAttempt::OAuth        // oauth
 LoginAttempt::SSO          // sso
 ```
 
+An OAuth login is recorded under its provider, namespaced beneath `oauth`:
+`oauth:google`, `oauth:github`. The provider name comes from
+`config('neev.oauth')`, so the prefix keeps it out of the built-in names above
+— unprefixed, a provider called `sso` would read as a tenant SSO login and
+inherit its MFA exemption.
+
 ### View Login History
 
 **API:**

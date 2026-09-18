@@ -719,7 +719,7 @@ class UserAuthController extends Controller
         // rather than in the callback. The attempt opened by the first factor
         // is reused, so the token hangs off that row rather than a second one.
         if ($attempt
-            && in_array($attempt->method, config('neev.oauth', []), true)
+            && str_starts_with($attempt->method, LoginAttempt::OAuthPrefix)
             && app(StatefulOriginResolver::class)->isStatefulHost($request)) {
             $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
             $newToken = $user->createLoginToken($expiryMinutes);
