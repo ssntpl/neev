@@ -403,20 +403,19 @@ sends `X-Tenant`, as it must for everything else to be scoped correctly, sends
 `Origin: https://acme.com` as every browser does cross-origin, and the ceremony runs under
 `acme.com`.
 
-> **The ceremony options request has to carry `Origin`.** Browsers set it themselves on every
-> cross-origin request and on every POST, so a SPA calling an API on another host, and the package's
-> own web routes — whose options endpoints are POST — always name their origin. They omit it on a
-> same-origin GET, and `Origin` is a forbidden header name, so client JavaScript cannot put it back:
-> `fetch()` and `XMLHttpRequest` drop any attempt to set it. A same-origin
-> `GET /neev/passkeys/register/options` or `GET /neev/passkeys/login/options` therefore names no
-> origin and runs under `relying_party_id`, which the browser then refuses on the tenant's own host.
-> On a Blade starter kit install, where the pages and the API share a host, reach the ceremony through
-> the session-authenticated kit routes (`POST /account/passkeys/register/options`,
-> `POST /passkeys/login/options` — unprefixed, and registered only when `neev.ui` is `blade`), which
-> the browser gives an origin for you. A headless install has no POST options route: its only remedy
-> is to serve the API from a host of its own, so the calls are cross-origin — the layout the shared-API
-> note above describes. A caller that legitimately has no host origin — a native app, whose origin is an
-> app facet — keeps the configured relying party, the only one it can hold platform assets for.
+> **The ceremony options request has to carry `Origin`, which is why both options endpoints are
+> POST.** Browsers set the header themselves on every POST and on every cross-origin request. They
+> omit it on a same-origin GET, and `Origin` is a forbidden header name, so client JavaScript cannot
+> put it back: `fetch()` and `XMLHttpRequest` drop any attempt to set it. A GET options endpoint would
+> therefore name no origin when called from the host it is served on — the ordinary Blade layout, and
+> any SPA deployed beside its API — and run under `relying_party_id`, which the browser then refuses
+> on the tenant's own host. So `POST /neev/passkeys/register/options` and
+> `POST /neev/passkeys/login/options` take their input in the body (the registration one has none) and
+> name their origin wherever they are called from, same-origin or not; the kit's own
+> `POST /account/passkeys/register/options` and `POST /passkeys/login/options` (unprefixed, registered
+> only when `neev.ui` is `blade`) have always been POST for the same reason. A caller that legitimately
+> has no host origin — a native app, whose origin is an app facet — keeps the configured relying party,
+> the only one it can hold platform assets for.
 
 **The row the request resolved through counts, whoever owns it.** With both tenants and teams on,
 a team-owned host routes through that team's tenant, so the resolved context holds no row naming the
@@ -641,7 +640,7 @@ rather than completing under the wrong relying party.
 **Generate Registration Options:**
 
 ```bash
-curl -X GET https://yourapp.com/neev/passkeys/register/options \
+curl -X POST https://yourapp.com/neev/passkeys/register/options \
   -H "Authorization: Bearer {token}"
 ```
 
@@ -679,6 +678,7 @@ curl -X POST https://yourapp.com/neev/passkeys/login \
 async function registerPasskey() {
   // Get options from server
   const optionsRes = await fetch('/neev/passkeys/register/options', {
+    method: 'POST',
     headers: { 'Authorization': `Bearer ${token}` }
   });
   const options = await optionsRes.json();

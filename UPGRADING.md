@@ -132,24 +132,29 @@ and binding it in a service provider. That loosens a security boundary
 beyond what any released version did — see
 [docs/authentication.md](./docs/authentication.md#origins).
 
-**Ceremony options requests must name an origin.** The relying party is
-now the context's verified domain equal to the request's `Origin` — an
-exact match, because `domains` is also the federation registry and a row
-there (`acme.com`, federated so `@acme.com` staff auto-join) need not be
-served anywhere. A request that names no origin keeps
-`relying_party_id`. Browsers attach `Origin` themselves on cross-origin
-requests and on every POST, so the Blade starter kit's own POST options
-routes and a SPA calling an API on another host are unaffected; a
-same-origin `GET /neev/passkeys/register/options` or
-`/neev/passkeys/login/options` is not — the header is omitted there and
-`Origin` is a forbidden header name, so client JavaScript cannot add it.
-If you serve a token client from the same host as the API and want
-passkeys on a tenant's own domain, move the API to its own host so the
-calls are cross-origin. On a Blade install you can instead run the
-ceremony through the kit's session-authenticated options routes
+**BREAKING: the API's two passkey options endpoints are now `POST`.**
+`GET /neev/passkeys/register/options` and
+`GET /neev/passkeys/login/options` are gone; call
+`POST /neev/passkeys/register/options` (no body) and
+`POST /neev/passkeys/login/options` with `{"email": "..."}` in the body
+instead of `?email=`. Update any client that calls them — a `GET` now
+returns `405`.
+
+The reason is the relying party, which is now the context's verified
+domain equal to the request's `Origin` — an exact match, because
+`domains` is also the federation registry and a row there (`acme.com`,
+federated so `@acme.com` staff auto-join) need not be served anywhere. A
+request that names no origin keeps `relying_party_id`, which the browser
+then refuses on a tenant's own host. Browsers attach `Origin` themselves
+on every POST and on every cross-origin request, and omit it on a
+same-origin GET, where it is a forbidden header name client JavaScript
+cannot add back — so a GET options endpoint could not name its origin
+from the host it is served on, which is the ordinary Blade layout and any
+SPA deployed beside its API. As POST, both endpoints name their origin
+wherever they are called from, and passkeys on a tenant's own domain need
+no change of deployment. The Blade starter kit's own options routes
 (`POST /account/passkeys/register/options`,
-`POST /passkeys/login/options`); a headless install has no POST options
-route. See
+`POST /passkeys/login/options`) were already POST and are unchanged. See
 [docs/authentication.md](./docs/authentication.md#supported-domains).
 
 **Passkeys gain a per-credential relying party column (schema change).**

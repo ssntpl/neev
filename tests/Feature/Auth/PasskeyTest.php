@@ -213,7 +213,7 @@ class PasskeyTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // GET /neev/passkeys/register/options — registration options
+    // POST /neev/passkeys/register/options — registration options
     // -----------------------------------------------------------------
 
     public function test_generate_registration_options(): void
@@ -221,7 +221,7 @@ class PasskeyTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->getJson('/neev/passkeys/register/options');
+            ->postJson('/neev/passkeys/register/options');
 
         $response->assertOk()
             ->assertJsonStructure([
@@ -241,7 +241,7 @@ class PasskeyTest extends TestCase
         $this->createPasskey($user, ['rp_id' => 'other.com']);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->getJson('/neev/passkeys/register/options');
+            ->postJson('/neev/passkeys/register/options');
 
         $response->assertOk();
         $this->assertEqualsCanonicalizing(
@@ -256,7 +256,7 @@ class PasskeyTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->getJson('/neev/passkeys/register/options');
+            ->postJson('/neev/passkeys/register/options');
 
         $response->assertOk();
         $stored = Cache::get("passkey_reg_challenge:{$user->id}");
@@ -288,7 +288,7 @@ class PasskeyTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->getJson('/neev/passkeys/register/options');
+            ->postJson('/neev/passkeys/register/options');
 
         $response->assertOk()
             ->assertJsonPath('rp.id', 'passkeys.example.com');
@@ -303,7 +303,7 @@ class PasskeyTest extends TestCase
         $user = User::factory()->create();
         $this->createPasskey($user);
 
-        $response = $this->getJson('/neev/passkeys/login/options?email=' . urlencode($user->email));
+        $response = $this->postJson('/neev/passkeys/login/options', ['email' => $user->email]);
 
         $response->assertOk()
             ->assertJsonStructure([
@@ -322,7 +322,7 @@ class PasskeyTest extends TestCase
         // Passkey for a different RP — must not appear in allowCredentials
         $this->createPasskey($user, ['rp_id' => 'other.com']);
 
-        $response = $this->getJson('/neev/passkeys/login/options?email=' . urlencode($user->email));
+        $response = $this->postJson('/neev/passkeys/login/options', ['email' => $user->email]);
 
         $response->assertOk();
         $this->assertCount(1, $response->json('allowCredentials'));
@@ -333,7 +333,7 @@ class PasskeyTest extends TestCase
         $user = User::factory()->create();
         $this->createPasskey($user);
 
-        $response = $this->getJson('/neev/passkeys/login/options?email=' . urlencode($user->email));
+        $response = $this->postJson('/neev/passkeys/login/options', ['email' => $user->email]);
 
         $response->assertOk();
         $stored = Cache::get('passkey_login_challenge:' . hash('sha256', $user->email));
@@ -347,7 +347,7 @@ class PasskeyTest extends TestCase
         $user = User::factory()->create();
         $this->createPasskey($user);
 
-        $response = $this->getJson('/neev/passkeys/login/options?email=' . urlencode($user->email));
+        $response = $this->postJson('/neev/passkeys/login/options', ['email' => $user->email]);
 
         $response->assertOk()
             ->assertJsonPath('rpId', 'passkeys.example.com');
@@ -355,14 +355,14 @@ class PasskeyTest extends TestCase
 
     public function test_generate_login_options_fails_for_unknown_email(): void
     {
-        $response = $this->getJson('/neev/passkeys/login/options?email=nobody@example.com');
+        $response = $this->postJson('/neev/passkeys/login/options', ['email' => 'nobody@example.com']);
 
         $response->assertStatus(400);
     }
 
     public function test_generate_login_options_requires_email(): void
     {
-        $response = $this->getJson('/neev/passkeys/login/options');
+        $response = $this->postJson('/neev/passkeys/login/options');
 
         $response->assertStatus(400);
     }
@@ -464,7 +464,7 @@ class PasskeyTest extends TestCase
 
         $registration = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->withHeader('Origin', 'https://acme.example.com')
-            ->getJson('https://acme.example.com/neev/passkeys/register/options');
+            ->postJson('https://acme.example.com/neev/passkeys/register/options');
 
         $registration->assertOk()->assertJsonPath('rp.id', 'example.com');
         $this->assertSame(
@@ -478,7 +478,7 @@ class PasskeyTest extends TestCase
         );
 
         $login = $this->withHeader('Origin', 'https://acme.example.com')
-            ->getJson('https://acme.example.com/neev/passkeys/login/options?email=' . urlencode($user->email));
+            ->postJson('https://acme.example.com/neev/passkeys/login/options', ['email' => $user->email]);
 
         $login->assertOk()->assertJsonPath('rpId', 'example.com');
         $this->assertSame(
@@ -511,7 +511,7 @@ class PasskeyTest extends TestCase
         $onCustom = $this->createPasskey($user, ['rp_id' => 'acme.com']);
 
         $login = $this->withHeader('Origin', 'https://acme.com')
-            ->getJson('https://acme.com/neev/passkeys/login/options?email=' . urlencode($user->email));
+            ->postJson('https://acme.com/neev/passkeys/login/options', ['email' => $user->email]);
 
         $login->assertOk()->assertJsonPath('rpId', 'acme.com');
         $this->assertSame(

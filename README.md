@@ -194,8 +194,13 @@ When `require_confirmation` is enabled (recommended for apps behind corporate ma
 
 ```bash
 # Get registration options
-curl -X GET https://yourapp.com/neev/passkeys/register/options \
+curl -X POST https://yourapp.com/neev/passkeys/register/options \
   -H "Authorization: Bearer {token}"
+
+# Get login options
+curl -X POST https://yourapp.com/neev/passkeys/login/options \
+  -H "Content-Type: application/json" \
+  -d '{"email": "john@example.com"}'
 
 # Register passkey
 curl -X POST https://yourapp.com/neev/passkeys/register \
@@ -266,9 +271,9 @@ All API routes are prefixed with `/neev` — the prefix is configurable via `rou
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | GET | `/neev/passkeys` | List user's passkeys | Yes |
-| GET | `/neev/passkeys/register/options` | Get registration options | Yes |
+| POST | `/neev/passkeys/register/options` | Get registration options | Yes |
 | POST | `/neev/passkeys/register` | Register passkey | Yes |
-| GET | `/neev/passkeys/login/options` | Get login options | No |
+| POST | `/neev/passkeys/login/options` | Get login options | No |
 | POST | `/neev/passkeys/login` | Login with passkey | No |
 | PUT | `/neev/passkeys` | Update passkey name | Yes |
 | DELETE | `/neev/passkeys` | Delete passkey | Yes |

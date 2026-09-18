@@ -880,13 +880,16 @@ the user's whole set, across relying parties — unlike `excludeCredentials` and
 ### Generate Registration Options
 
 ```http
-GET /neev/passkeys/register/options
+POST /neev/passkeys/register/options
 ```
 
 **Headers:**
 ```http
 Authorization: Bearer {token}
 ```
+
+The request takes no body. It is a `POST` so that the browser attaches
+`Origin`, which the relying party is resolved from — see below.
 
 **Response:**
 
@@ -923,15 +926,16 @@ verified domain gets that domain and its own name, and everything else gets
 browser rather than hard-coding either. See
 [Supported Domains](./authentication.md#supported-domains).
 
-**This endpoint needs `Origin`.** The relying party is the context's verified
-domain equal to the origin the request names, so a request without one — a
-browser's same-origin `GET`, where the header is omitted and cannot be added
-back from JavaScript — is answered with `relying_party_id`, which the browser
-then refuses on a tenant's own host. Browsers attach it themselves on
-cross-origin requests, and on the Blade starter kit's session-authenticated
-`POST /account/passkeys/register/options`; a headless install has no POST
-options route, so serve the API from its own host to keep these calls
-cross-origin. See
+**This endpoint needs `Origin`, which is why it is a `POST`.** The relying
+party is the context's verified domain equal to the origin the request names, so
+a request without one is answered with `relying_party_id`, which the browser then
+refuses on a tenant's own host. Browsers attach `Origin` themselves on every
+`POST` and on every cross-origin request, and omit it on a same-origin `GET`,
+where it is a forbidden header name client JavaScript cannot add back — so the
+options endpoints are `POST` and name their origin wherever they are called from,
+same-origin or not. A caller that legitimately has no host origin — a native app,
+whose origin is an app facet — keeps the configured relying party, the only one it
+can hold platform assets for. See
 [Supported Domains](./authentication.md#supported-domains).
 
 `excludeCredentials` lists the credentials this user already holds **on that
@@ -978,7 +982,15 @@ Authorization: Bearer {token}
 ### Generate Login Options
 
 ```http
-GET /neev/passkeys/login/options?email=john@example.com
+POST /neev/passkeys/login/options
+```
+
+**Request Body:**
+
+```json
+{
+    "email": "john@example.com"
+}
 ```
 
 **Response:**
@@ -998,8 +1010,7 @@ GET /neev/passkeys/login/options?email=john@example.com
 
 `rpId` follows the request's context and `Origin` header in the same way
 `rp.id` does above — including the requirement that the request name an origin,
-so send this one cross-origin, or, on a Blade starter kit install, use the
-kit's `POST /passkeys/login/options` — and `allowCredentials` is filtered to the
+which is why this endpoint is a `POST` — and `allowCredentials` is filtered to the
 credentials enrolled under it — a user
 with passkeys on both the platform domain and their own gets only the ones the
 current ceremony can use. An account with no credentials on this relying party

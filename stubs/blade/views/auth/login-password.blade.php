@@ -33,6 +33,11 @@
                         </x-neev-component::secondary-button>
                     </form>
                 </div>
+                @if (in_array('passkey', $login_options))
+                    {{-- Options requests the server refuses, and ceremonies that fail in the
+                         browser, never reach the form post — so they are reported here. --}}
+                    <p id="passkey-error" class="text-sm text-red-600 dark:text-red-400" role="alert" hidden></p>
+                @endif
             </div>
             <div class="border rounded-lg p-4">
                 <div class="mb-4 text-sm text-gray-600 dark:text-gray-400">
@@ -68,10 +73,21 @@
     </x-neev-component::authentication-card>
 </x-neev-layout::guest>
 
+@if (in_array('passkey', $login_options))
+{{-- Guarded with the control it drives: without it there is no #login-button to
+     bind to, and the library is a network fetch nothing on the page would use. --}}
 <script src="https://unpkg.com/@simplewebauthn/browser/dist/bundle/index.es5.umd.min.js"></script>
 <script>
     const { startAuthentication } = SimpleWebAuthnBrowser;
+    const showPasskeyError = (message) => {
+        const passkeyError = document.getElementById('passkey-error');
+        passkeyError.textContent = message;
+        passkeyError.hidden = false;
+    };
+
     document.getElementById('login-button').addEventListener('click', async () => {
+        document.getElementById('passkey-error').hidden = true;
+
         const email = document.getElementById('email').value;
         const resp = await fetch('{{ route('passkeys.login.options') }}', {
             method: 'POST',
@@ -82,9 +98,30 @@
             },
             body: JSON.stringify({ email })
         });
+
+        {{-- Login options are refused for an account holding no credential on this
+             relying party, which is ordinary on a tenant's own domain: the user's
+             passkey may be enrolled under the platform relying party instead. --}}
+        if (!resp.ok) {
+            showPasskeyError('{{ __('No passkey is available for this account on this site. Use another sign-in method.') }}');
+            return;
+        }
+
         const res = await resp.json();
 
-        const assertion = await startAuthentication({optionsJSON : res});
+        let assertion;
+        try {
+            assertion = await startAuthentication({optionsJSON : res});
+        } catch (e) {
+            {{-- SimpleWebAuthn wraps the browser's error, so the original name is on e.cause. --}}
+            if (e.name === 'NotAllowedError' || e.cause?.name === 'NotAllowedError') {
+                showPasskeyError('{{ __('Passkey sign-in was cancelled or timed out.') }}');
+            } else {
+                showPasskeyError('{{ __('Could not sign in with a passkey on this device.') }}' + (e.message ? ' ' + e.message : ''));
+            }
+
+            return;
+        }
 
         const attestationInput = document.getElementById('assertion');
         attestationInput.value = JSON.stringify({
@@ -95,3 +132,4 @@
         document.getElementById('login-form').submit();
     });
 </script>
+@endif
