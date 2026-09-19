@@ -19,7 +19,6 @@ use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
 use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
-use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
@@ -626,17 +625,10 @@ class UserAuthController extends Controller
             if (!$auth) {
                 return back()->withErrors(['message' => 'Invalid Email.']);
             }
-            $expiryMinutes = config('neev.otp_expiry_time', 15);
-
-            // A code that is still live is left exactly as it is. Refreshing
-            // expires_at here without minting a new code kept one six-digit
-            // secret alive for as long as the page was reopened, which is what
-            // made it worth grinding through.
-            if (!$auth->expires_at || now()->gte($auth->expires_at)) {
-                $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
-                $auth->issueOtp($otp, $expiryMinutes);
-                Mail::to($email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
-            }
+            // The helper leaves a live code alone, so reopening this page does
+            // not refresh the window on one six-digit secret, and an OAuth
+            // first factor that already mailed a code does not mail a second.
+            $this->auth->sendMfaEmailCode($user);
         }
 
         return view('neev::auth.otp-mfa', [
@@ -654,10 +646,10 @@ class UserAuthController extends Controller
         if (!$auth) {
             return back()->withErrors(['message' => 'Invalid Email.']);
         }
-        $expiryMinutes = config('neev.otp_expiry_time', 15);
-        $otp = random_int(10 ** (config('neev.otp_length', 6) - 1), (10 ** config('neev.otp_length', 6)) - 1);
-        $auth->issueOtp($otp, $expiryMinutes);
-        Mail::to($email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
+        // A deliberate resend: the user is telling us the first mail did not
+        // arrive, so this one mints a fresh code even if the old one is live.
+        $this->auth->sendMfaEmailCode($user, force: true);
+
         return back()->with('status', 'Verification code has been sent.');
     }
 
@@ -727,7 +719,7 @@ class UserAuthController extends Controller
         // rather than in the callback. The attempt opened by the first factor
         // is reused, so the token hangs off that row rather than a second one.
         if ($attempt
-            && in_array($attempt->method, config('neev.oauth', []), true)
+            && str_starts_with($attempt->method, LoginAttempt::OAuthPrefix)
             && app(StatefulOriginResolver::class)->isStatefulHost($request)) {
             $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
             $newToken = $user->createLoginToken($expiryMinutes);

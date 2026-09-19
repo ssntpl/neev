@@ -124,12 +124,25 @@ class AuthService
      * Issue a fresh email MFA code and mail it. Every first factor that parks
      * a login at the challenge for the email method calls this, so the user
      * has a code to answer with whether or not a page of ours follows.
+     *
+     * A code that is still live is left exactly as it is unless $force says
+     * otherwise. Reissuing on every entry to the challenge let a reopened page
+     * keep one six-digit secret alive indefinitely, and it is also what keeps
+     * the several entry points (Blade page, API, OAuth callback) from mailing
+     * the same user twice for one login. $force is for a deliberate resend,
+     * where the user is telling us the first mail did not arrive.
+     *
+     * @return bool Whether a new code was minted and mailed.
      */
-    public function sendMfaEmailCode(User $user): void
+    public function sendMfaEmailCode(User $user, bool $force = false): bool
     {
         $auth = $user->multiFactorAuth('email');
         if (!$auth) {
-            return;
+            return false;
+        }
+
+        if (!$force && $auth->expires_at && now()->lt($auth->expires_at)) {
+            return false;
         }
 
         $length = (int) config('neev.otp_length', 6);
@@ -138,6 +151,8 @@ class AuthService
 
         $auth->issueOtp($otp, $expiryMinutes);
         Mail::to($user->email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
+
+        return true;
     }
 
     /**

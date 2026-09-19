@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Laravel\Socialite\Facades\Socialite;
 use Ssntpl\Neev\Http\Controllers\Controller;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\EmailLinks;
@@ -78,7 +79,7 @@ class OAuthController extends Controller
         $mfaMethod = $user->preferredMultiFactorAuth->method
             ?? $user->activeMultiFactorAuths()->first()?->method;
 
-        $this->auth->login($request, $geoIP, $user, $service, mfa: $mfaMethod, pendingMfa: (bool) $mfaMethod);
+        $this->auth->login($request, $geoIP, $user, LoginAttempt::OAuthPrefix . $service, mfa: $mfaMethod, pendingMfa: (bool) $mfaMethod);
 
         if ($mfaMethod) {
             session(['email' => $user->email]);
@@ -86,7 +87,7 @@ class OAuthController extends Controller
 
             // The Blade challenge page mails a code when it opens; a headless
             // install has no page of ours, so the code has to leave from here
-            // or the account has nothing to answer with. The page leaves a
+            // or the account has nothing to answer with. The helper leaves a
             // live code alone, so under the kit this is not a second mail.
             if ($mfaMethod === 'email') {
                 $this->auth->sendMfaEmailCode($user);

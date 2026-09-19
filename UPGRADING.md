@@ -13,6 +13,28 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.3 → Unreleased
 
+**OAuth logins are recorded as `oauth:<provider>` (action required if you read
+`login_attempts.method`).**
+The OAuth callbacks wrote the bare provider name from `neev.oauth` into the same
+column that names built-in methods (`password`, `passkey`, `magic auth`, `sso`,
+`oauth`) — so a provider called `sso` inherited the SSO exemption in
+`NeevMiddleware` and walked an MFA-enrolled account past its challenge. The value
+is namespaced now: `oauth:google`.
+
+- **No migration ships for this.** Existing rows keep the bare provider name;
+  logins from the deploy onward use the new form. To convert history, run this
+  once per configured provider:
+
+  ```php
+  DB::table('login_attempts')
+      ->where('method', 'google')
+      ->update(['method' => 'oauth:google']);
+  ```
+
+- **Update anything that matches the provider name** —
+  `where('method', 'google')` and login-history UI that prints
+  `$attempt->method`.
+
 **Magic links are now stateful and single-use (action required).**
 The stateless signed-URL flow is gone. Links are opaque tokens stored
 hashed in the new `magic_link_tokens` table, deleted on redemption, and

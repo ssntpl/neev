@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Laravel\Socialite\Two\AbstractProvider;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Ssntpl\Neev\Http\Controllers\Controller;
+use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\GeoIP;
@@ -115,11 +116,11 @@ class OAuthApiController extends Controller
             // short-lived JWT instead of a login token.
             $mfaMethod = $user->preferredMultiFactorAuth->method ?? $user->activeMultiFactorAuths()->first()?->method;
             if ($mfaMethod) {
-                return app(UserAuthApiController::class)->mfaChallenge($request, $geoIP, $user, $service, $mfaMethod);
+                return app(UserAuthApiController::class)->mfaChallenge($request, $geoIP, $user, LoginAttempt::OAuthPrefix . $service, $mfaMethod);
             }
 
             $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
-            $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, $service, $expiryMinutes);
+            $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, LoginAttempt::OAuthPrefix . $service, $expiryMinutes);
 
             if (!$token) {
                 return response()->json([

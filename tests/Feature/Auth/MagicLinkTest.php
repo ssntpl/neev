@@ -481,6 +481,13 @@ class MagicLinkTest extends TestCase
 
         $user = User::factory()->create();
 
+        // The user already holds a mobile link, minted while the scheme was
+        // set. A refusal must not cost them that link, mint an unreachable
+        // row, or spend an issuance.
+        config(['neev.magic_link.channels.mobile.scheme' => 'myapp://login']);
+        $existing = $this->magicLinkToken($user, 'mobile');
+        config(['neev.magic_link.channels.mobile.scheme' => null]);
+
         $response = $this->postJson('/neev/sendLoginLink', [
             'email' => $user->email,
             'channel' => 'mobile',
@@ -488,6 +495,22 @@ class MagicLinkTest extends TestCase
 
         $response->assertStatus(422);
         Mail::assertNothingSent();
+
+        // Nothing was invalidated and nothing was inserted: the one row is
+        // still the link the user had before the refused send.
+        $this->assertSame(1, MagicLinkToken::query()->where('user_id', $user->id)->where('channel', 'mobile')->count());
+        $this->assertNotNull(MagicLinkToken::findByToken($existing['token']));
+
+        // The refusal did not spend any of the three issuances: three real
+        // sends still succeed afterwards. One issuance was already spent on
+        // $existing, so the fourth here is the one the budget refuses.
+        config(['neev.magic_link.channels.mobile.scheme' => 'myapp://login']);
+        for ($i = 0; $i < 2; $i++) {
+            $this->postJson('/neev/sendLoginLink', [
+                'email' => $user->email,
+                'channel' => 'mobile',
+            ])->assertStatus(200);
+        }
     }
 
     public function test_configured_deep_link_channel_builds_a_deep_link(): void
@@ -1016,5 +1039,30 @@ class MagicLinkTest extends TestCase
             ->assertJsonStructure(['message', 'retry_after']);
 
         Mail::assertSent(LoginUsingLink::class, MagicLinkManager::ISSUANCE_LIMIT);
+    }
+
+    /**
+     * The cap bounds how often an UNCONSUMED link can be replaced out from
+     * under its owner. Redeeming one ends that, so it must not leave a user who
+     * legitimately signs in again inside the window hard-refused.
+     */
+    public function test_redeeming_a_link_releases_the_accounts_issuance_budget(): void
+    {
+        Mail::fake();
+        $user = $this->createUser();
+
+        // Spend the whole budget. Each issuance invalidates the one before it,
+        // so the last is the link the user actually holds.
+        $link = null;
+        for ($i = 0; $i < MagicLinkManager::ISSUANCE_LIMIT; $i++) {
+            $link = $this->magicLinkToken($user);
+        }
+
+        $this->postJson('/neev/sendLoginLink', ['email' => $user->email])->assertStatus(429);
+
+        $this->postJson('/neev/loginUsingLink', ['token' => $link['token']])->assertOk();
+
+        // Signing in again inside the same window is allowed now.
+        $this->postJson('/neev/sendLoginLink', ['email' => $user->email])->assertOk();
     }
 }

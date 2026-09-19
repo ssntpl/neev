@@ -217,9 +217,14 @@ account**: `MagicLinkManager::ISSUANCE_LIMIT` (3) links per channel per
 `ISSUANCE_WINDOW` (5 minutes), refused with `429` on the API and an error on the
 Blade form *before* anything is invalidated, so the link already held survives.
 Without the cap, anyone who knew an address could keep its owner's link
-permanently dead. In tenant mode the link is built on a verified host that
-resolves the tenant — the one the request came in on, the tenant's own domain,
-or one of its teams'. A tenant with **no** verified domain at all still gets the
+permanently dead. **Redeeming a link clears the account's counter for that
+channel**: the cap exists to bound how often an *unconsumed* link can be
+replaced out from under its owner, and a redemption ends that — so a user who
+legitimately requests and uses three links inside one window (a second device, a
+lost mail, a re-login after logout) is not locked out for the remainder of it.
+
+In tenant mode the link is built on a verified host that resolves the tenant —
+the one the request came in on, the tenant's own domain, or one of its teams'. A tenant with **no** verified domain at all still gets the
 platform host, where the tenant-scoped token cannot be found and the link is
 dead; a warning is logged when that happens. Give every tenant a verified
 domain before offering magic links.
@@ -296,6 +301,12 @@ web link: either the channel is not declared under `magic_link.channels`, or it
 declares `scheme`/`universal_link` and both are empty. So `channel=mobile` fails
 loudly until `NEEV_MOBILE_SCHEME` (or `NEEV_MOBILE_UNIVERSAL_LINK`) is set.
 
+The channel's URL is resolved **before** anything is spent, so this refusal
+costs the account nothing: no previous link is invalidated, no unreachable token
+row is stored, no `MagicLinkGenerated` fires, and no issuance is counted against
+the cap. Fixing `NEEV_MOBILE_SCHEME` and retrying leaves the user exactly where
+they were.
+
 ### Configuration & options
 
 Configured under `magic_link` in `config/neev.php`:
@@ -324,13 +335,18 @@ if ($result->isValid()) { /* $result->user is authenticated */ }
 ```
 
 `forWeb()`/`forMobile()`/`generate()` refuse rather than mint a link the
-recipient could never use. Both checks run **before** the previous link is
+recipient could never use. Every check runs **before** the previous link is
 invalidated, so a refused send never costs the user the link already in their
 inbox:
 
-| Exception | Thrown when |
-|---|---|
-| `MagicLinkBindingException` | `bind_to_browser` is on but the request has no binding source (`X-Device-Id`, `binding`, or session). |
+| Exception | HTTP | Thrown when | Costs an issuance? |
+|---|---|---|---|
+| `MagicLinkBindingException` | `422` | `bind_to_browser` is on but the request has no binding source (`X-Device-Id`, `binding`, or session). | No |
+| `MagicLinkChannelException` | `422` | The channel is not declared under `magic_link.channels`, or it is a deep-link channel with `scheme` and `universal_link` both empty. | No |
+| `MagicLinkThrottledException` | `429` | The account has already been issued `ISSUANCE_LIMIT` links for this channel inside `ISSUANCE_WINDOW`. `retryAfter` carries the seconds. | — |
+
+The two refusals that mint nothing are evaluated first, so a send that was never
+going to produce a usable link does not spend the budget either.
 
 An unverified address is **not** refused. The link is mailed to that address, so
 following it proves control of the inbox exactly as the verification mail would —
@@ -812,6 +828,9 @@ the session/token exactly as password login does — the API returns the
 OTP challenge page. Whether the provider asked for MFA of its own is the
 provider's business and invisible here, so it earns no credit.
 
+The attempt is recorded as `oauth:{provider}` — `oauth:google` — so a provider
+named after a built-in method cannot pass for it.
+
 A **passkey** is the one login method that does satisfy the gate on its own: its
 ceremony runs with `userVerification: 'required'`, which proves possession of the
 authenticator plus a local user check in a single step. See
@@ -849,6 +868,14 @@ authenticator plus a local user check in a single step. See
 7. If the matched account's address was not yet verified, it is marked verified — the provider authenticated it
 8. If the account has an active MFA method, the login stops at the challenge — the web callback redirects to the OTP page, the API returns `auth_state: mfa_required` with the step-up JWT
 9. Otherwise, logged in and redirected
+
+For the `email` method the callback also **mails the code itself**, rather than
+leaving that to the page it redirects to: a headless install has no page of ours,
+so the account would otherwise have nothing to answer with. It shares
+`AuthService::sendMfaEmailCode()` with API login and the Blade challenge page,
+and that helper leaves a still-valid code alone — so under the kit, where the
+challenge page also calls it, the user gets one mail rather than two. See
+[MFA → Sending the OTP](./mfa.md#sending-the-otp).
 
 Step 8's redirect target is `EmailLinks::mfaChallengeUrl()` — the Blade kit's
 `otp.mfa.create` page when the kit is installed, otherwise

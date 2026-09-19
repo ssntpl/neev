@@ -12,8 +12,8 @@ return new class () extends Migration {
     {
         Schema::create('magic_link_tokens', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade');
-            $table->foreignId('tenant_id')->nullable()->constrained('tenants')->nullOnDelete();
+            $table->unsignedBigInteger('user_id');
+            $table->unsignedBigInteger('tenant_id')->nullable();
             $table->string('token')->unique();
             $table->string('channel')->default('web');
             $table->json('meta_data')->nullable();
@@ -24,6 +24,9 @@ return new class () extends Migration {
 
             $table->index(['user_id', 'channel']);
             $table->index('expires_at');
+
+            $table->foreign('user_id')->references('id')->on('users')->cascadeOnDelete();
+            $table->foreign('tenant_id')->references('id')->on('tenants')->nullOnDelete();
         });
     }
 

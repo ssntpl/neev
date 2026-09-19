@@ -214,9 +214,10 @@ class OAuthHeadlessTest extends TestCase
             ->getJson('/neev/users')
             ->assertOk();
 
-        // The completed login is on record as OAuth, not as a password login.
+        // The completed login is on record as OAuth, not as a password login,
+        // and names the provider under the namespaced form.
         $attempt = $user->loginAttempts()->latest('id')->first();
-        $this->assertSame('google', $attempt->method);
+        $this->assertSame('oauth:google', $attempt->method);
         $this->assertSame('authenticator', $attempt->multi_factor_method);
     }
 

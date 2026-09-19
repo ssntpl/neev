@@ -263,7 +263,41 @@ class NeevMiddlewareTest extends TestCase
 
         $attempt = LoginAttemptFactory::new()->create([
             'user_id' => $user->id,
-            'method' => 'google',
+            'method' => LoginAttempt::OAuthPrefix . 'google',
+            'multi_factor_method' => 'authenticator',
+            'is_success' => false,
+        ]);
+
+        $request = $this->buildRequest('/test', $user);
+        session(['attempt_id' => $attempt->id]);
+
+        $response = $this->middleware->handle($request, $this->passThrough());
+
+        $this->assertTrue($response->isRedirection());
+        $this->assertLocationContains('/mfa/', $response);
+    }
+
+    /**
+     * The SSO exemption is read off `method` by value, and an OAuth provider
+     * is named by config — so a provider called "sso" would once have
+     * inherited it and walked past the challenge. The namespaced form has no
+     * way to collide with a built-in name.
+     */
+    public function test_redirects_to_mfa_form_for_an_oauth_provider_named_after_a_built_in_method(): void
+    {
+        config(['neev.oauth' => ['sso']]);
+
+        $user = User::factory()->create();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'preferred' => true,
+        ]);
+
+        $attempt = LoginAttemptFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => LoginAttempt::OAuthPrefix . 'sso',
             'multi_factor_method' => 'authenticator',
             'is_success' => false,
         ]);

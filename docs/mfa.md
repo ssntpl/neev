@@ -247,7 +247,12 @@ curl -X POST https://yourapp.com/neev/mfa/add \
 
 ### Sending the OTP
 
-You never ask for the first code. During API login, when the user's MFA method is `email`, the OTP is generated and emailed automatically as part of the `auth_state: mfa_required` response — the same is true of the Blade challenge page, which sends on arrival.
+You never ask for the first code. Every first factor that parks a login at the email challenge mails one on the way in: API login sends it with the `auth_state: mfa_required` response, the OAuth callback sends it from the callback itself, and the Blade challenge page sends on arrival. All three go through one helper, `AuthService::sendMfaEmailCode()`, so the behaviour is identical whichever door the user came through.
+
+That helper **leaves a still-valid code alone**. Two consequences worth knowing:
+
+- Reopening the challenge page — a bookmark, a back button, a refresh — does not mint a code and does not extend the live one's expiry. Refreshing `expires_at` on every visit would keep a single six-digit secret alive for as long as the page was reopened.
+- A login that passes through more than one of those entry points mails **one** code, not two. Under the Blade kit an OAuth first factor sends the code and then redirects to the challenge page, which finds the code still live and sends nothing.
 
 To send **another** one — the first was lost, or the user waited out its expiry — there is a resend endpoint on each side:
 
@@ -258,7 +263,7 @@ POST /otp/mfa/send         (Blade, route: otp.mfa.send — kit pages are unprefi
 
 The API endpoint takes no body: the account comes from the MFA JWT, so a code can only ever be sent to the address of whoever passed the first factor. It answers `400` for an account with no active email factor. Each send mints a new code and resets the guess budget, and it shares the `throttle:5,1` bucket with `POST /neev/mfa/otp/verify` — a resend spends one of those five, so don't call it on a timer.
 
-The two differ in one respect. The Blade *page* leaves a still-valid code alone when it is reopened, so a bookmark or a back button does not extend one code's life; both `send` routes always mint a new one.
+Both `send` routes are the deliberate exception to the leave-a-live-code-alone rule: they **always** mint a fresh code, even when the previous one has not expired. A resend is the user telling you the first mail never arrived, so answering "Verification code has been sent" without sending one would strand exactly the caller the endpoint exists for. The previous code stops working the moment the new one is issued.
 
 ### Verify OTP
 
@@ -555,7 +560,7 @@ $user->generateRecoveryCodes();
 - Codes expire after `otp_expiry_time` minutes (default 15)
 - Used codes are immediately invalidated
 - A code is spent after `MultiFactorAuth::MAX_ATTEMPTS` (5) wrong guesses — a hard invariant, not configurable — and a fresh code must be requested (API: `POST /neev/mfa/otp/send`; Blade: reopen the challenge page or `POST /otp/mfa/send`)
-- Reopening the challenge page does not extend a live code's expiry; a new code is issued only once the current one has expired or been spent
+- Reopening the challenge page — or arriving at it from a first factor that already mailed a code — does not extend a live code's expiry; a new code is issued only once the current one has expired or been spent. The explicit resend routes are the exception and always replace it
 - The verify endpoint is throttled to 5 requests per minute
 
 ### Recovery Code Security

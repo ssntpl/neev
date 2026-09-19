@@ -143,7 +143,10 @@ POST /neev/sendLoginLink
 `channel` is optional (default `web`); it must be a channel defined in
 `magic_link.channels`, and a deep-link channel must have a `scheme` or
 `universal_link` set. Anything else returns `422` ("Unsupported login link
-channel.") — an unusable channel is never downgraded to a web link.
+channel.") — an unusable channel is never downgraded to a web link. The `422`
+is decided before anything is spent: the link the account already holds stays
+valid, no unreachable token is stored, and the refused call does not count
+against the issuance cap below.
 
 **Response:**
 
@@ -774,6 +777,14 @@ Authorization: Bearer {mfa_jwt_token}
 
 Answers `400` if the account has no active `email` method. Shares the
 `throttle:5,1` bucket with `POST /neev/mfa/otp/verify`.
+
+This endpoint always mints a **fresh** code, even when the previous one is still
+within its expiry, and resets the guess budget. That is deliberate: the other
+paths that mail an MFA code (the API login response, the OAuth callback, the
+Blade challenge page) deliberately leave a live code alone so one login cannot
+produce two mails, but a resend is the caller saying the first mail never
+arrived — answering "Verification code has been sent" without sending one would
+strand exactly the client this endpoint exists for.
 
 ---
 

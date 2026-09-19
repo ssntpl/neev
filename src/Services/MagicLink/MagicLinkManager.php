@@ -100,10 +100,16 @@ class MagicLinkManager
         $context = $this->withRequest($context);
         $request = $context['request'] ?? null;
 
-        // Both refusals run before invalidating: a refused send must not cost
-        // the user the link they already have. The binding check comes first
-        // so a send that mints nothing does not spend the account's budget.
+        // All three refusals run before invalidating: a refused send must not
+        // cost the user the link they already have. The two that mint nothing
+        // — binding and an unreachable channel — come first, so a send that was
+        // never going to produce a usable link does not spend the account's
+        // budget either. The base URL is resolved here rather than at payload
+        // time for exactly that reason: building it after the insert refused a
+        // send that had already deleted the previous link, stored a token
+        // nobody could reach, and burned one of the three issuances.
         $metaData = $this->buildMetaData($request, $context);
+        $baseUrl = $this->channelBaseUrl($channel);
         $this->reserveIssuance($user, $channel);
 
         $plain = MagicLinkToken::generateToken();
@@ -129,7 +135,7 @@ class MagicLinkManager
 
         event(MagicLinkGenerated::fromToken($user, $token));
 
-        return $this->linkPayload($token, $plain);
+        return $this->linkPayload($token, $plain, $baseUrl);
     }
 
     /**
@@ -143,13 +149,36 @@ class MagicLinkManager
      */
     protected function reserveIssuance(object $user, string $channel): void
     {
-        $key = 'neev:magic-link:issue:' . $user->id . ':' . $channel;
+        $key = $this->issuanceKey($user->id, $channel);
 
         if (RateLimiter::tooManyAttempts($key, self::ISSUANCE_LIMIT)) {
             throw new MagicLinkThrottledException(RateLimiter::availableIn($key));
         }
 
         RateLimiter::hit($key, self::ISSUANCE_WINDOW);
+    }
+
+    /**
+     * Clear the account's issuance budget for a channel after a link of that
+     * channel is redeemed.
+     *
+     * The limit exists to bound how often an unconsumed link can be replaced
+     * out from under its owner. A redemption ends that: the link did its job,
+     * so the budget it spent should not still be counting against a user who
+     * legitimately signs in again inside the window (a second device, a lost
+     * mail, a re-login after logout).
+     */
+    protected function releaseIssuance(object $user, string $channel): void
+    {
+        RateLimiter::clear($this->issuanceKey($user->id, $channel));
+    }
+
+    /**
+     * Rate-limiter key for one account's issuances on one channel.
+     */
+    protected function issuanceKey(int|string $userId, string $channel): string
+    {
+        return 'neev:magic-link:issue:' . $userId . ':' . $channel;
     }
 
     /**
@@ -229,10 +258,10 @@ class MagicLinkManager
      *
      * @return array<string, mixed>
      */
-    protected function linkPayload(MagicLinkToken $token, string $plain): array
+    protected function linkPayload(MagicLinkToken $token, string $plain, ?string $baseUrl = null): array
     {
         return [
-            'url' => $this->buildChannelUrl($token->channel, ['token' => $plain, 'channel' => $token->channel]),
+            'url' => $this->buildChannelUrl($token->channel, ['token' => $plain, 'channel' => $token->channel], $baseUrl),
             'token' => $plain,
             'channel' => $token->channel,
             'expires_at' => $token->expires_at,
@@ -301,6 +330,10 @@ class MagicLinkManager
         if (!$user->hasVerifiedEmail()) {
             $user->markEmailAsVerified();
         }
+
+        // The link was used, so the budget it spent is no longer protecting
+        // anything — give it back before the window would have expired.
+        $this->releaseIssuance($user, $result->channel);
 
         $final = MagicLinkResult::valid($user, $result->channel, $result->token);
         event(MagicLinkConsumed::fromResult($user, $final));
@@ -490,11 +523,15 @@ class MagicLinkManager
     // -----------------------------------------------------------------
 
     /**
+     * $base is the already-resolved channel base URL. Callers that resolved it
+     * up front pass it back in so the work — and, for a tenant with no verified
+     * domain, the log warning — happens once per send.
+     *
      * @param  array<string, mixed>  $params
      */
-    protected function buildChannelUrl(string $channel, array $params): string
+    protected function buildChannelUrl(string $channel, array $params, ?string $base = null): string
     {
-        $base = $this->channelBaseUrl($channel);
+        $base ??= $this->channelBaseUrl($channel);
         $separator = str_contains($base, '?') ? '&' : '?';
 
         return $base . $separator . http_build_query($params);
@@ -579,11 +616,14 @@ class MagicLinkManager
             // A resolved tenant with no verified host at all: the link goes to
             // the platform host, where the tenant-scoped token cannot be found.
             // Loud rather than silent, because the user will only see "invalid".
-            if ($this->container->bound(TenantResolver::class)
-                && $this->container->make(TenantResolver::class)->resolvedContext() !== null) {
+            $context = $this->container->bound(TenantResolver::class)
+                ? $this->container->make(TenantResolver::class)->resolvedContext()
+                : null;
+
+            if ($context !== null) {
                 Log::warning('Magic link built on the platform host: the resolved tenant has no verified domain, so the link cannot be redeemed.', [
-                    'context_type' => $this->container->make(TenantResolver::class)->resolvedContext()->getContextType(),
-                    'context_id' => $this->container->make(TenantResolver::class)->resolvedContext()->getContextId(),
+                    'context_type' => $context->getContextType(),
+                    'context_id' => $context->getContextId(),
                 ]);
             }
 

@@ -28,6 +28,7 @@ class LoginAttempt extends Model
     public const MagicAuth = 'magic auth';
     public const SSO = 'sso';
     public const OAuth = 'oauth';
+    public const OAuthPrefix = self::OAuth . ':';
 
     protected $fillable = [
         'user_id',

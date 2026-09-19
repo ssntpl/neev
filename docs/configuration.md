@@ -320,12 +320,13 @@ Stateful, single-use passwordless login. See
 | `channels` | web + mobile | Per-channel URL building (extensible). |
 
 Notes:
-- Tokens are single-use (deleted on redemption); a new link invalidates the previous one.
+- Tokens are single-use (deleted on redemption); a new link invalidates the previous one. Because of that, issuance is capped at `MagicLinkManager::ISSUANCE_LIMIT` (3) per account per channel per `ISSUANCE_WINDOW` (5 minutes) — a hard invariant, not config. Redeeming a link clears that counter, since the cap only bounds how often an *unconsumed* link can be replaced out from under its owner.
 - Because links are single-use, **`require_confirmation` should stay on** for any app whose users may sit behind a scanning mail gateway (Outlook SafeLinks, Mimecast). Those gateways prefetch `GET` links, which would consume the link before the user ever clicks it and lock them out. With confirmation on, a `GET` only ever validates.
 - The host of a web-style channel comes from `EmailLinks::base()` (default `app.url`) — there is no per-channel `base_url`. Override `EmailLinks` to point every mailed link, magic links included, at a separate frontend.
 - Channels decide the URL shape, not who may redeem: a named `channel` must match the token's, but omitting it accepts the stored one. Channels are not an authorization boundary.
 - With `bind_to_browser` on, generation throws `MagicLinkBindingException` if the request has no binding source (`X-Device-Id` header, `binding` field, or session). Session-less API clients must send `X-Device-Id`.
-- An unverified address is not refused: the link goes to that address, so following it proves inbox control just as the verification mail does, and redemption marks the email verified. A refusal (`bind_to_browser` with no binding source) happens **before** the previous link is invalidated, so it never costs the user the link already in their inbox.
+- An unverified address is not refused: the link goes to that address, so following it proves inbox control just as the verification mail does, and redemption marks the email verified.
+- Every refusal — no binding source, an unusable channel, or the issuance cap — is decided **before** the previous link is invalidated, so it never costs the user the link already in their inbox. The two that mint nothing (binding and channel) are checked before the cap is counted, so they do not spend the budget either.
 - A magic link is a **first factor, not a way around the second**. An account with MFA enrolled stops at the same `mfa_required` challenge it would after a password login — the link issues the short-lived MFA JWT, and `POST /neev/mfa/otp/verify` completes it.
 - Prune expired rows with `php artisan neev:clean-magic-links`.
 Minutes before every emailed link expires — magic links, password reset,
