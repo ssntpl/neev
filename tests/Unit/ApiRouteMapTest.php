@@ -73,7 +73,7 @@ class ApiRouteMapTest extends TestCase
 
             // passkeys
             'GET neev/passkeys',
-            'GET neev/passkeys/register/options',
+            'POST neev/passkeys/register/options',
             'POST neev/passkeys/register',
             'DELETE neev/passkeys',
             'PUT neev/passkeys',

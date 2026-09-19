@@ -834,16 +834,62 @@ Authorization: Bearer {token}
 
 ## Passkeys (WebAuthn)
 
-### Generate Registration Options
+### List Passkeys
 
 ```http
-GET /neev/passkeys/register/options
+GET /neev/passkeys
 ```
 
 **Headers:**
 ```http
 Authorization: Bearer {token}
 ```
+
+**Response:**
+
+```json
+{
+    "data": [
+        {
+            "id": 1,
+            "user_id": 7,
+            "credential_id": "base64url_credential_id",
+            "rp_id": "acme.com",
+            "name": "My MacBook",
+            "ip": "203.0.113.4",
+            "location": null,
+            "last_used": "2024-01-15T10:00:00Z",
+            "aaguid": "00000000-0000-0000-0000-000000000000",
+            "transports": ["internal"],
+            "created_at": "2024-01-15T10:00:00Z",
+            "updated_at": "2024-01-15T10:00:00Z"
+        }
+    ]
+}
+```
+
+`rp_id` is the relying party the credential was enrolled under, and a
+credential can only be used in a ceremony for that same relying party. It is
+null on credentials enrolled before per-domain relying parties existed, which
+are read as `relying_party_id`. The public key is never returned. The list is
+the user's whole set, across relying parties — unlike `excludeCredentials` and
+`allowCredentials` below, which are filtered to the current one.
+
+---
+
+### Generate Registration Options
+
+```http
+POST /neev/passkeys/register/options
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+The request takes no body. It is a `POST` so that the browser attaches
+`Origin`, which the relying party is resolved from — see below.
 
 **Response:**
 
@@ -864,10 +910,37 @@ Authorization: Bearer {token}
         "residentKey": "required",
         "userVerification": "required"
     },
-    "timeout": 60000,
-    "attestation": "none"
+    "timeout": 300000,
+    "excludeCredentials": [
+        { "type": "public-key", "id": "base64url_credential_id" }
+    ],
+    "attestation": "none",
+    "extensions": {}
 }
 ```
+
+`rp.id` and `rp.name` are resolved from the request's context *and its
+`Origin` header*, not from configuration alone: a tenant reached on its own
+verified domain gets that domain and its own name, and everything else gets
+`relying_party_id` and the app name. Pass the whole object through to the
+browser rather than hard-coding either. See
+[Supported Domains](./authentication.md#supported-domains).
+
+**This endpoint needs `Origin`, which is why it is a `POST`.** The relying
+party is the context's verified domain equal to the origin the request names, so
+a request without one is answered with `relying_party_id`, which the browser then
+refuses on a tenant's own host. Browsers attach `Origin` themselves on every
+`POST` and on every cross-origin request, and omit it on a same-origin `GET`,
+where it is a forbidden header name client JavaScript cannot add back — so the
+options endpoints are `POST` and name their origin wherever they are called from,
+same-origin or not. A caller that legitimately has no host origin — a native app,
+whose origin is an app facet — keeps the configured relying party, the only one it
+can hold platform assets for. See
+[Supported Domains](./authentication.md#supported-domains).
+
+`excludeCredentials` lists the credentials this user already holds **on that
+relying party**, so an authenticator refuses to enrol the same key twice.
+Forward it to `navigator.credentials.create()`.
 
 ---
 
@@ -909,7 +982,15 @@ Authorization: Bearer {token}
 ### Generate Login Options
 
 ```http
-GET /neev/passkeys/login/options?email=john@example.com
+POST /neev/passkeys/login/options
+```
+
+**Request Body:**
+
+```json
+{
+    "email": "john@example.com"
+}
 ```
 
 **Response:**
@@ -917,12 +998,23 @@ GET /neev/passkeys/login/options?email=john@example.com
 ```json
 {
     "challenge": "base64_challenge",
-    "timeout": 120000,
+    "timeout": 300000,
     "rpId": "yourapp.com",
-    "allowCredentials": [...],
-    "userVerification": "required"
+    "allowCredentials": [
+        { "type": "public-key", "id": "base64url_credential_id" }
+    ],
+    "userVerification": "required",
+    "extensions": []
 }
 ```
+
+`rpId` follows the request's context and `Origin` header in the same way
+`rp.id` does above — including the requirement that the request name an origin,
+which is why this endpoint is a `POST` — and `allowCredentials` is filtered to the
+credentials enrolled under it — a user
+with passkeys on both the platform domain and their own gets only the ones the
+current ceremony can use. An account with no credentials on this relying party
+is answered with the same `400` as an unknown address.
 
 ---
 

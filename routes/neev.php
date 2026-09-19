@@ -224,7 +224,7 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
         Route::post('/login', [UserAuthApiController::class, 'login']);
         Route::post('/sendLoginLink', [UserAuthApiController::class, 'sendLoginLink']);
         Route::post('/forgotPassword', [UserAuthApiController::class, 'forgotPassword']);
-        Route::get('/passkeys/login/options', [PasskeyController::class,'generateLoginOptions']);
+        Route::post('/passkeys/login/options', [PasskeyController::class,'generateLoginOptions']);
         Route::post('/passkeys/login', [PasskeyController::class,'loginViaAPI']);
 
         Route::get('/oauth/{service}/redirect', [OAuthApiController::class, 'redirectUrl']);
@@ -272,7 +272,7 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
 
         Route::prefix('/passkeys')->group(function () {
             Route::get('/', [PasskeyController::class,'getPasskeys']);
-            Route::get('/register/options', [PasskeyController::class,'generateRegistrationOptions']);
+            Route::post('/register/options', [PasskeyController::class,'generateRegistrationOptions']);
             Route::post('/register', [PasskeyController::class,'registerViaAPI']);
             Route::delete('/', [PasskeyController::class,'deletePasskeyViaAPI']);
             Route::put('/', [PasskeyController::class,'updatePasskeyName']);

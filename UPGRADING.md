@@ -107,6 +107,71 @@ superseded whenever a newer link is issued for the same channel.
 - Schedule `neev:clean-magic-links` alongside `neev:clean-login-attempts`
   to purge expired tokens.
 
+**A tenant's own hosts are now admitted as passkey origins (no action
+required).** Every admitted origin is still named exactly, as before —
+subdomain matching was already off, so a host under `relying_party_id`
+never completed a ceremony on its own. What is new is where the names
+come from:
+
+- **A tenant's hosts** come from its verified `domains` rows, so a
+  tenant on `acme.example.com` or on its own `acme.com` needs no entry
+  in `allowed_origins`. Only the host the request's `Origin` names is
+  admitted, so one tenant's subdomain never admits a sibling — not even
+  a second platform-zone row the same tenant holds, since every host in
+  your zone shares `relying_party_id`.
+- **Your own hosts** still come from `allowed_origins`, unchanged. If
+  you serve passkeys from `app.example.com` or `login.example.com` as
+  well as the apex, each must be listed verbatim — as it had to be
+  before. Apps serving passkeys only from `app.url` need no change.
+
+`allowed_origins` applies on every relying party, which is where a
+native app's `android:apk-key-hash:…` facet goes. If every host under
+your platform domain really is your own, you may widen the check by
+overriding `allowSubdomains()` in a subclass of `RelyingPartyResolver`
+and binding it in a service provider. That loosens a security boundary
+beyond what any released version did — see
+[docs/authentication.md](./docs/authentication.md#origins).
+
+**BREAKING: the API's two passkey options endpoints are now `POST`.**
+`GET /neev/passkeys/register/options` and
+`GET /neev/passkeys/login/options` are gone; call
+`POST /neev/passkeys/register/options` (no body) and
+`POST /neev/passkeys/login/options` with `{"email": "..."}` in the body
+instead of `?email=`. Update any client that calls them — a `GET` now
+returns `405`.
+
+The reason is the relying party, which is now the context's verified
+domain equal to the request's `Origin` — an exact match, because
+`domains` is also the federation registry and a row there (`acme.com`,
+federated so `@acme.com` staff auto-join) need not be served anywhere. A
+request that names no origin keeps `relying_party_id`, which the browser
+then refuses on a tenant's own host. Browsers attach `Origin` themselves
+on every POST and on every cross-origin request, and omit it on a
+same-origin GET, where it is a forbidden header name client JavaScript
+cannot add back — so a GET options endpoint could not name its origin
+from the host it is served on, which is the ordinary Blade layout and any
+SPA deployed beside its API. As POST, both endpoints name their origin
+wherever they are called from, and passkeys on a tenant's own domain need
+no change of deployment. The Blade starter kit's own options routes
+(`POST /account/passkeys/register/options`,
+`POST /passkeys/login/options`) were already POST and are unchanged. See
+[docs/authentication.md](./docs/authentication.md#supported-domains).
+
+**Passkeys gain a per-credential relying party column (schema change).**
+The `passkeys` table gains an `rp_id` column so each credential records
+the relying party it was issued under. The package edits its migration
+in place, so existing installs add the column themselves:
+
+```php
+Schema::table('passkeys', function (Blueprint $table) {
+    $table->string('rp_id')->nullable()->index()->after('credential_id');
+});
+```
+
+The column is nullable, so existing rows are valid immediately — a null
+`rp_id` is read as the configured `relying_party_id`, which is where
+those credentials were enrolled. No data migration is needed.
+
 ---
 
 ## 0.6.2 → 0.6.3
