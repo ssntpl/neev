@@ -530,6 +530,10 @@ Two things worth knowing:
 `$token->can('*')` is granted by a `'*'` entry, which `createApiToken()` also
 collapses to automatically when every registered permission is passed.
 
+Token abilities scope a *credential*; they are not a user's role in a team. A
+token holding `write` still only reaches teams its user belongs to — see
+[Roles & Permissions](./roles-permissions.md).
+
 ---
 
 ## API Middleware Security

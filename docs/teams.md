@@ -196,7 +196,7 @@ The `Membership` model represents user-team relationships (pivot table `team_use
 | joined | boolean | Has accepted invitation |
 | action | string | How relationship was created |
 
-Roles are not stored on the pivot — they are managed by `ssntpl/laravel-acl` via polymorphic role assignments scoped to the team.
+Roles are not stored on the pivot — they are managed by `ssntpl/laravel-acl` via polymorphic role assignments scoped to the team. How those roles are defined, assigned and checked — and why Neev's own endpoints authorise on membership rather than on a role — is covered in [Roles & Permissions](./roles-permissions.md).
 
 ### Actions
 

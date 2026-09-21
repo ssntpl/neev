@@ -16,6 +16,7 @@ Start here to set up and use Neev in your application.
 | [SPA Authentication](./spa-authentication.md) | Wiring a same-origin React/Vue SPA to neev: cookie mode, CSRF, CORS, SSO hand-off, troubleshooting |
 | [MFA](./mfa.md) | Authenticator apps (TOTP), email OTP, and recovery codes |
 | [Teams](./teams.md) | Team creation, invitations, roles, domain federation |
+| [Roles & Permissions](./roles-permissions.md) | Where roles live, who assigns them, what Neev enforces vs what your app must check |
 | [Multi-Tenancy](./multi-tenancy.md) | Identity strategy, tenant isolation, subdomain/custom domain, enterprise SSO |
 | [Email Links](./email-links.md) | Where emailed links land and what a followed link answers — the `EmailLinks` seam |
 | [Security](./security.md) | Brute force protection, password policies, login tracking, session management |
