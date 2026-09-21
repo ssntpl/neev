@@ -267,7 +267,7 @@ endpoints never confirm which team ids are real.
 | `PUT /neev/teams/inviteUser` | the owner |
 | `DELETE /neev/teams` | the owner, and only when they own another team |
 | `PUT /neev/teams/owner/change` | the owner, and only to an existing member |
-| `PUT /neev/role/change` | a member, and only for another member of the same team |
+| `PUT /neev/role/change` | a member, and only for another user attached to the same team — joined or still pending |
 | domain federate / update / delete | the owner |
 
 > **Known asymmetry:** acting on a join request is owner-only on the Blade
@@ -278,7 +278,8 @@ endpoints never confirm which team ids are real.
 
 A role scoped to a team is meaningless for somebody outside it, so
 `PUT /neev/role/change` checks **both** sides: the caller must belong to the
-team, and so must the user whose role is changing.
+team, and so must the user whose role is changing — though an invited user or
+a pending applicant counts, since `addMember()` grants them roles too.
 
 Invitations are addressed to one inbox, so only the account holding that
 address may accept or reject one. Cancelling an invitation is a separate
