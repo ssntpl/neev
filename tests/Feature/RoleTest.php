@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Tests\Feature;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
@@ -156,6 +157,67 @@ class RoleTest extends TestCase
                 'role' => 'editor',
             ])
             ->assertStatus(400);
+    }
+
+    /**
+     * The members page renders the role control for a user who was invited but
+     * has not joined, and `addMember()` grants roles to pending rows, so the
+     * endpoint has to accept one.
+     */
+    public function test_change_role_of_an_invited_user_who_has_not_joined(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
+
+        $invited = User::factory()->create();
+        $team->addMember($invited, joined: false);
+
+        \Ssntpl\LaravelAcl\Models\Role::create([
+            'name' => 'editor',
+            'resource_type' => Team::class,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/role/change', [
+                'resource_type' => Team::class,
+                'resource_id' => $team->id,
+                'user_id' => $invited->id,
+                'role' => 'editor',
+            ])
+            ->assertOk()
+            ->assertJsonPath('message', 'Role has been changed.');
+
+        $this->assertSame('editor', $invited->getRole($team)?->name);
+    }
+
+    /** The same holds for a user still waiting on their join request. */
+    public function test_change_role_of_a_pending_join_request(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
+
+        $applicant = User::factory()->create();
+        $team->addMember($applicant, joined: false, action: Membership::REQUEST_FROM_USER);
+
+        \Ssntpl\LaravelAcl\Models\Role::create([
+            'name' => 'editor',
+            'resource_type' => Team::class,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/role/change', [
+                'resource_type' => Team::class,
+                'resource_id' => $team->id,
+                'user_id' => $applicant->id,
+                'role' => 'editor',
+            ])
+            ->assertOk();
+
+        $this->assertSame('editor', $applicant->getRole($team)?->name);
     }
 
     public function test_non_member_cannot_change_an_invitation_role(): void

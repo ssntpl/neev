@@ -1861,11 +1861,38 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "team_id": 1,
+    "resource_type": "Ssntpl\\Neev\\Models\\Team",
+    "resource_id": 1,
     "user_id": 5,
     "role": "admin"
 }
 ```
+
+Send `invitation_id` in place of `user_id` to re-aim a pending email
+invitation at a different role.
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `resource_type` | yes | Fully qualified class the role is scoped to, e.g. `Ssntpl\Neev\Models\Team` |
+| `resource_id` | yes | Id of that resource |
+| `user_id` | one of | The user whose role changes — a member, or one attached but not yet joined |
+| `invitation_id` | one of | A pending invitation on this resource |
+| `role` | yes | Role name, which must already exist for this `resource_type` |
+
+**Responses:**
+
+| Status | Body | When |
+|--------|------|------|
+| `200` | `Role has been changed.` | — |
+| `400` | `Failed to process change role request.` | Caller is not in the resource, the resource does not exist, the target is not attached to it, or the role name does not resolve |
+
+The refusal is deliberately one message: a resource the caller does not belong
+to is answered exactly like one that does not exist.
+
+> **Pending members count.** A user who was invited or who asked to join is
+> attached to the team but has `joined = false`. Their role may still be
+> changed — `addMember()` grants roles to pending rows too, so the role is
+> live before they accept. See [Roles & Permissions](./roles-permissions.md).
 
 ---
 

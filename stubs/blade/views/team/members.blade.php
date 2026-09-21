@@ -162,8 +162,8 @@
                                     </td>
                                     <td class="px-4 py-2 text-center capitalize">
                                         @if ($team->user_id === $user->id)
-                                            <div class="text-start" x-data="{ show: false, role: @js($member->getRole($team)?->name ?? ($member->membership->role ?? '')), userRole: @js($member->getRole($team)?->name ?? ($member->membership->role ?? '')) }">
-                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->getRole($team)?->name ?? ($member->membership->role ?? '--')}}</button>
+                                            <div class="text-start" x-data="{ show: false, role: @js($memberRoles[$member->id] ?? ($member->membership->role ?? '')), userRole: @js($memberRoles[$member->id] ?? ($member->membership->role ?? '')) }">
+                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $memberRoles[$member->id] ?? ($member->membership->role ?? '--')}}</button>
                                                 <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
                                                     <x-slot name="title">
                                                         {{ __('Change Role') }}
@@ -205,7 +205,7 @@
                                                 </x-neev-component::dialog-modal>
                                             </div>
                                         @else
-                                            {{ $member->getRole($team)?->name ?? ($member->membership->role ?? '') }}
+                                            {{ $memberRoles[$member->id] ?? ($member->membership->role ?? '') }}
                                         @endif
                                     </td>
                                     <td class="px-4 py-2 text-center capitalize">
@@ -284,8 +284,8 @@
                                     </td>
                                     @if ($team->owner->id === $user->id)
                                         <td class="px-4 py-2 text-center capitalize">
-                                            <div class="text-start" x-data="{ show: false, role: @js($member->getRole($team)?->name ?? ($member->membership->role ?? '')), userRole: @js($member->getRole($team)?->name ?? ($member->membership->role ?? '')) }">
-                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $member->getRole($team)?->name ?? ($member->membership->role ?? '--')}}</button>
+                                            <div class="text-start" x-data="{ show: false, role: @js($memberRoles[$member->id] ?? ($member->membership->role ?? '')), userRole: @js($memberRoles[$member->id] ?? ($member->membership->role ?? '')) }">
+                                                <button class="capitalize underline cursor-pointer" @click="show = true">{{ $memberRoles[$member->id] ?? ($member->membership->role ?? '--')}}</button>
                                                 <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
                                                     <x-slot name="title">
                                                         {{ __('Change Role') }}
@@ -334,7 +334,7 @@
                                                 @method('PUT')
                                                 <input type="hidden" name="team_id" value="{{ $team->id }}">
                                                 <input type="hidden" name="email" value="{{ $member->email }}">
-                                                <input type="hidden" name="role" value="{{ $member->getRole($team)?->name ?? ($member->membership->role ?? '') }}">
+                                                <input type="hidden" name="role" value="{{ $memberRoles[$member->id] ?? ($member->membership->role ?? '') }}">
                                                 <x-neev-component::button>{{__('Invite')}}</x-neev-component::button>
                                             </form>
                                         </td>
@@ -355,7 +355,7 @@
                                         </td>
                                     @else
                                         <td class="px-4 py-2 text-center capitalize">
-                                            {{ $member->getRole($team)?->name ?? ($member->membership->role ?? '') }}
+                                            {{ $memberRoles[$member->id] ?? ($member->membership->role ?? '') }}
                                         </td>
                                     @endif
                                 </x-neev-component::table-body-tr>

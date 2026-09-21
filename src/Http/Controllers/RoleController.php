@@ -50,7 +50,7 @@ class RoleController extends Controller
         }
 
         $member = User::model()->find($request->user_id);
-        if (!$member || !$resource->hasMember($member)) {
+        if (!$member || !$this->isAttachedTo($resource, $member)) {
             throw new Exception("User not found.");
         }
 
@@ -71,6 +71,34 @@ class RoleController extends Controller
         }
 
         return $resource;
+    }
+
+    /**
+     * Members and pending members alike may hold a role.
+     *
+     * `hasMember()` answers joined-only, but a role can be granted before the
+     * user has joined — `addMember()` does exactly that, and the members page
+     * renders the role control for invited users and join requests. Asking
+     * `hasMember()` here refused a row the page had just drawn, with
+     * "User not found." The invitation branch above has always allowed a
+     * pending role to change; this is the same rule for a pending membership.
+     *
+     * A user attached in no state at all is still refused: a role scoped to a
+     * resource is meaningless for somebody outside it.
+     */
+    protected function isAttachedTo($resource, User $member): bool
+    {
+        if ($resource->hasMember($member)) {
+            return true;
+        }
+
+        if (!method_exists($resource, 'allUsers')) {
+            return false;
+        }
+
+        return $resource->allUsers()
+            ->where('users.id', $member->getKey())
+            ->exists();
     }
 
     protected function changeInvitationRole(Request $request, $resource): void

@@ -12,6 +12,7 @@ use Ssntpl\Neev\Models\User;
 use Ssntpl\LaravelAcl\Models\Permission;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\EmailLinks;
+use Ssntpl\Neev\Support\TeamRoles;
 
 class UserController extends Controller
 {
@@ -44,7 +45,15 @@ class UserController extends Controller
             return redirect()->route('login');
         }
 
-        return view('neev::account.teams', ['user' => $user, 'join_team' => true]);
+        // The page names this user's role on every team row, and `getRole()`
+        // is a query per call, so the two lists are resolved in one query
+        // each. A team with no assignment is absent, and the view falls back
+        // to the membership pivot as before.
+        return view('neev::account.teams', [
+            'user' => $user,
+            'join_team' => true,
+            'teamRoleNames' => TeamRoles::forResources($user, $user->teams->concat($user->teamRequests)),
+        ]);
     }
 
     public function sessions(Request $request)
