@@ -111,7 +111,7 @@
                                             </a>
                                         </td>
                                         <td class="px-4 py-2 text-center capitalize">
-                                            {{ $user->getRole($team)?->name ?? ($team->membership?->role ?? '') }}
+                                            {{ $teamRoleNames[$team->id] ?? ($team->membership?->role ?? '') }}
                                         </td>
                                         <td class="px-4 py-2 text-end">
                                             <form class="flex gap-4 justify-end" method="POST" action="{{ route('teams.invite.action') }}">
@@ -180,7 +180,7 @@
                                             </a>
                                         </td>
                                         <td class="px-4 py-2 text-center capitalize">
-                                            {{ $user->getRole($team)?->name ?? ($team->membership?->role ?? '') }}
+                                            {{ $teamRoleNames[$team->id] ?? ($team->membership?->role ?? '') }}
                                         </td>
                                         <td class="px-4 py-2 text-center capitalize">
                                             {{$team->user_id === $user->id ? 'Owner' : 'Member'}}

@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Commands\Member;
 
 use Illuminate\Console\Command;
 use Ssntpl\Neev\Commands\Concerns\ResolvesTenantContext;
+use Ssntpl\Neev\Support\TeamRoles;
 
 class ListMembersCommand extends Command
 {
@@ -36,13 +37,16 @@ class ListMembersCommand extends Command
             return self::SUCCESS;
         }
 
+        // One query for the whole list: `getRole()` would run one per member.
+        $roles = TeamRoles::forSubjects($team, $members);
+
         $this->table(
             ['ID', 'Name', 'Email', 'Role', 'Joined', 'Since'],
             $members->map(fn ($m) => [
                 $m->id,
                 $m->name,
                 $m->email ?? '-',
-                $m->getRole($team)?->name ?? '-',
+                $roles[$m->id] ?? '-',
                 $m->membership->joined ? 'Yes' : 'No',
                 $m->membership->created_at?->format('Y-m-d') ?? '-',
             ]),

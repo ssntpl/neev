@@ -18,6 +18,7 @@ use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation as TeamInvitationModel;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\EmailLinks;
+use Ssntpl\Neev\Support\TeamRoles;
 
 class TeamController extends Controller
 {
@@ -40,6 +41,7 @@ class TeamController extends Controller
             'user' => $user,
             'team' => $team,
             'teamRoles' => Role::where('resource_type', Team::class)->get(),
+            'memberRoles' => TeamRoles::forSubjects($team, $team->users->concat($team->invitedUsers)),
         ]);
     }
 
