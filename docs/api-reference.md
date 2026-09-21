@@ -372,6 +372,24 @@ POST /neev/logoutAll
 Authorization: Bearer {token}
 ```
 
+**Request Body:**
+
+```json
+{
+    "password": "CurrentPassword123!"
+}
+```
+
+Confirmation is required. An account that has a password sends `password`; one
+that has none — created through OAuth or SSO — sends `otp` instead, a code from
+[Send One-Time Code](#send-one-time-code):
+
+```json
+{
+    "otp": "123456"
+}
+```
+
 **Response:**
 
 ```json
@@ -379,6 +397,13 @@ Authorization: Bearer {token}
     "message": "Logged out from all other devices successfully."
 }
 ```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 422 | Validation error — neither `password` nor `otp` supplied |
+| 403 | `Password is incorrect.` / `The confirmation code is invalid or has expired.` |
 
 ---
 
@@ -448,6 +473,54 @@ Resetting the password revokes the account's other login tokens and, on the
 database session driver, its other web sessions; other signed-in devices start
 receiving `401`. API tokens are unaffected — see
 [What a Password Change Revokes](./security.md#what-a-password-change-revokes).
+
+---
+
+## One-Time Codes
+
+### Send One-Time Code
+
+Email the authenticated user a one-time code — and nothing else.
+
+```http
+POST /neev/confirmation/otp
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Response:**
+
+```json
+{
+    "message": "A confirmation code has been sent to your email address."
+}
+```
+
+Deliberately generic: any flow that needs the account holder to prove they are
+reading the mailbox can use it, whatever the account looks like. Its first use
+is confirming a sensitive action for an account that has no password —
+[Delete User](#delete-user) and [Logout All Sessions](#logout-all-sessions)
+take the code as `otp` — but nothing about the endpoint is specific to that.
+
+Unlike [Send Verification Email](#send-verification-email), no signed link is
+mailed. A link that signs the reader in does not belong beside "confirm deleting
+your account", and the address is usually verified already, which that endpoint
+refuses to mail to.
+
+The code expires after `neev.otp_expiry_time` minutes (default 15) and allows 5
+wrong guesses before it is discarded. Throttled to 5 requests/minute.
+
+> **A user holds one code at a time, and a code is spent when it is used.**
+> The code lives in a single row keyed by the user, so requesting one here
+> replaces any code outstanding for any other purpose — including an email
+> verification in flight. The codes are interchangeable for the same reason: a
+> code issued here will satisfy `POST /neev/email/verify-otp`, and vice versa.
+> A correct guess deletes the row, so **one code confirms one action** —
+> request a fresh code for each. Nothing binds a code to the action it was read
+> for, so treat a code as proof of mailbox access and nothing more.
 
 ---
 
@@ -1180,9 +1253,16 @@ Authorization: Bearer {token}
 }
 ```
 
-`password` is required — and checked — only when the account has one. An account
-created through OAuth has no password, so the bearer
-token is the confirmation and the body may be empty.
+An account that has a password sends `password`. An account created through
+OAuth or SSO has none — `Hash::check()` against a null hash can never succeed,
+so demanding one would lock those users out of deleting their own account. They
+send `otp` instead, a code from [Send One-Time Code](#send-one-time-code):
+
+```json
+{
+    "otp": "123456"
+}
+```
 
 **Response:**
 
@@ -1196,8 +1276,8 @@ token is the confirmation and the body may be empty.
 
 | Status | Message |
 |--------|---------|
-| 422 | Validation error — `password` missing on an account that has one |
-| 403 | `Password is Wrong.` |
+| 422 | Validation error — neither `password` nor `otp` supplied |
+| 403 | `Password is Wrong.` / `The confirmation code is invalid or has expired.` |
 
 ---
 
@@ -1314,6 +1394,13 @@ Authorization: Bearer {token}
 |--------|-----------|
 | 400 | `{id}` is the current session |
 | 404 | Session does not exist or belongs to another user |
+
+> **No confirmation is asked for here**, while
+> [Logout All Sessions](#logout-all-sessions) requires one — revoking a single
+> session you do not recognise should not mean hunting for a password first.
+> The trade-off is that the all-at-once gate can be sidestepped one request at
+> a time: `GET /neev/sessions` to enumerate, then one `DELETE` per id. Gate
+> this endpoint in your own application if that matters for your deployment.
 
 ---
 

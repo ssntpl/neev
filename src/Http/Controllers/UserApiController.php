@@ -120,6 +120,29 @@ class UserApiController extends Controller
         }
     }
 
+    /**
+     * Email a code that confirms a sensitive action.
+     *
+     * The code is the one /email/send issues; that endpoint refuses an
+     * address already verified, which every passwordless account is, so
+     * it could not serve this.
+     */
+    public function sendConfirmationOtp(Request $request)
+    {
+        $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'message' => 'User not found.',
+            ], 404);
+        }
+
+        app(AuthService::class)->sendConfirmationOtp($user);
+
+        return response()->json([
+            'message' => 'A confirmation code has been sent to your email address.',
+        ]);
+    }
+
     public function deleteUser(Request $request)
     {
         $user = User::model()->find($request->user()?->id);
@@ -129,18 +152,25 @@ class UserApiController extends Controller
             ], 403);
         }
 
-        // See UserController::accountDelete — OAuth accounts hold no password,
-        // so requiring one locked them out of deleting their account.
-        if ($user->password !== null) {
-            $request->validate([
-                'password' => ['required'],
-            ]);
+        // An account holding a password proves itself with it; one without
+        // — OAuth and SSO registrations — proves itself with a code from
+        // POST /confirmation/otp. Demanding a password of an account that
+        // has none locked those users out of deleting their own account,
+        // since Hash::check() against a null hash can never succeed.
+        $request->validate($user->password !== null
+            ? ['password' => ['required']]
+            : ['otp' => ['required']]);
 
-            if (!Hash::check($request->password, $user->password)) {
-                return response()->json([
-                    'message' => 'Password is Wrong.',
-                ], 403);
-            }
+        $confirmed = $user->password !== null
+            ? Hash::check($request->password, $user->password)
+            : app(AuthService::class)->verifyEmailOtp($user, (string) $request->otp);
+
+        if (!$confirmed) {
+            return response()->json([
+                'message' => $user->password !== null
+                    ? 'Password is Wrong.'
+                    : 'The confirmation code is invalid or has expired.',
+            ], 403);
         }
 
         $user->delete();

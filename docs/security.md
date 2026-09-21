@@ -411,8 +411,14 @@ curl -X POST https://yourapp.com/neev/logout \
 
 ```bash
 curl -X POST https://yourapp.com/neev/logoutAll \
-  -H "Authorization: Bearer {token}"
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"password": "CurrentPassword123!"}'
 ```
+
+Revoking every other session is a takeover tool as much as a remedy, so it is
+confirmed. An account without a password sends `{"otp": "123456"}` instead, from
+`POST /neev/confirmation/otp`.
 
 ### Logout Specific Session (Web)
 
@@ -669,9 +675,11 @@ All related data is cascade deleted.
 
 The endpoints in front of it — `DELETE /account/accountDelete` and
 `DELETE /neev/users` — ask for the current password when the account has one.
-An account created through OAuth has no password, so
-the authenticated session is the confirmation and `password` is not required.
-See [Accounts Without a Password](./authentication.md#accounts-without-a-password).
+An account created through OAuth has no password, so it confirms with a
+one-time code instead: request one from `POST /neev/confirmation/otp` and send
+it as `otp`. Demanding a password there would have locked those accounts out of
+deleting themselves, since `Hash::check()` against a null hash can never
+succeed. See [Accounts Without a Password](./authentication.md#accounts-without-a-password).
 
 ---
 

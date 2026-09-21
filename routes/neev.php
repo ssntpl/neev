@@ -148,6 +148,9 @@ if (config('neev.ui') === 'blade') {
                     ->name('profile.update');
                 Route::post('/change-password', [UserController::class, 'changePassword'])
                     ->name('password.change');
+                Route::post('/confirmation/otp', [UserController::class, 'sendConfirmationOtp'])
+                    ->middleware('throttle:5,1')
+                    ->name('account.confirmation');
                 Route::post('/password/reset-link', [UserController::class, 'sendPasswordResetLink'])
                     ->middleware('throttle:5,1')
                     ->name('password.reset.link');
@@ -261,6 +264,9 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
         });
 
         Route::post('/recoveryCodes', [UserApiController::class, 'generateRecoveryCodes']);
+
+        Route::post('/confirmation/otp', [UserApiController::class, 'sendConfirmationOtp'])
+            ->middleware('throttle:5,1');
 
         Route::get('/users', [UserApiController::class, 'getUser']);
         Route::put('/users', [UserApiController::class, 'updateUser']);

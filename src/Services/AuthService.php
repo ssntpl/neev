@@ -175,6 +175,27 @@ class AuthService
     }
 
     /**
+     * Email the user a one-time code, and nothing else.
+     *
+     * Deliberately generic: any caller that needs the account holder to
+     * prove they are reading the mailbox uses this, whether or not the
+     * account has a password. sendEmailVerification() pairs the same code
+     * with a signed link, which most callers have no use for — a link that
+     * signs the reader in does not belong beside "confirm deleting your
+     * account".
+     *
+     * The user holds one code at a time, so issuing here replaces any code
+     * outstanding for any purpose, including a verification in flight.
+     */
+    public function sendConfirmationOtp(User $user): void
+    {
+        $otp = $this->createEmailVerificationOtp($user);
+        $expiryMinutes = (int) config('neev.otp_expiry_time', 15);
+
+        Mail::to($user->email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
+    }
+
+    /**
      * Issue (or replace) the user's email-verification code. Stored
      * hashed; resending resets the attempt counter.
      */
@@ -241,9 +262,19 @@ class AuthService
             return false;
         }
 
-        // markEmailAsVerified() deletes the OTP row, so the signed link
-        // and the code invalidate each other through the same path.
-        $user->markEmailAsVerified();
+        // Skipped for an address already verified: the same code confirms a
+        // sensitive action for an account that has no password, and every
+        // such account is verified. Marking again would rewrite
+        // email_verified_at on each confirmation, so the column would record
+        // the last action confirmed rather than when the address was proven.
+        if (!$user->hasVerifiedEmail()) {
+            $user->markEmailAsVerified();
+        }
+
+        OTP::query()
+            ->where('owner_id', $user->id)
+            ->where('owner_type', $user->getMorphClass())
+            ->delete();
 
         return true;
     }

@@ -13,6 +13,38 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.3 → Unreleased
 
+**`POST /neev/logoutAll` now requires confirmation (action required).**
+It previously revoked every other login token on the bearer token alone
+— the one account-takeover tool in the API that asked for nothing, while
+its Blade counterpart had always required a password.
+
+- **Update every client that calls it.** Send the account's password:
+
+  ```http
+  POST /neev/logoutAll
+  Authorization: Bearer {token}
+  Content-Type: application/json
+
+  {"password": "CurrentPassword123!"}
+  ```
+
+  A request with no confirmation now returns `422`, and a wrong value
+  `403`.
+
+- **An account with no password sends `otp` instead.** `users.password`
+  is `null` for every OAuth and SSO registration. Request a code from
+  the new `POST /neev/confirmation/otp`, then send it as `otp`. The same
+  applies to `DELETE /neev/users`, which previously accepted an empty
+  body from those accounts and now requires the code.
+
+- **Unaffected:** `POST /neev/logout` (the current session only), and
+  revoking one named session — `DELETE /neev/sessions/{id}`, or
+  `POST /account/logoutSessions` with a `session_id`. Those still ask for
+  nothing, so the all-at-once gate can be sidestepped one session at a
+  time: `GET /neev/sessions` to enumerate, then one `DELETE` per id.
+  Gate them in your own application if that matters for your deployment.
+
+
 **OAuth logins are recorded as `oauth:<provider>` (action required if you read
 `login_attempts.method`).**
 The OAuth callbacks wrote the bare provider name from `neev.oauth` into the same

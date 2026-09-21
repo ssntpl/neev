@@ -581,10 +581,23 @@ class UserAuthController extends Controller
             return redirect(app(EmailLinks::class)->loginUrl());
         }
         if (!$request->session_id) {
-            if ($user->password !== null && ! Hash::check($request->password, $user->password)) {
-                return back()->withErrors([
-                    'password' => __('The password is incorrect.'),
-                ]);
+            // Revoking every other session at once is confirmed: with the
+            // account's password, or — where there is none — with a code
+            // from account.confirmation. Revoking one named session below
+            // is not, so a user who spots a device they do not recognise
+            // can drop it without hunting for a password first.
+            $request->validate($user->password !== null
+                ? ['password' => ['required']]
+                : ['otp' => ['required']]);
+
+            $confirmed = $user->password !== null
+                ? Hash::check($request->password, $user->password)
+                : $this->auth->verifyEmailOtp($user, (string) $request->otp);
+
+            if (!$confirmed) {
+                return back()->withErrors($user->password !== null
+                    ? ['password' => __('The password is incorrect.')]
+                    : ['otp' => __('The confirmation code is invalid or has expired.')]);
             }
 
             if (config('session.driver') === 'database') {
