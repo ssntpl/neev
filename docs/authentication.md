@@ -171,7 +171,8 @@ would ordinarily ask for one has to decide what to do instead.
 | Change password | Current password required | Refused — offered an emailed link instead |
 | Set a password | — | `POST /account/password/reset-link` mails a signed link |
 | Change email address | Current password required | Refused until a password is set |
-| Delete account | Current password required | The signed-in session is the confirmation |
+| Delete account | Current password required | One-time code required (`otp`) |
+| Log out all sessions | Current password required | One-time code required (`otp`) |
 
 **Setting the first password.** There is nothing to prove ownership with except
 the address on the account, so the only route is the link:
@@ -198,9 +199,41 @@ the API answers `403` with *Set a password on your account before changing your
 email address.* The Blade change-email page hides the form and links to the
 security page rather than showing a field that cannot be submitted.
 
-**Deleting the account.** Where there is no password to check, the authenticated
-session is the confirmation, and the `password` field is not required. The
-confirmation dialog drops the password input and asks for a plain yes.
+**Confirming a sensitive action.** Where there is no password to check, the
+proof is a one-time code mailed to the address on the account. The client asks
+for one, then sends it with the action:
+
+```http
+POST /neev/confirmation/otp          → 200, code mailed
+Authorization: Bearer {token}
+
+DELETE /neev/users                   → 200, account deleted
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{"otp": "123456"}
+```
+
+`POST /neev/logoutAll` takes the same field. The Blade flows use
+`POST /account/confirmation/otp` (route name `account.confirmation`) and post
+`otp` alongside the action; the confirmation dialog swaps its password input for
+a code field.
+
+The endpoint is generic — it mails a code and nothing else, to any authenticated
+user — so anything else needing proof of mailbox access can use it too. Note
+what the code is and is not: for an account reached by OAuth or SSO, the mailbox
+already grants a session, so the code re-checks the factor the session was built
+on. It stops a stolen cookie or bearer token, not a compromised mailbox.
+
+Two properties worth designing around:
+
+- **A user holds one code at a time.** The code lives in a single row keyed by
+  the user, so issuing one replaces any code outstanding for another purpose,
+  including an email verification in flight.
+- **A code is spent by the action it confirms.** A correct guess deletes it, so
+  one code confirms one action — request a fresh one each time. Nothing binds a
+  code to the action it was read for, which is exactly why single use matters:
+  the same code also satisfies `POST /neev/email/verify-otp`.
 
 ---
 
@@ -1133,11 +1166,16 @@ Authorization: Bearer {token}
 
 ### Logout All Other Sessions
 
-Deletes all of the user's login tokens except the current one:
+Deletes all of the user's login tokens except the current one. Confirmed with
+the account's password, or — for an account that has none — with a code from
+`POST /neev/confirmation/otp`:
 
 ```http
 POST /neev/logoutAll
 Authorization: Bearer {token}
+Content-Type: application/json
+
+{"password": "CurrentPassword123!"}
 ```
 
 ### Logout Specific Session (Web)

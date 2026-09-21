@@ -289,7 +289,7 @@
             <x-slot name="content">
                 {{-- Delete Account --}}
                 @if ($delete_account)
-                    <div x-data="{ show: false }">
+                    <div x-data="{ show: false, sending: false, sent: false, sendError: null }">
                         <div class="flex justify-between gap-2">
                             <div>
                                 <p class="font-medium text-lg">Delete Account</p>
@@ -309,23 +309,60 @@
                                 @if ($user->password)
                                     {{ __('Please enter your password to confirm you would like to delete of your account.') }}
                                 @else
-                                    {{ __('Are you sure you would like to delete your account? This cannot be undone.') }}
+                                    {{ __('This cannot be undone. Accounts registered through a provider have no password, so we email a code instead. Send one, then enter it below to confirm.') }}
+
+                                    {{-- Requested with fetch, not a form post: a redirect
+                                         would reload the page, reset x-data and close this
+                                         dialog before the code could be typed into it. --}}
+                                    <div class="mt-4">
+                                        <x-neev-component::secondary-button type="button" class="cursor-pointer"
+                                            x-bind:disabled="sending"
+                                            @click="sending = true; sendError = null;
+                                                fetch('{{ route('account.confirmation') }}', {
+                                                    method: 'POST',
+                                                    headers: {
+                                                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                                        'Accept': 'application/json',
+                                                        'X-Requested-With': 'XMLHttpRequest',
+                                                    },
+                                                })
+                                                .then(response => { if (!response.ok) { throw new Error(); } sent = true; })
+                                                .catch(() => { sendError = '{{ __('The code could not be sent. Please try again.') }}'; })
+                                                .finally(() => { sending = false; })">
+                                            <span x-show="!sent">{{ __('Email me a code') }}</span>
+                                            <span x-show="sent" x-cloak>{{ __('Send another code') }}</span>
+                                        </x-neev-component::secondary-button>
+
+                                        <p class="mt-2 text-sm text-green-600 dark:text-green-400" x-show="sent" x-cloak>
+                                            {{ __('Code sent. Check your email and enter it below.') }}
+                                        </p>
+                                        <p class="mt-2 text-sm text-red-600 dark:text-red-400" x-show="sendError" x-cloak x-text="sendError"></p>
+                                    </div>
                                 @endif
 
                                 <form method="POST" action="{{ route('account.delete') }}" x-ref="deleteAccountForm">
                                     @csrf
                                     @method('DELETE')
-                                    {{-- Accounts registered through OAuth have no password to confirm. --}}
-                                    @if ($user->password)
-                                        <div class="mt-4">
+                                    {{-- Accounts registered through OAuth have no password to
+                                         confirm with, so they confirm with an emailed code. --}}
+                                    <div class="mt-4">
+                                        @if ($user->password)
                                             <x-neev-component::input type="password"
                                                 name="password"
                                                 class="mt-1 block w-3/4"
                                                 autocomplete="password"
                                                 placeholder="{{ __('Password') }}"
                                                 x-ref="password" />
-                                        </div>
-                                    @endif
+                                        @else
+                                            <x-neev-component::input type="text"
+                                                name="otp"
+                                                class="mt-1 block w-3/4"
+                                                autocomplete="one-time-code"
+                                                inputmode="numeric"
+                                                placeholder="{{ __('Code') }}"
+                                                x-ref="otp" />
+                                        @endif
+                                    </div>
                                 </form>
                             </x-slot>
 

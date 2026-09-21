@@ -125,7 +125,7 @@ class LogoutTest extends TestCase
         $this->assertEquals(3, $loginTokenCount);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
-            ->postJson('/neev/logoutAll');
+            ->postJson('/neev/logoutAll', ['password' => 'password']);
 
         $response->assertOk();
         $response->assertJson([
@@ -142,7 +142,7 @@ class LogoutTest extends TestCase
         $data = $this->createAuthenticatedUser();
 
         $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
-            ->postJson('/neev/logoutAll');
+            ->postJson('/neev/logoutAll', ['password' => 'password']);
 
         Event::assertDispatched(LoggedOut::class, function (LoggedOut $event) use ($data) {
             return $event->user->id === $data['user']->id;
@@ -164,7 +164,7 @@ class LogoutTest extends TestCase
         ]);
 
         $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
-            ->postJson('/neev/logoutAll');
+            ->postJson('/neev/logoutAll', ['password' => 'password']);
 
         // API token should still exist
         $this->assertDatabaseHas('access_tokens', [

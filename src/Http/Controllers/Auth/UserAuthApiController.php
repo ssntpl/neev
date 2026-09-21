@@ -268,6 +268,25 @@ class UserAuthApiController extends Controller
             ], 401);
         }
 
+        // Revoking every other token is a takeover tool as much as a
+        // remedy, so it is confirmed: with the account's password, or —
+        // where there is none — with a code from POST /confirmation/otp.
+        $request->validate($user->password !== null
+            ? ['password' => ['required']]
+            : ['otp' => ['required']]);
+
+        $confirmed = $user->password !== null
+            ? Hash::check($request->password, $user->password)
+            : app(AuthService::class)->verifyEmailOtp($user, (string) $request->otp);
+
+        if (!$confirmed) {
+            return response()->json([
+                'message' => $user->password !== null
+                    ? 'Password is incorrect.'
+                    : 'The confirmation code is invalid or has expired.',
+            ], 403);
+        }
+
         $currentTokenId = $request->attributes->get('token_id');
         $user->loginTokens()->where('id', '!=', $currentTokenId)->delete();
 

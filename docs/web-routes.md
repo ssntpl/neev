@@ -192,7 +192,13 @@ All prefixed with `/account`.
 | PUT | `/account/profileUpdate` | `profile.update` | Update profile |
 | POST | `/account/change-password` | `password.change` | Change password |
 | POST | `/account/password/reset-link` | `password.reset.link` | Email a link to set or reset the password |
+| POST | `/account/confirmation/otp` | `account.confirmation` | Email a one-time code (throttled 5/min) |
 | DELETE | `/account/accountDelete` | `account.delete` | Delete account |
+
+**Confirming the deletion.** An account with a password posts `password`. An
+account without one — created through OAuth or SSO — posts `otp`, a code from
+`account.confirmation`. See
+[Accounts Without a Password](./authentication.md#accounts-without-a-password).
 
 ---
 
@@ -224,8 +230,10 @@ All prefixed with `/account`.
 | POST | `/account/logoutSessions` | `logout.sessions` | Logout other sessions |
 
 **Request Parameters:**
-- `password` - Required to logout all sessions
-- `session_id` - Optional, to logout specific session
+- `password` - Required to logout all sessions, when the account has a password
+- `otp` - Required instead, when it does not; a code from `account.confirmation`
+- `session_id` - Optional, to logout a specific session. Revoking one named
+  session is not confirmed; revoking all of them is.
 
 ---
 
