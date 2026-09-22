@@ -51,6 +51,56 @@ class MfaJwt
     }
 
     /**
+     * Take this token for the trade about to happen, or refuse.
+     *
+     * Atomic, where `isSpent()` followed by `spend()` is not: the check lives
+     * in `JwtLoginMiddleware` and the write in the controller, so two requests
+     * arriving together both pass the check before either writes and both mint
+     * a login token — one first factor, two sessions. Reordering the write
+     * cannot fix that; only claiming the token in one operation can. It takes
+     * a reusable second factor to reach (a TOTP inside its window, or a
+     * recovery code), which is exactly the pair a step-up credential is
+     * supposed to make single-use.
+     *
+     * `Cache::add()` also returns false when the store cannot store anything —
+     * a `null` cache, which already leaves this package without its throttles,
+     * its login back-off and its passkey challenges. That is told apart from a
+     * genuine second trade below rather than refusing every login on such a
+     * deployment.
+     *
+     * Release it with `release()` if the trade then fails, so a caller is not
+     * left holding a spent token and an unfinished login.
+     *
+     * @param  array<string, mixed>  $claims
+     */
+    public function claim(array $claims): bool
+    {
+        $jti = $claims['jti'] ?? null;
+
+        if (!is_string($jti) || $jti === '') {
+            return false;
+        }
+
+        $key = $this->spentKey($jti);
+
+        if (Cache::add($key, true, $this->remaining($claims))) {
+            return true;
+        }
+
+        return !Cache::has($key);
+    }
+
+    /** Give the token back: the trade it was claimed for did not happen. */
+    public function release(array $claims): void
+    {
+        $jti = $claims['jti'] ?? null;
+
+        if (is_string($jti) && $jti !== '') {
+            Cache::forget($this->spentKey($jti));
+        }
+    }
+
+    /**
      * Spend this token, so it cannot be traded a second time.
      *
      * The record lives exactly as long as the token would have: once `exp`
@@ -67,9 +117,18 @@ class MfaJwt
             return;
         }
 
-        $seconds = max(1, (int) ($claims['exp'] ?? 0) - time());
+        Cache::put($this->spentKey($jti), true, $this->remaining($claims));
+    }
 
-        Cache::put($this->spentKey($jti), true, $seconds);
+    /**
+     * Seconds the token has left. The record need not outlive it: past `exp`
+     * the signature is refused anyway.
+     *
+     * @param  array<string, mixed>  $claims
+     */
+    protected function remaining(array $claims): int
+    {
+        return max(1, (int) ($claims['exp'] ?? 0) - time());
     }
 
     /**

@@ -60,9 +60,17 @@ It is **single-use**: verifying a code trades it for a login token and spends
 it, so one first factor buys one session. A replay after a successful
 verification is `401`, even inside the expiry window below. A wrong code does
 not spend it — the user has to be able to try again — and neither does a
-resend. It is spent *after* the login token exists, so a failure part-way
-through leaves the token usable rather than stranding the caller with an
-unfinished login.
+resend.
+
+The trade claims the token in one atomic operation rather than checking it and
+writing later, so two requests arriving together cannot both mint a token from
+one first factor — which a reusable second factor (a TOTP inside its window, a
+recovery code) would otherwise allow. If the trade then fails, the claim is
+released, so nobody is left holding a spent token and an unfinished login.
+
+Like this package's throttles, its login back-off and its passkey challenges,
+the record lives in the cache. A `null` cache store leaves all four without
+their guarantee; it is not a configuration to run this package under.
 
 The Blade challenge spends it too, when the request carries it: an OAuth
 callback on a stateful origin parks the step-up token in the auth cookie, the

@@ -526,4 +526,53 @@ class MFATest extends TestCase
             ])
             ->assertOk();
     }
+
+    /**
+     * The claim is atomic, where a check in the middleware and a write in the
+     * controller are two steps: two requests arriving together would both pass
+     * the check and both mint a login token from one first factor. Only the
+     * first claim succeeds.
+     */
+    public function test_the_step_up_token_can_only_be_claimed_once(): void
+    {
+        $this->enableMFA();
+
+        $user = User::factory()->create();
+        $claims = [
+            'jti' => (string) \Illuminate\Support\Str::uuid(),
+            'exp' => time() + 600,
+        ];
+
+        $jwt = app(\Ssntpl\Neev\Services\MfaJwt::class);
+
+        $this->assertTrue($jwt->claim($claims));
+        $this->assertFalse($jwt->claim($claims), 'A second claim on the same token must lose.');
+        $this->assertTrue($jwt->isSpent($claims));
+    }
+
+    /** A trade that fails gives the token back, rather than stranding its holder. */
+    public function test_a_released_step_up_token_can_be_claimed_again(): void
+    {
+        $claims = [
+            'jti' => (string) \Illuminate\Support\Str::uuid(),
+            'exp' => time() + 600,
+        ];
+
+        $jwt = app(\Ssntpl\Neev\Services\MfaJwt::class);
+
+        $this->assertTrue($jwt->claim($claims));
+        $jwt->release($claims);
+
+        $this->assertFalse($jwt->isSpent($claims));
+        $this->assertTrue($jwt->claim($claims));
+    }
+
+    /** A token with no `jti` cannot be recorded, so it is never claimable. */
+    public function test_a_step_up_token_without_a_jti_cannot_be_claimed(): void
+    {
+        $jwt = app(\Ssntpl\Neev\Services\MfaJwt::class);
+
+        $this->assertFalse($jwt->claim(['exp' => time() + 600]));
+        $this->assertTrue($jwt->isSpent(['exp' => time() + 600]));
+    }
 }

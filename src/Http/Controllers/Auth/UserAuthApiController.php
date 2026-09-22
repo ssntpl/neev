@@ -656,6 +656,18 @@ class UserAuthApiController extends Controller
 
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
         $claims = (array) $request->attributes->get('jwt_claims', []);
+
+        // Claimed in one operation, because the middleware's check and a later
+        // write are two: two requests arriving together would both pass the
+        // check and both mint a login token from one first factor. Released
+        // below if the trade itself fails.
+        $mfaJwt = app(MfaJwt::class);
+        if (!$mfaJwt->claim($claims)) {
+            return response()->json([
+                'message' => 'Invalid or expired token',
+            ], 401);
+        }
+
         $attemptId = $claims['attempt_id'] ?? null;
         $attempt = $attemptId ? $user->loginAttempts()->find($attemptId) : null;
         if ($attempt) {
@@ -666,11 +678,16 @@ class UserAuthApiController extends Controller
 
         $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, $attempt->method ?? LoginAttempt::Password, $expiryMinutes, $attempt);
 
-        // Spent by the trade — one first factor buys one login token, and a
-        // replay gets nothing. After the token exists, so a failure part-way
-        // through does not leave the caller holding a dead step-up token with
-        // no way to finish the login it belongs to.
-        app(MfaJwt::class)->spendFromRequest($request);
+        // The trade did not happen, so the token is not spent: give it back
+        // rather than leave the caller with a dead credential and an
+        // unfinished login.
+        if (!$token) {
+            $mfaJwt->release($claims);
+
+            return response()->json([
+                'message' => 'Unable to complete login.',
+            ], 500);
+        }
 
         // Replaces the MFA JWT cookie with the real login token for SPAs.
         return app(SpaCookieResponder::class)->attach($request, response()->json([
