@@ -472,4 +472,58 @@ class MFATest extends TestCase
         $response->assertStatus(401);
     }
 
+    /**
+     * The step-up JWT is good for one step up. Its `jti` was recorded and
+     * never read, so the same token traded for a second login token for as
+     * long as it lived — one first factor, two sessions.
+     */
+    public function test_the_mfa_jwt_cannot_be_traded_twice(): void
+    {
+        $this->enableMFA();
+
+        $data = $this->createUserWithMFAToken();
+        $user = $data['user'];
+        $totp = TOTP::create(secret: $data['secret']);
+
+        $first = $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
+            ->postJson('/neev/mfa/otp/verify', [
+                'auth_method' => 'authenticator',
+                'otp' => $totp->now(),
+            ]);
+
+        $first->assertOk()->assertJsonPath('auth_state', 'authenticated');
+        $this->assertSame(1, $user->loginTokens()->count());
+
+        // Same JWT, a fresh and perfectly valid second factor.
+        $this->travel(31)->seconds();
+
+        $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
+            ->postJson('/neev/mfa/otp/verify', [
+                'auth_method' => 'authenticator',
+                'otp' => TOTP::create(secret: $data['secret'])->now(),
+            ])
+            ->assertStatus(401)
+            ->assertJsonPath('message', 'Invalid or expired token');
+
+        $this->assertSame(1, $user->loginTokens()->count(), 'One first factor, one login token.');
+    }
+
+    /** A wrong code does not spend it — the user has to be able to retry. */
+    public function test_a_failed_code_leaves_the_mfa_jwt_usable(): void
+    {
+        $this->enableMFA();
+
+        $data = $this->createUserWithMFAToken();
+
+        $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
+            ->postJson('/neev/mfa/otp/verify', ['auth_method' => 'authenticator', 'otp' => '000000'])
+            ->assertStatus(400);
+
+        $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
+            ->postJson('/neev/mfa/otp/verify', [
+                'auth_method' => 'authenticator',
+                'otp' => TOTP::create(secret: $data['secret'])->now(),
+            ])
+            ->assertOk();
+    }
 }

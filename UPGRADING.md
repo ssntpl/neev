@@ -13,6 +13,33 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.3 → Unreleased
 
+**Removing a multi-factor method now needs confirmation (action required if
+you call it).**
+`DELETE {prefix}/mfa/delete` and the Blade `POST /account/mfa` with
+`action=delete` asked for the method name alone, so a stolen session or bearer
+token could strip the factor guarding the account. Both now take `password` —
+or `otp`, for an account that has none, from
+`POST {prefix}/confirmation/otp` — like account deletion and
+`logoutAll` already did. A missing field is `422`, a wrong one `403`, and the
+factor stays. Update any client that removes factors, and the account-security
+view if you ejected the Blade kit (the form needs a password or code field).
+
+**Signing out other sessions refuses off the database driver (no action
+required unless you relied on it appearing to work).**
+`POST /account/logoutSessions` with no `session_id` used to rotate the
+caller's own session id and report success on `file`, `redis` and `cookie`
+drivers, while every other session stayed signed in. It now returns an error
+naming the reason. Use `SESSION_DRIVER=database`, or attach Laravel's
+`AuthenticateSession` middleware for the driver-agnostic equivalent.
+
+**`TenantResolver::runInContext()` throws on a request that has already bound
+its context.** It could never have worked there — `ContextManager` is
+immutable after `BindContextMiddleware` binds — but it used to fail halfway
+and leave the resolver pointing at the new context. Call it from a queued job,
+an artisan command, or before the context is bound. Code that called it inside
+a bound request was already reading the wrong tenant; it now gets a
+`LogicException` instead.
+
 **BREAKING: a verified platform subdomain is now its own passkey relying
 party (action required if tenants sign in with passkeys on your
 subdomains).**

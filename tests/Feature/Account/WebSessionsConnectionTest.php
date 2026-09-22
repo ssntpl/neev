@@ -104,4 +104,27 @@ class WebSessionsConnectionTest extends TestCase
             ->assertRedirect();
         $this->assertSame(0, $this->sessions()->where('id', 'stale')->count());
     }
+
+    /**
+     * Off the database driver there is no way to reach another session, and
+     * the action used to rotate the caller's own session id and report
+     * "Logged out from other sessions." — the devices the user was trying to
+     * sign out stayed signed in, and nothing said so.
+     */
+    public function test_logging_out_other_sessions_says_so_when_the_driver_cannot(): void
+    {
+        config(['session.driver' => 'file']);
+
+        $user = User::factory()->create(['password' => 'secret']);
+        $this->seedSession('stale', $user->id);
+
+        $this->actingAs($user)
+            ->post(route('logout.sessions'), ['password' => 'secret'])
+            ->assertRedirect()
+            ->assertSessionHasErrors('message')
+            ->assertSessionMissing('logoutStatus');
+
+        // Nothing was revoked, and nothing claimed otherwise.
+        $this->assertSame(1, $this->sessions()->where('id', 'stale')->count());
+    }
 }

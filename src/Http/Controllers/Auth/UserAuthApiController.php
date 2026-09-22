@@ -268,18 +268,12 @@ class UserAuthApiController extends Controller
             ], 401);
         }
 
-        // Revoking every other token is a takeover tool as much as a
-        // remedy, so it is confirmed: with the account's password, or —
-        // where there is none — with a code from POST /confirmation/otp.
-        $request->validate($user->password !== null
-            ? ['password' => ['required']]
-            : ['otp' => ['required']]);
+        // Revoking every other token is a takeover tool as much as a remedy,
+        // so it is confirmed — see AuthService::confirmationRules().
+        $auth = app(AuthService::class);
+        $request->validate($auth->confirmationRules($user));
 
-        $confirmed = $user->password !== null
-            ? Hash::check($request->password, $user->password)
-            : app(AuthService::class)->verifyEmailOtp($user, (string) $request->otp);
-
-        if (!$confirmed) {
+        if (!$auth->confirmIdentity($user, $request)) {
             return response()->json([
                 'message' => $user->password !== null
                     ? 'Password is incorrect.'
@@ -662,6 +656,11 @@ class UserAuthApiController extends Controller
 
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
         $claims = (array) $request->attributes->get('jwt_claims', []);
+
+        // Spent by the trade, before the login token exists: one first factor
+        // buys one login token, and a replay of this JWT gets nothing.
+        app(MfaJwt::class)->spend($claims);
+
         $attemptId = $claims['attempt_id'] ?? null;
         $attempt = $attemptId ? $user->loginAttempts()->find($attemptId) : null;
         if ($attempt) {

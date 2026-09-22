@@ -891,9 +891,14 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "auth_method": "authenticator"
+    "auth_method": "authenticator",
+    "password": "SecurePass123!"
 }
 ```
+
+Confirmed like account deletion: send `password`, or `otp` for an account that
+has none (get one from `POST /neev/confirmation/otp`). A missing field is
+`422`, a wrong one `403`, and the factor stays.
 
 **Response:**
 

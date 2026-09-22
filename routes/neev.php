@@ -97,7 +97,10 @@ if (config('neev.ui') === 'blade') {
             Route::get('/email/verify', [UserAuthController::class, 'emailVerifyCreate'])
                 ->name('verification.notice');
 
+            // Mails on request, so it is limited like every other endpoint
+            // that does. Matches the OTP routes beside it.
             Route::get('/email/send', [UserAuthController::class, 'emailVerifySend'])
+                ->middleware('throttle:5,1')
                 ->name('email.verification.send');
 
             Route::post('/email/verify-otp', [UserAuthController::class, 'emailVerifyOtpStore'])
@@ -107,6 +110,7 @@ if (config('neev.ui') === 'blade') {
             Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
                 ->name('email.change');
             Route::put('/email/change', [UserAuthController::class, 'emailChangeStore'])
+                ->middleware('throttle:5,1')
                 ->name('email.update');
 
             Route::post('/logout', [UserAuthController::class, 'destroy'])
@@ -250,9 +254,11 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
         Route::post('/logoutAll', [UserAuthApiController::class, 'logoutAll']);
 
         Route::prefix('/email')->group(function () {
-            Route::post('/send', [UserAuthApiController::class, 'sendMailVerificationLink']);
+            Route::post('/send', [UserAuthApiController::class, 'sendMailVerificationLink'])
+                ->middleware('throttle:5,1');
             Route::post('/verify-otp', [UserAuthApiController::class, 'verifyEmailOtp'])->middleware('throttle:5,1');
-            Route::post('/change', [UserAuthApiController::class, 'requestEmailChange']);
+            Route::post('/change', [UserAuthApiController::class, 'requestEmailChange'])
+                ->middleware('throttle:5,1');
         });
 
         Route::prefix('/mfa')->group(function () {

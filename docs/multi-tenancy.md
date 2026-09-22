@@ -347,6 +347,8 @@ public function index(ContextManager $context)
 
 `runInContext()` temporarily sets the tenant context for a callback, then restores the previous state — even if the callback throws an exception. This is the safest approach for any code that needs to operate within a tenant context outside of a request.
 
+It refuses to run on a request that has **already bound** its context, throwing a `LogicException`. `BindContextMiddleware` binds once per request and `ContextManager` is immutable afterwards, so re-entering from inside a request was never possible — it simply failed halfway, leaving the resolver pointing at the new context and `ContextManager` at the old one, with every tenant-scoped query for the rest of that request running against the wrong tenant. Call it from a queued job, an artisan command, or before the context is bound.
+
 ```php
 $resolver = app(TenantResolver::class);
 

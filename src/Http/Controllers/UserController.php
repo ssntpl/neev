@@ -199,19 +199,12 @@ class UserController extends Controller
             ]);
         }
 
-        // Accounts registered through OAuth have no password. Demanding one
-        // left them permanently unable to delete their account, since
-        // Hash::check() against a null hash can never succeed. Those
-        // confirm with an emailed code instead.
-        $request->validate($user->password !== null
-            ? ['password' => ['required']]
-            : ['otp' => ['required']]);
+        // Accounts registered through OAuth have no password and confirm with
+        // an emailed code instead — see AuthService::confirmationRules().
+        $auth = app(AuthService::class);
+        $request->validate($auth->confirmationRules($user));
 
-        $confirmed = $user->password !== null
-            ? Hash::check($request->password, $user->password)
-            : app(AuthService::class)->verifyEmailOtp($user, (string) $request->otp);
-
-        if (!$confirmed) {
+        if (!$auth->confirmIdentity($user, $request)) {
             return back()->withErrors([
                 'message' => $user->password !== null
                     ? 'Password is Wrong.'
@@ -234,6 +227,18 @@ class UserController extends Controller
             return back()->withErrors(['message' => 'User not found.']);
         }
         if ($request->action === 'delete') {
+            // Removing a second factor is confirmed, as the API twin and the
+            // other account-security actions are: a stolen session must not be
+            // able to strip the factor that guards the account.
+            $auth = app(AuthService::class);
+            $request->validate($auth->confirmationRules($user));
+
+            if (!$auth->confirmIdentity($user, $request)) {
+                return back()->withErrors($user->password !== null
+                    ? ['password' => __('The password is incorrect.')]
+                    : ['otp' => __('The confirmation code is invalid or has expired.')]);
+            }
+
             if (!$user->removeMultiFactorAuth($request->auth_method)) {
                 return back()->withErrors(['message' => 'Auth was not deleted.']);
             }

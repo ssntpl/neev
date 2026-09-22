@@ -588,25 +588,27 @@ class UserAuthController extends Controller
             // from account.confirmation. Revoking one named session below
             // is not, so a user who spots a device they do not recognise
             // can drop it without hunting for a password first.
-            $request->validate($user->password !== null
-                ? ['password' => ['required']]
-                : ['otp' => ['required']]);
+            $request->validate($this->auth->confirmationRules($user));
 
-            $confirmed = $user->password !== null
-                ? Hash::check($request->password, $user->password)
-                : $this->auth->verifyEmailOtp($user, (string) $request->otp);
-
-            if (!$confirmed) {
+            if (!$this->auth->confirmIdentity($user, $request)) {
                 return back()->withErrors($user->password !== null
                     ? ['password' => __('The password is incorrect.')]
                     : ['otp' => __('The confirmation code is invalid or has expired.')]);
             }
 
-            if (config('session.driver') === 'database') {
-                $this->auth->revokeOtherSessions($user, Session::getId());
-            } else {
-                $request->session()->regenerate(true);
+            // Only the database driver stores sessions where another one can
+            // be reached. The fallback used to rotate the caller's own session
+            // id and report success, which revoked nothing and told the user
+            // the opposite: the devices they were trying to sign out stayed
+            // signed in. Say so instead, and point at the one thing that does
+            // work on every driver.
+            if (config('session.driver') !== 'database') {
+                return back()->withErrors([
+                    'message' => __('Other sessions cannot be signed out on this session driver. Ask your administrator to use the database session driver, or to attach Laravel\'s AuthenticateSession middleware, which ends other sessions when the password changes.'),
+                ]);
             }
+
+            $this->auth->revokeOtherSessions($user, Session::getId());
         } else {
             if ($request->session_id == session()->getId()) {
                 return back()->withErrors([

@@ -429,6 +429,13 @@ Content-Type: application/x-www-form-urlencoded
 session_id=abc123
 ```
 
+`POST /account/logoutSessions` with no `session_id` signs out every other
+session. **Only the database driver can do that.** On `file`, `redis` or
+`cookie` there is no way to reach another session, so the action refuses and
+says so rather than reporting a success it did not achieve. Attach Laravel's
+`AuthenticateSession` middleware if you need the driver-agnostic equivalent:
+it ends other sessions when the password changes.
+
 ### Session Database Driver
 
 For full session management, use the database driver:
@@ -570,7 +577,9 @@ The API middleware provides:
    A token's `token_type` does not restrict which paths it may reach — a
    token is judged on its hash and its expiry alone. Which endpoints a caller
    can reach is decided by the route groups. The MFA step-up is carried by a
-   short-lived JWT rather than an `AccessToken`; see [MFA](./mfa.md).
+   short-lived JWT rather than an `AccessToken`, and it is spent by the
+   verification it authorises — one first factor, one login token, however
+   much of its expiry window is left; see [MFA](./mfa.md).
 
 3. **Account Status:**
    - Rejects deactivated users with `403` ("Your account is deactivated.")
@@ -687,11 +696,33 @@ All related data is cascade deleted.
 
 The endpoints in front of it — `DELETE /account/accountDelete` and
 `DELETE /neev/users` — ask for the current password when the account has one.
-An account created through OAuth has no password, so it confirms with a
-one-time code instead: request one from `POST /neev/confirmation/otp` and send
-it as `otp`. Demanding a password there would have locked those accounts out of
-deleting themselves, since `Hash::check()` against a null hash can never
-succeed. See [Accounts Without a Password](./authentication.md#accounts-without-a-password).
+See [Confirming a sensitive action](#confirming-a-sensitive-action).
+
+### Confirming a sensitive action
+
+Four actions ask the account to prove itself again, because each of them
+either ends the account or makes every future sign-in easier, and a stolen
+session or bearer token should not be enough to reach them:
+
+| Action | Endpoints |
+|---|---|
+| Delete the account | `DELETE {prefix}/users`, `DELETE /account/accountDelete` |
+| Sign out every other session | `POST {prefix}/logoutAll`, `POST /account/logoutSessions` |
+| Remove a multi-factor method | `DELETE {prefix}/mfa/delete`, `POST /account/mfa` with `action=delete` |
+
+Send `password`. An account created through OAuth or SSO has none — a password
+was never set, and `Hash::check()` against a null hash can never succeed — so
+it sends `otp` instead, from `POST {prefix}/confirmation/otp` or the Blade
+`account.confirmation` route. A missing field is `422`, a wrong one `403`, and
+nothing happens. `AuthService::confirmationRules()` and `confirmIdentity()` are
+the one place this is decided, so an action cannot drift from the others. See
+[Accounts Without a Password](./authentication.md#accounts-without-a-password).
+
+Be clear about what the code proves. For an account reached by OAuth the
+mailbox already grants a session, so the code re-checks the factor the session
+was built on: it stops a stolen cookie or bearer token, not a compromised
+mailbox. It is single-use — spent on any correct guess, whichever action read
+it — so one overheard code confirms one action.
 
 ---
 

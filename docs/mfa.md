@@ -56,6 +56,11 @@ Authenticator setups that are started but never verified remain in a `pending` s
 
 After a password, magic-link or OAuth login that requires MFA, the API issues a short-lived JWT used only to complete verification:
 
+It is **single-use**: verifying a code trades it for a login token and spends
+it, so one first factor buys one session. A wrong code does not spend it — the
+user has to be able to try again — and neither does a resend. A replay after a
+successful verification is `401`, even inside the expiry window below.
+
 ```php
 // config/neev.php
 'mfa_jwt_expiry_minutes' => 30,           // Minutes before the MFA JWT expires
@@ -448,6 +453,13 @@ curl -X PUT https://yourapp.com/neev/mfa/preferred \
 ## Removing MFA
 
 ### Delete MFA Method
+
+Removing a factor is **confirmed**, like account deletion and signing other
+sessions out: send `password`, or `otp` for an account that has no password
+(see [Confirming a sensitive action](./security.md#confirming-a-sensitive-action)).
+Taking a second factor off the account is the one change that makes every
+future sign-in easier, so whoever holds a stolen token must not be able to
+strip the factor that would have stopped them using it.
 
 ```bash
 curl -X DELETE https://yourapp.com/neev/mfa/delete \

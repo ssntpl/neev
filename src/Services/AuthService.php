@@ -187,6 +187,41 @@ class AuthService
      * The user holds one code at a time, so issuing here replaces any code
      * outstanding for any purpose, including a verification in flight.
      */
+    /**
+     * Validation rules for the proof a sensitive action asks of this account.
+     *
+     * An account holding a password proves itself with it. One without — every
+     * OAuth and SSO registration — proves itself with a code from
+     * `{prefix}/confirmation/otp`, because `Hash::check()` against a null hash
+     * can never succeed and demanding a password of those accounts locked them
+     * out of their own settings.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public function confirmationRules(User $user): array
+    {
+        return $user->password !== null
+            ? ['password' => ['required']]
+            : ['otp' => ['required']];
+    }
+
+    /**
+     * Whether this request carries that proof. The code is single-use: it is
+     * spent on any correct guess, whichever action read it.
+     */
+    public function confirmIdentity(User $user, Request $request): bool
+    {
+        return $user->password !== null
+            ? Hash::check((string) $request->input('password'), $user->password)
+            : $this->verifyEmailOtp($user, (string) $request->input('otp'));
+    }
+
+    /** Which proof was asked for, so a caller can word its own refusal. */
+    public function confirmationField(User $user): string
+    {
+        return $user->password !== null ? 'password' : 'otp';
+    }
+
     public function sendConfirmationOtp(User $user): void
     {
         $otp = $this->createEmailVerificationOtp($user);

@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Feature\Account;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
+use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
@@ -15,6 +16,9 @@ class MFAManagementTest extends TestCase
     use RefreshDatabase;
     use WithNeevConfig;
 
+    /** Removing a factor is confirmed, so the tests need a password to send. */
+    private const PASSWORD = 'Password123!';
+
     protected function setUp(): void
     {
         parent::setUp();
@@ -23,7 +27,7 @@ class MFAManagementTest extends TestCase
 
     protected function authenticatedUser(): array
     {
-        $user = User::factory()->create();
+        $user = User::factory()->create(['password' => self::PASSWORD]);
         $token = $user->createLoginToken(60);
 
         return [$user, $token->plainTextToken];
@@ -161,6 +165,7 @@ class MFAManagementTest extends TestCase
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/mfa/delete', [
+                'password' => self::PASSWORD,
                 'auth_method' => 'authenticator',
             ]);
 
@@ -188,6 +193,7 @@ class MFAManagementTest extends TestCase
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/mfa/delete', [
+                'password' => self::PASSWORD,
                 'auth_method' => 'authenticator',
             ]);
 
@@ -215,6 +221,7 @@ class MFAManagementTest extends TestCase
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/mfa/delete', [
+                'password' => self::PASSWORD,
                 'auth_method' => 'authenticator',
             ]);
 
@@ -230,6 +237,7 @@ class MFAManagementTest extends TestCase
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/mfa/delete', [
+                'password' => self::PASSWORD,
                 'auth_method' => 'authenticator',
             ]);
 
@@ -267,5 +275,84 @@ class MFAManagementTest extends TestCase
 
         $response->assertStatus(400)
             ->assertJsonPath('message', 'Enable MFA first.');
+    }
+
+    // -----------------------------------------------------------------
+    // Removing a factor is confirmed
+    // -----------------------------------------------------------------
+
+    /**
+     * Whoever holds a stolen token must not be able to strip the factor that
+     * would have stopped them using it. Removal used to ask for nothing but
+     * the method name.
+     */
+    public function test_delete_mfa_without_confirmation_is_refused(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'preferred' => true,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/mfa/delete', ['auth_method' => 'authenticator'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('password');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/mfa/delete', [
+                'password' => 'not-the-password',
+                'auth_method' => 'authenticator',
+            ])
+            ->assertStatus(403);
+
+        $this->assertNotNull($user->fresh()->multiFactorAuth('authenticator'));
+    }
+
+    /**
+     * An account with no password — every OAuth and SSO registration — proves
+     * itself with a mailed code instead, as it does for account deletion.
+     */
+    public function test_a_passwordless_account_removes_a_factor_with_a_code(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create(['password' => null]);
+        $token = $user->createLoginToken(60)->plainTextToken;
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'preferred' => true,
+        ]);
+
+        // A password is not what this account has, so asking for one is 422.
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/mfa/delete', ['auth_method' => 'authenticator'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('otp');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/confirmation/otp')
+            ->assertOk();
+
+        $otp = null;
+        Mail::assertSent(EmailOTP::class, function (EmailOTP $mail) use (&$otp) {
+            $otp = $mail->otp;
+
+            return true;
+        });
+        $this->assertNotNull($otp);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/mfa/delete', [
+                'otp' => $otp,
+                'auth_method' => 'authenticator',
+            ])
+            ->assertOk();
+
+        $this->assertNull($user->fresh()->multiFactorAuth('authenticator'));
     }
 }
