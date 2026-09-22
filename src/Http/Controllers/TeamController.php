@@ -313,7 +313,13 @@ class TeamController extends Controller
         try {
             if ($request->invitation_id) {
                 $invitation = TeamInvitationModel::find($request->invitation_id);
-                if (!$invitation || !$user || $user->email !== $invitation->email) {
+
+                // As in the API twin: for a signed-in account the proof that
+                // the invitation reached this inbox is a verified address.
+                if (!$invitation
+                    || !$user
+                    || $user->email !== $invitation->email
+                    || !$user->hasVerifiedEmail()) {
                     return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
                 }
                 $team = $invitation->team;

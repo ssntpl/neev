@@ -164,7 +164,7 @@ App-wide social login providers. Uncomment providers you want to enable. Each re
 'relying_party_id' => parse_url(config('app.url'), PHP_URL_HOST),
 ```
 
-The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host of `app.url`. This is the platform's relying party — it covers this domain and every subdomain. A tenant on a verified custom domain gets that domain as its own relying party instead, resolved per request by `RelyingPartyResolver`. See [Supported Domains](./authentication.md#supported-domains).
+The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host of `app.url`. This is the relying party for the hosts the platform serves itself — the ones that resolve no tenant or team context. Every **verified host of a resolved context** is its own relying party instead, whether it is a custom domain (`acme.com`) or a subdomain of this one (`acme.example.com`), resolved per request by `RelyingPartyResolver`; such a host needs no `allowed_origins` entry, and a credential enrolled on it is a different credential from one enrolled here. See [Supported Domains](./authentication.md#supported-domains).
 
 ### WebAuthn Allowed Origins
 

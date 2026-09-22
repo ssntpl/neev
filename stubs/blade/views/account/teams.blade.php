@@ -145,7 +145,7 @@
                                                 @csrf
                                                 @method('PUT')
         
-                                                <input type="hidden" name="invitation_id" value="{{ $invitation->team->id }}">
+                                                <input type="hidden" name="invitation_id" value="{{ $invitation->id }}">
                                                 <x-neev-component::button name="action" value="accept">
                                                     {{ __('Accept') }}
                                                 </x-neev-component::button>

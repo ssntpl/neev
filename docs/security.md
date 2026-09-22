@@ -538,8 +538,12 @@ Three things worth knowing:
   cookie-mode SPA carries — or a session-authenticated Blade request. Without
   that, a leaked `['read']` token could rewrite itself to `['*']` or mint a
   fresh wildcard, and the enforcement above would count for nothing against
-  whoever held it. Behind that, `AccessToken::canGrant()` holds the same line
-  for any caller: no credential hands on an ability it does not itself have.
+  whoever held it. **Enrolling a passkey is refused on the same grounds**: a
+  passkey login is a complete factor that returns a full login token, so a
+  scoped token able to enrol an authenticator would step around its scope one
+  move later. Behind both, `AccessToken::canGrant()` holds the line for any
+  caller: no credential hands on an ability it does not itself have, and a
+  list that would be stored as `'*'` needs `'*'` already in hand.
 
 `$token->can('*')` is granted by a `'*'` entry, which `createApiToken()` also
 collapses to automatically when every registered permission is passed.

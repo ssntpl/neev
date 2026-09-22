@@ -402,6 +402,218 @@ class MembershipTest extends TestCase
         $response->assertStatus(400);
     }
 
+    /**
+     * The attack the invitation secret exists to stop, by its other door.
+     * Registration hands out a login token for an address straight away, and
+     * nothing about the address is proven yet — so accepting an invitation in
+     * its name has to require the same proof the emailed link carries. A
+     * verified address is that proof; an unverified one is a string somebody
+     * typed.
+     */
+    public function test_an_unverified_address_cannot_accept_its_invitation(): void
+    {
+        $owner = User::factory()->create();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        $invited = 'hr@victimcorp.test';
+        $invitation = $team->invitations()->create([
+            'email' => $invited,
+            'role' => 'member',
+            'token' => \Ssntpl\Neev\Models\TeamInvitation::generateToken(),
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        // Anyone may register an address they do not control.
+        $impostor = User::factory()->unverified()->create(['email' => $invited]);
+        $impostorToken = $impostor->createLoginToken(60)->plainTextToken;
+
+        // They are not even told what it was invited to.
+        $this->withHeader('Authorization', 'Bearer ' . $impostorToken)
+            ->getJson('/neev/teams/invitations')
+            ->assertOk()
+            ->assertJsonCount(0, 'data.invitations');
+
+        $this->withHeader('Authorization', 'Bearer ' . $impostorToken)
+            ->putJson('/neev/teams/inviteUser', [
+                'invitation_id' => $invitation->id,
+                'action' => 'accept',
+            ])
+            ->assertStatus(400);
+
+        $this->assertFalse($team->fresh()->allUsers->contains($impostor));
+        $this->assertDatabaseHas('team_invitations', ['id' => $invitation->id]);
+    }
+
+    /** Nor delete it out from under the real invitee. */
+    public function test_an_unverified_address_cannot_reject_its_invitation(): void
+    {
+        $owner = User::factory()->create();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        $invitation = $team->invitations()->create([
+            'email' => 'hr@victimcorp.test',
+            'token' => \Ssntpl\Neev\Models\TeamInvitation::generateToken(),
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $impostor = User::factory()->unverified()->create(['email' => 'hr@victimcorp.test']);
+        $token = $impostor->createLoginToken(60)->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/inviteUser', [
+                'invitation_id' => $invitation->id,
+                'action' => 'reject',
+            ])
+            ->assertStatus(400);
+
+        $this->assertDatabaseHas('team_invitations', ['id' => $invitation->id]);
+    }
+
+    /** A verified invitee accepts from their own teams page, no link needed. */
+    public function test_a_verified_invitee_accepts_their_invitation(): void
+    {
+        [$invitee, $token] = $this->authenticatedUser();
+        $owner = User::factory()->create();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        $invitation = $team->invitations()->create([
+            'email' => $invitee->email,
+            'token' => \Ssntpl\Neev\Models\TeamInvitation::generateToken(),
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/teams/invitations')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.invitations');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/inviteUser', [
+                'invitation_id' => $invitation->id,
+                'action' => 'accept',
+            ])
+            ->assertOk();
+
+        $this->assertTrue($team->fresh()->allUsers->contains($invitee));
+    }
+
+    /** The deadline the mail promises binds this path too. */
+    public function test_an_expired_invitation_cannot_be_accepted_and_is_not_listed(): void
+    {
+        [$invitee, $token] = $this->authenticatedUser();
+        $owner = User::factory()->create();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        $invitation = $team->invitations()->create([
+            'email' => $invitee->email,
+            'token' => \Ssntpl\Neev\Models\TeamInvitation::generateToken(),
+            'expires_at' => now()->subMinute(),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/teams/invitations')
+            ->assertOk()
+            ->assertJsonCount(0, 'data.invitations');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/inviteUser', [
+                'invitation_id' => $invitation->id,
+                'action' => 'accept',
+            ])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'This invitation has expired.');
+
+        $this->assertFalse($team->fresh()->allUsers->contains($invitee));
+    }
+
+    /**
+     * The whole invitation round trip through the controller: what is mailed
+     * redeems, what is stored is only a hash, and neither the plaintext nor
+     * the hash comes back in the response.
+     */
+    public function test_the_mailed_invitation_link_is_what_redeems(): void
+    {
+        Mail::fake();
+
+        [$owner, $ownerToken] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
+            ->postJson('/neev/teams/inviteUser', [
+                'team_id' => $team->id,
+                'email' => 'newcomer@example.com',
+            ])
+            ->assertOk()
+            ->assertJsonMissingPath('data.token');
+
+        $mailedUrl = null;
+        Mail::assertSent(TeamInvitation::class, function (TeamInvitation $mail) use (&$mailedUrl) {
+            $mailedUrl = $mail->url;
+
+            return $mail->hasTo('newcomer@example.com');
+        });
+        $this->assertNotNull($mailedUrl);
+
+        parse_str((string) parse_url($mailedUrl, PHP_URL_QUERY), $query);
+        $this->assertArrayHasKey('token', $query, 'The link carries the secret.');
+        $plainToken = $query['token'];
+
+        $row = \Ssntpl\Neev\Models\TeamInvitation::where('email', 'newcomer@example.com')->firstOrFail();
+        $this->assertNotSame($plainToken, $row->getAttributes()['token'], 'Only the hash is stored.');
+        $this->assertTrue($row->tokenMatches($plainToken));
+
+        $this->postJson('/neev/register', [
+            'name' => 'Newcomer',
+            'email' => 'newcomer@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+            'invitation_id' => $row->id,
+            'token' => $plainToken,
+        ])->assertOk();
+
+        $this->assertTrue($team->fresh()->users->contains(User::where('email', 'newcomer@example.com')->first()));
+        $this->assertDatabaseMissing('team_invitations', ['id' => $row->id]);
+    }
+
+    /** Re-inviting replaces the secret, so the earlier link stops working. */
+    public function test_re_inviting_invalidates_the_previous_link(): void
+    {
+        Mail::fake();
+
+        [$owner, $ownerToken] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        $urls = [];
+        foreach ([1, 2] as $round) {
+            $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
+                ->postJson('/neev/teams/inviteUser', [
+                    'team_id' => $team->id,
+                    'email' => 'twice@example.com',
+                ])->assertOk();
+        }
+
+        Mail::assertSent(TeamInvitation::class, function (TeamInvitation $mail) use (&$urls) {
+            $urls[] = $mail->url;
+
+            return true;
+        });
+        $this->assertCount(2, $urls);
+
+        parse_str((string) parse_url($urls[0], PHP_URL_QUERY), $first);
+        $row = \Ssntpl\Neev\Models\TeamInvitation::where('email', 'twice@example.com')->firstOrFail();
+
+        $this->assertFalse($row->tokenMatches($first['token']), 'The first secret is dead.');
+
+        $this->postJson('/neev/register', [
+            'name' => 'Twice',
+            'email' => 'twice@example.com',
+            'password' => 'Password123!',
+            'password_confirmation' => 'Password123!',
+            'invitation_id' => $row->id,
+            'token' => $first['token'],
+        ])->assertStatus(400);
+    }
+
     // -----------------------------------------------------------------
     // PUT /neev/teams/leave — revoke invitation
     // -----------------------------------------------------------------

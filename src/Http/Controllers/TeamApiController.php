@@ -30,10 +30,15 @@ class TeamApiController extends Controller
             ], 400);
         }
 
-        // Get pending invitations sent to user's email
-        $invitations = TeamInvitationModel::where('email', $user->email)
-            ->with('team')
-            ->get();
+        // Only a verified address, and only invitations that can still be
+        // accepted: an unverified address cannot act on one, so listing it
+        // would only tell whoever typed that address what it was invited to.
+        $invitations = $user->hasVerifiedEmail()
+            ? TeamInvitationModel::where('email', $user->email)
+                ->where(fn ($query) => $query->whereNull('expires_at')->orWhere('expires_at', '>', now()))
+                ->with('team')
+                ->get()
+            : TeamInvitationModel::query()->whereRaw('1 = 0')->get();
 
         // Get pending join requests user sent to teams
         $joinRequests = $user->sendRequests;
@@ -335,7 +340,16 @@ class TeamApiController extends Controller
         try {
             if ($request->invitation_id) {
                 $invitation = TeamInvitationModel::find($request->invitation_id);
-                if (!$invitation || $user->email !== $invitation->email) {
+
+                // The emailed link proves inbox possession for an address with
+                // no account yet. For an account already signed in, a verified
+                // address is that same proof — an unverified one is a string
+                // somebody typed, and registration hands out a token for it
+                // straight away, so without this an attacker could register
+                // an invited address and accept in its name.
+                if (!$invitation
+                    || $user->email !== $invitation->email
+                    || !$user->hasVerifiedEmail()) {
                     return response()->json([
                         'message' => 'Invitation not found',
                     ], 400);

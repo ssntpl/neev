@@ -513,14 +513,96 @@ class PasskeyTest extends TestCase
         $this->verifiedDomain($evilTeam, 'evil.example.com', primary: true);
 
         [$user] = $this->authenticatedUser();
-        $this->createPasskey($user, ['rp_id' => 'victim.example.com']);
+
+        // Enrolled under the old shared zone-wide relying party, which is
+        // what every subdomain answered to before this change: on the old
+        // code this ceremony returned 200 and offered exactly this credential
+        // on evil.example.com.
+        $this->createPasskey($user, ['rp_id' => 'example.com']);
 
         $login = $this->withHeader('Origin', 'https://evil.example.com')
             ->postJson('https://evil.example.com/neev/passkeys/login/options', ['email' => $user->email]);
 
-        // No credential answers for evil.example.com, so there is nothing to
-        // run a ceremony against.
+        // evil.example.com is its own relying party now, and no credential
+        // answers for it, so there is nothing to run a ceremony against.
         $login->assertStatus(400);
+    }
+
+    /** The same for a legacy credential that records no relying party at all. */
+    public function test_a_platform_subdomain_does_not_offer_legacy_platform_credentials(): void
+    {
+        $this->enableTeams();
+        config([
+            'neev.relying_party_id' => 'example.com',
+            'neev.platform_domain' => 'example.com',
+            'neev.allowed_origins' => ['https://example.com'],
+        ]);
+
+        $team = TeamFactory::new()->create();
+        $this->verifiedDomain($team, 'acme.example.com', primary: true);
+
+        [$user] = $this->authenticatedUser();
+        $this->createPasskey($user, ['rp_id' => null]);
+
+        $this->withHeader('Origin', 'https://acme.example.com')
+            ->postJson('https://acme.example.com/neev/passkeys/login/options', ['email' => $user->email])
+            ->assertStatus(400);
+    }
+
+    /** And it still works on the platform host, where it belongs. */
+    public function test_a_legacy_credential_still_works_on_the_platform_host(): void
+    {
+        $this->enableTeams();
+        config([
+            'neev.relying_party_id' => 'example.com',
+            'neev.platform_domain' => 'example.com',
+            'neev.allowed_origins' => ['https://example.com'],
+        ]);
+
+        $team = TeamFactory::new()->create();
+        $this->verifiedDomain($team, 'acme.example.com', primary: true);
+
+        [$user] = $this->authenticatedUser();
+        $this->createPasskey($user, ['rp_id' => null]);
+
+        $this->withHeader('Origin', 'https://example.com')
+            ->postJson('https://example.com/neev/passkeys/login/options', ['email' => $user->email])
+            ->assertOk()
+            ->assertJsonPath('rpId', 'example.com');
+    }
+
+    /**
+     * Enrolling a passkey is enrolling a credential that signs in with the
+     * account's whole authority, so a scoped API token must not reach it —
+     * otherwise a leaked `['read']` token enrols an authenticator it controls
+     * and signs in past every scope it was given.
+     */
+    public function test_a_scoped_api_token_cannot_enrol_a_passkey(): void
+    {
+        $user = User::factory()->create();
+        $scoped = $user->createApiToken('scoped', ['read'])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer ' . $scoped)
+            ->postJson('/neev/passkeys/register/options')
+            ->assertForbidden()
+            ->assertJsonPath('message', 'An API token cannot enrol a passkey.');
+
+        $this->withHeader('Authorization', 'Bearer ' . $scoped)
+            ->postJson('/neev/passkeys/register', ['attestation' => '{}'])
+            ->assertForbidden();
+
+        $this->assertSame(0, $user->passkeys()->count());
+    }
+
+    /** A login token — including the one a cookie-mode SPA carries — may. */
+    public function test_a_login_token_may_enrol_a_passkey(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/passkeys/register/options')
+            ->assertOk()
+            ->assertJsonPath('rp.id', config('neev.relying_party_id'));
     }
 
     /** The team's own domain still takes over when it is the host being served. */

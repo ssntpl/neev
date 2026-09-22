@@ -440,9 +440,9 @@ A single app-wide value therefore locks passkeys to the platform domain. It is i
 request's context, by one rule:
 
 > the **verified domain that equals the request's origin** — the row the request resolved through,
-> or one the resolved context owns. The match is exact: a row covers the host it names and no other.
-> No context, no such domain, or an origin inside the platform's own zone, and `relying_party_id`
-> stands.
+> or one the resolved context owns, whether or not that host sits inside the platform's own zone.
+> The match is exact: a row covers the host it names and no other. No context, no origin, or no such
+> domain, and `relying_party_id` stands.
 
 The origin is the browser's `Origin` header, and only that — the request's host is the host the
 request was *addressed to*, which on a shared API is not where the ceremony would run. The context is

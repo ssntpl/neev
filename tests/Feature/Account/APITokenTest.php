@@ -326,6 +326,39 @@ class APITokenTest extends TestCase
         ]);
     }
 
+    /**
+     * The endpoint resolved its target among *all* the account's tokens, and
+     * a login token's id is the `{id}|` prefix of the caller's own bearer
+     * string — so an `expiry` here reset the absolute ceiling
+     * `NeevAPIMiddleware` enforces on a session that may have been stolen.
+     */
+    public function test_the_update_endpoint_cannot_reach_a_login_token(): void
+    {
+        $user = User::factory()->create();
+        $login = $user->createLoginToken(60)->accessToken;
+        $originalExpiry = $login->expires_at;
+
+        $this->withHeader('Authorization', 'Bearer ' . $user->createLoginToken(60)->plainTextToken)
+            ->putJson('/neev/apiTokens', ['token_id' => $login->id, 'expiry' => 525600])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Token was not updated.');
+
+        $this->assertEquals($originalExpiry->timestamp, $login->fresh()->expires_at->timestamp);
+    }
+
+    /** And the delete endpoint is API tokens only; sessions have their own route. */
+    public function test_the_delete_endpoint_cannot_reach_a_login_token(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $other = $user->createLoginToken(60)->accessToken;
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/apiTokens', ['token_id' => $other->id])
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('access_tokens', ['id' => $other->id]);
+    }
+
     /** `permissions` used to reach createApiToken() unshaped and 500. */
     public function test_a_malformed_permissions_field_is_a_rejection_not_a_500(): void
     {
@@ -339,5 +372,29 @@ class APITokenTest extends TestCase
         $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/apiTokens', ['permissions' => [['nested']]])
             ->assertStatus(422);
+    }
+
+    // -----------------------------------------------------------------
+    // The Blade twin
+    // -----------------------------------------------------------------
+
+    /** The session-authenticated pages shape their input the same way. */
+    public function test_the_blade_token_form_rejects_a_malformed_permissions_field(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->post('/account/tokens/store', ['name' => 'web', 'permissions' => 'read'])
+            ->assertSessionHasErrors('permissions');
+
+        $this->actingAs($user)
+            ->post('/account/tokens/store', ['name' => 'web', 'permissions' => ['read']])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('access_tokens', [
+            'user_id' => $user->id,
+            'name' => 'web',
+            'token_type' => AccessToken::api_token,
+        ]);
     }
 }

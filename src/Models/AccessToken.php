@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Models;
 
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
+use Ssntpl\LaravelAcl\Models\Permission;
 use Ssntpl\Neev\Traits\BelongsToTenant;
 
 /**
@@ -97,9 +98,12 @@ class AccessToken extends Model
      *
      * No credential may widen a scope from inside: a token can only pass on
      * what it holds itself. A login token carries the user's whole authority,
-     * so it grants anything; a scoped API token grants only its own entries,
-     * which makes asking for `*` — or for every registered permission, which
-     * `createApiToken()` stores as `*` — impossible unless it already has it.
+     * so it grants anything; a scoped API token grants only its own entries.
+     *
+     * Naming every registered permission counts as asking for `*`, because
+     * `createApiToken()` stores it that way — and a stored `*` also covers
+     * every permission registered afterwards, which is more than the grantor
+     * holds. So that list needs `*` in hand, not merely each entry in it.
      *
      * Typed loosely on purpose: the list comes from request input, so an
      * entry that is not a string is an ability nothing holds rather than a
@@ -115,6 +119,23 @@ class AccessToken extends Model
             }
         }
 
+        if ($permissions !== [] && !$this->can('*') && $this->coversEveryPermission($permissions)) {
+            return false;
+        }
+
         return true;
+    }
+
+    /**
+     * Whether this list names every permission the installation has
+     * registered — the shape `createApiToken()` collapses to `['*']`.
+     *
+     * @param  array<int, mixed>  $permissions
+     */
+    protected function coversEveryPermission(array $permissions): bool
+    {
+        $registered = Permission::query()->pluck('name')->all();
+
+        return $registered !== [] && array_diff($registered, $permissions) === [];
     }
 }

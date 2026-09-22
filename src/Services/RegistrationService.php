@@ -109,9 +109,6 @@ class RegistrationService
     }
 
     /**
-     * @throws InvalidInvitationException
-     */
-    /**
      * Join the invited team, if the invitation is genuine.
      *
      * The secret from the emailed link is the proof — the row id and
@@ -119,6 +116,8 @@ class RegistrationService
      * enough to claim an invited address with its email marked verified and
      * its role assigned. The deadline the invitation mail promises is
      * enforced here too.
+     *
+     * @throws InvalidInvitationException
      */
     protected function acceptInvitation(User $user, $invitationId, ?string $token): void
     {
