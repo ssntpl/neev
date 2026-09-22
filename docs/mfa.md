@@ -89,7 +89,6 @@ spends it. A challenge answered somewhere the cookie is not presented cannot
 spend what it cannot see — the token then stands until it expires, as an
 unanswered challenge's would.
 
-
 ---
 
 ## Authenticator Apps (TOTP)

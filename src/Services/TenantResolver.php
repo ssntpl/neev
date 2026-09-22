@@ -432,6 +432,13 @@ class TenantResolver
                 // putting it back here would silently un-bind a request that
                 // is now relying on it. The guard above means we never started
                 // from a bound one.
+                //
+                // A callback that binds therefore ends with the resolver
+                // restored and the manager holding what the callback bound.
+                // That is deliberate and it is the lesser of the two: binding
+                // inside a callback is the caller saying this context is the
+                // request's from here on, and un-binding it behind their back
+                // would be worse than the two disagreeing.
                 if (!$manager->isBound()) {
                     if ($previous['context']) {
                         $manager->setContext($previous['context']);

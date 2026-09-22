@@ -418,7 +418,7 @@ that has none — created through OAuth or SSO — sends `otp` instead, a code f
 | Status | Message |
 |--------|---------|
 | 422 | Validation error — neither `password` nor `otp` supplied |
-| 403 | `Password is incorrect.` / `The confirmation code is invalid or has expired.` |
+| 403 | `The password is incorrect.` / `The confirmation code is invalid or has expired.` |
 
 ---
 
@@ -1297,7 +1297,7 @@ send `otp` instead, a code from [Send One-Time Code](#send-one-time-code):
 | Status | Message |
 |--------|---------|
 | 422 | Validation error — neither `password` nor `otp` supplied |
-| 403 | `Password is Wrong.` / `The confirmation code is invalid or has expired.` |
+| 403 | `The password is incorrect.` / `The confirmation code is invalid or has expired.` |
 
 ---
 

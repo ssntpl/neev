@@ -535,9 +535,6 @@ class MFATest extends TestCase
      */
     public function test_the_step_up_token_can_only_be_claimed_once(): void
     {
-        $this->enableMFA();
-
-        $user = User::factory()->create();
         $claims = [
             'jti' => (string) \Illuminate\Support\Str::uuid(),
             'exp' => time() + 600,
@@ -574,5 +571,62 @@ class MFATest extends TestCase
 
         $this->assertFalse($jwt->claim(['exp' => time() + 600]));
         $this->assertTrue($jwt->isSpent(['exp' => time() + 600]));
+    }
+
+    /**
+     * A store that cannot store must not refuse every login. `Cache::add()`
+     * returns false both when someone else holds the key and when nothing was
+     * written at all; the claim tells those apart, so a `null` cache degrades
+     * to "no single-use guarantee" — which docs/mfa.md states — rather than
+     * to "nobody can complete MFA".
+     */
+    public function test_a_store_that_cannot_store_does_not_refuse_the_claim(): void
+    {
+        config(['cache.default' => 'null-store', 'cache.stores.null-store' => ['driver' => 'null']]);
+
+        $claims = [
+            'jti' => (string) \Illuminate\Support\Str::uuid(),
+            'exp' => time() + 600,
+        ];
+
+        $jwt = app(\Ssntpl\Neev\Services\MfaJwt::class);
+
+        $this->assertTrue($jwt->claim($claims));
+        $this->assertTrue($jwt->claim($claims), 'Nothing was recorded, so nothing can be refused.');
+        $this->assertFalse($jwt->isSpent($claims));
+    }
+
+    /**
+     * The trade failed, so the token is not spent: the caller can try again
+     * rather than being left with a dead credential and an unfinished login.
+     */
+    public function test_a_failed_token_mint_releases_the_step_up_token(): void
+    {
+        $this->enableMFA();
+
+        $data = $this->createUserWithMFAToken();
+        $secret = $data['secret'];
+
+        $this->mock(\Ssntpl\Neev\Services\AuthService::class, function ($mock) {
+            $mock->shouldReceive('createApiToken')->once()->andReturnNull();
+        });
+
+        $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
+            ->postJson('/neev/mfa/otp/verify', [
+                'auth_method' => 'authenticator',
+                'otp' => TOTP::create(secret: $secret)->now(),
+            ])
+            ->assertStatus(500)
+            ->assertJsonPath('message', 'Unable to complete login.');
+
+        // Released, so the same token still opens the challenge it belongs to.
+        $this->assertFalse(
+            app(\Ssntpl\Neev\Services\MfaJwt::class)->isSpent(
+                (array) \Firebase\JWT\JWT::decode(
+                    $data['plainTextToken'],
+                    new \Firebase\JWT\Key(\Ssntpl\Neev\Services\JwtSecret::get(), 'HS256')
+                )
+            )
+        );
     }
 }
