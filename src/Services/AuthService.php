@@ -175,6 +175,49 @@ class AuthService
     }
 
     /**
+     * Validation rules for the proof a sensitive action asks of this account.
+     *
+     * An account holding a password proves itself with it. One without — every
+     * OAuth and SSO registration — proves itself with a code from
+     * `{prefix}/confirmation/otp`, because `Hash::check()` against a null hash
+     * can never succeed and demanding a password of those accounts locked them
+     * out of their own settings.
+     *
+     * @return array<string, array<int, string>>
+     */
+    public function confirmationRules(User $user): array
+    {
+        return $user->password !== null
+            ? ['password' => ['required', 'string']]
+            : ['otp' => ['required', 'string']];
+    }
+
+    /**
+     * Whether this request carries that proof. The code is single-use: it is
+     * spent on any correct guess, whichever action read it.
+     */
+    public function confirmIdentity(User $user, Request $request): bool
+    {
+        return $user->password !== null
+            ? Hash::check((string) $request->input('password'), $user->password)
+            : $this->verifyEmailOtp($user, (string) $request->input('otp'));
+    }
+
+    /**
+     * The error a failed confirmation reports, keyed by the field that was
+     * asked for. Replaces the `password !== null` branch every call site was
+     * keeping its own copy of — the drift this helper exists to prevent.
+     *
+     * @return array<string, string>
+     */
+    public function confirmationError(User $user): array
+    {
+        return $user->password !== null
+            ? ['password' => __('The password is incorrect.')]
+            : ['otp' => __('The confirmation code is invalid or has expired.')];
+    }
+
+    /**
      * Email the user a one-time code, and nothing else.
      *
      * Deliberately generic: any caller that needs the account holder to

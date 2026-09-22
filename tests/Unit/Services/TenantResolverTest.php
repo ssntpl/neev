@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
+use LogicException;
+use Ssntpl\Neev\Services\ContextManager;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -472,5 +474,42 @@ class TenantResolverTest extends TestCase
         // Back to no context
         $this->assertNull($this->resolver->currentId());
         $this->assertFalse($this->resolver->hasTenant());
+    }
+
+    /**
+     * A request that has bound its context cannot re-enter another one.
+     *
+     * The refusal has to come before anything moves: `setResolved()` assigns
+     * the resolver's own fields and only then hands the context to
+     * `ContextManager`, which throws once bound — so the resolver was left
+     * pointing at the new context with nothing to put it back, and every
+     * tenant-scoped query for the rest of the request ran against the wrong
+     * tenant while `ContextManager` still reported the right one.
+     */
+    public function test_run_in_context_refuses_a_bound_request_without_moving(): void
+    {
+        $this->enableTenantIsolation();
+
+        $bound = TenantFactory::new()->create();
+        $other = TenantFactory::new()->create();
+
+        $manager = app(ContextManager::class);
+        $manager->setContext($bound);
+        $manager->bind();
+
+        $ran = false;
+
+        try {
+            $this->resolver->runInContext($other, function () use (&$ran) {
+                $ran = true;
+            });
+            $this->fail('Re-entering a bound context must be refused.');
+        } catch (LogicException $e) {
+            $this->assertStringContainsString('bound', $e->getMessage());
+        }
+
+        $this->assertFalse($ran, 'The callback must not run.');
+        $this->assertNull($this->resolver->currentId(), 'The resolver must not have moved.');
+        $this->assertSame($bound->id, $manager->currentTenant()?->id);
     }
 }

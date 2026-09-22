@@ -87,7 +87,8 @@ class PasswordlessAccountTest extends TestCase
             ->from(route('account.security'))
             ->delete(route('account.delete'), ['otp' => '000000'])
             ->assertRedirect(route('account.security'))
-            ->assertSessionHasErrors('message');
+            // Keyed by the field that was asked for, so the input carries it.
+            ->assertSessionHasErrors('otp');
 
         $this->assertNotNull(User::model()->find($user->id));
     }
@@ -100,7 +101,7 @@ class PasswordlessAccountTest extends TestCase
             ->from(route('account.security'))
             ->delete(route('account.delete'), ['password' => 'wrong-password'])
             ->assertRedirect(route('account.security'))
-            ->assertSessionHasErrors('message');
+            ->assertSessionHasErrors('password');
 
         $this->assertNotNull(User::model()->find($user->id));
     }

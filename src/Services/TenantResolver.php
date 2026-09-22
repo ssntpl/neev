@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Services;
 
 use Closure;
 use Illuminate\Http\Request;
+use LogicException;
 use Illuminate\Support\Facades\Cache;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
 use Ssntpl\Neev\Contracts\HasMembersInterface;
@@ -382,6 +383,19 @@ class TenantResolver
      */
     public function runInContext(ContextContainerInterface $context, Closure $callback): mixed
     {
+        // A request that has bound its context cannot change it — that is the
+        // point of binding. Refusing here, before anything is mutated, is the
+        // difference between a clear error and a resolver quietly pointing
+        // somewhere else: ContextManager would throw from inside setResolved()
+        // once this resolver had already moved, and the restore below would
+        // throw the same way. Call this from a queued job, a command, or
+        // before BindContextMiddleware runs.
+        if (app()->bound(ContextManager::class) && app(ContextManager::class)->isBound()) {
+            throw new LogicException(
+                'runInContext() cannot re-enter a context on a request that has already bound one.'
+            );
+        }
+
         $previous = [
             'context' => $this->resolvedContext,
             'tenant' => $this->resolvedTenantModel,
@@ -391,9 +405,16 @@ class TenantResolver
             'customDomain' => $this->resolvedCustomDomain,
         ];
 
-        $this->setResolved($context, 'manual', 'manual');
-
         try {
+            // Inside the try, because setResolved() can throw: it assigns this
+            // resolver's fields and only then hands the context to
+            // ContextManager. A throw between the two left the resolver
+            // pointing at the new context with nothing to put it back, so
+            // every tenant-scoped query for the rest of the request ran
+            // against the wrong tenant while ContextManager still reported the
+            // right one.
+            $this->setResolved($context, 'manual', 'manual');
+
             return $callback();
         } finally {
             $this->resolvedContext = $previous['context'];
@@ -404,10 +425,26 @@ class TenantResolver
             $this->resolvedCustomDomain = $previous['customDomain'];
 
             if (app()->bound(ContextManager::class)) {
-                if ($previous['context']) {
-                    app(ContextManager::class)->setContext($previous['context']);
-                } else {
-                    app(ContextManager::class)->clear();
+                $manager = app(ContextManager::class);
+
+                // Nothing to restore onto a context the callback itself bound:
+                // clear() resets the bound flag as well as the context, so
+                // putting it back here would silently un-bind a request that
+                // is now relying on it. The guard above means we never started
+                // from a bound one.
+                //
+                // A callback that binds therefore ends with the resolver
+                // restored and the manager holding what the callback bound.
+                // That is deliberate and it is the lesser of the two: binding
+                // inside a callback is the caller saying this context is the
+                // request's from here on, and un-binding it behind their back
+                // would be worse than the two disagreeing.
+                if (!$manager->isBound()) {
+                    if ($previous['context']) {
+                        $manager->setContext($previous['context']);
+                    } else {
+                        $manager->clear();
+                    }
                 }
             }
         }

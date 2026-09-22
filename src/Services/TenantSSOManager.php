@@ -118,13 +118,23 @@ class TenantSSOManager
             throw new Exception('You are not a member of this organization. Please contact your administrator.');
         }
 
-        // Create a new user (global identity) with SSO-verified email
+        // Create a new user (global identity) with SSO-verified email.
+        //
+        // No password, exactly as an OAuth registration has none. A random one
+        // was written here and the plaintext discarded, so the column said the
+        // account had a password while nobody — not the user, not the IdP, not
+        // the application — could produce it. Every gate that asks "does this
+        // account have a password" then asked these accounts for one they could
+        // never give, and had no second branch to fall back to: deleting the
+        // account, signing other sessions out and removing a second factor were
+        // all unreachable. `password_changed_at` went with it, because it
+        // started a 90-day expiry clock on a password that did not exist, ending
+        // in "Your password has expired" on every route behind
+        // `neev-password-not-expired`.
         $user = User::model()->forceCreate([
             'name' => $ssoUser->getName() ?? $this->extractNameFromEmail($email),
             'email' => $email,
             'email_verified_at' => now(),
-            'password' => bin2hex(random_bytes(32)),
-            'password_changed_at' => now(),
         ]);
 
         $user = User::model()->find($user->id);

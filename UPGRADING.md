@@ -13,6 +13,85 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.3 → Unreleased
 
+**A failed confirmation reports one message, keyed by the field it asked for
+(action required if you match on the old strings).**
+The four actions that ask an account to prove itself each carried their own
+copy of the "does this account have a password" branch and their own wording:
+`Password is Wrong.`, `Password is incorrect.`, `The password is incorrect.`
+`AuthService::confirmationError()` is the one place that decides now, so all
+of them answer `The password is incorrect.` or
+`The confirmation code is invalid or has expired.`
+
+- **API clients matching on the old message strings** need updating. The
+  status codes are unchanged (`422` for a missing field, `403` for a wrong
+  one).
+- **Blade**: `DELETE /account/accountDelete` put its error under the
+  `message` key; it is now under `password` or `otp`, like the other three
+  always were. The shipped views render every error, so the kit is
+  unaffected — only code reading `$errors->first('message')` for this action
+  needs the new key.
+
+**Auto-provisioned SSO accounts are created without a password (action
+required if you have any from an earlier version).**
+`TenantSSOManager` used to write a random password and discard the plaintext,
+so the column said those accounts had one while nobody could produce it. They
+could not delete their account, sign other sessions out, or remove a second
+factor — each of those asks for a password when the column is populated, and
+the emailed-code branch was unreachable for them — and after
+`password_expiry_days` they met "Your password has expired" on every route
+behind `neev-password-not-expired`, with no password to change. New
+provisioning matches an OAuth registration: no password, no expiry clock.
+
+Existing rows cannot be told apart from a real password by looking at them, so
+nothing is migrated automatically. For accounts you know were provisioned by
+SSO and have never set a password of their own, clear the column:
+
+```php
+// Adjust the selection to your own records of which accounts are SSO-only.
+User::whereNotNull('password')
+    ->whereIn('email', $ssoOnlyAddresses)
+    ->update(['password' => null, 'password_changed_at' => null]);
+```
+
+Or leave them and tell those users to use "forgot password" once: the reset
+link goes to the address their IdP already verified, and after it they hold a
+password the gates can check. Either way they stop being locked out.
+
+**Removing a multi-factor method now needs confirmation (action required if
+you call it).**
+`DELETE {prefix}/mfa/delete` and the Blade `POST /account/multiFactorAuth`
+with `action=delete` asked for the method name alone, so a stolen session or bearer
+token could strip the factor guarding the account. Both now take `password` —
+or `otp`, for an account that has none, from
+`POST {prefix}/confirmation/otp` — like account deletion and
+`logoutAll` already did. A missing field is `422`, a wrong one `403`, and the
+factor stays. Update any client that removes factors.
+
+**If you ejected the Blade kit**, edit
+`resources/views/vendor/neev/account/security.blade.php`: the Delete control
+on each factor row has to collect the confirmation. The shipped stub now opens
+a dialog with a password field, or a code field plus an "Email me a code"
+button when the account has no password — copy that block, or re-eject the
+file with `php artisan neev:ui blade --force` if you have not customised it
+(without `--force` the command skips files that already exist). Until you do,
+Delete answers with "The password field is required." and no field to fill.
+
+**Signing out other sessions refuses off the database driver (no action
+required unless you relied on it appearing to work).**
+`POST /account/logoutSessions` with no `session_id` used to rotate the
+caller's own session id and report success on `file`, `redis` and `cookie`
+drivers, while every other session stayed signed in. It now returns an error
+naming the reason. Use `SESSION_DRIVER=database`, or attach Laravel's
+`AuthenticateSession` middleware for the driver-agnostic equivalent.
+
+**`TenantResolver::runInContext()` throws on a request that has already bound
+its context.** It could never have worked there — `ContextManager` is
+immutable after `BindContextMiddleware` binds — but it used to fail halfway
+and leave the resolver pointing at the new context. Call it from a queued job,
+an artisan command, or before the context is bound. Code that called it inside
+a bound request was already reading the wrong tenant; it now gets a
+`LogicException` instead.
+
 **BREAKING: a verified platform subdomain is now its own passkey relying
 party (action required if tenants sign in with passkeys on your
 subdomains).**

@@ -132,7 +132,7 @@
                                             <p>{{$user->multiFactorAuth($method)?->last_used?->diffForHumans()}}</p>
                                         @endif
                                     </div>
-                                    <div x-data class="text-end">
+                                    <div x-data="{ show: false, sending: false, sent: false, sendError: null }" class="text-end">
                                         <form method="POST" action="{{route('multi.auth')}}" class="flex gap-4">
                                             @csrf
 
@@ -140,11 +140,93 @@
                                             <input type="hidden" name="action" x-ref="action">
                                             @if ($user->multiFactorAuth($method))
                                                 <x-neev-component::secondary-button type="submit">{{ __('Edit') }}</x-neev-component::secondary-button>
-                                                <x-neev-component::danger-button type="submit" name="action" @click.prevent="if (confirm('{{__('Are you sure you want to delete?')}}')) {$refs.action.value = 'delete'; $el.closest('form').submit();}">{{ __('Delete') }}</x-neev-component::danger-button>
+                                                {{-- Removal is confirmed, so it opens a dialog rather than
+                                                     submitting this form: the password or code has to be
+                                                     typed somewhere. --}}
+                                                <x-neev-component::danger-button type="button" class="cursor-pointer" @click="show = true">{{ __('Delete') }}</x-neev-component::danger-button>
                                             @else
                                                 <x-neev-component::button>{{ __('Add') }}</x-neev-component::button>
                                             @endif
                                         </form>
+
+                                        @if ($user->multiFactorAuth($method))
+                                            <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                                <x-slot name="title">
+                                                    {{ __('Remove') }} {{ $method }}
+                                                </x-slot>
+
+                                                <x-slot name="content">
+                                                    <p class="text-start">
+                                                        {{ __('Removing this factor makes every future sign-in easier, so confirm it is you.') }}
+                                                    </p>
+
+                                                    @if (!$user->password)
+                                                        {{-- No password to confirm with — accounts from a
+                                                             provider, and auto-provisioned SSO accounts.
+                                                             Requested with fetch, not a form post: a redirect
+                                                             would reset x-data and close this dialog. --}}
+                                                        <div class="mt-4 text-start">
+                                                            <x-neev-component::secondary-button type="button" class="cursor-pointer"
+                                                                x-bind:disabled="sending"
+                                                                @click="sending = true; sendError = null;
+                                                                    fetch('{{ route('account.confirmation') }}', {
+                                                                        method: 'POST',
+                                                                        headers: {
+                                                                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                                                                            'Accept': 'application/json',
+                                                                            'X-Requested-With': 'XMLHttpRequest',
+                                                                        },
+                                                                    })
+                                                                    .then(response => { if (!response.ok) { throw new Error(); } sent = true; })
+                                                                    .catch(() => { sendError = '{{ __('The code could not be sent. Please try again.') }}'; })
+                                                                    .finally(() => { sending = false; })">
+                                                                <span x-show="!sent">{{ __('Email me a code') }}</span>
+                                                                <span x-show="sent" x-cloak>{{ __('Send another code') }}</span>
+                                                            </x-neev-component::secondary-button>
+
+                                                            <p class="mt-2 text-sm text-green-600 dark:text-green-400" x-show="sent" x-cloak>
+                                                                {{ __('Code sent. Check your email and enter it below.') }}
+                                                            </p>
+                                                            <p class="mt-2 text-sm text-red-600 dark:text-red-400" x-show="sendError" x-cloak x-text="sendError"></p>
+                                                        </div>
+                                                    @endif
+
+                                                    <form method="POST" action="{{ route('multi.auth') }}" x-ref="removeForm">
+                                                        @csrf
+
+                                                        <input type="hidden" name="auth_method" value="{{ $method }}">
+                                                        <input type="hidden" name="action" value="delete">
+
+                                                        <div class="mt-4 text-start">
+                                                            @if ($user->password)
+                                                                <x-neev-component::input type="password"
+                                                                    name="password"
+                                                                    class="mt-1 block w-3/4"
+                                                                    autocomplete="current-password"
+                                                                    placeholder="{{ __('Password') }}" />
+                                                            @else
+                                                                <x-neev-component::input type="text"
+                                                                    name="otp"
+                                                                    class="mt-1 block w-3/4"
+                                                                    autocomplete="one-time-code"
+                                                                    inputmode="numeric"
+                                                                    placeholder="{{ __('Code') }}" />
+                                                            @endif
+                                                        </div>
+                                                    </form>
+                                                </x-slot>
+
+                                                <x-slot name="footer">
+                                                    <x-neev-component::secondary-button class="cursor-pointer" @click="show = false">
+                                                        {{ __('Cancel') }}
+                                                    </x-neev-component::secondary-button>
+
+                                                    <x-neev-component::danger-button class="ms-2 cursor-pointer" @click="$refs.removeForm.submit()">
+                                                        {{ __('Remove') }}
+                                                    </x-neev-component::danger-button>
+                                                </x-slot>
+                                            </x-neev-component::dialog-modal>
+                                        @endif
                                     </div>
                                 </div>
                                 @if (session("qr_code") && $method === session("method"))

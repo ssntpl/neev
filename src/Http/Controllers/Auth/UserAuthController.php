@@ -28,6 +28,7 @@ use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\MfaJwt;
 use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\SpaCookieResponder;
 use Ssntpl\Neev\Services\StatefulOriginResolver;
@@ -588,25 +589,29 @@ class UserAuthController extends Controller
             // from account.confirmation. Revoking one named session below
             // is not, so a user who spots a device they do not recognise
             // can drop it without hunting for a password first.
-            $request->validate($user->password !== null
-                ? ['password' => ['required']]
-                : ['otp' => ['required']]);
-
-            $confirmed = $user->password !== null
-                ? Hash::check($request->password, $user->password)
-                : $this->auth->verifyEmailOtp($user, (string) $request->otp);
-
-            if (!$confirmed) {
-                return back()->withErrors($user->password !== null
-                    ? ['password' => __('The password is incorrect.')]
-                    : ['otp' => __('The confirmation code is invalid or has expired.')]);
+            // Refused before the confirmation is asked for, let alone spent:
+            // the code is single-use, so confirming first burned one on every
+            // attempt only to answer that the thing cannot be done at all.
+            //
+            // Only the database driver stores sessions where another one can
+            // be reached. The fallback used to rotate the caller's own session
+            // id and report success, which revoked nothing and told the user
+            // the opposite: the devices they were trying to sign out stayed
+            // signed in. Say so instead, and point at the one thing that does
+            // work on every driver.
+            if (config('session.driver') !== 'database') {
+                return back()->withErrors([
+                    'message' => __('Other sessions cannot be signed out on this session driver. Ask your administrator to use the database session driver, or to attach Laravel\'s AuthenticateSession middleware, which ends other sessions when the password changes.'),
+                ]);
             }
 
-            if (config('session.driver') === 'database') {
-                $this->auth->revokeOtherSessions($user, Session::getId());
-            } else {
-                $request->session()->regenerate(true);
+            $request->validate($this->auth->confirmationRules($user));
+
+            if (!$this->auth->confirmIdentity($user, $request)) {
+                return back()->withErrors($this->auth->confirmationError($user));
             }
+
+            $this->auth->revokeOtherSessions($user, Session::getId());
         } else {
             if ($request->session_id == session()->getId()) {
                 return back()->withErrors([
@@ -726,6 +731,12 @@ class UserAuthController extends Controller
         }
 
         $this->auth->login($request, $geoIP, $user, $attempt->method ?? LoginAttempt::Password, $method, $attempt);
+
+        // The same first factor may have been handed a step-up token — the
+        // cookie an OAuth callback attaches on a stateful origin. Answering
+        // the challenge here spends it, so it cannot be traded again on the
+        // API endpoint for a second session.
+        app(MfaJwt::class)->spendFromRequest($request);
 
         $response = redirect($this->auth->intendedUrl(session()->pull('mfa_redirect')));
 

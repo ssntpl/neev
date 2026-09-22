@@ -97,16 +97,23 @@ if (config('neev.ui') === 'blade') {
             Route::get('/email/verify', [UserAuthController::class, 'emailVerifyCreate'])
                 ->name('verification.notice');
 
+            // Mails on request, so it is limited like every other endpoint
+            // that does. Each limit names its own bucket: an unnamed
+            // `throttle:` keys on the signed-in user alone, so every one of
+            // these shared a single counter and five resends locked the user
+            // out of entering the code that finally arrived.
             Route::get('/email/send', [UserAuthController::class, 'emailVerifySend'])
+                ->middleware('throttle:5,1,neev-email-send')
                 ->name('email.verification.send');
 
             Route::post('/email/verify-otp', [UserAuthController::class, 'emailVerifyOtpStore'])
-                ->middleware('throttle:5,1')
+                ->middleware('throttle:5,1,neev-email-verify-otp')
                 ->name('email.verify.otp');
 
             Route::get('/email/change', [UserAuthController::class, 'emailChangeCreate'])
                 ->name('email.change');
             Route::put('/email/change', [UserAuthController::class, 'emailChangeStore'])
+                ->middleware('throttle:5,1,neev-email-change')
                 ->name('email.update');
 
             Route::post('/logout', [UserAuthController::class, 'destroy'])
@@ -149,10 +156,10 @@ if (config('neev.ui') === 'blade') {
                 Route::post('/change-password', [UserController::class, 'changePassword'])
                     ->name('password.change');
                 Route::post('/confirmation/otp', [UserController::class, 'sendConfirmationOtp'])
-                    ->middleware('throttle:5,1')
+                    ->middleware('throttle:5,1,neev-confirmation-otp')
                     ->name('account.confirmation');
                 Route::post('/password/reset-link', [UserController::class, 'sendPasswordResetLink'])
-                    ->middleware('throttle:5,1')
+                    ->middleware('throttle:5,1,neev-password-reset-link')
                     ->name('password.reset.link');
                 Route::delete('/accountDelete', [UserController::class, 'accountDelete'])
                     ->name('account.delete');
@@ -240,7 +247,9 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
     Route::match(['get', 'post'], '/email/change/verify', [UserAuthApiController::class, 'verifyEmailChange'])->middleware('throttle:10,1')->name('neev.email.change.verify');
     Route::get('/email/verify', [UserAuthApiController::class, 'emailVerify'])->middleware('throttle:10,1')->name('mail.verify');
 
-    Route::middleware(['neev:login', 'throttle:5,1'])->group(function () {
+    // One bucket on purpose: a resend spends one of the five, which
+    // docs/mfa.md states.
+    Route::middleware(['neev:login', 'throttle:5,1,neev-mfa-otp'])->group(function () {
         Route::post('/mfa/otp/verify', [UserAuthApiController::class, 'verifyMFAOTP']);
         Route::post('/mfa/otp/send', [UserAuthApiController::class, 'sendMFAOTP']);
     });
@@ -250,9 +259,12 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
         Route::post('/logoutAll', [UserAuthApiController::class, 'logoutAll']);
 
         Route::prefix('/email')->group(function () {
-            Route::post('/send', [UserAuthApiController::class, 'sendMailVerificationLink']);
-            Route::post('/verify-otp', [UserAuthApiController::class, 'verifyEmailOtp'])->middleware('throttle:5,1');
-            Route::post('/change', [UserAuthApiController::class, 'requestEmailChange']);
+            Route::post('/send', [UserAuthApiController::class, 'sendMailVerificationLink'])
+                ->middleware('throttle:5,1,neev-email-send');
+            Route::post('/verify-otp', [UserAuthApiController::class, 'verifyEmailOtp'])
+                ->middleware('throttle:5,1,neev-email-verify-otp');
+            Route::post('/change', [UserAuthApiController::class, 'requestEmailChange'])
+                ->middleware('throttle:5,1,neev-email-change');
         });
 
         Route::prefix('/mfa')->group(function () {
@@ -266,7 +278,7 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
         Route::post('/recoveryCodes', [UserApiController::class, 'generateRecoveryCodes']);
 
         Route::post('/confirmation/otp', [UserApiController::class, 'sendConfirmationOtp'])
-            ->middleware('throttle:5,1');
+            ->middleware('throttle:5,1,neev-confirmation-otp');
 
         Route::get('/users', [UserApiController::class, 'getUser']);
         Route::put('/users', [UserApiController::class, 'updateUser']);

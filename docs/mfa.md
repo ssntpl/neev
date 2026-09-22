@@ -62,6 +62,33 @@ After a password, magic-link or OAuth login that requires MFA, the API issues a 
 'jwt_secret' => env('NEEV_JWT_SECRET'),   // Signing key; falls back to APP_KEY if not set
 ```
 
+It is **single-use**: verifying a code trades it for a login token and spends
+it, so one first factor buys one session. A replay after a successful
+verification is `401`, even inside the expiry window above. A wrong code does
+not spend it — the user has to be able to try again — and neither does a
+resend.
+
+The trade claims the token in one atomic operation rather than checking it and
+writing later, so two requests arriving together cannot both mint a token from
+one first factor — which a reusable second factor (a TOTP inside its window, a
+recovery code) would otherwise allow. If the trade then fails, the claim is
+released, so nobody is left holding a spent token and an unfinished login.
+
+Like this package's throttles, its login back-off and its passkey challenges,
+the record lives in the cache — so it needs a store **shared by every app
+server**. On `null` nothing is recorded; on `array` the record lasts one
+process; on `file` behind two servers with no shared disk, a spend on one
+server does not exist on the other and the token is replayable there. Use
+`redis`, `memcached` or `database`. None of these four guarantees survives a
+per-process or per-server store.
+
+The Blade challenge spends it too, when the request carries it: an OAuth
+callback on a stateful origin parks the step-up token in the auth cookie, the
+browser sends that cookie with the challenge form, and answering the challenge
+spends it. A challenge answered somewhere the cookie is not presented cannot
+spend what it cannot see — the token then stands until it expires, as an
+unanswered challenge's would.
+
 ---
 
 ## Authenticator Apps (TOTP)
@@ -448,6 +475,13 @@ curl -X PUT https://yourapp.com/neev/mfa/preferred \
 ## Removing MFA
 
 ### Delete MFA Method
+
+Removing a factor is **confirmed**, like account deletion and signing other
+sessions out: send `password`, or `otp` for an account that has no password
+(see [Confirming a sensitive action](./security.md#confirming-a-sensitive-action)).
+Taking a second factor off the account is the one change that makes every
+future sign-in easier, so whoever holds a stolen token must not be able to
+strip the factor that would have stopped them using it.
 
 ```bash
 curl -X DELETE https://yourapp.com/neev/mfa/delete \

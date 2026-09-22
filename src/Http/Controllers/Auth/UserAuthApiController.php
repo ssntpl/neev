@@ -268,22 +268,14 @@ class UserAuthApiController extends Controller
             ], 401);
         }
 
-        // Revoking every other token is a takeover tool as much as a
-        // remedy, so it is confirmed: with the account's password, or —
-        // where there is none — with a code from POST /confirmation/otp.
-        $request->validate($user->password !== null
-            ? ['password' => ['required']]
-            : ['otp' => ['required']]);
+        // Revoking every other token is a takeover tool as much as a remedy,
+        // so it is confirmed — see AuthService::confirmationRules().
+        $auth = app(AuthService::class);
+        $request->validate($auth->confirmationRules($user));
 
-        $confirmed = $user->password !== null
-            ? Hash::check($request->password, $user->password)
-            : app(AuthService::class)->verifyEmailOtp($user, (string) $request->otp);
-
-        if (!$confirmed) {
+        if (!$auth->confirmIdentity($user, $request)) {
             return response()->json([
-                'message' => $user->password !== null
-                    ? 'Password is incorrect.'
-                    : 'The confirmation code is invalid or has expired.',
+                'message' => array_values($auth->confirmationError($user))[0],
             ], 403);
         }
 
@@ -662,6 +654,18 @@ class UserAuthApiController extends Controller
 
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
         $claims = (array) $request->attributes->get('jwt_claims', []);
+
+        // Claimed in one operation, because the middleware's check and a later
+        // write are two: two requests arriving together would both pass the
+        // check and both mint a login token from one first factor. Released
+        // below if the trade itself fails.
+        $mfaJwt = app(MfaJwt::class);
+        if (!$mfaJwt->claim($claims)) {
+            return response()->json([
+                'message' => 'Invalid or expired token',
+            ], 401);
+        }
+
         $attemptId = $claims['attempt_id'] ?? null;
         $attempt = $attemptId ? $user->loginAttempts()->find($attemptId) : null;
         if ($attempt) {
@@ -671,6 +675,17 @@ class UserAuthApiController extends Controller
         }
 
         $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, $attempt->method ?? LoginAttempt::Password, $expiryMinutes, $attempt);
+
+        // The trade did not happen, so the token is not spent: give it back
+        // rather than leave the caller with a dead credential and an
+        // unfinished login.
+        if (!$token) {
+            $mfaJwt->release($claims);
+
+            return response()->json([
+                'message' => 'Unable to complete login.',
+            ], 500);
+        }
 
         // Replaces the MFA JWT cookie with the real login token for SPAs.
         return app(SpaCookieResponder::class)->attach($request, response()->json([

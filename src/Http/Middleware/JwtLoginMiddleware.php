@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\ContextManager;
 use Ssntpl\Neev\Services\JwtSecret;
+use Ssntpl\Neev\Services\MfaJwt;
 use Symfony\Component\HttpFoundation\Response;
 
 class JwtLoginMiddleware
@@ -35,6 +36,14 @@ class JwtLoginMiddleware
         }
 
         if (($claims['type'] ?? null) !== 'mfa') {
+            return response()->json([
+                'message' => 'Invalid or expired token',
+            ], 401);
+        }
+
+        // Already traded for a login token. A step-up credential is good for
+        // one step up.
+        if (app(MfaJwt::class)->isSpent($claims)) {
             return response()->json([
                 'message' => 'Invalid or expired token',
             ], 401);

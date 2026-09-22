@@ -100,7 +100,7 @@ class SessionsTest extends TestCase
             ]);
 
         $response->assertStatus(403)
-            ->assertJsonPath('message', 'Password is Wrong.');
+            ->assertJsonPath('message', 'The password is incorrect.');
 
         $this->assertDatabaseHas('users', ['id' => $user->id]);
     }

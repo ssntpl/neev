@@ -79,7 +79,35 @@ class UserApiController extends Controller
         ]);
 
         $user = User::model()->find($request->user()?->id);
-        if (!$user?->removeMultiFactorAuth($request->auth_method)) {
+        if (!$user) {
+            return response()->json([
+                'message' => 'User not found.',
+            ], 404);
+        }
+
+        // Nothing to remove is answered before the confirmation is asked for,
+        // let alone spent: the code is single-use, so confirming first burned
+        // one on a method the account does not even have.
+        if (!$user->multiFactorAuth($request->auth_method)) {
+            return response()->json([
+                'message' => 'Auth was not deleted.',
+            ], 403);
+        }
+
+        // Taking a second factor off the account is the one change that makes
+        // every future sign-in easier, so it is confirmed like the other
+        // account-security actions: whoever holds a stolen token should not be
+        // able to remove the factor that would have stopped them using it.
+        $auth = app(AuthService::class);
+        $request->validate($auth->confirmationRules($user));
+
+        if (!$auth->confirmIdentity($user, $request)) {
+            return response()->json([
+                'message' => array_values($auth->confirmationError($user))[0],
+            ], 403);
+        }
+
+        if (!$user->removeMultiFactorAuth($request->auth_method)) {
             return response()->json([
                 'message' => 'Auth was not deleted.',
             ], 403);
@@ -154,24 +182,15 @@ class UserApiController extends Controller
             ], 403);
         }
 
-        // An account holding a password proves itself with it; one without
-        // — OAuth and SSO registrations — proves itself with a code from
-        // POST /confirmation/otp. Demanding a password of an account that
-        // has none locked those users out of deleting their own account,
-        // since Hash::check() against a null hash can never succeed.
-        $request->validate($user->password !== null
-            ? ['password' => ['required']]
-            : ['otp' => ['required']]);
+        // An account holding a password proves itself with it; one without —
+        // OAuth and SSO registrations — with a code from
+        // POST /confirmation/otp. See AuthService::confirmationRules().
+        $auth = app(AuthService::class);
+        $request->validate($auth->confirmationRules($user));
 
-        $confirmed = $user->password !== null
-            ? Hash::check($request->password, $user->password)
-            : app(AuthService::class)->verifyEmailOtp($user, (string) $request->otp);
-
-        if (!$confirmed) {
+        if (!$auth->confirmIdentity($user, $request)) {
             return response()->json([
-                'message' => $user->password !== null
-                    ? 'Password is Wrong.'
-                    : 'The confirmation code is invalid or has expired.',
+                'message' => array_values($auth->confirmationError($user))[0],
             ], 403);
         }
 
