@@ -522,7 +522,7 @@ if ($token?->can('write')) {
 }
 ```
 
-Two things worth knowing:
+Three things worth knowing:
 
 - **A login token carries full authority.** It is minted by signing in with
   complete credentials, so it is the API's equivalent of a session rather than a
@@ -532,6 +532,14 @@ Two things worth knowing:
   `createApiToken('name')` defaults to no permissions, and a scope that was never
   granted is not held. Routes without the middleware are unaffected, so attaching
   it is what turns the column on.
+- **A scope cannot be widened from inside.** `{prefix}/apiTokens` refuses an
+  API token outright with `403`: listing, minting, editing and deleting the
+  account's tokens all require a login token — the API's session, and what a
+  cookie-mode SPA carries — or a session-authenticated Blade request. Without
+  that, a leaked `['read']` token could rewrite itself to `['*']` or mint a
+  fresh wildcard, and the enforcement above would count for nothing against
+  whoever held it. Behind that, `AccessToken::canGrant()` holds the same line
+  for any caller: no credential hands on an ability it does not itself have.
 
 `$token->can('*')` is granted by a `'*'` entry, which `createApiToken()` also
 collapses to automatically when every registered permission is passed.

@@ -91,4 +91,30 @@ class AccessToken extends Model
 
         return in_array('*', $permissions, true) || in_array($permission, $permissions, true);
     }
+
+    /**
+     * Whether this token may hand these abilities to another token.
+     *
+     * No credential may widen a scope from inside: a token can only pass on
+     * what it holds itself. A login token carries the user's whole authority,
+     * so it grants anything; a scoped API token grants only its own entries,
+     * which makes asking for `*` — or for every registered permission, which
+     * `createApiToken()` stores as `*` — impossible unless it already has it.
+     *
+     * Typed loosely on purpose: the list comes from request input, so an
+     * entry that is not a string is an ability nothing holds rather than a
+     * `TypeError`.
+     *
+     * @param  array<int, mixed>  $permissions
+     */
+    public function canGrant(array $permissions): bool
+    {
+        foreach ($permissions as $permission) {
+            if (!is_string($permission) || !$this->can($permission)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

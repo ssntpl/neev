@@ -13,6 +13,23 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.3 → Unreleased
 
+**BREAKING: an API token can no longer manage API tokens (action required if
+an integration mints or edits tokens).**
+Every route under `{prefix}/apiTokens` used to accept whichever credential
+authenticated the request, so a leaked scoped token could widen itself to
+`['*']`, mint a fresh wildcard, or delete the account's other tokens —
+leaving `neev-token-can` enforcing a scope its own holder could rewrite. All
+five now answer `403` to a token whose type is not `login`.
+
+- **Unaffected:** signing in and using the login token it returns, a
+  cookie-mode SPA (its cookie carries a login token), the Blade account pages,
+  and `$user->createApiToken(...)` called from your own code, jobs or commands.
+- **Affected:** any script or service that authenticates with a *scoped API
+  token* and then calls these endpoints. Give it a login token obtained by
+  signing in, or mint the tokens it needs from your own application code.
+- `permissions` must now be an array of strings; a bare string is `422` rather
+  than a 500.
+
 **BREAKING: team invitations already in flight stop working (action required
 if you have pending invitations).**
 The emailed invitation link carried the invitation's row id and

@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Http\JsonResponse;
+use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 
@@ -279,8 +281,79 @@ class UserApiController extends Controller
         }
     }
 
+    /**
+     * Refuse token management to a scoped API token.
+     *
+     * The whole meaning of a scope is that it cannot be widened from inside,
+     * and these are the routes where it would be: a leaked `['read']` token
+     * could rewrite itself to `['*']`, or mint a fresh wildcard token, and the
+     * enforcement `neev-token-can` provides would count for nothing against
+     * whoever held it. Deleting the account's tokens is the same authority
+     * pointed the other way.
+     *
+     * A login token is the API's session — minted by authenticating with full
+     * credentials, and what a cookie-mode SPA carries — so it manages tokens
+     * exactly as the Blade account pages always have. A session-authenticated
+     * request carries no token at all and is likewise unaffected.
+     */
+    private function refuseApiTokenCredential(Request $request): ?JsonResponse
+    {
+        $credential = $request->attributes->get('neev.access_token');
+
+        if ($credential instanceof AccessToken && $credential->token_type !== AccessToken::login) {
+            return response()->json([
+                'message' => 'An API token cannot manage API tokens.',
+            ], 403);
+        }
+
+        return null;
+    }
+
+    /**
+     * Refuse a grant wider than the granting credential.
+     *
+     * Defence in depth behind `refuseApiTokenCredential()`: today only a login
+     * token reaches these routes and it holds everything, so nothing is
+     * refused here. It is the invariant that keeps that true — if the routes
+     * are ever opened to scoped tokens, or an application calls these
+     * controllers from its own stack, a token still cannot hand on an ability
+     * it does not itself have.
+     *
+     * @param  array<int, string>  $permissions
+     */
+    private function refuseWiderGrant(Request $request, array $permissions): ?JsonResponse
+    {
+        $credential = $request->attributes->get('neev.access_token');
+
+        if ($credential instanceof AccessToken && !$credential->canGrant($permissions)) {
+            return response()->json([
+                'message' => 'A token cannot grant a permission it does not hold.',
+            ], 403);
+        }
+
+        return null;
+    }
+
+    /**
+     * Shape the token fields, so a malformed `permissions` is a rejection
+     * rather than a TypeError from `createApiToken()`.
+     */
+    private function validateTokenFields(Request $request): void
+    {
+        $request->validate([
+            'name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'permissions' => ['sometimes', 'nullable', 'array'],
+            'permissions.*' => ['string'],
+            'expiry' => ['sometimes', 'nullable', 'integer', 'min:1'],
+        ]);
+    }
+
     public function getApiTokens(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request)) {
+            return $refusal;
+        }
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
@@ -296,6 +369,14 @@ class UserApiController extends Controller
 
     public function addApiTokens(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request)) {
+            return $refusal;
+        }
+        $this->validateTokenFields($request);
+        if ($refusal = $this->refuseWiderGrant($request, (array) $request->input('permissions', []))) {
+            return $refusal;
+        }
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
@@ -312,6 +393,14 @@ class UserApiController extends Controller
 
     public function updateApiTokens(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request)) {
+            return $refusal;
+        }
+        $this->validateTokenFields($request);
+        if ($refusal = $this->refuseWiderGrant($request, (array) $request->input('permissions', []))) {
+            return $refusal;
+        }
+
         $user = User::model()->find($request->user()?->id);
         $token = $user?->accessTokens->find($request->token_id);
         if (!$token) {
@@ -340,6 +429,10 @@ class UserApiController extends Controller
 
     public function deleteApiTokens(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request)) {
+            return $refusal;
+        }
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
@@ -361,6 +454,10 @@ class UserApiController extends Controller
 
     public function deleteAllApiTokens(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request)) {
+            return $refusal;
+        }
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([

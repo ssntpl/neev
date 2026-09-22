@@ -1456,6 +1456,13 @@ Authorization: Bearer {token}
 
 ## API Tokens
 
+> **These endpoints refuse an API token.** Managing the account's tokens takes
+> a login token — the API's session, and what a cookie-mode SPA carries — or a
+> session-authenticated Blade request. A scoped API token gets `403` ("An API
+> token cannot manage API tokens.") on all five, because a scope that can
+> rewrite itself is not a scope. `permissions` must be an array of strings;
+> anything else is `422`.
+
 ### Get API Tokens
 
 ```http
