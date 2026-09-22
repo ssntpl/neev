@@ -656,11 +656,6 @@ class UserAuthApiController extends Controller
 
         $expiryMinutes = config('neev.login_token_expiry_minutes', 1440);
         $claims = (array) $request->attributes->get('jwt_claims', []);
-
-        // Spent by the trade, before the login token exists: one first factor
-        // buys one login token, and a replay of this JWT gets nothing.
-        app(MfaJwt::class)->spend($claims);
-
         $attemptId = $claims['attempt_id'] ?? null;
         $attempt = $attemptId ? $user->loginAttempts()->find($attemptId) : null;
         if ($attempt) {
@@ -670,6 +665,12 @@ class UserAuthApiController extends Controller
         }
 
         $token = app(AuthService::class)->createApiToken($request, $geoIP, $user, $attempt->method ?? LoginAttempt::Password, $expiryMinutes, $attempt);
+
+        // Spent by the trade — one first factor buys one login token, and a
+        // replay gets nothing. After the token exists, so a failure part-way
+        // through does not leave the caller holding a dead step-up token with
+        // no way to finish the login it belongs to.
+        app(MfaJwt::class)->spendFromRequest($request);
 
         // Replaces the MFA JWT cookie with the real login token for SPAs.
         return app(SpaCookieResponder::class)->attach($request, response()->json([

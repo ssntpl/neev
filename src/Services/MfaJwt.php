@@ -3,9 +3,12 @@
 namespace Ssntpl\Neev\Services;
 
 use Firebase\JWT\JWT;
+use Firebase\JWT\Key;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Ssntpl\Neev\Models\User;
+use Throwable;
 
 /**
  * The short-lived token that stands between a first factor and a second.
@@ -67,6 +70,43 @@ class MfaJwt
         $seconds = max(1, (int) ($claims['exp'] ?? 0) - time());
 
         Cache::put($this->spentKey($jti), true, $seconds);
+    }
+
+    /**
+     * Spend the step-up token this request arrived with, if it has one.
+     *
+     * The API surface gets its claims from `JwtLoginMiddleware`; the Blade
+     * challenge is session-authenticated and never decodes the token, so it
+     * would otherwise complete a first factor and leave the token it was
+     * issued alongside — the cookie an OAuth callback attaches on a stateful
+     * origin — good for a second trade on the API endpoint.
+     */
+    public function spendFromRequest(Request $request): void
+    {
+        $claims = $request->attributes->get('jwt_claims');
+
+        if (is_array($claims)) {
+            $this->spend($claims);
+
+            return;
+        }
+
+        $cookie = $request->cookie(config('neev.spa.cookie_name', 'neev_session'));
+
+        if (!is_string($cookie) || $cookie === '') {
+            return;
+        }
+
+        try {
+            $decoded = (array) JWT::decode($cookie, new Key(JwtSecret::get(), 'HS256'));
+        } catch (Throwable) {
+            // Not a step-up token — a login token, or nothing we issued.
+            return;
+        }
+
+        if (($decoded['type'] ?? null) === 'mfa') {
+            $this->spend($decoded);
+        }
     }
 
     /** @param array<string, mixed> $claims */

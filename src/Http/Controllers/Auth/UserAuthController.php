@@ -28,6 +28,7 @@ use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\GeoIP;
+use Ssntpl\Neev\Services\MfaJwt;
 use Ssntpl\Neev\Services\RegistrationService;
 use Ssntpl\Neev\Services\SpaCookieResponder;
 use Ssntpl\Neev\Services\StatefulOriginResolver;
@@ -728,6 +729,12 @@ class UserAuthController extends Controller
         }
 
         $this->auth->login($request, $geoIP, $user, $attempt->method ?? LoginAttempt::Password, $method, $attempt);
+
+        // The same first factor may have been handed a step-up token — the
+        // cookie an OAuth callback attaches on a stateful origin. Answering
+        // the challenge here spends it, so it cannot be traded again on the
+        // API endpoint for a second session.
+        app(MfaJwt::class)->spendFromRequest($request);
 
         $response = redirect($this->auth->intendedUrl(session()->pull('mfa_redirect')));
 

@@ -518,6 +518,51 @@ class OAuthTest extends TestCase
             ->assertOk();
     }
 
+    /**
+     * Answering the challenge on the Blade page spends the step-up token the
+     * callback parked in the cookie. Without that, the captured cookie value
+     * was still good for a second trade on the API endpoint — one first
+     * factor, two sessions — which is exactly what a step-up credential must
+     * not allow.
+     */
+    public function test_the_blade_challenge_spends_the_parked_step_up_token(): void
+    {
+        config(['neev.spa.stateful' => ['localhost']]);
+
+        [$user, $secret] = $this->userWithTotp();
+
+        $this->mockSocialiteUser($user->email);
+
+        $parked = collect($this->get('/neev/oauth/google/callback?code=test-auth-code')->headers->getCookies())
+            ->firstWhere(fn ($c) => $c->getName() === 'neev_session');
+        $this->assertNotNull($parked);
+
+        // The browser sends the cookie the callback set, as it would on the
+        // redirect to this page — that is how the challenge sees the token it
+        // is spending.
+        $this->withUnencryptedCookie('neev_session', $parked->getValue())
+            ->post('/otp/mfa', [
+                'email' => $user->email,
+                'auth_method' => 'authenticator',
+                'otp' => TOTP::create(secret: $secret)->now(),
+                'attempt_id' => session('attempt_id'),
+            ])->assertSessionHasNoErrors();
+
+        $this->assertSame(1, $user->loginTokens()->count());
+
+        // The value captured before the challenge was answered buys nothing.
+        $this->travel(31)->seconds();
+
+        $this->withHeader('Authorization', 'Bearer ' . $parked->getValue())
+            ->postJson('/neev/mfa/otp/verify', [
+                'auth_method' => 'authenticator',
+                'otp' => TOTP::create(secret: $secret)->now(),
+            ])
+            ->assertStatus(401);
+
+        $this->assertSame(1, $user->loginTokens()->count(), 'One first factor, one login token.');
+    }
+
     public function test_api_callback_returns_an_mfa_challenge_instead_of_a_login_token(): void
     {
         [$user] = $this->userWithTotp();

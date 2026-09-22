@@ -57,9 +57,19 @@ Authenticator setups that are started but never verified remain in a `pending` s
 After a password, magic-link or OAuth login that requires MFA, the API issues a short-lived JWT used only to complete verification:
 
 It is **single-use**: verifying a code trades it for a login token and spends
-it, so one first factor buys one session. A wrong code does not spend it — the
-user has to be able to try again — and neither does a resend. A replay after a
-successful verification is `401`, even inside the expiry window below.
+it, so one first factor buys one session. A replay after a successful
+verification is `401`, even inside the expiry window below. A wrong code does
+not spend it — the user has to be able to try again — and neither does a
+resend. It is spent *after* the login token exists, so a failure part-way
+through leaves the token usable rather than stranding the caller with an
+unfinished login.
+
+The Blade challenge spends it too, when the request carries it: an OAuth
+callback on a stateful origin parks the step-up token in the auth cookie, the
+browser sends that cookie with the challenge form, and answering the challenge
+spends it. A challenge answered somewhere the cookie is not presented cannot
+spend what it cannot see — the token then stands until it expires, as an
+unanswered challenge's would.
 
 ```php
 // config/neev.php

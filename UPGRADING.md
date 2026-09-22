@@ -47,8 +47,16 @@ token could strip the factor guarding the account. Both now take `password` —
 or `otp`, for an account that has none, from
 `POST {prefix}/confirmation/otp` — like account deletion and
 `logoutAll` already did. A missing field is `422`, a wrong one `403`, and the
-factor stays. Update any client that removes factors, and the account-security
-view if you ejected the Blade kit (the form needs a password or code field).
+factor stays. Update any client that removes factors.
+
+**If you ejected the Blade kit**, edit
+`resources/views/vendor/neev/account/security.blade.php`: the Delete control
+on each factor row has to collect the confirmation. The shipped stub now opens
+a dialog with a password field, or a code field plus an "Email me a code"
+button when the account has no password — copy that block, or re-eject the
+file with `php artisan neev:ui blade --force` if you have not customised it
+(without `--force` the command skips files that already exist). Until you do,
+Delete answers with "The password field is required." and no field to fill.
 
 **Signing out other sessions refuses off the database driver (no action
 required unless you relied on it appearing to work).**
