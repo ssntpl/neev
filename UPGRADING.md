@@ -48,6 +48,23 @@ their own authenticator. Both now take `password` — or `otp`, from
   five dialogs and the passkey form. Re-eject with
   `php artisan neev:ui blade --force` if you have not customised them;
   otherwise copy the component in and point each dialog at it.
+- **The modal components take a `show` prop naming the Alpine variable that
+  opens them** — `components/modal.blade.php` and the `dialog-modal` and
+  `confirmation-modal` wrappers around it. It defaults to `show`, so every
+  existing call site behaves exactly as before and needs no change. **Re-eject
+  all three together with the security page**, though: that page's new Set up
+  dialog passes `show="showEdit"`, and against an older copy of the components
+  the prop is ignored and the dialog binds to `show` — the same variable as
+  the Delete and Add controls beside it, so one button opens two dialogs.
+
+  The reason it needs a prop at all: `modal.blade.php` never renders
+  `{{ $attributes }}`, so attributes passed at the call site are dropped
+  rather than reaching the panel. The kit's own dialogs used to pass
+  `x-show="show" x-cloak @keydown.escape.window="show = false"
+  @click.away="show = false"` and worked only because the component hardcoded
+  the same thing internally. Those dead attributes are removed from the
+  shipped views. If you pass anything similar in a view of your own, it is
+  not taking effect — name the variable with `show` instead.
 - **The recovery-codes page no longer reloads after printing.** The plaintext
   arrives once, so a reload after a cancelled print dialog would have replaced
   the only copy of a freshly minted set.

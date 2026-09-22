@@ -171,7 +171,7 @@
                 </x-slot>
             </x-neev-component::card> --}}
 
-            <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+            <x-neev-component::dialog-modal>
                 <x-slot name="title">
                     {{ __('DNS Token') }}
                 </x-slot>

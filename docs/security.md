@@ -179,6 +179,16 @@ and `is_success` stays false until the code verifies. `NeevMiddleware` checks bo
 and either one closes the gate, so an unanswered challenge reaches nothing
 protected.
 
+The two signals close it differently, because they describe different
+sessions. A login still in flight (`is_success` false) is redirected to the
+challenge: it has the account in `session('email')`, which is what the
+challenge page identifies it by. A login that **completed** without ever
+naming a factor predates the enrolment — the factor was added from another
+session while this one was open — and has no challenge in flight to be sent
+to, so it is unauthenticated instead, session and all. Signing in again
+parks at the challenge properly. Redirecting it to the challenge page
+instead is what produced an infinite loop through `/login`.
+
 Two first factors are exempt, because they answer for themselves.
 
 A **passkey** ceremony runs with `userVerification: 'required'` and is

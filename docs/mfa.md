@@ -396,6 +396,25 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 
 Only **active** methods trigger the MFA challenge — pending setups never gate login, and the verify endpoint rejects codes for pending methods.
 
+### Enrolling while other sessions are open
+
+A factor takes effect immediately, including for sessions that signed in
+before it existed — enrol from an API token or a second browser and the web
+session you left open is covered too.
+
+Those sessions cannot be challenged where they stand: the challenge page
+identifies the account from `session('email')`, which only a login *parked*
+at the challenge writes, so there is nothing for it to read. The web session
+is **ended** instead — `NeevMiddleware` treats it as unauthenticated, session
+and all — and the next page load lands on the login form. Signing in again
+goes through the challenge normally. The session that did the enrolling is
+unaffected; so are API tokens, which are not re-gated once issued.
+
+Nothing distinguishes this from any other expired session in the response:
+the web request redirects to `loginUrl()`, and a JSON request under
+`neev:web` gets `401 {"message": "Unauthenticated."}`. See
+[MFA and the Login Method](./security.md#mfa-and-the-login-method).
+
 Magic links and OAuth enter the same flow at step 3: `{prefix}/loginUsingLink` and the OAuth callback return `mfa_required` with the JWT for an enrolled account, and their Blade counterparts (`login.link.verify` and the OAuth callback route) redirect to the challenge page. A passkey does not — it already carries the second factor, see [MFA and the Login Method](./security.md#mfa-and-the-login-method).
 
 ### Web Flow

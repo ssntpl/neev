@@ -165,7 +165,7 @@
                                         </form>
 
                                         @if ($hasThisMethod && $confirmsEnrolment)
-                                            <x-neev-component::dialog-modal x-show="showEdit" x-cloak @keydown.escape.window="showEdit = false" @click.away="showEdit = false">
+                                            <x-neev-component::dialog-modal show="showEdit">
                                                 <x-slot name="title">
                                                     {{ __('Set up') }} {{ $method }}
                                                 </x-slot>
@@ -196,7 +196,7 @@
                                         @endif
 
                                         @if (!$hasThisMethod && $confirmsEnrolment)
-                                            <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                            <x-neev-component::dialog-modal>
                                                 <x-slot name="title">
                                                     {{ __('Add') }} {{ $method }}
                                                 </x-slot>
@@ -227,7 +227,7 @@
                                         @endif
 
                                         @if ($hasThisMethod)
-                                            <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                            <x-neev-component::dialog-modal>
                                                 <x-slot name="title">
                                                     {{ __('Remove') }} {{ $method }}
                                                 </x-slot>
@@ -420,7 +420,7 @@
                             </x-neev-component::danger-button>
                         </div>
 
-                        <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                        <x-neev-component::dialog-modal>
                             <x-slot name="title">
                                 {{ __('Delete Account') }}
                             </x-slot>

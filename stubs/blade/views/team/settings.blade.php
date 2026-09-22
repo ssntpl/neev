@@ -33,7 +33,7 @@
                             </x-neev-component::danger-button>
                         </div>
 
-                        <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                        <x-neev-component::dialog-modal>
                             <x-slot name="title">
                                 {{ __('Change Owner') }}
                             </x-slot>
@@ -83,7 +83,7 @@
                             </x-neev-component::danger-button>
                         </div>
 
-                        <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                        <x-neev-component::dialog-modal>
                             <x-slot name="title">
                                 {{ __('Delete Team') }}
                             </x-slot>
