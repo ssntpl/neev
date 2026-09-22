@@ -1,6 +1,6 @@
 # RFC 003 — Per-Group Auth Policies
 
-> **Status:** Proposed (resolves RFC-001 §6 Q1–Q4 with concrete design; awaiting maintainer review)
+> **Status:** **Accepted** 2026-09-22 — §7 answered below; ready to implement (phases A/B/C)
 > **Supersedes:** RFC-001's "v0.5.0 open questions" section (RFC-001's decided parts D1–D3 shipped in v0.4.3 and remain authoritative)
 > **Drivers:** TAILLOG multi-population tenants (staff → SSO, customers → magic link, vendors → password+MFA)
 
@@ -199,17 +199,24 @@ acceptance gate for phase A.
   the login flow forces MFA enrolment before issuing the token
   (pending-state machinery from v0.5.0 makes this safe).
 
-## 7. Open items for maintainer review
+## 7. Decisions (accepted 2026-09-22)
 
-1. **`magicauth` as an enforceable method:** magic links are currently
-   always available. Under a MUST policy, should a `password` policy
-   *block* magic-link login for matched users? Proposal: **yes for
-   policies with `enforce_method = true`, but never via migration** —
-   migrated policies carry `enforce_method = false` for `password`, so
-   strict enforcement is always a deliberate tenant choice (recovery
-   codes excepted either way).
-2. **`mfa_methods` narrowing:** when a policy lists `['authenticator']`,
-   a user's active email-OTP method no longer satisfies MFA. Proposal:
-   enforce at challenge time, prompt enrolment if needed.
-3. Naming: `auth_policies` vs `auth_connections` (Auth0 vocabulary).
-   Proposal: policies — it describes enforcement, not just linkage.
+The three open items are settled as proposed. Implementation follows
+these answers.
+
+1. **`magicauth` is enforceable, but never by migration.** A `password`
+   policy with `enforce_method = true` blocks magic-link login for the
+   users it matches; recovery codes remain available either way. Every
+   policy written by the data migration carries
+   `enforce_method = false`, so an installation upgrading into this
+   feature changes nothing about how its users sign in — strictness is
+   always a deliberate choice a tenant makes afterwards.
+2. **`mfa_methods` narrows at challenge time.** When a policy lists
+   `['authenticator']`, a user whose only active factor is email OTP is
+   not refused at the password step; they reach the challenge and are
+   prompted to enrol the factor the policy requires. Refusing earlier
+   would lock out exactly the users a tightening policy is meant to
+   migrate.
+3. **The table is `auth_policies`.** It describes what is enforced, not
+   merely which directory a population comes from, so Auth0's
+   "connections" vocabulary would undersell it.
