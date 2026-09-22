@@ -39,7 +39,7 @@ class UserAuthApiController extends Controller
             $user = app(RegistrationService::class)->register(
                 $request->only(['name', 'email', 'password', 'username']),
                 $request->invitation_id,
-                $request->hash,
+                $request->token,
             );
 
             if (!$user->hasVerifiedEmail()) {

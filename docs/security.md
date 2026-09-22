@@ -717,7 +717,7 @@ address verified rather than sending a redundant email:
 |-------|-------|
 | Following the verification link or entering the code | Direct |
 | Following a magic login link | The link was mailed there and came back signed |
-| Registering through a team invitation | The invitation reached that inbox |
+| Registering through a team invitation | The link carried the invitation's secret, so it reached that inbox |
 | Signing in through OAuth | The provider authenticated the address |
 
 **The OAuth case is the one with a trade-off.** When a provider returns an

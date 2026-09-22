@@ -1056,7 +1056,7 @@ accepts the equivalents rather than sending a redundant email:
 |-------|---------------|
 | OAuth / social login | The provider authenticated the address |
 | Following a magic link | The link was mailed to the address and came back signed |
-| Registering through a team invitation | The invitation reached that inbox |
+| Registering through a team invitation | The link carried the invitation's secret, so it reached that inbox |
 
 In each case an unverified address is marked verified rather than the user
 being turned away. Note the security trade-off this implies for OAuth: see

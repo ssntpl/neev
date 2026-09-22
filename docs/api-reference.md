@@ -52,6 +52,21 @@ POST /neev/register
 }
 ```
 
+Registering from a team invitation link also sends the pair it carries:
+
+```json
+{
+    "invitation_id": 1,
+    "token": "9f8c…"
+}
+```
+
+`token` is the invitation's secret, taken from the emailed link. Redemption
+refuses a wrong or missing secret, an invitation past its deadline, and an
+address other than the one invited — each with `400`. On success the new
+account joins the team with the invited role and its address is marked
+verified.
+
 **Response:**
 
 ```json

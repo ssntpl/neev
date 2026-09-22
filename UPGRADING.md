@@ -13,6 +13,37 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.3 → Unreleased
 
+**BREAKING: team invitations already in flight stop working (action required
+if you have pending invitations).**
+The emailed invitation link carried the invitation's row id and
+`sha1(email)`. Neither is a secret — the id is a plain auto-increment and the
+address is known to whoever is guessing — yet holding the pair was treated as
+proof the invitation had reached that inbox: registration marked the address
+verified and granted the invited role on the strength of it. The link now
+carries a per-invitation secret instead.
+
+`team_invitations` gains a `token` column, so installs that have already run
+that migration add it themselves:
+
+```php
+Schema::table('team_invitations', function (Blueprint $table) {
+    $table->string('token')->nullable()->after('role');
+});
+```
+
+- **Pending invitations have no secret and are refused.** Invite those
+  addresses again — `POST {prefix}/teams/inviteUser` and the Blade action
+  both replace the existing row, issuing a fresh secret and a new link.
+- **`EmailLinks::invitationUrl()` changed signature** from
+  `(int|string $invitationId, string $email, DateTimeInterface $expiresAt)`
+  to `(int|string $invitationId, string $token, …)`. If you override it, pass
+  the plaintext through to your own page, which must forward it to
+  `POST {prefix}/register` as `token`. The `hash` parameter is gone.
+- **`expires_at` is now enforced.** It was stored on every invitation and
+  never read, so invitations the mail described as lasting seven days in fact
+  lasted forever. Accepting an expired invitation is refused, on the
+  registration path and for a signed-in invitee alike.
+
 **`POST /neev/logoutAll` now requires confirmation (action required).**
 It previously revoked every other login token on the bearer token alone
 — the one account-takeover tool in the API that asked for nothing, while

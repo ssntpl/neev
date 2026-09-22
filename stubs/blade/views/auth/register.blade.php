@@ -22,10 +22,10 @@
             <form method="POST" action="{{ route('register') }}">
                 @csrf
     
-                @if ($id ?? null && $hash ?? null)
+                @if (($id ?? null) && ($token ?? null))
                     <div>
                         <input type="hidden" name="invitation_id" value="{{$id}}"/>
-                        <input type="hidden" name="hash" value="{{$hash}}"/>
+                        <input type="hidden" name="token" value="{{$token}}"/>
                     </div>
                 @endif
     

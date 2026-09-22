@@ -267,15 +267,20 @@ class TeamApiController extends Controller
             if (!$member) {
                 $expiry = now()->addDays(7);
 
+                // Returned once, for the link; the row keeps only its hash.
+                // Re-inviting the same address issues a fresh secret, which is
+                // also how an invitation sent before this existed is replaced.
+                $plainToken = TeamInvitationModel::generateToken();
+
                 $invitation = $team->invitations()->updateOrCreate(
                     ['email' => $request->email],
-                    ['expires_at' => $expiry]
+                    ['expires_at' => $expiry, 'token' => $plainToken]
                 );
 
                 $invitation->role = $request->role;
                 $invitation->save();
 
-                $signedUrl = app(EmailLinks::class)->invitationUrl($invitation->id, $request->email, $expiry);
+                $signedUrl = app(EmailLinks::class)->invitationUrl($invitation->id, $plainToken, $expiry);
 
                 Mail::to($request->email)->send(new TeamInvitation($team->name, 'there', $signedUrl, $expiry, false));
                 return response()->json([
@@ -342,6 +347,10 @@ class TeamApiController extends Controller
                         'message' => 'Invitation Revoked Successfully',
                     ]);
                 } elseif ($request->action == 'accept') {
+                    // The mail promises seven days; honour it here too.
+                    if ($invitation->isExpired()) {
+                        return response()->json(['message' => 'This invitation has expired.'], 400);
+                    }
                     if ($team->users->contains($user)) {
                         return response()->json(['message' => 'Already Added.'], 400);
                     }

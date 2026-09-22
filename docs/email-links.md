@@ -43,7 +43,7 @@ ships the pages that a headless install has to provide itself.
 | Email change | `email.change.verify` (signed) | `neev.email.change.verify` (signed) |
 | Password reset | `reset.request` (signed) | `{base}/reset-password?{signed query}` |
 | Magic link | `login.link.verify` (token query param) | `{base}/login-link?{token query}` |
-| Team invitation | `register` (signed) | `{base}/register?invitation_id=…&hash=…` |
+| Team invitation | `register` (signed) | `{base}/register?invitation_id=…&token=…` |
 | OAuth callback | `{base}/{route_prefix}/oauth/{service}/callback` | same |
 | Sign-in page | `login` | `{base}/login` |
 | Sign-up page (failed OAuth sign-up) | `register` | `{base}/register` |
@@ -71,13 +71,14 @@ hands your page the step-up JWT in the auth cookie instead — complete the
 challenge with `POST {prefix}/mfa/otp/verify`, which swaps it for a real login
 token.
 
-> **Note on the invitation link.** The headless invitation URL carries no
-> signature — only `invitation_id` and `sha1(email)` — yet holding it is
-> treated as proof the invitation reached that inbox, and registration marks
-> the address verified on the strength of it. This is preserved deliberately:
-> signing it would invalidate every invitation already in flight. Registration
-> does check that the address being registered is the one the invitation was
-> addressed to.
+> **Note on the invitation link.** Holding it is what proves the invitation
+> reached that inbox: registration marks the address verified and grants the
+> invited role on the strength of it. So the link carries the invitation's
+> secret — 32 random bytes, stored only as a hash — and redemption checks it,
+> the seven-day deadline, and that the address being registered is the one the
+> invitation was addressed to. If you override this method, pass the plaintext
+> from `TeamInvitation::generateToken()` through to your own page and on to
+> `POST {prefix}/register` as `token`; a link without it cannot be redeemed.
 
 ---
 
@@ -158,7 +159,7 @@ class AppEmailLinks extends EmailLinks
 | `verificationUrl()` | `(User $user, DateTimeInterface $expiresAt): string` |
 | `emailChangeUrl()` | `(User $user, string $newEmail, DateTimeInterface $expiresAt): string` |
 | `passwordResetUrl()` | `(User $user, DateTimeInterface $expiresAt): string` |
-| `invitationUrl()` | `(int\|string $invitationId, string $email, DateTimeInterface $expiresAt): string` |
+| `invitationUrl()` | `(int\|string $invitationId, string $token, DateTimeInterface $expiresAt): string` |
 | `oauthCallbackUrl()` | `(string $service): string` |
 | `loginUrl()` | `(): string` |
 | `registerUrl()` | `(): string` |

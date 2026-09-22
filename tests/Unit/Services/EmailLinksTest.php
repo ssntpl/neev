@@ -170,13 +170,14 @@ class EmailLinksTest extends TestCase
 
     public function test_invitation_url_is_a_signed_register_link_under_the_blade_kit(): void
     {
-        $url = $this->links->invitationUrl(7, 'invitee@example.com', $this->expiry());
+        $url = $this->links->invitationUrl(7, 'the-invitation-secret', $this->expiry());
 
         $this->assertStringStartsWith(url('/register') . '?', $url);
 
         $query = $this->queryOf($url);
         $this->assertSame('7', $query['id']);
-        $this->assertSame(sha1('invitee@example.com'), $query['hash']);
+        $this->assertSame('the-invitation-secret', $query['token']);
+        $this->assertArrayNotHasKey('hash', $query, 'sha1(email) was never a secret.');
         $this->assertArrayHasKey('signature', $query);
     }
 
@@ -185,13 +186,14 @@ class EmailLinksTest extends TestCase
         $this->headless();
         config(['app.url' => 'https://app.test']);
 
-        $url = $this->links->invitationUrl(7, 'invitee@example.com', $this->expiry());
+        $url = $this->links->invitationUrl(7, 'the-invitation-secret', $this->expiry());
 
         $this->assertStringStartsWith('https://app.test/register?', $url);
 
         $query = $this->queryOf($url);
         $this->assertSame('7', $query['invitation_id']);
-        $this->assertSame(sha1('invitee@example.com'), $query['hash']);
+        $this->assertSame('the-invitation-secret', $query['token']);
+        $this->assertArrayNotHasKey('hash', $query);
         $this->assertArrayNotHasKey('signature', $query);
     }
 
