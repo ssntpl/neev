@@ -151,4 +151,102 @@ class BladeMfaRemovalTest extends TestCase
 
         $this->assertNull($user->fresh()->multiFactorAuth('authenticator'));
     }
+
+    // -----------------------------------------------------------------
+    // Enrolling another factor, and minting recovery codes
+    // -----------------------------------------------------------------
+
+    public function test_adding_a_second_factor_is_confirmed(): void
+    {
+        $user = $this->userWithAuthenticator(['password' => self::PASSWORD]);
+
+        $this->signedIn($user)
+            ->post(route('multi.auth'), ['auth_method' => 'email'])
+            ->assertSessionHasErrors('password');
+
+        $this->assertNull($user->fresh()->multiFactorAuth('email'));
+    }
+
+    /** Onboarding is untouched: the first factor asks for nothing. */
+    public function test_the_first_factor_is_not_confirmed(): void
+    {
+        $user = User::factory()->create(['password' => self::PASSWORD]);
+
+        $this->actingAs($user)
+            ->post(route('multi.auth'), ['auth_method' => 'authenticator'])
+            ->assertSessionHasNoErrors();
+    }
+
+    /** The page renders the field the confirmed Add now needs. */
+    public function test_the_security_page_offers_a_field_to_confirm_enrolment_with(): void
+    {
+        $user = $this->userWithAuthenticator(['password' => self::PASSWORD]);
+
+        $this->signedIn($user)
+            ->get(route('account.security'))
+            ->assertOk()
+            ->assertSee('x-ref="addForm"', false);
+    }
+
+    /**
+     * Reading a page must not mint credentials. This used to generate a set
+     * whenever the account held none, so a stolen session could open the page
+     * and read a complete second factor off it.
+     */
+    public function test_opening_the_recovery_codes_page_does_not_mint_any(): void
+    {
+        $user = $this->userWithAuthenticator(['password' => self::PASSWORD]);
+
+        $this->signedIn($user)
+            ->get(route('recovery.codes'))
+            ->assertOk();
+
+        $this->assertCount(0, $user->fresh()->recoveryCodes);
+    }
+
+    public function test_minting_recovery_codes_is_confirmed(): void
+    {
+        $user = $this->userWithAuthenticator(['password' => self::PASSWORD]);
+
+        $this->signedIn($user)
+            ->post(route('recovery.generate'))
+            ->assertSessionHasErrors('password');
+
+        $this->assertCount(0, $user->fresh()->recoveryCodes);
+
+        $this->signedIn($user)
+            ->post(route('recovery.generate'), ['password' => self::PASSWORD])
+            ->assertSessionHasNoErrors()
+            ->assertRedirect(route('recovery.codes'));
+
+        $this->assertGreaterThan(0, $user->fresh()->recoveryCodes->count());
+    }
+
+    /** The plaintext reaches the page once, on the redirect that made them. */
+    public function test_the_codes_are_shown_once_after_they_are_made(): void
+    {
+        $user = $this->userWithAuthenticator(['password' => self::PASSWORD]);
+
+        $attempt = $user->loginAttempts()->create([
+            'method' => LoginAttempt::Password,
+            'multi_factor_method' => 'authenticator',
+            'is_success' => true,
+        ]);
+
+        $this->actingAs($user)->withSession(['attempt_id' => $attempt->id]);
+
+        // The redirect carries them, so the page that follows shows them.
+        $this->post(route('recovery.generate'), ['password' => self::PASSWORD])
+            ->assertRedirect(route('recovery.codes'));
+
+        $this->followingRedirects()
+            ->post(route('recovery.generate'), ['password' => self::PASSWORD])
+            ->assertOk()
+            ->assertSee('Recovery Codes');
+
+        // The next visit has nothing to show: only the hashes are kept.
+        $this->get(route('recovery.codes'))
+            ->assertOk()
+            ->assertViewHas('codes', []);
+    }
 }

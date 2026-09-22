@@ -314,8 +314,16 @@ Single-use backup codes for when primary MFA is unavailable.
 
 ```bash
 curl -X POST https://yourapp.com/neev/recoveryCodes \
-  -H "Authorization: Bearer {token}"
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"password": "SecurePass123!"}'
 ```
+
+Confirmed, because a recovery code signs you in on its own — see
+[Confirming a sensitive action](./security.md#confirming-a-sensitive-action).
+An account with no password sends `{"otp": "123456"}` instead. Generating
+replaces any codes already held, and the plaintext is returned **once**: only
+the hashes are stored, so a later request cannot show them again.
 
 **Response:**
 
@@ -482,6 +490,11 @@ sessions out: send `password`, or `otp` for an account that has no password
 Taking a second factor off the account is the one change that makes every
 future sign-in easier, so whoever holds a stolen token must not be able to
 strip the factor that would have stopped them using it.
+
+**Adding** a factor is confirmed too, but only once the account already holds
+one — enrolling the first is onboarding. And **minting recovery codes** is
+always confirmed: a recovery code signs you in on its own, so that endpoint
+hands back a complete second factor in plaintext.
 
 ```bash
 curl -X DELETE https://yourapp.com/neev/mfa/delete \

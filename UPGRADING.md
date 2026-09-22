@@ -13,6 +13,32 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.3 → Unreleased
 
+**Adding a factor and minting recovery codes now need confirmation (action
+required if you call either).**
+Removing a factor was confirmed in the previous change; these two reach the
+same end from the other side. `POST {prefix}/recoveryCodes` and
+`POST /account/recovery/codes` hand back a complete second factor in
+plaintext, and `POST {prefix}/mfa/add` lets whoever holds a stolen token enrol
+their own authenticator. Both now take `password` — or `otp`, from
+`POST {prefix}/confirmation/otp` — exactly as removal does.
+
+- **Enrolling the *first* factor is unchanged.** The gate starts once the
+  account already holds an active one, so onboarding asks for nothing. A
+  pending setup does not count.
+- **`GET /account/recovery/codes` no longer generates codes.** It used to mint
+  a set whenever the account held none, which meant reading a page created
+  credentials. Generating is the confirmed `POST`; the plaintext is flashed to
+  the page that follows it and is never recoverable afterwards.
+- **If you ejected the Blade kit**, three views changed. The security page
+  gained a confirmation dialog on Add, the recovery-codes page gained one on
+  Generate and an empty state for an account with no codes yet, and both now
+  use a new `resources/views/vendor/neev/components/confirm-identity.blade.php`
+  — which also replaces the copies of that field inside the delete-account and
+  remove-factor dialogs. Re-eject with `php artisan neev:ui blade --force` if
+  you have not customised them; otherwise copy the component in and point the
+  four dialogs at it.
+- **Recovery-code generation is limited to five a minute** on both surfaces.
+
 **A failed confirmation reports one message, keyed by the field it asked for
 (action required if you match on the old strings).**
 The four actions that ask an account to prove itself each carried their own

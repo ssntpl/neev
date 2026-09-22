@@ -204,6 +204,25 @@ class AuthService
     }
 
     /**
+     * Whether enrolling another factor has to be confirmed.
+     *
+     * Only once the account already holds one. Enrolling the *first* factor
+     * is onboarding — there is nothing yet for a stolen session to step
+     * around, and asking for a password there would put a wall in front of
+     * every user turning MFA on. Once a factor exists, adding another is the
+     * same authority as removing one: an attacker who enrols their own
+     * authenticator answers the challenge at every future sign-in, which is
+     * exactly what the removal gate is there to stop.
+     *
+     * Pending setups do not count. They cannot satisfy a challenge, so an
+     * account holding only one is still enrolling its first real factor.
+     */
+    public function requiresConfirmationToEnrol(User $user): bool
+    {
+        return count($user->activeMultiFactorAuths) > 0;
+    }
+
+    /**
      * The error a failed confirmation reports, keyed by the field that was
      * asked for. Replaces the `password !== null` branch every call site was
      * keeping its own copy of — the drift this helper exists to prevent.

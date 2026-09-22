@@ -705,8 +705,8 @@ See [Confirming a sensitive action](#confirming-a-sensitive-action).
 
 ### Confirming a sensitive action
 
-Three actions ask the account to prove itself again, because each of them
-either ends the account or makes every future sign-in easier, and a stolen
+Five actions ask the account to prove itself again, because each of them
+either ends the account or changes what it takes to sign in, and a stolen
 session or bearer token should not be enough to reach them:
 
 | Action | Endpoints |
@@ -714,6 +714,20 @@ session or bearer token should not be enough to reach them:
 | Delete the account | `DELETE {prefix}/users`, `DELETE /account/accountDelete` |
 | Sign out every other session | `POST {prefix}/logoutAll`, `POST /account/logoutSessions` |
 | Remove a multi-factor method | `DELETE {prefix}/mfa/delete`, `POST /account/multiFactorAuth` with `action=delete` |
+| Add one **to an account that already has one** | `POST {prefix}/mfa/add`, `POST /account/multiFactorAuth` |
+| Mint recovery codes | `POST {prefix}/recoveryCodes`, `POST /account/recovery/codes` |
+
+The last two are the removal gate pointed the other way. A stolen session that
+cannot *take away* a factor could otherwise *give itself* one: enrol its own
+authenticator and answer the challenge at every future sign-in, or mint a set
+of recovery codes and read a complete second factor straight out of the
+response. Confirming removal while leaving those open would be a boundary with
+a hole in it.
+
+**Enrolling the first factor is not confirmed.** That is onboarding — there is
+nothing yet for a stolen session to step around, and a wall there would meet
+every user turning MFA on. The gate starts once the account holds an active
+factor; a pending setup does not count, since it cannot answer a challenge.
 
 Send `password`. An account created through OAuth or SSO has none — a password
 was never set, and `Hash::check()` against a null hash can never succeed — so
@@ -723,23 +737,12 @@ random password nobody could produce until this release, which left them unable
 to answer either branch; see [UPGRADING](../UPGRADING.md) if you have any from
 an earlier version. A missing field is `422`, a wrong one `403`, and
 nothing happens. `AuthService::confirmationRules()` and `confirmIdentity()`
-decide what proof an account owes, so the three actions above cannot drift from
+decide what proof an account owes, so these actions cannot drift from
 one another. See
 [Accounts Without a Password](./authentication.md#accounts-without-a-password).
 
-**That table is not the whole of account security, and two of its neighbours
-are deliberately still open.** Regenerating recovery codes
-(`POST {prefix}/recoveryCodes`, `POST /account/recovery/codes`) returns a fresh
-set in plaintext, and a recovery code is a complete second factor — so a
-stolen session that cannot remove a factor can still read itself one.
-Enrolling a factor (`POST {prefix}/mfa/add`) is the same shape: an attacker who
-enrols their own authenticator answers the challenge at every future sign-in.
-Both are equivalent in effect to the removal that *is* confirmed. Whether to
-demand proof there is an open decision — it is the sudo-mode question, and the
-friction lands on enrolment, a flow users meet during onboarding — tracked in
-[issue #63](https://github.com/ssntpl/neev/issues/63). Until it is settled,
-treat a compromised session as able to establish its own second factor, and
-alert on it from the `MfaMethodAdded` and `RecoveryCodesGenerated` events.
+`MfaMethodAdded`, `MfaMethodRemoved` and `RecoveryCodesGenerated` fire on each
+of these, so an application can notify the account holder as well.
 
 Be clear about what the code proves. For an account reached by OAuth the
 mailbox already grants a session, so the code re-checks the factor the session

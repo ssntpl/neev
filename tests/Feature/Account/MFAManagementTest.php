@@ -97,6 +97,7 @@ class MFAManagementTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/mfa/add', [
                 'auth_method' => 'email',
+                'password' => self::PASSWORD,
             ]);
 
         $response->assertStatus(422)
@@ -263,7 +264,7 @@ class MFAManagementTest extends TestCase
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/recoveryCodes');
+            ->postJson('/neev/recoveryCodes', ['password' => self::PASSWORD]);
 
         $response->assertOk()
             ->assertJsonStructure(['data']);
@@ -416,5 +417,107 @@ class MFAManagementTest extends TestCase
             ->assertOk();
 
         $this->assertNull($user->fresh()->multiFactorAuth('authenticator'));
+    }
+
+    // -----------------------------------------------------------------
+    // Enrolling another factor, and minting recovery codes, are confirmed
+    // -----------------------------------------------------------------
+
+    /**
+     * A stolen session that cannot strip a factor could otherwise give itself
+     * one: its own authenticator answers the challenge at every future
+     * sign-in, which is the removal gate defeated from the other side.
+     */
+    public function test_adding_a_second_factor_is_confirmed(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'preferred' => true,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'email'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('password');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'email', 'password' => 'not-the-password'])
+            ->assertStatus(403);
+
+        $this->assertNull($user->fresh()->multiFactorAuth('email'));
+    }
+
+    /**
+     * The first factor is onboarding: there is nothing yet for a stolen
+     * session to step around, and a wall here would meet every user turning
+     * MFA on for the first time.
+     */
+    public function test_the_first_factor_is_not_confirmed(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->assertCount(0, $user->activeMultiFactorAuths);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'authenticator'])
+            ->assertOk();
+    }
+
+    /** A pending setup is not an active factor, so it does not start gating. */
+    public function test_a_pending_setup_does_not_make_the_next_enrolment_confirmed(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'email'])
+            ->assertOk();
+    }
+
+    /**
+     * A recovery code signs you in on its own, and this hands back a fresh set
+     * in plaintext — so it is the removal gate pointed the other way.
+     */
+    public function test_minting_recovery_codes_is_confirmed(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/recoveryCodes')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('password');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/recoveryCodes', ['password' => 'not-the-password'])
+            ->assertStatus(403);
+
+        $this->assertCount(0, $user->fresh()->recoveryCodes);
+    }
+
+    /**
+     * Refused before the confirmation is asked for, so a single-use code is
+     * not spent on something that cannot happen.
+     */
+    public function test_recovery_codes_without_mfa_are_refused_before_confirming(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/recoveryCodes')
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Enable MFA first.');
     }
 }

@@ -142,6 +142,7 @@ if (config('neev.ui') === 'blade') {
                 Route::get('/recovery/codes', [UserController::class, 'recoveryCodes'])
                     ->name('recovery.codes');
                 Route::post('/recovery/codes', [UserController::class, 'generateRecoveryCodes'])
+                    ->middleware('throttle:5,1,neev-recovery-codes')
                     ->name('recovery.generate');
 
                 Route::post('/passkeys/register/options', [PasskeyController::class,'generateRegistrationOptions'])
@@ -275,7 +276,8 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
             Route::delete('/delete', [UserApiController::class, 'deleteMultiFactorAuthentication']);
         });
 
-        Route::post('/recoveryCodes', [UserApiController::class, 'generateRecoveryCodes']);
+        Route::post('/recoveryCodes', [UserApiController::class, 'generateRecoveryCodes'])
+            ->middleware('throttle:5,1,neev-recovery-codes');
 
         Route::post('/confirmation/otp', [UserApiController::class, 'sendConfirmationOtp'])
             ->middleware('throttle:5,1,neev-confirmation-otp');
