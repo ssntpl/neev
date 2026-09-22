@@ -239,14 +239,104 @@ class BladeMfaRemovalTest extends TestCase
         $this->post(route('recovery.generate'), ['password' => self::PASSWORD])
             ->assertRedirect(route('recovery.codes'));
 
+        // Pinned on a code that was actually returned, not on the page title
+        // — "Multi-factor Recovery Codes" renders in every state.
         $this->followingRedirects()
             ->post(route('recovery.generate'), ['password' => self::PASSWORD])
             ->assertOk()
-            ->assertSee('Recovery Codes');
+            ->assertViewHas('codes', fn ($codes) => count($codes) === config('neev.recovery_codes'))
+            ->assertSee($user->fresh()->recoveryCodes->count() . ' ', false);
 
         // The next visit has nothing to show: only the hashes are kept.
         $this->get(route('recovery.codes'))
             ->assertOk()
             ->assertViewHas('codes', []);
+    }
+
+    /** The dialogs carry the field the server now asks for, not just a form. */
+    public function test_the_add_and_generate_dialogs_carry_a_confirmation_field(): void
+    {
+        $user = $this->userWithAuthenticator(['password' => self::PASSWORD]);
+
+        $this->signedIn($user)
+            ->get(route('account.security'))
+            ->assertOk()
+            ->assertSee('x-ref="addForm"', false)
+            ->assertSee('name="password"', false);
+
+        $this->signedIn($user)
+            ->get(route('recovery.codes'))
+            ->assertOk()
+            ->assertSee('x-ref="generateForm"', false)
+            ->assertSee('name="password"', false);
+    }
+
+    /**
+     * Re-issuing a setup hands back the secret, so Edit is confirmed too —
+     * and it used to bare-submit into the newly gated add branch, which left
+     * a pending setup impossible to finish from the shipped kit.
+     */
+    public function test_re_issuing_a_setup_is_confirmed(): void
+    {
+        $user = $this->userWithAuthenticator(['password' => self::PASSWORD]);
+
+        $this->signedIn($user)
+            ->get(route('account.security'))
+            ->assertOk()
+            ->assertSee('x-ref="editForm"', false);
+
+        $this->signedIn($user)
+            ->post(route('multi.auth'), ['auth_method' => 'authenticator'])
+            ->assertSessionHasErrors('password');
+
+        $this->signedIn($user)
+            ->post(route('multi.auth'), ['auth_method' => 'authenticator', 'password' => self::PASSWORD])
+            ->assertSessionHasNoErrors();
+    }
+
+    /** An account with no password confirms enrolment with a mailed code. */
+    public function test_a_passwordless_account_adds_a_factor_with_a_code(): void
+    {
+        Mail::fake();
+
+        $user = $this->userWithAuthenticator(['password' => null]);
+
+        $this->signedIn($user)
+            ->postJson(route('account.confirmation'))
+            ->assertOk();
+
+        $otp = null;
+        Mail::assertSent(EmailOTP::class, function (EmailOTP $mail) use (&$otp) {
+            $otp = $mail->otp;
+
+            return true;
+        });
+
+        $this->signedIn($user)
+            ->post(route('multi.auth'), ['auth_method' => 'email', 'otp' => $otp])
+            ->assertSessionHasNoErrors();
+    }
+
+    /** And mints recovery codes with one. */
+    public function test_a_passwordless_account_mints_recovery_codes_with_a_code(): void
+    {
+        Mail::fake();
+
+        $user = $this->userWithAuthenticator(['password' => null]);
+
+        $this->signedIn($user)->postJson(route('account.confirmation'))->assertOk();
+
+        $otp = null;
+        Mail::assertSent(EmailOTP::class, function (EmailOTP $mail) use (&$otp) {
+            $otp = $mail->otp;
+
+            return true;
+        });
+
+        $this->signedIn($user)
+            ->post(route('recovery.generate'), ['otp' => $otp])
+            ->assertSessionHasNoErrors();
+
+        $this->assertGreaterThan(0, $user->fresh()->recoveryCodes->count());
     }
 }

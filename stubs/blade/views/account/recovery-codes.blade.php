@@ -119,13 +119,17 @@
                 link.click();
             },
             printCodes() {
+                // No reload afterwards. The plaintext reaches this page once,
+                // flashed by the redirect that generated it, so reloading —
+                // after a cancelled print dialog, say — would replace the only
+                // copy of a freshly minted set with "shown once" and leave the
+                // account holding hashes nobody has read.
                 const originalContent = document.body.innerHTML;
                 const printable = document.getElementById('printable-area').innerHTML;
 
                 document.body.innerHTML = printable;
                 window.print();
                 document.body.innerHTML = originalContent;
-                window.location.reload();
             },
             copyCodes() {
                 navigator.clipboard.writeText(this.getCodes())

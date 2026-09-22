@@ -724,10 +724,26 @@ of recovery codes and read a complete second factor straight out of the
 response. Confirming removal while leaving those open would be a boundary with
 a hole in it.
 
-**Enrolling the first factor is not confirmed.** That is onboarding — there is
-nothing yet for a stolen session to step around, and a wall there would meet
-every user turning MFA on. The gate starts once the account holds an active
-factor; a pending setup does not count, since it cannot answer a challenge.
+Enrolling a **passkey** (`POST {prefix}/passkeys/register/options`) is confirmed
+on the same grounds, and always: a passkey signs in with the account's whole
+authority and is never parked at the MFA challenge, so it is more than a second
+factor, and an account reaching that page already has a way in.
+
+**Enrolling the first second factor is not confirmed.** That is onboarding —
+there is nothing yet for a stolen session to step around, and a wall there
+would meet every user turning MFA on. The gate starts once the account holds an
+active factor; a pending setup does not count, since it cannot answer a
+challenge.
+
+> **The residual risk that leaves.** A session stolen from an account with *no*
+> second factor can enrol one — its own authenticator — unconfirmed. The owner
+> changing their password revokes the attacker's session but then meets a
+> challenge only the attacker can answer, unless `email` is among
+> `multi_factor_auth` and the address is verified, in which case an email
+> factor is added alongside. Closing it means confirming the first factor too,
+> which puts a password field in front of every user turning MFA on. That
+> trade is open, and tracked on
+> [issue #63](https://github.com/ssntpl/neev/issues/63).
 
 Send `password`. An account created through OAuth or SSO has none — a password
 was never set, and `Hash::check()` against a null hash can never succeed — so
@@ -741,8 +757,12 @@ decide what proof an account owes, so these actions cannot drift from
 one another. See
 [Accounts Without a Password](./authentication.md#accounts-without-a-password).
 
-`MfaMethodAdded`, `MfaMethodRemoved` and `RecoveryCodesGenerated` fire on each
-of these, so an application can notify the account holder as well.
+Three of these fire an event an application can notify on: `MfaMethodRemoved`
+on removal, `RecoveryCodesGenerated` on minting, and `MfaMethodAdded` on
+enrolment — though for `authenticator` that lands when the setup is *verified*
+rather than when it is added, so a pending setup raises nothing. Deleting the
+account and signing other sessions out raise none of the three; `LoggedOut`
+covers the second.
 
 Be clear about what the code proves. For an account reached by OAuth the
 mailbox already grants a session, so the code re-checks the factor the session

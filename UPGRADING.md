@@ -29,14 +29,28 @@ their own authenticator. Both now take `password` — or `otp`, from
   a set whenever the account held none, which meant reading a page created
   credentials. Generating is the confirmed `POST`; the plaintext is flashed to
   the page that follows it and is never recoverable afterwards.
+- **Enrolling a passkey is confirmed too, and always.**
+  `POST {prefix}/passkeys/register/options` and
+  `POST /account/passkeys/register/options` take `password` or `otp`. A passkey
+  signs in with the account's whole authority and is never parked at the MFA
+  challenge, so it is more than a second factor. Clients that start the
+  ceremony must collect the proof first and send it with the options request.
+- **`POST {prefix}/mfa/add` and `POST {prefix}/mfa/setup/verify` refuse a
+  scoped API token**, as passkey enrolment and token management already did.
+  Use a login token.
 - **If you ejected the Blade kit**, three views changed. The security page
-  gained a confirmation dialog on Add, the recovery-codes page gained one on
-  Generate and an empty state for an account with no codes yet, and both now
-  use a new `resources/views/vendor/neev/components/confirm-identity.blade.php`
-  — which also replaces the copies of that field inside the delete-account and
-  remove-factor dialogs. Re-eject with `php artisan neev:ui blade --force` if
-  you have not customised them; otherwise copy the component in and point the
-  four dialogs at it.
+  gained confirmation dialogs on Add and Edit and a confirmation field beside
+  the passkey form, the recovery-codes page gained a dialog on Generate and an
+  empty state for an account with no codes yet, and all of them — plus the
+  delete-account, remove-factor and log-out-other-sessions dialogs, which each
+  carried their own copy — now use a new
+  `resources/views/vendor/neev/components/confirm-identity.blade.php`. That is
+  five dialogs and the passkey form. Re-eject with
+  `php artisan neev:ui blade --force` if you have not customised them;
+  otherwise copy the component in and point each dialog at it.
+- **The recovery-codes page no longer reloads after printing.** The plaintext
+  arrives once, so a reload after a cancelled print dialog would have replaced
+  the only copy of a freshly minted set.
 - **Recovery-code generation is limited to five a minute** on both surfaces.
 
 **A failed confirmation reports one message, keyed by the field it asked for
