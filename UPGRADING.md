@@ -13,6 +13,32 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.3 → Unreleased
 
+**BREAKING: a verified platform subdomain is now its own passkey relying
+party (action required if tenants sign in with passkeys on your
+subdomains).**
+Every host under `relying_party_id` used to share one relying party, so a
+passkey enrolled on `acme.example.com` was the same credential as one
+enrolled on `example.com` or on `other.example.com`. Shared relying party
+means shared credentials: a tenant that can run script on its own subdomain
+could start a ceremony that returns a victim's credential ids and completes
+with the browser showing your platform's name the whole way through. A
+verified row inside your zone is now treated like any other — `acme.example.com`
+gets `rp.id = "acme.example.com"`.
+
+- **Passkeys enrolled on a platform subdomain stop working there** and are no
+  longer offered. They are not deleted: they still appear in
+  `GET {prefix}/passkeys` with their old `rp_id`, and users enrol again on the
+  subdomain. Tell those users before you deploy.
+- **Unaffected:** passkeys on the platform's own hosts (which resolve no
+  tenant context and keep `relying_party_id`), passkeys on a tenant's custom
+  domain, and legacy credentials with a null `rp_id`, which are still read as
+  belonging to the configured relying party.
+- **`rp.name` on a tenant's subdomain is now the tenant's name**, not
+  `app.name`, since the relying party is the tenant's host.
+- Accepting the shared-zone behaviour instead is a code-level choice: subclass
+  `RelyingPartyResolver`, restore the platform-zone branch in `settle()`, and
+  bind it in a service provider.
+
 **BREAKING: an API token can no longer manage API tokens (action required if
 an integration mints or edits tokens).**
 Every route under `{prefix}/apiTokens` used to accept whichever credential
@@ -218,9 +244,8 @@ come from:
 - **A tenant's hosts** come from its verified `domains` rows, so a
   tenant on `acme.example.com` or on its own `acme.com` needs no entry
   in `allowed_origins`. Only the host the request's `Origin` names is
-  admitted, so one tenant's subdomain never admits a sibling — not even
-  a second platform-zone row the same tenant holds, since every host in
-  your zone shares `relying_party_id`.
+  admitted, and since that host is now its own relying party, a sibling
+  has nothing to be admitted against.
 - **Your own hosts** still come from `allowed_origins`, unchanged. If
   you serve passkeys from `app.example.com` or `login.example.com` as
   well as the apex, each must be listed verbatim — as it had to be

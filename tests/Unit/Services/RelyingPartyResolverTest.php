@@ -212,17 +212,27 @@ class RelyingPartyResolverTest extends TestCase
     }
 
     /**
-     * Subdomains hold domain rows too — the tenant-domains API verifies
-     * `type: subdomain` on sight — so a verified row there must not displace
-     * the platform relying party and retire the passkeys already enrolled
-     * under it.
+     * A platform subdomain is its own relying party, like any other host.
+     * Sharing one across the zone would share credentials across it: a tenant
+     * running script on its own subdomain could otherwise complete a ceremony
+     * against a credential enrolled on a sibling's, with the browser showing
+     * the platform's name throughout.
      */
-    public function test_a_verified_subdomain_still_uses_the_configured_relying_party(): void
+    public function test_a_verified_platform_subdomain_is_its_own_relying_party(): void
     {
         $this->enableTeams();
         $this->teamOwning('acme.example.com');
 
-        $this->assertSame('example.com', $this->forHost('acme.example.com'));
+        $this->assertSame('acme.example.com', $this->forHost('acme.example.com'));
+    }
+
+    /** The platform keeps its own relying party for the hosts it serves. */
+    public function test_a_platform_host_with_no_context_keeps_the_configured_relying_party(): void
+    {
+        $this->enableTeams();
+        $this->teamOwning('acme.example.com');
+
+        $this->assertSame('example.com', $this->forHost('app.example.com'));
     }
 
     public function test_a_host_merely_ending_in_the_configured_value_is_not_a_subdomain(): void
@@ -513,9 +523,9 @@ class RelyingPartyResolverTest extends TestCase
     }
 
     /**
-     * What replaces subdomain matching: a tenant on a platform subdomain
-     * runs under the platform relying party, and its origin is admitted
-     * because its own verified row says so.
+     * What replaces subdomain matching: the relying party is the tenant's own
+     * platform subdomain, and the only origin admitted beyond the configured
+     * list is that same host.
      */
     public function test_a_verified_platform_subdomain_is_an_explicit_origin(): void
     {
@@ -524,7 +534,7 @@ class RelyingPartyResolverTest extends TestCase
         $this->teamOwning('acme.example.com');
         $this->resolveOn('acme.example.com');
 
-        $this->assertSame('example.com', $this->resolver->rpId());
+        $this->assertSame('acme.example.com', $this->resolver->rpId());
         $this->assertSame(
             ['https://example.com', 'https://acme.example.com'],
             $this->resolver->allowedOrigins()
@@ -671,14 +681,14 @@ class RelyingPartyResolverTest extends TestCase
      * only so `@acme.com` staff auto-join, with nothing served on it. Taking
      * it would throw `SecurityError` on the host the team is reached on.
      */
-    public function test_a_federated_domain_does_not_displace_the_platform_relying_party(): void
+    public function test_a_federated_domain_does_not_displace_the_serving_host(): void
     {
         $this->enableTeams();
         $team = TeamFactory::new()->create();
         $this->domainFor($team, 'acme.example.com');
         $this->domainFor($team, 'acme.com');
 
-        $this->assertSame('example.com', $this->forHost('acme.example.com'));
+        $this->assertSame('acme.example.com', $this->forHost('acme.example.com'));
     }
 
     /** Marking it primary does not change that. */
@@ -689,7 +699,7 @@ class RelyingPartyResolverTest extends TestCase
         $this->domainFor($team, 'acme.example.com');
         $this->domainFor($team, 'acme.com', primary: true);
 
-        $this->assertSame('example.com', $this->forHost('acme.example.com'));
+        $this->assertSame('acme.example.com', $this->forHost('acme.example.com'));
     }
 
     /** The origins stay whole too: the platform host, not the federated one. */
@@ -709,8 +719,13 @@ class RelyingPartyResolverTest extends TestCase
         );
     }
 
-    /** Down to the name authenticators show: nothing about the host changes. */
-    public function test_a_federated_domain_leaves_the_platform_rp_name_alone(): void
+    /**
+     * The name authenticators show follows the host that owns the relying
+     * party, so a tenant on its platform subdomain shows its own — which is
+     * what a per-host relying party means. The federated row still plays no
+     * part in choosing it.
+     */
+    public function test_the_rp_name_follows_the_serving_host_not_the_federated_row(): void
     {
         $this->enableTeams();
         config(['app.name' => 'Platform']);
@@ -720,7 +735,8 @@ class RelyingPartyResolverTest extends TestCase
 
         $this->resolveOn('acme.example.com');
 
-        $this->assertSame('Platform', $this->resolver->rpName());
+        $this->assertSame('acme.example.com', $this->resolver->rpId());
+        $this->assertSame('Acme Corp', $this->resolver->rpName());
     }
 
     /** The other half: on the custom domain that domain takes it, unpromoted. */
@@ -766,8 +782,11 @@ class RelyingPartyResolverTest extends TestCase
         $this->assertSame('acme.com', $this->resolver->rpId());
     }
 
-    /** And on the platform host it keeps the platform relying party. */
-    public function test_a_header_resolved_context_on_the_platform_host_keeps_it(): void
+    /**
+     * And a browser on the context's platform subdomain gets that subdomain,
+     * wherever the API it is calling lives.
+     */
+    public function test_a_header_resolved_context_on_its_platform_host_uses_that_host(): void
     {
         $this->enableTeams();
         $team = TeamFactory::new()->create();
@@ -776,7 +795,25 @@ class RelyingPartyResolverTest extends TestCase
 
         $this->resolveOn('api.platform.test', $team, origin: 'acme.example.com');
 
-        $this->assertSame('example.com', $this->resolver->rpId());
+        $this->assertSame('acme.example.com', $this->resolver->rpId());
+    }
+
+    /**
+     * A credential enrolled on one tenant's platform subdomain is unusable on
+     * another's: each host is its own relying party, so the sibling is
+     * neither the relying party nor an admitted origin. This is the case a
+     * shared zone-wide relying party left open.
+     */
+    public function test_one_tenants_platform_host_cannot_stand_in_for_another(): void
+    {
+        $this->enableTeams();
+        $this->teamOwning('victim.example.com');
+        $evil = $this->teamOwning('evil.example.com');
+
+        $this->resolveOn('evil.example.com', $evil);
+
+        $this->assertSame('evil.example.com', $this->resolver->rpId());
+        $this->assertNotContains('https://victim.example.com', $this->resolver->allowedOrigins());
     }
 
     public function test_subdomain_matching_is_always_off_on_a_claimed_domain(): void
