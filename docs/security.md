@@ -708,18 +708,33 @@ session or bearer token should not be enough to reach them:
 |---|---|
 | Delete the account | `DELETE {prefix}/users`, `DELETE /account/accountDelete` |
 | Sign out every other session | `POST {prefix}/logoutAll`, `POST /account/logoutSessions` |
-| Remove a multi-factor method | `DELETE {prefix}/mfa/delete`, `POST /account/mfa` with `action=delete` |
+| Remove a multi-factor method | `DELETE {prefix}/mfa/delete`, `POST /account/multiFactorAuth` with `action=delete` |
 
 Send `password`. An account created through OAuth or SSO has none — a password
 was never set, and `Hash::check()` against a null hash can never succeed — so
-it sends `otp` instead, from `POST {prefix}/confirmation/otp` or the Blade
-`account.confirmation` route. Auto-provisioned SSO accounts were written with a
+it sends `otp` instead, from `POST {prefix}/confirmation/otp`, or
+`POST /account/confirmation/otp` on the Blade surface. Auto-provisioned SSO accounts were written with a
 random password nobody could produce until this release, which left them unable
 to answer either branch; see [UPGRADING](../UPGRADING.md) if you have any from
 an earlier version. A missing field is `422`, a wrong one `403`, and
-nothing happens. `AuthService::confirmationRules()` and `confirmIdentity()` are
-the one place this is decided, so an action cannot drift from the others. See
+nothing happens. `AuthService::confirmationRules()` and `confirmIdentity()`
+decide what proof an account owes, so the three actions above cannot drift from
+one another. See
 [Accounts Without a Password](./authentication.md#accounts-without-a-password).
+
+**That table is not the whole of account security, and two of its neighbours
+are deliberately still open.** Regenerating recovery codes
+(`POST {prefix}/recoveryCodes`, `POST /account/recovery/codes`) returns a fresh
+set in plaintext, and a recovery code is a complete second factor — so a
+stolen session that cannot remove a factor can still read itself one.
+Enrolling a factor (`POST {prefix}/mfa/add`) is the same shape: an attacker who
+enrols their own authenticator answers the challenge at every future sign-in.
+Both are equivalent in effect to the removal that *is* confirmed. Whether to
+demand proof there is an open decision — it is the sudo-mode question, and the
+friction lands on enrolment, a flow users meet during onboarding — tracked in
+[issue #63](https://github.com/ssntpl/neev/issues/63). Until it is settled,
+treat a compromised session as able to establish its own second factor, and
+alert on it from the `MfaMethodAdded` and `RecoveryCodesGenerated` events.
 
 Be clear about what the code proves. For an account reached by OAuth the
 mailbox already grants a session, so the code re-checks the factor the session

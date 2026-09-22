@@ -41,8 +41,8 @@ password the gates can check. Either way they stop being locked out.
 
 **Removing a multi-factor method now needs confirmation (action required if
 you call it).**
-`DELETE {prefix}/mfa/delete` and the Blade `POST /account/mfa` with
-`action=delete` asked for the method name alone, so a stolen session or bearer
+`DELETE {prefix}/mfa/delete` and the Blade `POST /account/multiFactorAuth`
+with `action=delete` asked for the method name alone, so a stolen session or bearer
 token could strip the factor guarding the account. Both now take `password` —
 or `otp`, for an account that has none, from
 `POST {prefix}/confirmation/otp` — like account deletion and
