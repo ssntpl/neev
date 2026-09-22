@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Models;
 
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
+use Ssntpl\LaravelAcl\Models\Permission;
 use Ssntpl\Neev\Traits\BelongsToTenant;
 
 /**
@@ -90,5 +91,51 @@ class AccessToken extends Model
         $permissions = $this->permissions ?? [];
 
         return in_array('*', $permissions, true) || in_array($permission, $permissions, true);
+    }
+
+    /**
+     * Whether this token may hand these abilities to another token.
+     *
+     * No credential may widen a scope from inside: a token can only pass on
+     * what it holds itself. A login token carries the user's whole authority,
+     * so it grants anything; a scoped API token grants only its own entries.
+     *
+     * Naming every registered permission counts as asking for `*`, because
+     * `createApiToken()` stores it that way — and a stored `*` also covers
+     * every permission registered afterwards, which is more than the grantor
+     * holds. So that list needs `*` in hand, not merely each entry in it.
+     *
+     * Typed loosely on purpose: the list comes from request input, so an
+     * entry that is not a string is an ability nothing holds rather than a
+     * `TypeError`.
+     *
+     * @param  array<int, mixed>  $permissions
+     */
+    public function canGrant(array $permissions): bool
+    {
+        foreach ($permissions as $permission) {
+            if (!is_string($permission) || !$this->can($permission)) {
+                return false;
+            }
+        }
+
+        if ($permissions !== [] && !$this->can('*') && $this->coversEveryPermission($permissions)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Whether this list names every permission the installation has
+     * registered — the shape `createApiToken()` collapses to `['*']`.
+     *
+     * @param  array<int, mixed>  $permissions
+     */
+    protected function coversEveryPermission(array $permissions): bool
+    {
+        $registered = Permission::query()->pluck('name')->all();
+
+        return $registered !== [] && array_diff($registered, $permissions) === [];
     }
 }

@@ -303,6 +303,13 @@ class UserController extends Controller
 
     public function tokenStore(Request $request)
     {
+        $request->validate([
+            'name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'permissions' => ['sometimes', 'nullable', 'array'],
+            'permissions.*' => ['string'],
+            'expiry' => ['sometimes', 'nullable', 'integer', 'min:1'],
+        ]);
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return back()->withErrors(['message' => 'User not found.']);
@@ -340,6 +347,11 @@ class UserController extends Controller
 
     public function tokenUpdate(Request $request)
     {
+        $request->validate([
+            'permissions' => ['sometimes', 'nullable', 'array'],
+            'permissions.*' => ['string'],
+        ]);
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return back()->withErrors(['message' => 'User not found.']);

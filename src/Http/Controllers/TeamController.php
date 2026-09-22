@@ -190,15 +190,20 @@ class TeamController extends Controller
             if (!$member) {
                 $expiry = now()->addDays(7);
 
+                // Returned once, for the link; the row keeps only its hash.
+                // Re-inviting the same address issues a fresh secret, which is
+                // also how an invitation sent before this existed is replaced.
+                $plainToken = TeamInvitationModel::generateToken();
+
                 $invitation = $team->invitations()->updateOrCreate(
                     ['email' => $request->email],
-                    ['expires_at' => $expiry]
+                    ['expires_at' => $expiry, 'token' => $plainToken]
                 );
 
                 $invitation->role = $request->role;
                 $invitation->save();
 
-                $signedUrl = app(EmailLinks::class)->invitationUrl($invitation->id, $request->email, $expiry);
+                $signedUrl = app(EmailLinks::class)->invitationUrl($invitation->id, $plainToken, $expiry);
 
                 Mail::to($request->email)->send(new TeamInvitation($team->name, 'there', $signedUrl, $expiry, false));
                 return back()->with('status', 'Invite link sent successfully.');
@@ -308,7 +313,13 @@ class TeamController extends Controller
         try {
             if ($request->invitation_id) {
                 $invitation = TeamInvitationModel::find($request->invitation_id);
-                if (!$invitation || !$user || $user->email !== $invitation->email) {
+
+                // As in the API twin: for a signed-in account the proof that
+                // the invitation reached this inbox is a verified address.
+                if (!$invitation
+                    || !$user
+                    || $user->email !== $invitation->email
+                    || !$user->hasVerifiedEmail()) {
                     return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
                 }
                 $team = $invitation->team;
@@ -316,6 +327,10 @@ class TeamController extends Controller
                     $invitation->delete();
                     return back()->with('status', 'Invitation Revoked Successfully');
                 } elseif ($request->action == 'accept') {
+                    // The mail promises seven days; honour it here too.
+                    if ($invitation->isExpired()) {
+                        return back()->withErrors(['message' => 'This invitation has expired.']);
+                    }
                     if ($team->users->contains($user)) {
                         return back()->with('status', 'Already Added.');
                     }

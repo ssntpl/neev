@@ -41,9 +41,9 @@ class RegistrationService
      * fires Registered after commit.
      *
      * @param array{name: string, email: string, password: string, username?: string} $data
-     * @throws InvalidInvitationException When the invitation id/hash pair is invalid.
+     * @throws InvalidInvitationException When the invitation id/token pair is invalid.
      */
-    public function register(array $data, $invitationId = null, ?string $hash = null): User
+    public function register(array $data, $invitationId = null, ?string $token = null): User
     {
         $userData = [
             'name' => $data['name'],
@@ -56,13 +56,13 @@ class RegistrationService
             $userData['username'] = $data['username'];
         }
 
-        $user = DB::transaction(function () use ($userData, $data, $invitationId, $hash) {
+        $user = DB::transaction(function () use ($userData, $data, $invitationId, $token) {
             $user = User::model()->forceCreate($userData);
             $user = User::model()->find($user->id);
 
             if (config('neev.team')) {
                 if ($invitationId) {
-                    $this->acceptInvitation($user, $invitationId, $hash);
+                    $this->acceptInvitation($user, $invitationId, $token);
                 } elseif (!Domain::isVerifiedForEmail($data['email'])) {
                     $this->createDefaultTeam($user)->addMember($user);
                 }
@@ -109,16 +109,28 @@ class RegistrationService
     }
 
     /**
+     * Join the invited team, if the invitation is genuine.
+     *
+     * The secret from the emailed link is the proof — the row id and
+     * `sha1(email)` it replaced were both guessable, and holding them was
+     * enough to claim an invited address with its email marked verified and
+     * its role assigned. The deadline the invitation mail promises is
+     * enforced here too.
+     *
      * @throws InvalidInvitationException
      */
-    protected function acceptInvitation(User $user, $invitationId, ?string $hash): void
+    protected function acceptInvitation(User $user, $invitationId, ?string $token): void
     {
         $invitation = TeamInvitation::find($invitationId);
-        if (!$invitation || $user->email !== $invitation->email || !hash_equals(sha1($invitation->email), (string) $hash)) {
+        if (!$invitation
+            || !$invitation->tokenMatches($token)
+            || $invitation->isExpired()
+            || $user->email !== $invitation->email) {
             throw new InvalidInvitationException();
         }
 
-        // The invitation was sent to this address, so it is proven owned.
+        // The link carrying the secret reached this address, so it is proven
+        // owned — the same standard as clicking a verification mail.
         $user->markEmailAsVerified();
 
         $team = $invitation->team;

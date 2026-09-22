@@ -84,21 +84,21 @@ class EmailLinks
      * Accepting an invitation needs a registration form, so this lands on a
      * page too.
      *
-     * NOTE: the non-Blade link carries no signature, only invitation_id and
-     * sha1(email), yet RegistrationService::acceptInvitation() treats holding
-     * it as proof the invite reached that inbox and marks the address
-     * verified. Preserved as-is; signing it invalidates invitations already
-     * in flight.
+     * The link carries the invitation's secret, which is what proves the
+     * invitation reached that inbox: redemption marks the address verified and
+     * grants the invited role, so the proof has to be unguessable. Pass the
+     * plaintext from `TeamInvitation::generateToken()`; only its hash is
+     * stored.
      */
-    public function invitationUrl(int|string $invitationId, string $email, DateTimeInterface $expiresAt): string
+    public function invitationUrl(int|string $invitationId, string $token, DateTimeInterface $expiresAt): string
     {
         if ($this->blade()) {
-            return $this->signed('register', ['id' => $invitationId, 'hash' => sha1($email)], $expiresAt);
+            return $this->signed('register', ['id' => $invitationId, 'token' => $token], $expiresAt);
         }
 
         return $this->base() . '/register?' . http_build_query([
             'invitation_id' => $invitationId,
-            'hash' => sha1($email),
+            'token' => $token,
         ]);
     }
 

@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Ssntpl\Neev\Database\Factories\AccessTokenFactory;
 use Ssntpl\Neev\Database\Factories\LoginAttemptFactory;
+use Ssntpl\LaravelAcl\Models\Permission;
 use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
@@ -181,5 +182,88 @@ class AccessTokenTest extends TestCase
         $token->refresh();
 
         $this->assertInstanceOf(\Illuminate\Support\Carbon::class, $token->expires_at);
+    }
+
+    // -----------------------------------------------------------------
+    // canGrant()
+    // -----------------------------------------------------------------
+
+    /** A login token carries the user's whole authority, so it grants anything. */
+    public function test_a_login_token_may_grant_anything(): void
+    {
+        $token = AccessTokenFactory::new()->create(['token_type' => AccessToken::login, 'permissions' => []]);
+
+        $this->assertTrue($token->canGrant(['read', 'write', '*']));
+    }
+
+    /** A scoped token passes on its own entries and nothing else. */
+    public function test_a_scoped_token_may_grant_only_what_it_holds(): void
+    {
+        $token = AccessTokenFactory::new()->create([
+            'token_type' => AccessToken::api_token,
+            'permissions' => ['read'],
+        ]);
+
+        $this->assertTrue($token->canGrant(['read']));
+        $this->assertTrue($token->canGrant([]), 'Granting nothing is always allowed.');
+        $this->assertFalse($token->canGrant(['write']));
+        $this->assertFalse($token->canGrant(['read', 'write']));
+        $this->assertFalse($token->canGrant(['*']), 'A scope cannot be widened from inside.');
+    }
+
+    /** A wildcard token holds every ability, so it may pass any of them on. */
+    public function test_a_wildcard_token_may_grant_anything(): void
+    {
+        $token = AccessTokenFactory::new()->create([
+            'token_type' => AccessToken::api_token,
+            'permissions' => ['*'],
+        ]);
+
+        $this->assertTrue($token->canGrant(['read', 'write']));
+        $this->assertTrue($token->canGrant(['*']));
+    }
+
+    /**
+     * Naming every registered permission is asking for `*`, because
+     * `createApiToken()` stores it that way — and a stored `*` also covers
+     * permissions registered later, which is more than the grantor holds.
+     */
+    public function test_naming_every_registered_permission_needs_a_wildcard_in_hand(): void
+    {
+        Permission::create(['name' => 'read']);
+        Permission::create(['name' => 'write']);
+
+        $token = AccessTokenFactory::new()->create([
+            'token_type' => AccessToken::api_token,
+            'permissions' => ['read', 'write'],
+        ]);
+
+        $this->assertTrue($token->canGrant(['read']), 'A narrower grant is fine.');
+        $this->assertFalse(
+            $token->canGrant(['read', 'write']),
+            'That list is stored as * and would cover permissions registered later.',
+        );
+    }
+
+    /** A login token holds `*`, so the collapse is no obstacle to it. */
+    public function test_a_login_token_may_grant_every_registered_permission(): void
+    {
+        Permission::create(['name' => 'read']);
+        Permission::create(['name' => 'write']);
+
+        $token = AccessTokenFactory::new()->create(['token_type' => AccessToken::login, 'permissions' => []]);
+
+        $this->assertTrue($token->canGrant(['read', 'write']));
+    }
+
+    /** A non-string entry is not an ability anything can hold. */
+    public function test_a_non_string_permission_is_never_granted(): void
+    {
+        $token = AccessTokenFactory::new()->create([
+            'token_type' => AccessToken::api_token,
+            'permissions' => ['*'],
+        ]);
+
+        $this->assertFalse($token->canGrant([['read']]));
     }
 }

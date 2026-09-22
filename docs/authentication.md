@@ -440,9 +440,9 @@ A single app-wide value therefore locks passkeys to the platform domain. It is i
 request's context, by one rule:
 
 > the **verified domain that equals the request's origin** — the row the request resolved through,
-> or one the resolved context owns. The match is exact: a row covers the host it names and no other.
-> No context, no such domain, or an origin inside the platform's own zone, and `relying_party_id`
-> stands.
+> or one the resolved context owns, whether or not that host sits inside the platform's own zone.
+> The match is exact: a row covers the host it names and no other. No context, no origin, or no such
+> domain, and `relying_party_id` stands.
 
 The origin is the browser's `Origin` header, and only that — the request's host is the host the
 request was *addressed to*, which on a shared API is not where the ceremony would run. The context is
@@ -479,10 +479,14 @@ break the host users do sign in on — `navigator.credentials.create()` rejects 
 `acme.example.com` with a `SecurityError`, and every credential already enrolled drops out of
 `allowCredentials` — so a domain the origin cannot use is never taken.
 
-A domain inside the platform's own zone keeps the platform relying party. Subdomain tenants hold
-`domains` rows too — the tenant-domains API verifies `type: subdomain` on sight — so without that, a
-subdomain tenant would claim its own relying party and retire the passkeys already enrolled under the
-platform's.
+**A verified row inside the platform's own zone is treated like any other.** A tenant reached at
+`acme.example.com` gets `rp.id = "acme.example.com"`, not the platform's `example.com`. Sharing one
+relying party across a zone means sharing credentials across it: every host under `example.com`
+answers to the same relying party, so a tenant that can run script on its own subdomain — tenant
+branding, stored XSS, a node it hosts itself — could start a ceremony that returns a victim's
+credential ids and completes with the browser showing `example.com` throughout. Per-host relying
+parties make a credential enrolled on one tenant's host unusable on another's. The platform keeps
+`relying_party_id` for the hosts it serves itself, which resolve no tenant context.
 
 Only verified rows count, and the row is read on every ceremony, so a domain that loses its
 verification stops granting a relying party on the very next request. The credential rows survive and
@@ -501,9 +505,10 @@ a package limitation and no setting changes it:
   that way: it returns every credential the user holds, whichever relying party issued it, so one
   enrolled on a tenant's domain stays revocable from the platform. `rp_id` is on each row — label
   them by it, and expect a credential the user cannot sign in with from the domain they are on
-- subdomains of the configured domain always run under the platform's relying party, verified or
-  not, so a passkey enrolled on `acme.example.com` is the same credential as one enrolled on
-  `example.com`
+- a verified subdomain of the configured domain is its own relying party, so a passkey enrolled on
+  `acme.example.com` is a different credential from one enrolled on `example.com` — and from one
+  enrolled on `other.example.com`. An **unverified** host resolves no context and runs under the
+  platform's, as does any host the platform serves itself
 - nothing is matched by suffix, on any relying party — not the relying party a host is given, and
   not the origins a ceremony admits. WebAuthn would let a browser on `app.acme.com` use a credential
   bound to `acme.com`; this package does not offer it one, and would refuse the origin if it did.
@@ -511,7 +516,8 @@ a package limitation and no setting changes it:
 
 Credentials created before this behaviour existed carry no relying party of their own and are read as
 belonging to the configured one — they keep working on the platform domain and are never offered on a
-tenant's domain.
+tenant's domain, including a tenant's platform subdomain. Users who enrolled a passkey on a
+subdomain under the old shared relying party have to enrol again there.
 
 #### One relying party per tenant
 
@@ -1056,7 +1062,7 @@ accepts the equivalents rather than sending a redundant email:
 |-------|---------------|
 | OAuth / social login | The provider authenticated the address |
 | Following a magic link | The link was mailed to the address and came back signed |
-| Registering through a team invitation | The invitation reached that inbox |
+| Registering through a team invitation | The link carried the invitation's secret, so it reached that inbox |
 
 In each case an unverified address is marked verified rather than the user
 being turned away. Note the security trade-off this implies for OAuth: see

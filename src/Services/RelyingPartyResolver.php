@@ -9,29 +9,22 @@ use Ssntpl\Neev\Models\Domain;
  * Resolves the WebAuthn relying party for the current request's context.
  *
  * The verified domain equal to the request's origin — the row the request
- * resolved through, or one the resolved context owns. With no context, no
- * such domain, or only domains inside the platform's own zone, the configured
- * value stands.
+ * resolved through, or one the resolved context owns — whether that host sits
+ * under the platform's own zone or not. With no context, no origin, or no
+ * such domain, the configured value stands.
+ *
+ * Every host gets its own relying party, including a platform subdomain.
+ * Sharing one across a zone means sharing credentials across it: a tenant able
+ * to run script on its own `evil.platform.com` could start a ceremony that
+ * returns a victim's credential ids and completes with the browser showing
+ * `platform.com`, because that is the relying party both hosts answer to. A
+ * per-host relying party makes a credential enrolled on one tenant's host
+ * unusable on another's.
  */
 class RelyingPartyResolver
 {
     /** Resolved once per request (the resolver is request-scoped). */
     protected ?Domain $domain = null;
-
-    /**
-     * The request's own verified host under the configured relying party
-     * (`acme.platform.com`), admitted as an exact origin instead of by
-     * subdomain matching.
-     *
-     * Only the host the request names, never every platform-zone row the
-     * context holds: those hosts all share the configured relying party, so
-     * admitting a sibling would let a ceremony run there complete against a
-     * credential enrolled here. What remains is the platform's own boundary —
-     * the platform serves every host in its zone.
-     *
-     * @var array<int, string>
-     */
-    protected array $platformHosts = [];
 
     protected bool $settled = false;
 
@@ -56,9 +49,12 @@ class RelyingPartyResolver
      *
      * Every origin is named exactly; nothing is matched by suffix. The
      * configured list is kept on every path (it carries native-app facets,
-     * which apply to all tenants) plus either the tenant's own domain or the
-     * one verified host under the platform domain the request names. Built
-     * from the domain records, never from the request.
+     * which apply to all tenants) plus the one host this relying party was
+     * taken from. Built from the domain records, never from the request.
+     *
+     * One host, because the relying party is that host: a sibling under the
+     * same zone now answers to its own, so there is nothing for it to be
+     * admitted against.
      *
      * @return array<int, string>
      */
@@ -66,9 +62,7 @@ class RelyingPartyResolver
     {
         $domain = $this->domain();
 
-        $own = $domain !== null
-            ? [Domain::canonicalHost($domain->domain)]
-            : $this->platformHosts;
+        $own = $domain !== null ? [Domain::canonicalHost($domain->domain)] : [];
 
         return array_values(array_unique(array_merge(
             (array) config('neev.allowed_origins', []),
@@ -144,15 +138,15 @@ class RelyingPartyResolver
      * mode a team-owned host routes through that team's tenant. The match is
      * exact — a row covers the host it names and no other — because `domains`
      * is also the federation registry, so `acme.com` may sit there only so
-     * `@acme.com` staff auto-join, never served. A row in the platform's own
-     * zone keeps the platform relying party, so a subdomain tenant does not
-     * displace it; that host becomes an extra origin only when it is the one
-     * the request names, never a sibling's.
+     * `@acme.com` staff auto-join, never served.
+     *
+     * A row inside the platform's own zone is treated exactly like any other:
+     * `acme.platform.com` is its own relying party. The platform keeps
+     * `configured()` for the hosts it serves itself, which resolve no context.
      */
     protected function settle(): void
     {
         $this->domain = null;
-        $this->platformHosts = [];
 
         $context = $this->tenants->resolvedContext();
 
@@ -162,46 +156,34 @@ class RelyingPartyResolver
 
         $origin = $this->originHost();
 
+        // Nothing to match: a request that names no origin runs under the
+        // configured relying party, which the browser refuses on a tenant's
+        // own host — the ceremony endpoints are POST so that this is rare.
+        if ($origin === '') {
+            return;
+        }
+
         // The row the request resolved through, which is not always among the
         // context's own: in tenant mode a team-owned host routes through that
         // team's tenant, so the tenant holds no row naming it. It is still the
         // host the browser is on, so it is still the relying party.
         $resolved = $this->tenants->currentDomain();
 
-        if ($resolved !== null && $resolved->verified_at !== null) {
-            $host = Domain::canonicalHost($resolved->domain);
+        if ($resolved !== null
+            && $resolved->verified_at !== null
+            && Domain::canonicalHost($resolved->domain) === $origin) {
+            $this->domain = $resolved;
 
-            if ($this->usableFrom($this->configured(), $host)) {
-                if ($host === $origin) {
-                    $this->platformHosts[] = $host;
-                }
-            } elseif ($host === $origin) {
-                $this->domain = $resolved;
-
-                return;
-            }
+            return;
         }
 
-        $verified = Domain::where('owner_type', $context->getContextType())
+        $this->domain = Domain::where('owner_type', $context->getContextType())
             ->where('owner_id', $context->getContextId())
             ->whereNotNull('verified_at')
             ->orderByDesc('is_primary')
             ->orderBy('id')
-            ->get();
-
-        foreach ($verified as $row) {
-            $host = Domain::canonicalHost($row->domain);
-
-            if ($this->usableFrom($this->configured(), $host)) {
-                if ($host === $origin) {
-                    $this->platformHosts[] = $host;
-                }
-            } elseif ($this->domain === null && $host === $origin) {
-                $this->domain = $row;
-            }
-        }
-
-        $this->platformHosts = array_values(array_unique($this->platformHosts));
+            ->get()
+            ->first(fn (Domain $row) => Domain::canonicalHost($row->domain) === $origin);
     }
 
     /**

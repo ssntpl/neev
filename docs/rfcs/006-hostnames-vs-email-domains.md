@@ -1,6 +1,6 @@
 # RFC 006 — Hostnames and Email Domains Are Two Different Things
 
-> **Status:** Proposed — research complete; §6 needs maintainer decisions before implementation
+> **Status:** **Accepted** 2026-09-22 — §6 answered below; ready to implement
 > **Drivers:** a reported vulnerability (any team owner could mark any domain verified), a DNS re-verification loop that can never pass, and a slug↔host synchronisation problem that appears the moment slugs become mutable
 > **Supersedes:** the `type: subdomain` auto-verification behaviour hardened in #58, which this RFC removes entirely
 
@@ -355,40 +355,45 @@ the tenant's to update; `SlugChanged` is how the app knows to ask.
 
 Neev is pre-1.0, so a breaking rename is cheap now and expensive later.
 
-## 6. Open questions for maintainer review
+## 6. Decisions (accepted 2026-09-22)
 
-**Q1. Rename policy.** §2.5 shows no industry consensus, so this is
-decided on risk appetite. Options: reserve retired hosts forever
-(Atlassian shape — recommended for an auth package), or break pure
-derivation with a random suffix (Heroku shape — reuse becomes harmless
-but hosts become ugly). **Do not ship freely-mutable-and-reusable slugs
-with a derived host**; that is the exact bug Heroku spent a migration
-fixing.
+All five questions are answered. Implementation follows these answers.
 
-**Q2. Does the retired-host serving window ever close?** Never-recycling
-makes "forever" safe, but forever means DNS and TLS coverage forever. A
-long finite window is easier to operate.
+**Q1. A retired host is reserved forever.** The Atlassian shape: a
+renamed owner's old subdomain is never issued to anyone else, so a link,
+a bookmark or a cached credential can never land on a different tenant
+under a name it used to trust. Hosts stay purely derived from the slug —
+no random suffix — because an auth package cannot afford host reuse, and
+the cost of the reservation is one row per rename.
 
-**Q3. May one owner have more than one hostname?** The schema above
-allows it (`hostnames` is a collection with a `primary_hostname_id`
-pointer). Confirm that is wanted — a tenant served at both their custom
-domain and the platform subdomain — because a single `host` column on the
-owner would be simpler if not.
+**Q2. The retired host serves for 90 days, then stops.** Long enough for
+bookmarks, mail archives and integrations to catch up; short enough that
+DNS and TLS coverage is not an open-ended commitment. The *reservation*
+from Q1 does not expire with the redirect — after 90 days the host stops
+answering, and still never belongs to anyone else.
 
-**Q4. Re-verification cadence.** Only two concrete numbers exist
-anywhere: GitLab removes unverified custom domains after 7 days and
-reverifies periodically via `enabled_until`; Okta re-polls a custom email
-sender domain every 24h. WorkOS's verification guide declines to cover
-re-verification at all. A number has to be picked, not looked up.
+**Q3. Yes — an owner may hold several hostnames.** `hostnames` stays a
+collection with a `primary_hostname_id` pointer: a tenant served at both
+its custom domain and its platform subdomain is the ordinary case, and
+the passkey work has since made per-host behaviour load-bearing (each
+host is its own relying party). A single `host` column would not model
+it.
 
-**Q5. Team slug scoping.** Independent of the rest. In isolated mode a
-team slug is a path identifier inside a tenant, not a host, so it should
-be `unique(['tenant_id','slug'])`; in non-isolated mode the team *is*
-host-resolvable and needs installation-wide uniqueness. Today
-`teams.slug` carries a column-level `->unique()`, so `engineering` can
-exist only once across every tenant — which is both a poor experience and
-a quiet cross-tenant information leak, since the `-1` suffix reveals that
-another tenant holds the name.
+**Q4. Custom domains re-verify every 24 hours and are removed after 7
+consecutive days of failure.** GitLab's numbers, the only concrete pair
+in the research. Removal drops the hostname, not the owner, and fires a
+domain event so the application can warn first. Platform subdomains are
+not DNS-verified at all under this design, so they are never in scope —
+which is what removes the re-verification loop that could never pass.
+
+**Q5. A team slug is unique per tenant in isolated mode, and
+installation-wide in shared mode.** In isolated mode the slug is a path
+identifier inside a tenant and carries `unique(['tenant_id','slug'])`; in
+shared mode the team is itself host-resolvable and needs the wider
+constraint. The current column-level `unique()` is dropped: it let
+`engineering` exist only once across every tenant, which is both a poor
+experience and a quiet cross-tenant leak, since the `-1` suffix tells one
+tenant that another holds the name.
 
 ## 7. Evidence provenance
 

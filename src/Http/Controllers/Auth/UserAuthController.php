@@ -47,15 +47,17 @@ class UserAuthController extends Controller
         if ($request->user()?->id) {
             return redirect(config('neev.home'));
         }
-        if (config('neev.team') && ($request->id || $request->hash)) {
+        if (config('neev.team') && ($request->id || $request->token)) {
             if (!$request->hasValidSignature()) {
                 return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
             }
             $invitation = TeamInvitation::find($request->id);
-            if (!$invitation || !hash_equals(sha1($invitation->email), $request->hash)) {
+            if (!$invitation
+                || !$invitation->tokenMatches((string) $request->token)
+                || $invitation->isExpired()) {
                 return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
             }
-            return view('neev::auth.register', ['id' => $request->id, 'hash' => $request->hash, 'email' => $invitation->email]);
+            return view('neev::auth.register', ['id' => $request->id, 'token' => $request->token, 'email' => $invitation->email]);
         }
         $input = $request->email;
         $isEmail = filter_var($input, FILTER_VALIDATE_EMAIL);
@@ -77,7 +79,7 @@ class UserAuthController extends Controller
             $user = app(RegistrationService::class)->register(
                 $request->only(['name', 'email', 'password', 'username']),
                 $request->invitation_id,
-                $request->hash,
+                $request->token,
             );
 
             $this->auth->login($request, $geoIP, $user, LoginAttempt::Password);

@@ -88,6 +88,16 @@ class PasskeyController extends Controller
 
     public function generateRegistrationOptions(Request $request)
     {
+        // Enrolling a passkey is enrolling a credential that signs in with
+        // the account's whole authority — a passkey login is a complete
+        // factor and is never parked at the MFA challenge — so a scoped token
+        // must not reach it. Otherwise a leaked `['read']` token could enrol
+        // an authenticator it controls, sign in with it for a login token,
+        // and step around every scope it was given.
+        if ($refusal = $this->refuseApiTokenCredential($request, 'An API token cannot enrol a passkey.')) {
+            return $refusal;
+        }
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
@@ -525,6 +535,10 @@ class PasskeyController extends Controller
 
     public function registerViaAPI(Request $request, GeoIP $geoIP)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request, 'An API token cannot enrol a passkey.')) {
+            return $refusal;
+        }
+
         try {
             $res = $this->register($request, $geoIP);
             return response()->json([

@@ -522,7 +522,7 @@ if ($token?->can('write')) {
 }
 ```
 
-Two things worth knowing:
+Three things worth knowing:
 
 - **A login token carries full authority.** It is minted by signing in with
   complete credentials, so it is the API's equivalent of a session rather than a
@@ -532,6 +532,18 @@ Two things worth knowing:
   `createApiToken('name')` defaults to no permissions, and a scope that was never
   granted is not held. Routes without the middleware are unaffected, so attaching
   it is what turns the column on.
+- **A scope cannot be widened from inside.** `{prefix}/apiTokens` refuses an
+  API token outright with `403`: listing, minting, editing and deleting the
+  account's tokens all require a login token — the API's session, and what a
+  cookie-mode SPA carries — or a session-authenticated Blade request. Without
+  that, a leaked `['read']` token could rewrite itself to `['*']` or mint a
+  fresh wildcard, and the enforcement above would count for nothing against
+  whoever held it. **Enrolling a passkey is refused on the same grounds**: a
+  passkey login is a complete factor that returns a full login token, so a
+  scoped token able to enrol an authenticator would step around its scope one
+  move later. Behind both, `AccessToken::canGrant()` holds the line for any
+  caller: no credential hands on an ability it does not itself have, and a
+  list that would be stored as `'*'` needs `'*'` already in hand.
 
 `$token->can('*')` is granted by a `'*'` entry, which `createApiToken()` also
 collapses to automatically when every registered permission is passed.
@@ -717,7 +729,7 @@ address verified rather than sending a redundant email:
 |-------|-------|
 | Following the verification link or entering the code | Direct |
 | Following a magic login link | The link was mailed there and came back signed |
-| Registering through a team invitation | The invitation reached that inbox |
+| Registering through a team invitation | The link carried the invitation's secret, so it reached that inbox |
 | Signing in through OAuth | The provider authenticated the address |
 
 **The OAuth case is the one with a trade-off.** When a provider returns an

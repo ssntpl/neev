@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -241,8 +242,10 @@ class RegistrationTest extends TestCase
         ]);
 
         $inviteeEmail = 'invitee@example.com';
+        $plainToken = TeamInvitation::generateToken();
         $invitation = $team->invitations()->create([
             'email' => $inviteeEmail,
+            'token' => $plainToken,
             'expires_at' => now()->addDays(7),
         ]);
 
@@ -252,7 +255,7 @@ class RegistrationTest extends TestCase
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'invitation_id' => $invitation->id,
-            'hash' => sha1($inviteeEmail),
+            'token' => $plainToken,
         ]);
 
         $response->assertOk();
@@ -279,13 +282,13 @@ class RegistrationTest extends TestCase
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'invitation_id' => 99999,
-            'hash' => sha1('badinvite@example.com'),
+            'token' => TeamInvitation::generateToken(),
         ]);
 
         $response->assertStatus(400);
     }
 
-    public function test_register_via_invitation_with_wrong_hash_returns_error(): void
+    public function test_register_via_invitation_with_wrong_token_returns_error(): void
     {
         $this->enableTeams();
 
@@ -299,19 +302,121 @@ class RegistrationTest extends TestCase
         $invitation = $team->invitations()->create([
             'email' => 'hashinvite@example.com',
             'role' => 'member',
+            'token' => TeamInvitation::generateToken(),
             'expires_at' => now()->addDays(7),
         ]);
 
         $response = $this->postJson('/neev/register', [
-            'name' => 'Wrong Hash User',
+            'name' => 'Wrong Token User',
             'email' => 'hashinvite@example.com',
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'invitation_id' => $invitation->id,
-            'hash' => 'wronghash',
+            'token' => TeamInvitation::generateToken(),
         ]);
 
         $response->assertStatus(400);
+    }
+
+    /**
+     * The attack the secret exists to stop. `team_invitations.id` is a plain
+     * auto-increment and the address is known to whoever is guessing, so the
+     * old id + `sha1(email)` pair was reproducible by anyone: redemption then
+     * marked the address verified and handed over the invited role.
+     */
+    public function test_register_via_invitation_rejects_a_guessed_link(): void
+    {
+        $this->enableTeams();
+
+        $owner = User::factory()->create();
+        $team = Team::forceCreate([
+            'name' => 'Guess Team',
+            'user_id' => $owner->id,
+            'is_public' => false,
+        ]);
+
+        $invited = 'guessable@example.com';
+        $invitation = $team->invitations()->create([
+            'email' => $invited,
+            'role' => 'member',
+            'token' => TeamInvitation::generateToken(),
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        // Everything an attacker can derive without ever seeing the mail.
+        $this->postJson('/neev/register', [
+            'name' => 'Impostor',
+            'email' => $invited,
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'invitation_id' => $invitation->id,
+            'hash' => sha1($invited),
+        ])->assertStatus(400);
+
+        $this->assertDatabaseMissing('users', ['email' => $invited]);
+        $this->assertDatabaseHas('team_invitations', ['id' => $invitation->id]);
+    }
+
+    /** An invitation issued before the secret existed cannot be redeemed. */
+    public function test_register_via_invitation_rejects_a_row_with_no_token(): void
+    {
+        $this->enableTeams();
+
+        $owner = User::factory()->create();
+        $team = Team::forceCreate([
+            'name' => 'Legacy Team',
+            'user_id' => $owner->id,
+            'is_public' => false,
+        ]);
+
+        $invitation = $team->invitations()->create([
+            'email' => 'legacy@example.com',
+            'expires_at' => now()->addDays(7),
+        ]);
+        $this->assertNull($invitation->token);
+
+        $this->postJson('/neev/register', [
+            'name' => 'Legacy Invitee',
+            'email' => 'legacy@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'invitation_id' => $invitation->id,
+            'token' => '',
+        ])->assertStatus(400);
+
+        $this->assertDatabaseMissing('users', ['email' => 'legacy@example.com']);
+    }
+
+    /** The mail promises seven days, and now that deadline is enforced. */
+    public function test_register_via_an_expired_invitation_returns_error(): void
+    {
+        $this->enableTeams();
+
+        $owner = User::factory()->create();
+        $team = Team::forceCreate([
+            'name' => 'Expired Team',
+            'user_id' => $owner->id,
+            'is_public' => false,
+        ]);
+
+        $plainToken = TeamInvitation::generateToken();
+        $invitation = $team->invitations()->create([
+            'email' => 'late@example.com',
+            'token' => $plainToken,
+            'expires_at' => now()->subMinute(),
+        ]);
+
+        $this->postJson('/neev/register', [
+            'name' => 'Late Invitee',
+            'email' => 'late@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'invitation_id' => $invitation->id,
+            'token' => $plainToken,
+        ])->assertStatus(400);
+
+        $this->assertDatabaseMissing('users', ['email' => 'late@example.com']);
+        $this->assertDatabaseHas('team_invitations', ['id' => $invitation->id]);
     }
 
     /**
@@ -330,20 +435,22 @@ class RegistrationTest extends TestCase
             'is_public' => false,
         ]);
 
+        $plainToken = TeamInvitation::generateToken();
         $invitation = $team->invitations()->create([
             'email' => 'invited@example.com',
+            'token' => $plainToken,
             'expires_at' => now()->addDays(7),
         ]);
 
-        // The hash still matches the invitation, but the account being made
-        // is for someone else's address.
+        // The secret is the genuine one — the link was forwarded, or the
+        // inbox is shared — but the account being made is for another address.
         $this->postJson('/neev/register', [
             'name' => 'Impostor',
             'email' => 'attacker@example.com',
             'password' => 'password123',
             'password_confirmation' => 'password123',
             'invitation_id' => $invitation->id,
-            'hash' => sha1('invited@example.com'),
+            'token' => $plainToken,
         ])->assertStatus(400);
 
         $this->assertDatabaseMissing('users', ['email' => 'attacker@example.com']);

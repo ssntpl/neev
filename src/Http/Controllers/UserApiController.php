@@ -7,6 +7,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Http\JsonResponse;
+use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 
@@ -279,8 +281,51 @@ class UserApiController extends Controller
         }
     }
 
+    /**
+     * Refuse a grant wider than the granting credential.
+     *
+     * Defence in depth behind `refuseApiTokenCredential()`: today only a login
+     * token reaches these routes and it holds everything, so nothing is
+     * refused here. It is the invariant that keeps that true — if the routes
+     * are ever opened to scoped tokens, or an application calls these
+     * controllers from its own stack, a token still cannot hand on an ability
+     * it does not itself have.
+     *
+     * @param  array<int, string>  $permissions
+     */
+    private function refuseWiderGrant(Request $request, array $permissions): ?JsonResponse
+    {
+        $credential = $request->attributes->get('neev.access_token');
+
+        if ($credential instanceof AccessToken && !$credential->canGrant($permissions)) {
+            return response()->json([
+                'message' => 'A token cannot grant a permission it does not hold.',
+            ], 403);
+        }
+
+        return null;
+    }
+
+    /**
+     * Shape the token fields, so a malformed `permissions` is a rejection
+     * rather than a TypeError from `createApiToken()`.
+     */
+    private function validateTokenFields(Request $request): void
+    {
+        $request->validate([
+            'name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'permissions' => ['sometimes', 'nullable', 'array'],
+            'permissions.*' => ['string'],
+            'expiry' => ['sometimes', 'nullable', 'integer', 'min:1'],
+        ]);
+    }
+
     public function getApiTokens(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request, 'An API token cannot manage API tokens.')) {
+            return $refusal;
+        }
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
@@ -296,6 +341,14 @@ class UserApiController extends Controller
 
     public function addApiTokens(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request, 'An API token cannot manage API tokens.')) {
+            return $refusal;
+        }
+        $this->validateTokenFields($request);
+        if ($refusal = $this->refuseWiderGrant($request, (array) $request->input('permissions', []))) {
+            return $refusal;
+        }
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
@@ -312,8 +365,22 @@ class UserApiController extends Controller
 
     public function updateApiTokens(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request, 'An API token cannot manage API tokens.')) {
+            return $refusal;
+        }
+        $this->validateTokenFields($request);
+        if ($refusal = $this->refuseWiderGrant($request, (array) $request->input('permissions', []))) {
+            return $refusal;
+        }
+
         $user = User::model()->find($request->user()?->id);
-        $token = $user?->accessTokens->find($request->token_id);
+
+        // Resolved among API tokens only. Through `accessTokens` this endpoint
+        // also reached the caller's own login token, whose id is the `{id}|`
+        // prefix of their bearer string — so an `expiry` here reset the
+        // absolute ceiling `NeevAPIMiddleware::slideExpiry()` enforces, and a
+        // stolen session token could be made to outlive it.
+        $token = $user?->apiTokens()->find($request->token_id);
         if (!$token) {
             return response()->json([
                 'message' => 'Token was not updated.',
@@ -340,13 +407,19 @@ class UserApiController extends Controller
 
     public function deleteApiTokens(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request, 'An API token cannot manage API tokens.')) {
+            return $refusal;
+        }
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([
                 'message' => 'User not found.',
             ], 404);
         }
-        $token = $user->accessTokens->find($request->token_id);
+        // API tokens only, as above. A login token is a session: revoke it
+        // through `DELETE {prefix}/sessions/{id}` or by logging out.
+        $token = $user->apiTokens()->find($request->token_id);
         if (!$token) {
             return response()->json([
                 'message' => 'Token not found.',
@@ -361,6 +434,10 @@ class UserApiController extends Controller
 
     public function deleteAllApiTokens(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request, 'An API token cannot manage API tokens.')) {
+            return $refusal;
+        }
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([

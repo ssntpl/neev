@@ -377,4 +377,4 @@ class CreateTenantController
 ---
 
 ## Separate package: Email Reputation
-See: docs/email-reputation-package.md
+See: https://github.com/ssntpl/email-reputation

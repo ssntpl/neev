@@ -147,10 +147,7 @@
 ## TODO - Pending Work
 
 ### Code TODOs
-- [ ] **Email reputation package** — `EmailDomainValidator` (hardcoded free-email list, `require_company_email`) was removed in v0.4.0 on the promise of a standalone email-reputation package (`docs/email-reputation-package.md`, still proposed). Until it ships, consuming apps have no company-email enforcement. Decide v1 scope (classification-only vs network validation) and data sources:
-  - https://gist.github.com/ammarshah/f5c2624d767f91a7cbdc4e54db8dd0bf
-  - https://github.com/disposable/disposable-email-domains
-  - https://github.com/disposable/disposable
+- [x] ~~**Email reputation package**~~ — moved out of this repository to [github.com/ssntpl/email-reputation](https://github.com/ssntpl/email-reputation), where the decided v1 scope is the README and the work breakdown is issue #1. Not a neev dependency: `EmailDomainValidator` and `require_company_email` were removed in v0.4.0 because whether a disposable address may register is product policy. Consuming apps that want company-email enforcement wire that package (or their own rule) into registration validation or a `Registered` listener.
 
 ### Testing
 - [x] **Test suite** - Comprehensive test suite with 60%+ line coverage

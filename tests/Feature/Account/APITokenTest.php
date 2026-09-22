@@ -273,4 +273,128 @@ class APITokenTest extends TestCase
 
         $response->assertOk();
     }
+
+    // -----------------------------------------------------------------
+    // A scoped API token may not manage tokens
+    // -----------------------------------------------------------------
+
+    /**
+     * A scope means nothing if it can be widened from inside, and these are
+     * the routes where it would be: before this, a leaked `['read']` token
+     * could rewrite its own permissions to `['*']` or mint a fresh wildcard
+     * token, and `neev-token-can` would wave the holder through everywhere.
+     */
+    public function test_an_api_token_cannot_reach_any_token_management_route(): void
+    {
+        $user = User::factory()->create();
+        $scoped = $user->createApiToken('scoped', ['read']);
+        $victim = $user->createApiToken('victim', ['read'])->accessToken;
+
+        $calls = [
+            fn () => $this->getJson('/neev/apiTokens'),
+            fn () => $this->postJson('/neev/apiTokens', ['name' => 'minted', 'permissions' => ['*']]),
+            fn () => $this->putJson('/neev/apiTokens', ['token_id' => $victim->id, 'permissions' => ['*']]),
+            fn () => $this->deleteJson('/neev/apiTokens', ['token_id' => $victim->id]),
+            fn () => $this->deleteJson('/neev/apiTokens/deleteAll'),
+        ];
+
+        foreach ($calls as $call) {
+            $this->withHeader('Authorization', 'Bearer ' . $scoped->plainTextToken);
+            $call()
+                ->assertForbidden()
+                ->assertJsonPath('message', 'An API token cannot manage API tokens.');
+        }
+
+        // Nothing was widened, minted or removed.
+        $this->assertSame(['read'], $victim->fresh()->permissions);
+        $this->assertSame(2, $user->apiTokens()->count());
+    }
+
+    /** The account's own session keeps managing tokens, as it always could. */
+    public function test_a_login_token_still_manages_tokens(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/apiTokens', ['name' => 'from a session', 'permissions' => ['read']])
+            ->assertOk();
+
+        $this->assertDatabaseHas('access_tokens', [
+            'user_id' => $user->id,
+            'name' => 'from a session',
+            'token_type' => AccessToken::api_token,
+        ]);
+    }
+
+    /**
+     * The endpoint resolved its target among *all* the account's tokens, and
+     * a login token's id is the `{id}|` prefix of the caller's own bearer
+     * string — so an `expiry` here reset the absolute ceiling
+     * `NeevAPIMiddleware` enforces on a session that may have been stolen.
+     */
+    public function test_the_update_endpoint_cannot_reach_a_login_token(): void
+    {
+        $user = User::factory()->create();
+        $login = $user->createLoginToken(60)->accessToken;
+        $originalExpiry = $login->expires_at;
+
+        $this->withHeader('Authorization', 'Bearer ' . $user->createLoginToken(60)->plainTextToken)
+            ->putJson('/neev/apiTokens', ['token_id' => $login->id, 'expiry' => 525600])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Token was not updated.');
+
+        $this->assertEquals($originalExpiry->timestamp, $login->fresh()->expires_at->timestamp);
+    }
+
+    /** And the delete endpoint is API tokens only; sessions have their own route. */
+    public function test_the_delete_endpoint_cannot_reach_a_login_token(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $other = $user->createLoginToken(60)->accessToken;
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/apiTokens', ['token_id' => $other->id])
+            ->assertNotFound();
+
+        $this->assertDatabaseHas('access_tokens', ['id' => $other->id]);
+    }
+
+    /** `permissions` used to reach createApiToken() unshaped and 500. */
+    public function test_a_malformed_permissions_field_is_a_rejection_not_a_500(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/apiTokens', ['permissions' => 'read'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('permissions');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/apiTokens', ['permissions' => [['nested']]])
+            ->assertStatus(422);
+    }
+
+    // -----------------------------------------------------------------
+    // The Blade twin
+    // -----------------------------------------------------------------
+
+    /** The session-authenticated pages shape their input the same way. */
+    public function test_the_blade_token_form_rejects_a_malformed_permissions_field(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->post('/account/tokens/store', ['name' => 'web', 'permissions' => 'read'])
+            ->assertSessionHasErrors('permissions');
+
+        $this->actingAs($user)
+            ->post('/account/tokens/store', ['name' => 'web', 'permissions' => ['read']])
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseHas('access_tokens', [
+            'user_id' => $user->id,
+            'name' => 'web',
+            'token_type' => AccessToken::api_token,
+        ]);
+    }
 }

@@ -281,6 +281,15 @@ A role scoped to a team is meaningless for somebody outside it, so
 team, and so must the user whose role is changing — though an invited user or
 a pending applicant counts, since `addMember()` grants them roles too.
 
+**An invitation link carries a secret.** The mail to an address with no
+account yet links to registration with the invitation id and 32 random bytes;
+only the hash of those bytes is stored, so holding the link is the proof that
+the invitation reached that inbox — which is what lets redemption mark the
+address verified and assign the invited role. A wrong or missing secret, an
+invitation past its seven-day deadline, or a different address being
+registered are each refused. Inviting the same address again issues a fresh
+secret and invalidates the previous link.
+
 Invitations are addressed to one inbox, so only the account holding that
 address may accept or reject one. Cancelling an invitation is a separate
 question: a member of the team may revoke it, and the invitee may decline it,

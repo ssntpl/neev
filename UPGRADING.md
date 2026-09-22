@@ -13,6 +13,119 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.3 → Unreleased
 
+**BREAKING: a verified platform subdomain is now its own passkey relying
+party (action required if tenants sign in with passkeys on your
+subdomains).**
+Every host under `relying_party_id` used to share one relying party, so a
+passkey enrolled on `acme.example.com` was the same credential as one
+enrolled on `example.com` or on `other.example.com`. Shared relying party
+means shared credentials: a tenant that can run script on its own subdomain
+could start a ceremony that returns a victim's credential ids and completes
+with the browser showing your platform's name the whole way through. A
+verified row inside your zone is now treated like any other — `acme.example.com`
+gets `rp.id = "acme.example.com"`.
+
+- **Passkeys enrolled on a platform subdomain stop working there** and are no
+  longer offered. They are not deleted: they still appear in
+  `GET {prefix}/passkeys` with their old `rp_id`, and users enrol again on the
+  subdomain. Tell those users before you deploy.
+- **Unaffected:** passkeys on the platform's own hosts (which resolve no
+  tenant context and keep `relying_party_id`), passkeys on a tenant's custom
+  domain, and legacy credentials with a null `rp_id`, which are still read as
+  belonging to the configured relying party.
+- **`rp.name` on a tenant's subdomain is now the tenant's name**, not
+  `app.name`, since the relying party is the tenant's host.
+- Keeping the shared-zone behaviour is a code-level choice, and it takes
+  **two** overrides in a subclass of `RelyingPartyResolver` bound in a service
+  provider: `settle()`, to leave a platform-zone host unclaimed so `rpId()`
+  falls back to `relying_party_id`, *and* `allowedOrigins()`, to admit that
+  host anyway. Overriding `settle()` alone produces a state neither version
+  ever shipped — the configured relying party with the host the browser is on
+  not admitted — in which every ceremony on a platform subdomain fails.
+
+**BREAKING: an API token can no longer manage API tokens (action required if
+an integration mints or edits tokens).**
+Every route under `{prefix}/apiTokens` used to accept whichever credential
+authenticated the request, so a leaked scoped token could widen itself to
+`['*']`, mint a fresh wildcard, or delete the account's other tokens —
+leaving `neev-token-can` enforcing a scope its own holder could rewrite. All
+five now answer `403` to a token whose type is not `login`.
+
+- **Enrolling a passkey is refused to a scoped token too**, for the same
+  reason one level along: a passkey login is a complete factor that returns a
+  full login token, so a scoped token able to enrol an authenticator could
+  sign in past every scope it was given. `POST {prefix}/passkeys/register/options`
+  and `POST {prefix}/passkeys/register` answer `403` to a non-login token.
+- **Unaffected:** signing in and using the login token it returns, a
+  cookie-mode SPA (its cookie carries a login token), the Blade account pages,
+  and `$user->createApiToken(...)` called from your own code, jobs or commands.
+- **`PUT`/`DELETE {prefix}/apiTokens` resolve their target among API tokens
+  only.** They reached every token the account held, including the caller's
+  own login token — so an `expiry` there reset the absolute ceiling on a
+  session. Revoke a session through `DELETE {prefix}/sessions/{id}` or by
+  logging out; a request naming a login token id now gets `400`/`404`.
+- **Affected:** any script or service that authenticates with a *scoped API
+  token* and then calls these endpoints. Give it a login token obtained by
+  signing in, or mint the tokens it needs from your own application code.
+- `permissions` must now be an array of strings; a bare string is `422` rather
+  than a 500.
+
+**BREAKING: team invitations already in flight stop working (action required
+if you have pending invitations).**
+The emailed invitation link carried the invitation's row id and
+`sha1(email)`. Neither is a secret — the id is a plain auto-increment and the
+address is known to whoever is guessing — yet holding the pair was treated as
+proof the invitation had reached that inbox: registration marked the address
+verified and granted the invited role on the strength of it. The link now
+carries a per-invitation secret instead.
+
+`team_invitations` gains a `token` column, so installs that have already run
+that migration add it themselves:
+
+```php
+Schema::table('team_invitations', function (Blueprint $table) {
+    $table->string('token')->nullable()->after('role');
+});
+```
+
+- **Pending invitations have no secret and are refused.** Invite those
+  addresses again — `POST {prefix}/teams/inviteUser` and the Blade action
+  both replace the existing row, issuing a fresh secret and a new link.
+- **The link's query parameter is `token`, not `hash`** — on both the Blade
+  and headless URLs. Two consequences that need action whether or not you
+  override anything:
+  - **If you ejected the Blade kit**, edit
+    `resources/views/vendor/neev/auth/register.blade.php`: the hidden field is
+    now `name="token"` fed by `$token`, where it was `name="hash"` fed by
+    `$hash`. Re-running `php artisan neev:ui blade` **skips files that already
+    exist**, so it will not repair this for you. Until you change it, every
+    invited user reaches the form and is then refused with "Invalid or expired
+    invitation link."
+  - **If you are headless**, your `/register` page must read `token` from the
+    invitation URL and forward it to `POST {prefix}/register` as `token`. A
+    page still forwarding `hash` sends nothing the endpoint reads.
+- **`EmailLinks::invitationUrl()` changed signature** from
+  `(int|string $invitationId, string $email, DateTimeInterface $expiresAt)`
+  to `(int|string $invitationId, string $token, …)`. If you override it, pass
+  the plaintext through to your own page.
+- **Accepting an invitation now requires a verified address.** The signed-in
+  accept and decline actions (`PUT {prefix}/teams/inviteUser`, the Blade
+  equivalent) checked only that the account's address matched the
+  invitation's. Registration issues a token for an address immediately, so
+  that check let anyone who knew an invited address register it and take the
+  membership and role in its name — the emailed secret closed the
+  registration door, this closes the other one. An unverified address is also
+  no longer told what it was invited to. Users mid-verification must verify
+  before accepting.
+- **If you ejected `account/teams.blade.php`**, its Accept/Reject form posted
+  `$invitation->team->id` as `invitation_id`. That was always wrong — it acted
+  on whichever invitation happened to share that integer — and is now fixed in
+  the stub to `$invitation->id`. Apply the same one-line change to your copy.
+- **`expires_at` is now enforced.** It was stored on every invitation and
+  never read, so invitations the mail described as lasting seven days in fact
+  lasted forever. Accepting an expired invitation is refused, on the
+  registration path and for a signed-in invitee alike.
+
 **`POST /neev/logoutAll` now requires confirmation (action required).**
 It previously revoked every other login token on the bearer token alone
 — the one account-takeover tool in the API that asked for nothing, while
@@ -170,9 +283,8 @@ come from:
 - **A tenant's hosts** come from its verified `domains` rows, so a
   tenant on `acme.example.com` or on its own `acme.com` needs no entry
   in `allowed_origins`. Only the host the request's `Origin` names is
-  admitted, so one tenant's subdomain never admits a sibling — not even
-  a second platform-zone row the same tenant holds, since every host in
-  your zone shares `relying_party_id`.
+  admitted, and since that host is now its own relying party, a sibling
+  has nothing to be admitted against.
 - **Your own hosts** still come from `allowed_origins`, unchanged. If
   you serve passkeys from `app.example.com` or `login.example.com` as
   well as the apex, each must be listed verbatim — as it had to be
