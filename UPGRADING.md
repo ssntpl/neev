@@ -13,6 +13,24 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.3 → Unreleased
 
+**A failed confirmation reports one message, keyed by the field it asked for
+(action required if you match on the old strings).**
+The four actions that ask an account to prove itself each carried their own
+copy of the "does this account have a password" branch and their own wording:
+`Password is Wrong.`, `Password is incorrect.`, `The password is incorrect.`
+`AuthService::confirmationError()` is the one place that decides now, so all
+of them answer `The password is incorrect.` or
+`The confirmation code is invalid or has expired.`
+
+- **API clients matching on the old message strings** need updating. The
+  status codes are unchanged (`422` for a missing field, `403` for a wrong
+  one).
+- **Blade**: `DELETE /account/accountDelete` put its error under the
+  `message` key; it is now under `password` or `otp`, like the other three
+  always were. The shipped views render every error, so the kit is
+  unaffected — only code reading `$errors->first('message')` for this action
+  needs the new key.
+
 **Auto-provisioned SSO accounts are created without a password (action
 required if you have any from an earlier version).**
 `TenantSSOManager` used to write a random password and discard the plaintext,

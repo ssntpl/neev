@@ -56,9 +56,15 @@ Authenticator setups that are started but never verified remain in a `pending` s
 
 After a password, magic-link or OAuth login that requires MFA, the API issues a short-lived JWT used only to complete verification:
 
+```php
+// config/neev.php
+'mfa_jwt_expiry_minutes' => 30,           // Minutes before the MFA JWT expires
+'jwt_secret' => env('NEEV_JWT_SECRET'),   // Signing key; falls back to APP_KEY if not set
+```
+
 It is **single-use**: verifying a code trades it for a login token and spends
 it, so one first factor buys one session. A replay after a successful
-verification is `401`, even inside the expiry window below. A wrong code does
+verification is `401`, even inside the expiry window above. A wrong code does
 not spend it — the user has to be able to try again — and neither does a
 resend.
 
@@ -69,8 +75,12 @@ recovery code) would otherwise allow. If the trade then fails, the claim is
 released, so nobody is left holding a spent token and an unfinished login.
 
 Like this package's throttles, its login back-off and its passkey challenges,
-the record lives in the cache. A `null` cache store leaves all four without
-their guarantee; it is not a configuration to run this package under.
+the record lives in the cache — so it needs a store **shared by every app
+server**. On `null` nothing is recorded; on `array` the record lasts one
+process; on `file` behind two servers with no shared disk, a spend on one
+server does not exist on the other and the token is replayable there. Use
+`redis`, `memcached` or `database`. None of these four guarantees survives a
+per-process or per-server store.
 
 The Blade challenge spends it too, when the request carries it: an OAuth
 callback on a stateful origin parks the step-up token in the auth cookie, the
@@ -79,11 +89,6 @@ spends it. A challenge answered somewhere the cookie is not presented cannot
 spend what it cannot see — the token then stands until it expires, as an
 unanswered challenge's would.
 
-```php
-// config/neev.php
-'mfa_jwt_expiry_minutes' => 30,           // Minutes before the MFA JWT expires
-'jwt_secret' => env('NEEV_JWT_SECRET'),   // Signing key; falls back to APP_KEY if not set
-```
 
 ---
 

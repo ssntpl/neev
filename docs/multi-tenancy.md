@@ -192,7 +192,8 @@ $resolver->isResolvedDomainVerified();     // Whether the domain is verified
 $resolver->currentId();                     // Context ID (Tenant ID or Team ID)
 $resolver->isEnabled();                     // true when config('neev.tenant') is enabled
 
-// Run code in a specific tenant context (useful for platform provisioning)
+// Run code in a specific tenant context — from a command or a queued job,
+// never inside a request that has bound one (see Console & Queue Context).
 $resolver->runInContext($tenant, function () {
     $user = User::create([...]);         // tenant_id auto-set
 });
@@ -362,7 +363,7 @@ $resolver->runInContext($tenant, function () {
 
 **Platform provisioning example:**
 
-When creating tenant resources from platform context (e.g., provisioning the first user for a new tenant), `runInContext()` ensures all `BelongsToTenant` models get the correct `tenant_id` automatically:
+When creating tenant resources from platform context (e.g., provisioning the first user for a new tenant), `runInContext()` ensures all `BelongsToTenant` models get the correct `tenant_id` automatically — **from a command or a queued job**. A controller cannot use it: every neev route group ends in `BindContextMiddleware`, so the request has already bound its context and `runInContext()` throws a `LogicException` rather than leaving the resolver and `ContextManager` pointing at different tenants. Provisioning inside a request sets `tenant_id` explicitly, as shown below.
 
 ```php
 $resolver->runInContext($tenant, function () use ($data) {

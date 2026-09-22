@@ -175,19 +175,6 @@ class AuthService
     }
 
     /**
-     * Email the user a one-time code, and nothing else.
-     *
-     * Deliberately generic: any caller that needs the account holder to
-     * prove they are reading the mailbox uses this, whether or not the
-     * account has a password. sendEmailVerification() pairs the same code
-     * with a signed link, which most callers have no use for — a link that
-     * signs the reader in does not belong beside "confirm deleting your
-     * account".
-     *
-     * The user holds one code at a time, so issuing here replaces any code
-     * outstanding for any purpose, including a verification in flight.
-     */
-    /**
      * Validation rules for the proof a sensitive action asks of this account.
      *
      * An account holding a password proves itself with it. One without — every
@@ -201,8 +188,8 @@ class AuthService
     public function confirmationRules(User $user): array
     {
         return $user->password !== null
-            ? ['password' => ['required']]
-            : ['otp' => ['required']];
+            ? ['password' => ['required', 'string']]
+            : ['otp' => ['required', 'string']];
     }
 
     /**
@@ -216,12 +203,33 @@ class AuthService
             : $this->verifyEmailOtp($user, (string) $request->input('otp'));
     }
 
-    /** Which proof was asked for, so a caller can word its own refusal. */
-    public function confirmationField(User $user): string
+    /**
+     * The error a failed confirmation reports, keyed by the field that was
+     * asked for. Replaces the `password !== null` branch every call site was
+     * keeping its own copy of — the drift this helper exists to prevent.
+     *
+     * @return array<string, string>
+     */
+    public function confirmationError(User $user): array
     {
-        return $user->password !== null ? 'password' : 'otp';
+        return $user->password !== null
+            ? ['password' => __('The password is incorrect.')]
+            : ['otp' => __('The confirmation code is invalid or has expired.')];
     }
 
+    /**
+     * Email the user a one-time code, and nothing else.
+     *
+     * Deliberately generic: any caller that needs the account holder to
+     * prove they are reading the mailbox uses this, whether or not the
+     * account has a password. sendEmailVerification() pairs the same code
+     * with a signed link, which most callers have no use for — a link that
+     * signs the reader in does not belong beside "confirm deleting your
+     * account".
+     *
+     * The user holds one code at a time, so issuing here replaces any code
+     * outstanding for any purpose, including a verification in flight.
+     */
     public function sendConfirmationOtp(User $user): void
     {
         $otp = $this->createEmailVerificationOtp($user);

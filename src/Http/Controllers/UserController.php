@@ -205,11 +205,7 @@ class UserController extends Controller
         $request->validate($auth->confirmationRules($user));
 
         if (!$auth->confirmIdentity($user, $request)) {
-            return back()->withErrors([
-                'message' => $user->password !== null
-                    ? 'Password is Wrong.'
-                    : __('The confirmation code is invalid or has expired.'),
-            ]);
+            return back()->withErrors($auth->confirmationError($user));
         }
 
         $user->delete();
@@ -227,6 +223,12 @@ class UserController extends Controller
             return back()->withErrors(['message' => 'User not found.']);
         }
         if ($request->action === 'delete') {
+            // Nothing to remove is answered first, so a single-use code is
+            // not spent on a method the account does not have.
+            if (!$user->multiFactorAuth($request->auth_method)) {
+                return back()->withErrors(['message' => 'Auth was not deleted.']);
+            }
+
             // Removing a second factor is confirmed, as the API twin and the
             // other account-security actions are: a stolen session must not be
             // able to strip the factor that guards the account.
@@ -234,9 +236,7 @@ class UserController extends Controller
             $request->validate($auth->confirmationRules($user));
 
             if (!$auth->confirmIdentity($user, $request)) {
-                return back()->withErrors($user->password !== null
-                    ? ['password' => __('The password is incorrect.')]
-                    : ['otp' => __('The confirmation code is invalid or has expired.')]);
+                return back()->withErrors($auth->confirmationError($user));
             }
 
             if (!$user->removeMultiFactorAuth($request->auth_method)) {

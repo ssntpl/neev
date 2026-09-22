@@ -579,7 +579,12 @@ The API middleware provides:
    can reach is decided by the route groups. The MFA step-up is carried by a
    short-lived JWT rather than an `AccessToken`, and it is spent by the
    verification it authorises — one first factor, one login token, however
-   much of its expiry window is left; see [MFA](./mfa.md).
+   much of its expiry window is left; see [MFA](./mfa.md). That record lives
+   in the cache, so it needs a store **shared by every app server**: on `file`
+   behind two servers with no shared disk, or on `array`, a spend recorded on
+   one server does not exist on the next and the token is replayable there.
+   The same is true of the rate limits, the login back-off and the passkey
+   challenges on this page.
 
 3. **Account Status:**
    - Rejects deactivated users with `403` ("Your account is deactivated.")
@@ -700,7 +705,7 @@ See [Confirming a sensitive action](#confirming-a-sensitive-action).
 
 ### Confirming a sensitive action
 
-Four actions ask the account to prove itself again, because each of them
+Three actions ask the account to prove itself again, because each of them
 either ends the account or makes every future sign-in easier, and a stolen
 session or bearer token should not be enough to reach them:
 

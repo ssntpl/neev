@@ -589,14 +589,10 @@ class UserAuthController extends Controller
             // from account.confirmation. Revoking one named session below
             // is not, so a user who spots a device they do not recognise
             // can drop it without hunting for a password first.
-            $request->validate($this->auth->confirmationRules($user));
-
-            if (!$this->auth->confirmIdentity($user, $request)) {
-                return back()->withErrors($user->password !== null
-                    ? ['password' => __('The password is incorrect.')]
-                    : ['otp' => __('The confirmation code is invalid or has expired.')]);
-            }
-
+            // Refused before the confirmation is asked for, let alone spent:
+            // the code is single-use, so confirming first burned one on every
+            // attempt only to answer that the thing cannot be done at all.
+            //
             // Only the database driver stores sessions where another one can
             // be reached. The fallback used to rotate the caller's own session
             // id and report success, which revoked nothing and told the user
@@ -607,6 +603,12 @@ class UserAuthController extends Controller
                 return back()->withErrors([
                     'message' => __('Other sessions cannot be signed out on this session driver. Ask your administrator to use the database session driver, or to attach Laravel\'s AuthenticateSession middleware, which ends other sessions when the password changes.'),
                 ]);
+            }
+
+            $request->validate($this->auth->confirmationRules($user));
+
+            if (!$this->auth->confirmIdentity($user, $request)) {
+                return back()->withErrors($this->auth->confirmationError($user));
             }
 
             $this->auth->revokeOtherSessions($user, Session::getId());

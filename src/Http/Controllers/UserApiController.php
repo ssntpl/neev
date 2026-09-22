@@ -85,6 +85,15 @@ class UserApiController extends Controller
             ], 404);
         }
 
+        // Nothing to remove is answered before the confirmation is asked for,
+        // let alone spent: the code is single-use, so confirming first burned
+        // one on a method the account does not even have.
+        if (!$user->multiFactorAuth($request->auth_method)) {
+            return response()->json([
+                'message' => 'Auth was not deleted.',
+            ], 403);
+        }
+
         // Taking a second factor off the account is the one change that makes
         // every future sign-in easier, so it is confirmed like the other
         // account-security actions: whoever holds a stolen token should not be
@@ -94,9 +103,7 @@ class UserApiController extends Controller
 
         if (!$auth->confirmIdentity($user, $request)) {
             return response()->json([
-                'message' => $user->password !== null
-                    ? 'Password is Wrong.'
-                    : 'The confirmation code is invalid or has expired.',
+                'message' => array_values($auth->confirmationError($user))[0],
             ], 403);
         }
 
@@ -183,9 +190,7 @@ class UserApiController extends Controller
 
         if (!$auth->confirmIdentity($user, $request)) {
             return response()->json([
-                'message' => $user->password !== null
-                    ? 'Password is Wrong.'
-                    : 'The confirmation code is invalid or has expired.',
+                'message' => array_values($auth->confirmationError($user))[0],
             ], 403);
         }
 

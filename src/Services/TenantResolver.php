@@ -425,10 +425,19 @@ class TenantResolver
             $this->resolvedCustomDomain = $previous['customDomain'];
 
             if (app()->bound(ContextManager::class)) {
-                if ($previous['context']) {
-                    app(ContextManager::class)->setContext($previous['context']);
-                } else {
-                    app(ContextManager::class)->clear();
+                $manager = app(ContextManager::class);
+
+                // Nothing to restore onto a context the callback itself bound:
+                // clear() resets the bound flag as well as the context, so
+                // putting it back here would silently un-bind a request that
+                // is now relying on it. The guard above means we never started
+                // from a bound one.
+                if (!$manager->isBound()) {
+                    if ($previous['context']) {
+                        $manager->setContext($previous['context']);
+                    } else {
+                        $manager->clear();
+                    }
                 }
             }
         }

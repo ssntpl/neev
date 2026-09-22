@@ -275,9 +275,7 @@ class UserAuthApiController extends Controller
 
         if (!$auth->confirmIdentity($user, $request)) {
             return response()->json([
-                'message' => $user->password !== null
-                    ? 'Password is incorrect.'
-                    : 'The confirmation code is invalid or has expired.',
+                'message' => array_values($auth->confirmationError($user))[0],
             ], 403);
         }
 
