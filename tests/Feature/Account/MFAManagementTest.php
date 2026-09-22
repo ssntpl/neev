@@ -4,7 +4,12 @@ namespace Ssntpl\Neev\Tests\Feature\Account;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Laravel\Socialite\Contracts\User as SocialiteUser;
+use Mockery;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
+use Ssntpl\Neev\Database\Factories\TeamAuthSettingsFactory;
+use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Services\TenantSSOManager;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\User;
@@ -351,6 +356,63 @@ class MFAManagementTest extends TestCase
                 'otp' => $otp,
                 'auth_method' => 'authenticator',
             ])
+            ->assertOk();
+
+        $this->assertNull($user->fresh()->multiFactorAuth('authenticator'));
+    }
+
+    /**
+     * An auto-provisioned SSO account used to be written with a random
+     * password nobody could produce, so it could answer neither branch of the
+     * confirmation: the password one asked for something it did not have, and
+     * the code one was unreachable because the column was populated. Every
+     * gated action was closed to exactly the accounts with no way in.
+     */
+    public function test_an_sso_provisioned_account_can_confirm_with_a_code(): void
+    {
+        Mail::fake();
+
+        $team = TeamFactory::new()->create();
+        TeamAuthSettingsFactory::new()->create([
+            'team_id' => $team->id,
+            'auto_provision' => true,
+        ]);
+
+        $socialite = Mockery::mock(SocialiteUser::class);
+        $socialite->shouldReceive('getEmail')->andReturn('asha@partner.test');
+        $socialite->shouldReceive('getName')->andReturn('Asha');
+
+        $user = (new TenantSSOManager())->findOrCreateUser($team, $socialite);
+
+        $this->assertNull($user->password, 'Provisioning must not invent a password.');
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'preferred' => true,
+        ]);
+
+        $token = $user->createLoginToken(60)->plainTextToken;
+
+        // The code branch is the one that applies, and it works.
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/mfa/delete', ['auth_method' => 'authenticator'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('otp');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/confirmation/otp')
+            ->assertOk();
+
+        $otp = null;
+        Mail::assertSent(EmailOTP::class, function (EmailOTP $mail) use (&$otp) {
+            $otp = $mail->otp;
+
+            return true;
+        });
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/mfa/delete', ['otp' => $otp, 'auth_method' => 'authenticator'])
             ->assertOk();
 
         $this->assertNull($user->fresh()->multiFactorAuth('authenticator'));

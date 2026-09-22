@@ -157,8 +157,12 @@ class TenantSSOManagerTest extends TestCase
         // Verify email is pre-verified (SSO emails)
         $this->assertNotNull($created->email_verified_at);
 
-        // Verify password was created
-        $this->assertNotNull($created->getRawOriginal('password'));
+        // No password, as an OAuth registration has none: a random one nobody
+        // could produce made every "do you have a password" gate unanswerable
+        // for these accounts, and started a password-expiry clock on it.
+        $this->assertNull($created->getRawOriginal('password'));
+        $this->assertNull($created->password_changed_at);
+        $this->assertFalse($created->isPasswordExpired());
     }
 
     public function test_find_or_create_user_uses_extracted_name_when_sso_name_null(): void

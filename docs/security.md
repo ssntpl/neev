@@ -713,7 +713,10 @@ session or bearer token should not be enough to reach them:
 Send `password`. An account created through OAuth or SSO has none — a password
 was never set, and `Hash::check()` against a null hash can never succeed — so
 it sends `otp` instead, from `POST {prefix}/confirmation/otp` or the Blade
-`account.confirmation` route. A missing field is `422`, a wrong one `403`, and
+`account.confirmation` route. Auto-provisioned SSO accounts were written with a
+random password nobody could produce until this release, which left them unable
+to answer either branch; see [UPGRADING](../UPGRADING.md) if you have any from
+an earlier version. A missing field is `422`, a wrong one `403`, and
 nothing happens. `AuthService::confirmationRules()` and `confirmIdentity()` are
 the one place this is decided, so an action cannot drift from the others. See
 [Accounts Without a Password](./authentication.md#accounts-without-a-password).

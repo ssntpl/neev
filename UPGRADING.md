@@ -13,6 +13,32 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.3 → Unreleased
 
+**Auto-provisioned SSO accounts are created without a password (action
+required if you have any from an earlier version).**
+`TenantSSOManager` used to write a random password and discard the plaintext,
+so the column said those accounts had one while nobody could produce it. They
+could not delete their account, sign other sessions out, or remove a second
+factor — each of those asks for a password when the column is populated, and
+the emailed-code branch was unreachable for them — and after
+`password_expiry_days` they met "Your password has expired" on every route
+behind `neev-password-not-expired`, with no password to change. New
+provisioning matches an OAuth registration: no password, no expiry clock.
+
+Existing rows cannot be told apart from a real password by looking at them, so
+nothing is migrated automatically. For accounts you know were provisioned by
+SSO and have never set a password of their own, clear the column:
+
+```php
+// Adjust the selection to your own records of which accounts are SSO-only.
+User::whereNotNull('password')
+    ->whereIn('email', $ssoOnlyAddresses)
+    ->update(['password' => null, 'password_changed_at' => null]);
+```
+
+Or leave them and tell those users to use "forgot password" once: the reset
+link goes to the address their IdP already verified, and after it they hold a
+password the gates can check. Either way they stop being locked out.
+
 **Removing a multi-factor method now needs confirmation (action required if
 you call it).**
 `DELETE {prefix}/mfa/delete` and the Blade `POST /account/mfa` with
