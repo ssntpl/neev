@@ -333,9 +333,9 @@
 
             {{-- Content --}}
             <x-slot name="content">
-                <p class="text-sm">Paaskeys allow for a more secure, seamless authentication experience on supported devices.</p>
-                <div class="flex flex-col gap-4">
-                    <form id="passkey-form" method="POST" class="flex gap-2 items-center justify-between" x-show="openPasskey" x-transition action="{{ route('passkeys.register') }}" class="flex flex-col gap-2">
+                <p class="text-sm">Passkeys allow for a more secure, seamless authentication experience on supported devices.</p>
+                <div class="flex flex-col gap-4" x-data="{ show: false }">
+                    <form id="passkey-form" method="POST" class="flex gap-2 items-center justify-between" x-show="openPasskey" x-transition action="{{ route('passkeys.register') }}">
                         @csrf
                         <input type="hidden" name="attestation" id="attestation-input">
 
@@ -345,21 +345,46 @@
                         </div>
 
                         <div class="text-end">
-                            <x-neev-component::button id="start" type="button">
+                            <x-neev-component::button type="button" class="cursor-pointer" @click="show = true">
                                 {{ __('Add Passkey') }}
                             </x-neev-component::button>
                         </div>
                     </form>
 
                     {{-- A passkey signs in with the account's whole authority, so
-                         enrolling one is confirmed like every other credential. The
-                         ceremony starts with a fetch rather than a form post, so the
-                         field is read from here and sent with it. --}}
-                    <div id="passkey-confirm" x-show="openPasskey" x-transition>
-                        <x-neev-component::confirm-identity :user="$user" />
-                    </div>
-                    {{-- Ceremonies that fail in the browser never reach the server, so they are reported here. --}}
-                    <p id="passkey-error" class="text-sm text-red-600 dark:text-red-400" role="alert" x-show="openPasskey" hidden></p>
+                         enrolling one is confirmed like every other credential, in
+                         the same dialog. The ceremony starts with a fetch rather
+                         than a form post, so the field is read from here and sent
+                         with it. --}}
+                    <x-neev-component::dialog-modal>
+                        <x-slot name="title">
+                            {{ __('Add Passkey') }}
+                        </x-slot>
+
+                        <x-slot name="content">
+                            <p class="text-start">
+                                {{ __('A passkey signs in with the full authority of the account, so confirm it is you.') }}
+                            </p>
+
+                            <div id="passkey-confirm">
+                                <x-neev-component::confirm-identity :user="$user" />
+                            </div>
+
+                            {{-- Ceremonies that fail in the browser never reach the server, so they are reported here. --}}
+                            <p id="passkey-error" class="mt-3 text-sm text-red-600 dark:text-red-400" role="alert" hidden></p>
+                        </x-slot>
+
+                        <x-slot name="footer">
+                            <x-neev-component::secondary-button class="cursor-pointer" @click="show = false">
+                                {{ __('Cancel') }}
+                            </x-neev-component::secondary-button>
+
+                            <x-neev-component::button id="start" type="button" class="ms-2 cursor-pointer">
+                                {{ __('Continue') }}
+                            </x-neev-component::button>
+                        </x-slot>
+                    </x-neev-component::dialog-modal>
+
                     @if (count($user->passkeys) > 0)
                         <x-neev-component::table>
                             <x-slot name="head">
