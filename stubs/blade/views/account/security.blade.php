@@ -132,25 +132,102 @@
                                             <p>{{$user->multiFactorAuth($method)?->last_used?->diffForHumans()}}</p>
                                         @endif
                                     </div>
-                                    <div x-data="{ show: false, sending: false, sent: false, sendError: null }" class="text-end">
+                                    <div x-data="{ show: false, showEdit: false }" class="text-end">
                                         <form method="POST" action="{{route('multi.auth')}}" class="flex gap-4">
                                             @csrf
 
                                             <input type="hidden" name="auth_method" value="{{$method}}">
                                             <input type="hidden" name="action" x-ref="action">
-                                            @if ($user->multiFactorAuth($method))
-                                                <x-neev-component::secondary-button type="submit">{{ __('Edit') }}</x-neev-component::secondary-button>
-                                                {{-- Removal is confirmed, so it opens a dialog rather than
-                                                     submitting this form: the password or code has to be
-                                                     typed somewhere. --}}
+                                            @php($hasThisMethod = (bool) $user->multiFactorAuth($method))
+                                            @php($confirmsEnrolment = count($user->activeMultiFactorAuths) > 0)
+
+                                            @if ($hasThisMethod)
+                                                {{-- Re-issuing a setup hands back the secret, and removal
+                                                     takes the factor away, so both are confirmed: they open
+                                                     a dialog rather than submitting this form, because the
+                                                     password or code has to be typed somewhere. Only an
+                                                     account whose sole factor is this pending setup edits
+                                                     without confirming — it has nothing active to protect. --}}
+                                                @if ($confirmsEnrolment)
+                                                    <x-neev-component::secondary-button type="button" class="cursor-pointer" @click="showEdit = true">{{ __('Edit') }}</x-neev-component::secondary-button>
+                                                @else
+                                                    <x-neev-component::secondary-button type="submit">{{ __('Edit') }}</x-neev-component::secondary-button>
+                                                @endif
+
                                                 <x-neev-component::danger-button type="button" class="cursor-pointer" @click="show = true">{{ __('Delete') }}</x-neev-component::danger-button>
+                                            @elseif ($confirmsEnrolment)
+                                                {{-- Adding to an account that already has a factor is
+                                                     confirmed. The first factor is not. --}}
+                                                <x-neev-component::button type="button" class="cursor-pointer" @click="show = true">{{ __('Add') }}</x-neev-component::button>
                                             @else
                                                 <x-neev-component::button>{{ __('Add') }}</x-neev-component::button>
                                             @endif
                                         </form>
 
-                                        @if ($user->multiFactorAuth($method))
-                                            <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                        @if ($hasThisMethod && $confirmsEnrolment)
+                                            <x-neev-component::dialog-modal show="showEdit">
+                                                <x-slot name="title">
+                                                    {{ __('Set up') }} {{ $method }}
+                                                </x-slot>
+
+                                                <x-slot name="content">
+                                                    <p class="text-start">
+                                                        {{ __('Setting this factor up again shows its secret, so confirm it is you.') }}
+                                                    </p>
+
+                                                    <form method="POST" action="{{ route('multi.auth') }}" x-ref="editForm">
+                                                        @csrf
+
+                                                        <input type="hidden" name="auth_method" value="{{ $method }}">
+                                                        <x-neev-component::confirm-identity :user="$user" />
+                                                    </form>
+                                                </x-slot>
+
+                                                <x-slot name="footer">
+                                                    <x-neev-component::secondary-button class="cursor-pointer" @click="showEdit = false">
+                                                        {{ __('Cancel') }}
+                                                    </x-neev-component::secondary-button>
+
+                                                    <x-neev-component::button class="ms-2 cursor-pointer" @click="$refs.editForm.submit()">
+                                                        {{ __('Continue') }}
+                                                    </x-neev-component::button>
+                                                </x-slot>
+                                            </x-neev-component::dialog-modal>
+                                        @endif
+
+                                        @if (!$hasThisMethod && $confirmsEnrolment)
+                                            <x-neev-component::dialog-modal>
+                                                <x-slot name="title">
+                                                    {{ __('Add') }} {{ $method }}
+                                                </x-slot>
+
+                                                <x-slot name="content">
+                                                    <p class="text-start">
+                                                        {{ __('This account already has a second factor, so adding another asks you to confirm it is you.') }}
+                                                    </p>
+
+                                                    <form method="POST" action="{{ route('multi.auth') }}" x-ref="addForm">
+                                                        @csrf
+
+                                                        <input type="hidden" name="auth_method" value="{{ $method }}">
+                                                        <x-neev-component::confirm-identity :user="$user" />
+                                                    </form>
+                                                </x-slot>
+
+                                                <x-slot name="footer">
+                                                    <x-neev-component::secondary-button class="cursor-pointer" @click="show = false">
+                                                        {{ __('Cancel') }}
+                                                    </x-neev-component::secondary-button>
+
+                                                    <x-neev-component::button class="ms-2 cursor-pointer" @click="$refs.addForm.submit()">
+                                                        {{ __('Add') }}
+                                                    </x-neev-component::button>
+                                                </x-slot>
+                                            </x-neev-component::dialog-modal>
+                                        @endif
+
+                                        @if ($hasThisMethod)
+                                            <x-neev-component::dialog-modal>
                                                 <x-slot name="title">
                                                     {{ __('Remove') }} {{ $method }}
                                                 </x-slot>
@@ -160,59 +237,12 @@
                                                         {{ __('Removing this factor makes every future sign-in easier, so confirm it is you.') }}
                                                     </p>
 
-                                                    @if (!$user->password)
-                                                        {{-- No password to confirm with — accounts from a
-                                                             provider, and auto-provisioned SSO accounts.
-                                                             Requested with fetch, not a form post: a redirect
-                                                             would reset x-data and close this dialog. --}}
-                                                        <div class="mt-4 text-start">
-                                                            <x-neev-component::secondary-button type="button" class="cursor-pointer"
-                                                                x-bind:disabled="sending"
-                                                                @click="sending = true; sendError = null;
-                                                                    fetch('{{ route('account.confirmation') }}', {
-                                                                        method: 'POST',
-                                                                        headers: {
-                                                                            'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                                                                            'Accept': 'application/json',
-                                                                            'X-Requested-With': 'XMLHttpRequest',
-                                                                        },
-                                                                    })
-                                                                    .then(response => { if (!response.ok) { throw new Error(); } sent = true; })
-                                                                    .catch(() => { sendError = '{{ __('The code could not be sent. Please try again.') }}'; })
-                                                                    .finally(() => { sending = false; })">
-                                                                <span x-show="!sent">{{ __('Email me a code') }}</span>
-                                                                <span x-show="sent" x-cloak>{{ __('Send another code') }}</span>
-                                                            </x-neev-component::secondary-button>
-
-                                                            <p class="mt-2 text-sm text-green-600 dark:text-green-400" x-show="sent" x-cloak>
-                                                                {{ __('Code sent. Check your email and enter it below.') }}
-                                                            </p>
-                                                            <p class="mt-2 text-sm text-red-600 dark:text-red-400" x-show="sendError" x-cloak x-text="sendError"></p>
-                                                        </div>
-                                                    @endif
-
                                                     <form method="POST" action="{{ route('multi.auth') }}" x-ref="removeForm">
                                                         @csrf
 
                                                         <input type="hidden" name="auth_method" value="{{ $method }}">
                                                         <input type="hidden" name="action" value="delete">
-
-                                                        <div class="mt-4 text-start">
-                                                            @if ($user->password)
-                                                                <x-neev-component::input type="password"
-                                                                    name="password"
-                                                                    class="mt-1 block w-3/4"
-                                                                    autocomplete="current-password"
-                                                                    placeholder="{{ __('Password') }}" />
-                                                            @else
-                                                                <x-neev-component::input type="text"
-                                                                    name="otp"
-                                                                    class="mt-1 block w-3/4"
-                                                                    autocomplete="one-time-code"
-                                                                    inputmode="numeric"
-                                                                    placeholder="{{ __('Code') }}" />
-                                                            @endif
-                                                        </div>
+                                                        <x-neev-component::confirm-identity :user="$user" />
                                                     </form>
                                                 </x-slot>
 
@@ -303,9 +333,9 @@
 
             {{-- Content --}}
             <x-slot name="content">
-                <p class="text-sm">Paaskeys allow for a more secure, seamless authentication experience on supported devices.</p>
-                <div class="flex flex-col gap-4">
-                    <form id="passkey-form" method="POST" class="flex gap-2 items-center justify-between" x-show="openPasskey" x-transition action="{{ route('passkeys.register') }}" class="flex flex-col gap-2">
+                <p class="text-sm">Passkeys allow for a more secure, seamless authentication experience on supported devices.</p>
+                <div class="flex flex-col gap-4" x-data="{ show: false }">
+                    <form id="passkey-form" method="POST" class="flex gap-2 items-center justify-between" x-show="openPasskey" x-transition action="{{ route('passkeys.register') }}">
                         @csrf
                         <input type="hidden" name="attestation" id="attestation-input">
 
@@ -315,13 +345,46 @@
                         </div>
 
                         <div class="text-end">
-                            <x-neev-component::button id="start" type="button">
+                            <x-neev-component::button type="button" class="cursor-pointer" @click="show = true">
                                 {{ __('Add Passkey') }}
                             </x-neev-component::button>
                         </div>
                     </form>
-                    {{-- Ceremonies that fail in the browser never reach the server, so they are reported here. --}}
-                    <p id="passkey-error" class="text-sm text-red-600 dark:text-red-400" role="alert" x-show="openPasskey" hidden></p>
+
+                    {{-- A passkey signs in with the account's whole authority, so
+                         enrolling one is confirmed like every other credential, in
+                         the same dialog. The ceremony starts with a fetch rather
+                         than a form post, so the field is read from here and sent
+                         with it. --}}
+                    <x-neev-component::dialog-modal>
+                        <x-slot name="title">
+                            {{ __('Add Passkey') }}
+                        </x-slot>
+
+                        <x-slot name="content">
+                            <p class="text-start">
+                                {{ __('A passkey signs in with the full authority of the account, so confirm it is you.') }}
+                            </p>
+
+                            <div id="passkey-confirm">
+                                <x-neev-component::confirm-identity :user="$user" />
+                            </div>
+
+                            {{-- Ceremonies that fail in the browser never reach the server, so they are reported here. --}}
+                            <p id="passkey-error" class="mt-3 text-sm text-red-600 dark:text-red-400" role="alert" hidden></p>
+                        </x-slot>
+
+                        <x-slot name="footer">
+                            <x-neev-component::secondary-button class="cursor-pointer" @click="show = false">
+                                {{ __('Cancel') }}
+                            </x-neev-component::secondary-button>
+
+                            <x-neev-component::button id="start" type="button" class="ms-2 cursor-pointer">
+                                {{ __('Continue') }}
+                            </x-neev-component::button>
+                        </x-slot>
+                    </x-neev-component::dialog-modal>
+
                     @if (count($user->passkeys) > 0)
                         <x-neev-component::table>
                             <x-slot name="head">
@@ -371,7 +434,7 @@
             <x-slot name="content">
                 {{-- Delete Account --}}
                 @if ($delete_account)
-                    <div x-data="{ show: false, sending: false, sent: false, sendError: null }">
+                    <div x-data="{ show: false }">
                         <div class="flex justify-between gap-2">
                             <div>
                                 <p class="font-medium text-lg">Delete Account</p>
@@ -382,69 +445,20 @@
                             </x-neev-component::danger-button>
                         </div>
 
-                        <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                        <x-neev-component::dialog-modal>
                             <x-slot name="title">
                                 {{ __('Delete Account') }}
                             </x-slot>
                             
                             <x-slot name="content">
-                                @if ($user->password)
-                                    {{ __('Please enter your password to confirm you would like to delete of your account.') }}
-                                @else
-                                    {{ __('This cannot be undone. Accounts registered through a provider have no password, so we email a code instead. Send one, then enter it below to confirm.') }}
-
-                                    {{-- Requested with fetch, not a form post: a redirect
-                                         would reload the page, reset x-data and close this
-                                         dialog before the code could be typed into it. --}}
-                                    <div class="mt-4">
-                                        <x-neev-component::secondary-button type="button" class="cursor-pointer"
-                                            x-bind:disabled="sending"
-                                            @click="sending = true; sendError = null;
-                                                fetch('{{ route('account.confirmation') }}', {
-                                                    method: 'POST',
-                                                    headers: {
-                                                        'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                                                        'Accept': 'application/json',
-                                                        'X-Requested-With': 'XMLHttpRequest',
-                                                    },
-                                                })
-                                                .then(response => { if (!response.ok) { throw new Error(); } sent = true; })
-                                                .catch(() => { sendError = '{{ __('The code could not be sent. Please try again.') }}'; })
-                                                .finally(() => { sending = false; })">
-                                            <span x-show="!sent">{{ __('Email me a code') }}</span>
-                                            <span x-show="sent" x-cloak>{{ __('Send another code') }}</span>
-                                        </x-neev-component::secondary-button>
-
-                                        <p class="mt-2 text-sm text-green-600 dark:text-green-400" x-show="sent" x-cloak>
-                                            {{ __('Code sent. Check your email and enter it below.') }}
-                                        </p>
-                                        <p class="mt-2 text-sm text-red-600 dark:text-red-400" x-show="sendError" x-cloak x-text="sendError"></p>
-                                    </div>
-                                @endif
+                                <p class="text-start">
+                                    {{ __('This cannot be undone. Everything on the account goes with it.') }}
+                                </p>
 
                                 <form method="POST" action="{{ route('account.delete') }}" x-ref="deleteAccountForm">
                                     @csrf
                                     @method('DELETE')
-                                    {{-- Accounts registered through OAuth have no password to
-                                         confirm with, so they confirm with an emailed code. --}}
-                                    <div class="mt-4">
-                                        @if ($user->password)
-                                            <x-neev-component::input type="password"
-                                                name="password"
-                                                class="mt-1 block w-3/4"
-                                                autocomplete="password"
-                                                placeholder="{{ __('Password') }}"
-                                                x-ref="password" />
-                                        @else
-                                            <x-neev-component::input type="text"
-                                                name="otp"
-                                                class="mt-1 block w-3/4"
-                                                autocomplete="one-time-code"
-                                                inputmode="numeric"
-                                                placeholder="{{ __('Code') }}"
-                                                x-ref="otp" />
-                                        @endif
-                                    </div>
+                                    <x-neev-component::confirm-identity :user="$user" />
                                 </form>
                             </x-slot>
 
@@ -478,13 +492,27 @@
         passkeyError.hidden = true;
         passkeyError.textContent = '';
 
+        {{-- The component renders exactly one input: a password, or a code for
+             an account that has none. Read whichever it is by its name. --}}
+        const confirmField = document.querySelector('#passkey-confirm input');
+        const confirmation = confirmField
+            ? { [confirmField.getAttribute('name')]: confirmField.value }
+            : {};
+
         const resp = await fetch('{{ route('passkeys.register.options') }}', {
             method: 'POST',
             headers: {
                 'X-CSRF-TOKEN': '{{ csrf_token() }}',
                 'Accept': 'application/json',
+                'Content-Type': 'application/json',
             },
+            body: JSON.stringify(confirmation),
         });
+
+        if (resp.status === 422 || resp.status === 403) {
+            showPasskeyError('{{ __('Confirm it is you before adding a passkey: enter your password, or the code we emailed.') }}');
+            return;
+        }
 
         if (!resp.ok) {
             showPasskeyError('{{ __('Could not start passkey registration. Please try again.') }}');

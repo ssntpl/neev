@@ -226,10 +226,16 @@ account without one — created through OAuth or SSO — posts `otp`, a code fro
 
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| POST | `/account/multiFactorAuth` | `multi.auth` | Add MFA method |
+| POST | `/account/multiFactorAuth` | `multi.auth` | Add, re-issue or remove an MFA method (`action=delete` removes) |
 | PUT | `/account/multiFactorAuth` | `multi.preferred` | Set preferred MFA |
-| GET | `/account/recovery/codes` | `recovery.codes` | Show recovery codes |
-| POST | `/account/recovery/codes` | `recovery.generate` | Generate new codes |
+| GET | `/account/recovery/codes` | `recovery.codes` | Show recovery codes (shows a set only on the request that generated it) |
+| POST | `/account/recovery/codes` | `recovery.generate` | Generate new codes (throttled 5/min) |
+
+`multi.auth` and `recovery.generate` are **confirmed**: an account with a
+password posts `password`, one without posts `otp` from `account.confirmation`.
+Adding the account's **first** factor is exempt — that is onboarding. Removing
+one, re-issuing one, and generating recovery codes are confirmed always. See
+[Confirming a sensitive action](./security.md#confirming-a-sensitive-action).
 
 ---
 
@@ -237,7 +243,7 @@ account without one — created through OAuth or SSO — posts `otp`, a code fro
 
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| POST | `/account/passkeys/register/options` | `passkeys.register.options` | Get registration options |
+| POST | `/account/passkeys/register/options` | `passkeys.register.options` | Get registration options (confirmed: `password` or `otp`) |
 | POST | `/account/passkeys/register` | `passkeys.register` | Register new passkey |
 | DELETE | `/account/passkeys` | `passkeys.delete` | Delete passkey |
 

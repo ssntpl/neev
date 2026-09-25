@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Unit\Middleware;
 use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
 use Ssntpl\Neev\Database\Factories\LoginAttemptFactory;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
@@ -69,6 +70,24 @@ class NeevMiddlewareTest extends TestCase
 
         $this->assertTrue($response->isRedirection());
         $this->assertLocationContains('/login', $response);
+    }
+
+    /**
+     * A guest has no sign-in to end, so turning it away must not throw away
+     * the rest of its session.
+     */
+    public function test_a_guest_keeps_its_session_when_turned_away(): void
+    {
+        session(['locale' => 'fr']);
+        $token = session()->token();
+
+        $request = $this->buildRequest();
+
+        $response = $this->middleware->handle($request, $this->passThrough());
+
+        $this->assertLocationContains('/login', $response);
+        $this->assertSame('fr', session('locale'));
+        $this->assertSame($token, session()->token());
     }
 
     // -----------------------------------------------------------------
@@ -156,12 +175,16 @@ class NeevMiddlewareTest extends TestCase
     }
 
     /**
-     * Either signal closes the gate. A row written before the current
-     * convention reports a parked login the other way round - successful from
-     * the first factor, with no `multi_factor_method` yet - so a session
-     * already in flight at deploy time must still be challenged.
+     * Either signal closes the gate, but they close it differently. A
+     * *successful* login with no `multi_factor_method` completed before the
+     * factor existed - the account enrolled from somewhere else while this
+     * session was open. There is no challenge in flight for it: the challenge
+     * page reads the account from `session('email')`, which only a login
+     * parked at the challenge writes, so sending it there bounced to /login,
+     * which bounced an authenticated user back to the home page, which landed
+     * here again. It is unauthenticated instead, session and all.
      */
-    public function test_redirects_to_mfa_form_for_a_legacy_row_that_succeeded_without_a_factor(): void
+    public function test_signs_out_a_session_that_predates_the_enrolment(): void
     {
         $user = User::factory()->create();
 
@@ -178,13 +201,16 @@ class NeevMiddlewareTest extends TestCase
             'is_success' => true,
         ]);
 
+        Auth::login($user);
         $request = $this->buildRequest('/test', $user);
         session(['attempt_id' => $attempt->id]);
 
         $response = $this->middleware->handle($request, $this->passThrough());
 
         $this->assertTrue($response->isRedirection());
-        $this->assertLocationContains('/mfa/', $response);
+        $this->assertLocationContains('/login', $response);
+        $this->assertGuest();
+        $this->assertNull(session('attempt_id'));
     }
 
     /** The mirror case: a factor named, but the login never completed. */
@@ -324,6 +350,7 @@ class NeevMiddlewareTest extends TestCase
             'method' => 'authenticator',
         ]);
 
+        Auth::login($user);
         $request = $this->buildRequest('/test', $user);
         // No attempt_id in session
 
@@ -331,6 +358,9 @@ class NeevMiddlewareTest extends TestCase
 
         $this->assertTrue($response->isRedirection());
         $this->assertLocationContains('/login', $response);
+        // Redirecting while still signed in is what loops: /login sends an
+        // authenticated user straight back to a page this gate refuses.
+        $this->assertGuest();
     }
 
     // -----------------------------------------------------------------

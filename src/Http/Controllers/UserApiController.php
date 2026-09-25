@@ -32,13 +32,50 @@ class UserApiController extends Controller
 
     public function addMultiFactorAuthentication(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request, 'An API token cannot enrol a second factor.')) {
+            return $refusal;
+        }
+
         $request->validate([
             'auth_method' => ['required'],
         ]);
 
         $user = User::model()->find($request->user()?->id);
+        if (!$user) {
+            return response()->json([
+                'message' => 'User not found.',
+            ], 404);
+        }
 
-        $res = $user?->addMultiFactorAuth($request->auth_method);
+        // What cannot be enrolled is answered before the confirmation is
+        // asked for, so a single-use code is not spent on it.
+        if (!$user->supportsMultiFactorAuth($request->auth_method)) {
+            return response()->json([
+                'message' => 'Auth was not added.',
+            ], 400);
+        }
+        if ($error = $user->multiFactorAuthEnrolmentError($request->auth_method)) {
+            return response()->json([
+                'message' => $error,
+            ], 422);
+        }
+
+        // Adding a factor to an account that already has one is the same
+        // authority as taking one away: the attacker's own authenticator
+        // answers every future challenge. The first factor is onboarding and
+        // is not confirmed.
+        $auth = app(AuthService::class);
+        if ($auth->requiresConfirmationToEnrol($user)) {
+            $request->validate($auth->confirmationRules($user));
+
+            if (!$auth->confirmIdentity($user, $request)) {
+                return response()->json([
+                    'message' => array_values($auth->confirmationError($user))[0],
+                ], 403);
+            }
+        }
+
+        $res = $user->addMultiFactorAuth($request->auth_method);
         if (!$res) {
             return response()->json([
                 'message' => 'Auth was not added.',
@@ -54,6 +91,10 @@ class UserApiController extends Controller
 
     public function verifyMfaSetup(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request, 'An API token cannot enrol a second factor.')) {
+            return $refusal;
+        }
+
         $request->validate([
             'auth_method' => ['required', 'string'],
             'otp' => ['required'],
@@ -478,11 +519,28 @@ class UserApiController extends Controller
                 'message' => 'User not found.',
             ], 404);
         }
+        // Answered before the confirmation is asked for, so a single-use code
+        // is not spent on something that cannot happen.
         if (count($user->activeMultiFactorAuths) === 0) {
             return response()->json([
                 'message' => 'Enable MFA first.',
             ], 400);
         }
+
+        // A recovery code is a complete second factor, handed back here in
+        // plaintext — so this is the removal gate pointed the other way: a
+        // stolen session that cannot strip a factor could otherwise read
+        // itself one. Always confirmed, because reaching this line at all
+        // means the account already has a factor.
+        $auth = app(AuthService::class);
+        $request->validate($auth->confirmationRules($user));
+
+        if (!$auth->confirmIdentity($user, $request)) {
+            return response()->json([
+                'message' => array_values($auth->confirmationError($user))[0],
+            ], 403);
+        }
+
         $codes = $user->generateRecoveryCodes();
 
         return response()->json([

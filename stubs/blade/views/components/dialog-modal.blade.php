@@ -1,7 +1,7 @@
-@props(['id' => null, 'maxWidth' => '2xl'])
+@props(['id' => null, 'maxWidth' => '2xl', 'show' => 'show'])
 
-<x-neev-component::modal :id="$id" :maxWidth="$maxWidth" {{ $attributes }}>
-    <div class="px-6 py-4">
+<x-neev-component::modal :id="$id" :maxWidth="$maxWidth" :show="$show" {{ $attributes }}>
+    <div class="px-6 py-4 text-start">
         <div class="text-lg font-medium text-gray-900 dark:text-gray-100">
             {{ $title }}
         </div>

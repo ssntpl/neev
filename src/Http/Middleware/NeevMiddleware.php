@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\ContextManager;
@@ -63,6 +64,20 @@ class NeevMiddleware
                 && ($attempt->multi_factor_method || $answersForItself);
 
             if (!$answered) {
+                // A login that *completed* without ever naming a second
+                // factor predates the enrolment: the factor was added from
+                // somewhere else while this session was open. There is no
+                // challenge in flight to send it to -- the challenge page
+                // reads the account from `session('email')`, which only a
+                // login parked at the challenge writes -- so it is simply no
+                // longer authenticated, and the fresh login that follows
+                // parks at the challenge properly.
+                if ($attempt->is_success) {
+                    return $this->unauthenticated($request, 'Unauthenticated.');
+                }
+
+                // Still unsuccessful: a login parked mid-challenge, which
+                // does have its challenge in the session. Send it there.
                 $method = $attempt->multi_factor_method
                     ?? $user->preferredMultiFactorAuth?->method
                     ?? $user->activeMultiFactorAuths()->first()?->method;
@@ -75,14 +90,41 @@ class NeevMiddleware
                 return redirect(app(EmailLinks::class)->mfaChallengeUrl($method));
             }
         } elseif (!$attempt && count($user->activeMultiFactorAuths ?? []) > 0) {
+            // No attempt row to read at all, against an account that now
+            // requires a second factor: nothing here vouches for the session.
             return $this->unauthenticated($request, 'Unauthenticated.');
         }
 
         return $next($request);
     }
 
+    /**
+     * Refuse the request and end the session it came from.
+     *
+     * Only ending it makes the refusal true. A session left signed in while
+     * every protected page turns it away loops: the redirect lands on
+     * /login, which sends an authenticated user straight back to the page
+     * that refused it. Nothing here can tell why the session no longer
+     * clears the account's policy -- expired, revoked, a second factor
+     * enrolled from another session -- and it does not need to. From the
+     * server's side there is one answer, and it is this one.
+     *
+     * A guest has no sign-in to end, so its session is left alone: wiping it
+     * would only throw away whatever else it carries — a locale, a draft,
+     * another package's flash data — for a visitor who merely hit a protected
+     * page.
+     */
     protected function unauthenticated(Request $request, string $message, int $status = 401): Response
     {
+        if ($request->user()) {
+            Auth::logoutCurrentDevice();
+
+            if ($request->hasSession()) {
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
+        }
+
         if ($request->expectsJson()) {
             return response()->json(['message' => $message], $status);
         }

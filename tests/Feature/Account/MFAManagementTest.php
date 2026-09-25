@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Tests\Feature\Account;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use RuntimeException;
 use Laravel\Socialite\Contracts\User as SocialiteUser;
 use Mockery;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
@@ -12,6 +13,7 @@ use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Services\TenantSSOManager;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Models\MultiFactorAuth;
+use Ssntpl\Neev\Models\RecoveryCode;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -97,6 +99,7 @@ class MFAManagementTest extends TestCase
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/mfa/add', [
                 'auth_method' => 'email',
+                'password' => self::PASSWORD,
             ]);
 
         $response->assertStatus(422)
@@ -263,7 +266,7 @@ class MFAManagementTest extends TestCase
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/recoveryCodes');
+            ->postJson('/neev/recoveryCodes', ['password' => self::PASSWORD]);
 
         $response->assertOk()
             ->assertJsonStructure(['data']);
@@ -416,5 +419,207 @@ class MFAManagementTest extends TestCase
             ->assertOk();
 
         $this->assertNull($user->fresh()->multiFactorAuth('authenticator'));
+    }
+
+    // -----------------------------------------------------------------
+    // Enrolling another factor, and minting recovery codes, are confirmed
+    // -----------------------------------------------------------------
+
+    /**
+     * A stolen session that cannot strip a factor could otherwise give itself
+     * one: its own authenticator answers the challenge at every future
+     * sign-in, which is the removal gate defeated from the other side.
+     */
+    public function test_adding_a_second_factor_is_confirmed(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'preferred' => true,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'email'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('password');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'email', 'password' => 'not-the-password'])
+            ->assertStatus(403);
+
+        $this->assertNull($user->fresh()->multiFactorAuth('email'));
+    }
+
+    /**
+     * The first factor is onboarding: there is nothing yet for a stolen
+     * session to step around, and a wall here would meet every user turning
+     * MFA on for the first time.
+     */
+    public function test_the_first_factor_is_not_confirmed(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->assertCount(0, $user->activeMultiFactorAuths);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'authenticator'])
+            ->assertOk();
+    }
+
+    /** A pending setup is not an active factor, so it does not start gating. */
+    public function test_a_pending_setup_does_not_make_the_next_enrolment_confirmed(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'email'])
+            ->assertOk();
+    }
+
+    /**
+     * A recovery code signs you in on its own, and this hands back a fresh set
+     * in plaintext — so it is the removal gate pointed the other way.
+     */
+    public function test_minting_recovery_codes_is_confirmed(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/recoveryCodes')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('password');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/recoveryCodes', ['password' => 'not-the-password'])
+            ->assertStatus(403);
+
+        $this->assertCount(0, $user->fresh()->recoveryCodes);
+    }
+
+    /**
+     * Refused before the confirmation is asked for, so a single-use code is
+     * not spent on something that cannot happen.
+     */
+    public function test_recovery_codes_without_mfa_are_refused_before_confirming(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/recoveryCodes')
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Enable MFA first.');
+    }
+
+    /**
+     * A second factor answers every future challenge, so a scoped token must
+     * not enrol one — neither start the setup nor activate it.
+     */
+    public function test_a_scoped_api_token_cannot_enrol_a_second_factor(): void
+    {
+        $user = User::factory()->create(['password' => self::PASSWORD]);
+        $scoped = $user->createApiToken('scoped', ['read'])->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer ' . $scoped)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'authenticator'])
+            ->assertForbidden()
+            ->assertJsonPath('message', 'An API token cannot enrol a second factor.');
+
+        $this->assertSame(0, $user->multiFactorAuths()->count());
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'status' => MultiFactorAuth::STATUS_PENDING,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $scoped)
+            ->postJson('/neev/mfa/setup/verify', ['auth_method' => 'authenticator', 'otp' => '123456'])
+            ->assertForbidden()
+            ->assertJsonPath('message', 'An API token cannot enrol a second factor.');
+
+        $this->assertSame(0, $user->activeMultiFactorAuths()->count());
+    }
+
+    /**
+     * Replacing the set is one transaction: a failure part-way leaves the old
+     * codes standing, not a short set or none.
+     */
+    public function test_a_failed_regeneration_keeps_the_old_recovery_codes(): void
+    {
+        $user = User::factory()->create(['password' => self::PASSWORD]);
+        $old = $user->generateRecoveryCodes();
+
+        $created = 0;
+        RecoveryCode::creating(function () use (&$created) {
+            if (++$created === 3) {
+                throw new RuntimeException('insert failed');
+            }
+        });
+
+        try {
+            $user->generateRecoveryCodes();
+            $this->fail('Expected the regeneration to fail.');
+        } catch (RuntimeException $e) {
+            $this->assertSame('insert failed', $e->getMessage());
+        }
+
+        $this->assertCount(count($old), $user->recoveryCodes()->get());
+    }
+
+    /**
+     * An enrolment that cannot happen is refused before the confirmation is
+     * checked, so the single-use code is still good for the next action.
+     */
+    public function test_a_refused_enrolment_does_not_spend_the_confirmation_code(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create(['password' => null]);
+        $token = $user->createLoginToken(60)->plainTextToken;
+
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'authenticator',
+            'preferred' => true,
+        ]);
+        MultiFactorAuthFactory::new()->email()->create(['user_id' => $user->id]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/confirmation/otp')
+            ->assertOk();
+
+        $otp = null;
+        Mail::assertSent(EmailOTP::class, function (EmailOTP $mail) use (&$otp) {
+            $otp = $mail->otp;
+
+            return true;
+        });
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'email', 'otp' => $otp])
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Email already Configured.');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'sms', 'otp' => $otp])
+            ->assertStatus(400);
+
+        // The code survived both refusals.
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/recoveryCodes', ['otp' => $otp])
+            ->assertOk();
     }
 }

@@ -41,6 +41,8 @@ class MailingRoutesAreThrottledTest extends TestCase
             'api email change' => ['POST', 'neev/email/change', true],
             // Already limited, pinned so they stay that way.
             'blade confirmation code' => ['POST', 'account/confirmation/otp', true],
+            'blade recovery codes' => ['POST', 'account/recovery/codes', true],
+            'api recovery codes' => ['POST', 'neev/recoveryCodes', true],
             'api confirmation code' => ['POST', 'neev/confirmation/otp', true],
             'api magic link' => ['POST', 'neev/sendLoginLink', false],
             'api forgot password' => ['POST', 'neev/forgotPassword', false],

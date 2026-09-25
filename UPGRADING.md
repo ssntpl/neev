@@ -108,6 +108,67 @@ The subject was always `Email Verification`; it is now the purpose the email
 was sent for — `Verify Email`, `Reset Password` or `Verify Email Change` — so
 update any test assertion or mail filter that matched the old subject.
 
+**Adding a factor and minting recovery codes now need confirmation (action
+required if you call either).**
+Removing a factor was confirmed in the previous change; these two reach the
+same end from the other side. `POST {prefix}/recoveryCodes` and
+`POST /account/recovery/codes` hand back a complete second factor in
+plaintext, and `POST {prefix}/mfa/add` lets whoever holds a stolen token enrol
+their own authenticator. Both now take `password` — or `otp`, from
+`POST {prefix}/confirmation/otp` — exactly as removal does.
+
+- **Enrolling the *first* factor is unchanged.** The gate starts once the
+  account already holds an active one, so onboarding asks for nothing. A
+  pending setup does not count.
+- **`GET /account/recovery/codes` no longer generates codes.** It used to mint
+  a set whenever the account held none, which meant reading a page created
+  credentials. Generating is the confirmed `POST`; the plaintext is flashed to
+  the page that follows it and is never recoverable afterwards.
+- **Enrolling a passkey is confirmed too, and always.**
+  `POST {prefix}/passkeys/register/options` and
+  `POST /account/passkeys/register/options` take `password` or `otp`. A passkey
+  signs in with the account's whole authority and is never parked at the MFA
+  challenge, so it is more than a second factor. Clients that start the
+  ceremony must collect the proof first and send it with the options request.
+- **`POST {prefix}/mfa/add` and `POST {prefix}/mfa/setup/verify` refuse a
+  scoped API token**, as passkey enrolment and token management already did.
+  Use a login token.
+- **If you ejected the Blade kit**, three views changed. The security page
+  gained confirmation dialogs on Add and Edit and a confirmation field beside
+  the passkey form, the recovery-codes page gained a dialog on Generate and an
+  empty state for an account with no codes yet, and all of them — plus the
+  delete-account, remove-factor and log-out-other-sessions dialogs, which each
+  carried their own copy — now use a new
+  `resources/views/vendor/neev/components/confirm-identity.blade.php`. That is
+  five dialogs and the passkey form. Re-eject with
+  `php artisan neev:ui blade --force` if you have not customised them;
+  otherwise copy the component in and point each dialog at it.
+- **The modal components take a `show` prop naming the Alpine variable that
+  opens them** — `components/modal.blade.php` and the `dialog-modal` and
+  `confirmation-modal` wrappers around it. It defaults to `show`, so every
+  existing call site behaves exactly as before and needs no change. **Re-eject
+  all three together with the security page**, though: that page's new Set up
+  dialog passes `show="showEdit"`, and against an older copy of the components
+  the prop is ignored and the dialog binds to `show` — the same variable as
+  the Delete and Add controls beside it, so one button opens two dialogs.
+
+  The reason it needs a prop at all: `modal.blade.php` never renders
+  `{{ $attributes }}`, so attributes passed at the call site are dropped
+  rather than reaching the panel. The kit's own dialogs used to pass
+  `x-show="show" x-cloak @keydown.escape.window="show = false"
+  @click.away="show = false"` and worked only because the component hardcoded
+  the same thing internally. Those dead attributes are removed from the
+  shipped views. If you pass anything similar in a view of your own, it is
+  not taking effect — name the variable with `show` instead.
+- **The recovery-codes page prints with a stylesheet, and no longer reloads.**
+  The plaintext arrives once, so a reload after a cancelled print dialog would
+  have replaced the only copy of a freshly minted set. It also no longer swaps
+  `document.body.innerHTML` out and back, which left markup Alpine had stopped
+  driving — Copy, Download and Generate went dead after a print. An
+  `@media print` block shows only `#printable-area` instead; keep that id if
+  you restyle the printed sheet.
+- **Recovery-code generation is limited to five a minute** on both surfaces.
+
 **A failed confirmation reports one message, keyed by the field it asked for
 (action required if you match on the old strings).**
 The four actions that ask an account to prove itself each carried their own

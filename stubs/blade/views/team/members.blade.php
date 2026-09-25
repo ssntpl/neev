@@ -164,7 +164,7 @@
                                         @if ($team->user_id === $user->id)
                                             <div class="text-start" x-data="{ show: false, role: @js($memberRoles[$member->id] ?? ($member->membership->role ?? '')), userRole: @js($memberRoles[$member->id] ?? ($member->membership->role ?? '')) }">
                                                 <button class="capitalize underline cursor-pointer" @click="show = true">{{ $memberRoles[$member->id] ?? ($member->membership->role ?? '--')}}</button>
-                                                <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                                <x-neev-component::dialog-modal>
                                                     <x-slot name="title">
                                                         {{ __('Change Role') }}
                                                     </x-slot>
@@ -286,7 +286,7 @@
                                         <td class="px-4 py-2 text-center capitalize">
                                             <div class="text-start" x-data="{ show: false, role: @js($memberRoles[$member->id] ?? ($member->membership->role ?? '')), userRole: @js($memberRoles[$member->id] ?? ($member->membership->role ?? '')) }">
                                                 <button class="capitalize underline cursor-pointer" @click="show = true">{{ $memberRoles[$member->id] ?? ($member->membership->role ?? '--')}}</button>
-                                                <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                                <x-neev-component::dialog-modal>
                                                     <x-slot name="title">
                                                         {{ __('Change Role') }}
                                                     </x-slot>
@@ -374,7 +374,7 @@
                                         <td class="px-4 py-2 text-center capitalize">
                                             <div class="text-start" x-data="{ show: false, role: @js($invitation->role ?? ''), userRole: @js($invitation->role ?? '') }">
                                                 <button class="capitalize underline cursor-pointer" @click="show = true">{{ $invitation->role ?? '--'}}</button>
-                                                <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                                                <x-neev-component::dialog-modal>
                                                     <x-slot name="title">
                                                         {{ __('Change Role') }}
                                                     </x-slot>

@@ -314,8 +314,16 @@ Single-use backup codes for when primary MFA is unavailable.
 
 ```bash
 curl -X POST https://yourapp.com/neev/recoveryCodes \
-  -H "Authorization: Bearer {token}"
+  -H "Authorization: Bearer {token}" \
+  -H "Content-Type: application/json" \
+  -d '{"password": "SecurePass123!"}'
 ```
+
+Confirmed, because a recovery code signs you in on its own — see
+[Confirming a sensitive action](./security.md#confirming-a-sensitive-action).
+An account with no password sends `{"otp": "123456"}` instead. Generating
+replaces any codes already held, and the plaintext is returned **once**: only
+the hashes are stored, so a later request cannot show them again.
 
 **Response:**
 
@@ -387,6 +395,25 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 6. Full access token is returned
 
 Only **active** methods trigger the MFA challenge — pending setups never gate login, and the verify endpoint rejects codes for pending methods.
+
+### Enrolling while other sessions are open
+
+A factor takes effect immediately, including for sessions that signed in
+before it existed — enrol from an API token or a second browser and the web
+session you left open is covered too.
+
+Those sessions cannot be challenged where they stand: the challenge page
+identifies the account from `session('email')`, which only a login *parked*
+at the challenge writes, so there is nothing for it to read. The web session
+is **ended** instead — `NeevMiddleware` treats it as unauthenticated, session
+and all — and the next page load lands on the login form. Signing in again
+goes through the challenge normally. The session that did the enrolling is
+unaffected; so are API tokens, which are not re-gated once issued.
+
+Nothing distinguishes this from any other expired session in the response:
+the web request redirects to `loginUrl()`, and a JSON request under
+`neev:web` gets `401 {"message": "Unauthenticated."}`. See
+[MFA and the Login Method](./security.md#mfa-and-the-login-method).
 
 Magic links and OAuth enter the same flow at step 3: `{prefix}/loginUsingLink` and the OAuth callback return `mfa_required` with the JWT for an enrolled account, and their Blade counterparts (`login.link.verify` and the OAuth callback route) redirect to the challenge page. A passkey does not — it already carries the second factor, see [MFA and the Login Method](./security.md#mfa-and-the-login-method).
 
@@ -482,6 +509,11 @@ sessions out: send `password`, or `otp` for an account that has no password
 Taking a second factor off the account is the one change that makes every
 future sign-in easier, so whoever holds a stolen token must not be able to
 strip the factor that would have stopped them using it.
+
+**Adding** a factor is confirmed too, but only once the account already holds
+one — enrolling the first is onboarding. And **minting recovery codes** is
+always confirmed: a recovery code signs you in on its own, so that endpoint
+hands back a complete second factor in plaintext.
 
 ```bash
 curl -X DELETE https://yourapp.com/neev/mfa/delete \

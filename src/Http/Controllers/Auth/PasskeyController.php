@@ -98,6 +98,26 @@ class PasskeyController extends Controller
             return $refusal;
         }
 
+        // And confirmed, like every other way of establishing a credential on
+        // the account. A passkey is a complete first factor: it signs in with
+        // the account's whole authority and is never parked at the MFA
+        // challenge, so enrolling one is strictly more than enrolling a second
+        // factor — which is confirmed. Gating the options is enough, because
+        // the ceremony cannot be completed without the challenge they carry.
+        //
+        // Always, not only once a credential exists: an account reaching this
+        // page already has a way in, so there is no onboarding case here.
+        $confirming = User::model()->find($request->user()?->id);
+        if ($confirming) {
+            $request->validate($this->auth->confirmationRules($confirming));
+
+            if (!$this->auth->confirmIdentity($confirming, $request)) {
+                return response()->json([
+                    'message' => array_values($this->auth->confirmationError($confirming))[0],
+                ], 403);
+            }
+        }
+
         $user = User::model()->find($request->user()?->id);
         if (!$user) {
             return response()->json([

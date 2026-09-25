@@ -778,9 +778,18 @@ Authorization: Bearer {token}
 
 ```json
 {
-    "auth_method": "authenticator"  // or "email"
+    "auth_method": "authenticator",  // or "email"
+    "password": "SecurePass123!"     // only when the account already has a factor
 }
 ```
+
+Confirmed **only when the account already holds an active factor** — enrolling
+the first one is onboarding and asks for nothing. After that, send `password`,
+or `otp` for an account that has none (from `POST /neev/confirmation/otp`): an
+attacker with a stolen token who enrols their own authenticator would otherwise
+answer the challenge at every future sign-in. A missing field is `422`, a wrong
+one `403`. See
+[Confirming a sensitive action](./security.md#confirming-a-sensitive-action).
 
 **Response (authenticator):**
 
@@ -974,6 +983,20 @@ POST /neev/recoveryCodes
 ```http
 Authorization: Bearer {token}
 ```
+
+**Request Body:**
+
+```json
+{
+    "password": "SecurePass123!"
+}
+```
+
+Always confirmed: a recovery code signs you in on its own, so this hands back a
+complete second factor in plaintext. Send `password`, or `otp` for an account
+that has none. `400` when no factor is enabled — answered before the
+confirmation is asked for, so a single-use code is not spent on something that
+cannot happen. Limited to five a minute.
 
 **Response:**
 

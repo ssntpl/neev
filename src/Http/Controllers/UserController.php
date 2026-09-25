@@ -245,6 +245,27 @@ class UserController extends Controller
 
             return back()->with('status', 'Auth has been deleted.');
         }
+        // What cannot be enrolled is answered before the confirmation is
+        // asked for, so a single-use code is not spent on it.
+        if (!$user->supportsMultiFactorAuth($request->auth_method)) {
+            return back()->withErrors(['message' => 'Auth was not added.']);
+        }
+        if ($error = $user->multiFactorAuthEnrolmentError($request->auth_method)) {
+            return back()->withErrors(['message' => $error]);
+        }
+
+        // Adding a factor to an account that already has one is confirmed,
+        // like removing one: the attacker's own authenticator would otherwise
+        // answer every future challenge. The first factor is onboarding.
+        $auth = app(AuthService::class);
+        if ($auth->requiresConfirmationToEnrol($user)) {
+            $request->validate($auth->confirmationRules($user));
+
+            if (!$auth->confirmIdentity($user, $request)) {
+                return back()->withErrors($auth->confirmationError($user));
+            }
+        }
+
         $attemptID = session('attempt_id');
         $attempt = $user->loginAttempts()->where('id', $attemptID)->first();
         if ($attempt) {
@@ -289,11 +310,16 @@ class UserController extends Controller
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
 
-        if (count($user->recoveryCodes) === 0) {
-            $codes = $user->generateRecoveryCodes();
-        }
-
-        return view('neev::account.recovery-codes', ['codes' => $codes ?? []]);
+        // Reading a page does not mint credentials. This used to generate a
+        // set whenever the account held none, so a stolen session could open
+        // the page, read a complete second factor off it, and leave the owner
+        // none the wiser. Generating is the confirmed POST below; the plain
+        // codes reach this view once, flashed by that redirect.
+        return view('neev::account.recovery-codes', [
+            'user' => $user,
+            'codes' => (array) $request->session()->get('codes', []),
+            'hasCodes' => count($user->recoveryCodes) > 0,
+        ]);
     }
 
     public function generateRecoveryCodes(Request $request)
@@ -302,8 +328,19 @@ class UserController extends Controller
         if (!$user || count($user->activeMultiFactorAuths) === 0) {
             return back()->withErrors(['message' => 'Enable MFA first.']);
         }
-        $user->recoveryCodes()->delete();
-        return redirect()->route('recovery.codes');
+
+        // A recovery code is a complete second factor, shown here in
+        // plaintext — the removal gate pointed the other way.
+        $auth = app(AuthService::class);
+        $request->validate($auth->confirmationRules($user));
+
+        if (!$auth->confirmIdentity($user, $request)) {
+            return back()->withErrors($auth->confirmationError($user));
+        }
+
+        $codes = $user->generateRecoveryCodes();
+
+        return redirect()->route('recovery.codes')->with('codes', $codes);
     }
 
     public function tokenStore(Request $request)

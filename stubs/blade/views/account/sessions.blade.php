@@ -71,72 +71,24 @@
                 </div>
             @endif
 
-            <div x-data="{ show: false, sending: false, sent: false, sendError: null }">
+            <div x-data="{ show: false }">
                 <x-neev-component::button @click="show = true">
                     {{ __('Log Out Other Browser Sessions') }}
                 </x-neev-component::button>
 
-                <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="show = false" @click.away="show = false">
+                <x-neev-component::dialog-modal>
                     <x-slot name="title">
                         {{ __('Log Out Other Browser Sessions') }}
                     </x-slot>
                     
                     <x-slot name="content">
-                        @if ($user->password)
-                            {{ __('Please enter your password to confirm you would like to log out of your other browser sessions across all of your devices.') }}
-                        @else
-                            {{ __('Accounts signed in through a provider have no password, so we email a code instead. Send one, then enter it below to log out of your other browser sessions.') }}
-
-                            {{-- Requested with fetch, not a form post: a redirect
-                                 would reload the page, reset x-data and close this
-                                 dialog before the code could be typed into it. --}}
-                            <div class="mt-4">
-                                <x-neev-component::secondary-button type="button" class="cursor-pointer"
-                                    x-bind:disabled="sending"
-                                    @click="sending = true; sendError = null;
-                                        fetch('{{ route('account.confirmation') }}', {
-                                            method: 'POST',
-                                            headers: {
-                                                'X-CSRF-TOKEN': '{{ csrf_token() }}',
-                                                'Accept': 'application/json',
-                                                'X-Requested-With': 'XMLHttpRequest',
-                                            },
-                                        })
-                                        .then(response => { if (!response.ok) { throw new Error(); } sent = true; })
-                                        .catch(() => { sendError = '{{ __('The code could not be sent. Please try again.') }}'; })
-                                        .finally(() => { sending = false; })">
-                                    <span x-show="!sent">{{ __('Email me a code') }}</span>
-                                    <span x-show="sent" x-cloak>{{ __('Send another code') }}</span>
-                                </x-neev-component::secondary-button>
-
-                                <p class="mt-2 text-sm text-green-600 dark:text-green-400" x-show="sent" x-cloak>
-                                    {{ __('Code sent. Check your email and enter it below.') }}
-                                </p>
-                                <p class="mt-2 text-sm text-red-600 dark:text-red-400" x-show="sendError" x-cloak x-text="sendError"></p>
-                            </div>
-                        @endif
+                        <p class="text-start">
+                            {{ __('This signs you out everywhere except here. Confirm it is you.') }}
+                        </p>
 
                         <form method="POST" action="{{ route('logout.sessions') }}" x-ref="logoutOtherSessionsForm">
                             @csrf
-
-                            <div class="mt-4">
-                                @if ($user->password)
-                                    <x-neev-component::input type="password"
-                                        name="password"
-                                        class="mt-1 block w-3/4"
-                                        autocomplete="current-password"
-                                        placeholder="{{ __('Password') }}"
-                                        x-ref="password" />
-                                @else
-                                    <x-neev-component::input type="text"
-                                        name="otp"
-                                        class="mt-1 block w-3/4"
-                                        autocomplete="one-time-code"
-                                        inputmode="numeric"
-                                        placeholder="{{ __('Code') }}"
-                                        x-ref="otp" />
-                                @endif
-                            </div>
+                            <x-neev-component::confirm-identity :user="$user" />
                         </form>
                     </x-slot>
 

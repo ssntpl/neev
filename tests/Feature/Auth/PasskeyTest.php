@@ -4,9 +4,11 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Models\Passkey;
+use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\RelyingPartyResolver;
 use Ssntpl\Neev\Services\TenantResolver;
@@ -27,6 +29,9 @@ class PasskeyTest extends TestCase
             'neev.allowed_origins' => ['http://localhost'],
         ]);
     }
+
+    /** The factory's password, which the confirmed endpoints now ask for. */
+    private const PASSWORD = 'password';
 
     protected function authenticatedUser(): array
     {
@@ -221,7 +226,7 @@ class PasskeyTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/passkeys/register/options');
+            ->postJson('/neev/passkeys/register/options', ['password' => self::PASSWORD]);
 
         $response->assertOk()
             ->assertJsonStructure([
@@ -241,7 +246,7 @@ class PasskeyTest extends TestCase
         $this->createPasskey($user, ['rp_id' => 'other.com']);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/passkeys/register/options');
+            ->postJson('/neev/passkeys/register/options', ['password' => self::PASSWORD]);
 
         $response->assertOk();
         $this->assertEqualsCanonicalizing(
@@ -256,7 +261,7 @@ class PasskeyTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/passkeys/register/options');
+            ->postJson('/neev/passkeys/register/options', ['password' => self::PASSWORD]);
 
         $response->assertOk();
         $stored = Cache::get("passkey_reg_challenge:{$user->id}");
@@ -288,7 +293,7 @@ class PasskeyTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/passkeys/register/options');
+            ->postJson('/neev/passkeys/register/options', ['password' => self::PASSWORD]);
 
         $response->assertOk()
             ->assertJsonPath('rp.id', 'passkeys.example.com');
@@ -464,7 +469,7 @@ class PasskeyTest extends TestCase
 
         $registration = $this->withHeader('Authorization', 'Bearer ' . $token)
             ->withHeader('Origin', 'https://acme.example.com')
-            ->postJson('https://acme.example.com/neev/passkeys/register/options');
+            ->postJson('https://acme.example.com/neev/passkeys/register/options', ['password' => self::PASSWORD]);
 
         $registration->assertOk()->assertJsonPath('rp.id', 'acme.example.com');
         $this->assertSame(
@@ -583,7 +588,7 @@ class PasskeyTest extends TestCase
         $scoped = $user->createApiToken('scoped', ['read'])->plainTextToken;
 
         $this->withHeader('Authorization', 'Bearer ' . $scoped)
-            ->postJson('/neev/passkeys/register/options')
+            ->postJson('/neev/passkeys/register/options', ['password' => self::PASSWORD])
             ->assertForbidden()
             ->assertJsonPath('message', 'An API token cannot enrol a passkey.');
 
@@ -600,7 +605,7 @@ class PasskeyTest extends TestCase
         [$user, $token] = $this->authenticatedUser();
 
         $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/passkeys/register/options')
+            ->postJson('/neev/passkeys/register/options', ['password' => self::PASSWORD])
             ->assertOk()
             ->assertJsonPath('rp.id', config('neev.relying_party_id'));
     }
@@ -641,5 +646,58 @@ class PasskeyTest extends TestCase
             'domain' => $host,
             'is_primary' => $primary,
         ]);
+    }
+
+    /**
+     * A passkey signs in with the account's whole authority and is never
+     * parked at the MFA challenge, so enrolling one is strictly more than
+     * enrolling a second factor — which is confirmed. A stolen session must
+     * not be able to add its own way in.
+     */
+    public function test_enrolling_a_passkey_is_confirmed(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/passkeys/register/options')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('password');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/passkeys/register/options', ['password' => 'not-the-password'])
+            ->assertStatus(403)
+            ->assertJsonPath('message', 'The password is incorrect.');
+
+        $this->assertNull(Cache::get("passkey_reg_challenge:{$user->id}"), 'No challenge is issued.');
+    }
+
+    /** An account with no password confirms with a mailed code instead. */
+    public function test_a_passwordless_account_enrols_a_passkey_with_a_code(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create(['password' => null]);
+        $token = $user->createLoginToken(60)->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/passkeys/register/options')
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('otp');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/confirmation/otp')
+            ->assertOk();
+
+        $otp = null;
+        Mail::assertSent(EmailOTP::class, function (EmailOTP $mail) use (&$otp) {
+            $otp = $mail->otp;
+
+            return true;
+        });
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/passkeys/register/options', ['otp' => $otp])
+            ->assertOk()
+            ->assertJsonPath('rp.id', config('neev.relying_party_id'));
     }
 }

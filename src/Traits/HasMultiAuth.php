@@ -45,6 +45,39 @@ trait HasMultiAuth
         return $this->hasMany(RecoveryCode::class);
     }
 
+    /**
+     * Whether `addMultiFactorAuth()` knows how to enrol this method at all.
+     */
+    public function supportsMultiFactorAuth($method): bool
+    {
+        return in_array($method, ['authenticator', 'email'], true);
+    }
+
+    /**
+     * Why enrolling a supported method would be refused, or null if it would
+     * not be. The one place those rules live: `addMultiFactorAuth()` applies
+     * them, and the controllers ask here first so a single-use confirmation
+     * code is not spent on an enrolment that cannot happen.
+     */
+    public function multiFactorAuthEnrolmentError($method): ?string
+    {
+        if ($method !== 'email') {
+            return null;
+        }
+
+        // Email OTP is only as trustworthy as the address it is sent to, so
+        // an unverified address cannot become a factor.
+        if (!$this->hasVerifiedEmail()) {
+            return 'Email is not verified.';
+        }
+
+        if ($this->multiFactorAuth($method)) {
+            return 'Email already Configured.';
+        }
+
+        return null;
+    }
+
     public function addMultiFactorAuth($method)
     {
         switch ($method) {
@@ -83,22 +116,11 @@ trait HasMultiAuth
                 ];
 
             case 'email':
-                // Email OTP is only as trustworthy as the address it is
-                // sent to, so an unverified address cannot become a factor.
-                if (!$this->hasVerifiedEmail()) {
+                if ($error = $this->multiFactorAuthEnrolmentError($method)) {
                     return [
                         'status' => 'Error',
                         'method' => $method,
-                        'message' => 'Email is not verified.'
-                    ];
-                }
-
-                $auth = $this->multiFactorAuth($method);
-                if ($auth) {
-                    return [
-                        'status' => 'Error',
-                        'method' => $method,
-                        'message' => 'Email already Configured.'
+                        'message' => $error,
                     ];
                 }
 
@@ -294,15 +316,19 @@ trait HasMultiAuth
 
     public function generateRecoveryCodes()
     {
-        $this->recoveryCodes()->delete();
-        $codes = [];
-        for ($i = 1; $i <= config('neev.recovery_codes'); $i++) {
-            $code = Str::lower(Str::random(10));
-            $this->recoveryCodes()->create([
-                'code' => $code,
-            ]);
-            $codes[] = $code;
-        }
+        $codes = $this->recoveryCodes()->getRelated()->getConnection()->transaction(function () {
+            $this->recoveryCodes()->delete();
+            $codes = [];
+            for ($i = 1; $i <= config('neev.recovery_codes'); $i++) {
+                $code = Str::lower(Str::random(10));
+                $this->recoveryCodes()->create([
+                    'code' => $code,
+                ]);
+                $codes[] = $code;
+            }
+
+            return $codes;
+        });
 
         event(new RecoveryCodesGenerated($this));
 

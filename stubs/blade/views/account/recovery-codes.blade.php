@@ -50,17 +50,77 @@
                     </div>
                 </div>
             @endif
-            <div class="flex flex-col gap-4">
-                <h1 class="font-bold text-lg">Generate new recovery codes</h1>
-                <p>When you generate new recovery codes, you must download or print the new codes. Your old codes won't work anymore.</p>
-                <form method="POST" action="{{route('recovery.generate')}}">
-                    @csrf
-                    <x-neev-component::secondary-button type="submit">{{ __('Generate new recovery codes') }}</x-neev-component::secondary-button>
-                </form>
+            @if (($hasCodes ?? false) && count($codes ?? []) === 0)
+                <div class="p-4 bg-gray-100 dark:bg-gray-800 text-sm rounded">
+                    {{ __('Your recovery codes were shown once, when they were generated. They cannot be shown again — generate a new set below if you no longer have them.') }}
+                </div>
+            @elseif (!($hasCodes ?? false) && count($codes ?? []) === 0)
+                <div class="p-4 bg-gray-100 dark:bg-gray-800 text-sm rounded">
+                    {{ __('You have no recovery codes yet. Generate a set below and keep it somewhere safe.') }}
+                </div>
+            @endif
+
+            <div x-data="{ show: false }" class="flex flex-col gap-4">
+                <h1 class="font-bold text-lg">{{ $hasCodes ?? false ? __('Generate new recovery codes') : __('Generate recovery codes') }}</h1>
+                <p>{{ __("When you generate new recovery codes, you must download or print them. Your old codes won't work anymore.") }}</p>
+
+                {{-- Confirmed, because a recovery code is a complete second
+                     factor and this hands back a fresh set in plaintext. --}}
+                <div>
+                    <x-neev-component::secondary-button type="button" class="cursor-pointer" @click="show = true">
+                        {{ $hasCodes ?? false ? __('Generate new recovery codes') : __('Generate recovery codes') }}
+                    </x-neev-component::secondary-button>
+                </div>
+
+                <x-neev-component::dialog-modal>
+                    <x-slot name="title">
+                        {{ __('Generate recovery codes') }}
+                    </x-slot>
+
+                    <x-slot name="content">
+                        <p class="text-start">
+                            {{ __('A recovery code signs you in on its own, so confirm it is you. Any codes you already have will stop working.') }}
+                        </p>
+
+                        <form method="POST" action="{{ route('recovery.generate') }}" x-ref="generateForm">
+                            @csrf
+                            <x-neev-component::confirm-identity :user="$user" />
+                        </form>
+                    </x-slot>
+
+                    <x-slot name="footer">
+                        <x-neev-component::secondary-button class="cursor-pointer" @click="show = false">
+                            {{ __('Cancel') }}
+                        </x-neev-component::secondary-button>
+
+                        <x-neev-component::button class="ms-2 cursor-pointer" @click="$refs.generateForm.submit()">
+                            {{ __('Generate') }}
+                        </x-neev-component::button>
+                    </x-slot>
+                </x-neev-component::dialog-modal>
             </div>
         </x-slot>
     </x-neev-component::card>
 </x-neev-layout::app>
+<style>
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+
+        #printable-area,
+        #printable-area * {
+            visibility: visible;
+        }
+
+        #printable-area {
+            display: block !important;
+            position: absolute;
+            inset: 0 auto auto 0;
+            width: 100%;
+        }
+    }
+</style>
 <script>
     function recoveryCodesHandler(appName) {
         return {
@@ -78,13 +138,12 @@
                 link.click();
             },
             printCodes() {
-                const originalContent = document.body.innerHTML;
-                const printable = document.getElementById('printable-area').innerHTML;
-
-                document.body.innerHTML = printable;
+                // The print stylesheet above shows only #printable-area, so the
+                // page itself is never touched. Swapping body.innerHTML out and
+                // back left dead markup Alpine no longer drove, and reloading
+                // to recover is not an option: the plaintext reaches this page
+                // once, flashed by the redirect that generated it.
                 window.print();
-                document.body.innerHTML = originalContent;
-                window.location.reload();
             },
             copyCodes() {
                 navigator.clipboard.writeText(this.getCodes())
