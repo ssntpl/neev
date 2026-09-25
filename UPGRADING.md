@@ -51,6 +51,19 @@ required).** An email change discards every code the user holds, since each was
 mailed to the old address; a password change discards a pending reset code, as
 it already retired the reset link; deleting an account deletes its codes.
 
+**The API-token page's two dialogs no longer collide (no action required).**
+Only the shipped `account/tokens.blade.php` changed. An ejected copy still
+shows the old token when "Permissions" is clicked right after creating one,
+and does not reset the permissions dialog on Escape or a backdrop click. The
+simplest fix is to re-eject the view. To patch yours instead: give the
+new-token dialog `show="showToken"` and have its Done button set
+`showToken = false`; render the permissions dialog outside the
+`@if (session('token'))` rather than in its `@else`; drop the `x-show`,
+`x-cloak`, `@keydown.escape.window` and `@click.away` attributes from both
+`dialog-modal` tags, which the component never rendered; and copy the new
+`permissionManager()` script over yours. The dialog `show` prop needs the
+modal components from this release.
+
 ---
 
 ## 0.6.5 → 0.6.6

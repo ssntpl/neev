@@ -1,4 +1,4 @@
-// Neev v0.4.0 Database Schema
+// Neev Database Schema
 // Paste into https://dbdiagram.io
 
 Table tenants {
@@ -58,16 +58,18 @@ Table otp {
   id bigint [pk, increment]
   owner_id bigint
   owner_type varchar
-  otp text
+  purpose varchar [note: 'email_verification | confirmation | password_reset (OtpPurpose)']
+  otp varchar [note: 'hashed']
+  attempts tinyint [default: 0, note: 'wrong guesses; refused at OTP::MAX_ATTEMPTS']
   expires_at timestamp
   created_at timestamp
   updated_at timestamp
 
   indexes {
-    (owner_id, owner_type) [unique]
+    (owner_id, owner_type, purpose) [unique, note: 'one live code per owner per purpose']
   }
 
-  Note: 'Polymorphic (owner can be Email, MultiFactorAuth, etc.)'
+  Note: 'Emailed codes. Polymorphic owner (the user model); no foreign key, so deleting a user deletes its rows in code'
 }
 
 Table passkeys {
@@ -79,19 +81,25 @@ Table passkeys {
   ip varchar [null]
   location text [null]
   last_used timestamp [null]
-  public_key varchar
-  aaguid varchar
-  transports varchar [null]
+  public_key text
+  aaguid text
+  transports text [null]
   created_at timestamp
   updated_at timestamp
+
+  indexes {
+    rp_id
+  }
 }
 
 Table multi_factor_auths {
   id bigint [pk, increment]
   user_id bigint [ref: > users.id]
   method varchar
+  status varchar [default: 'active', note: 'pending | active; pending until setup is verified']
   secret text [null, note: 'encrypted']
-  otp text [null]
+  otp varchar [null, note: 'hashed']
+  attempts tinyint [default: 0, note: 'wrong guesses; refused at MultiFactorAuth::MAX_ATTEMPTS']
   preferred boolean [default: false]
   expires_at timestamp [null]
   last_used timestamp [null]
@@ -156,7 +164,7 @@ Table team_user {
   team_id bigint [ref: > teams.id]
   user_id bigint [ref: > users.id]
   joined boolean [default: false]
-  action enum_action [note: 'request_to_user | request_from_user']
+  action enum_action [default: 'request_to_user', note: 'request_to_user | request_from_user']
   created_at timestamp
   updated_at timestamp
 
@@ -174,6 +182,7 @@ Table team_invitations {
   team_id bigint [ref: > teams.id]
   email varchar
   role varchar [null]
+  token varchar [null, note: 'hashed; the secret the invitation link carries']
   expires_at timestamp [null]
   created_at timestamp
   updated_at timestamp
@@ -262,8 +271,8 @@ Table magic_link_tokens {
   updated_at timestamp
 
   indexes {
-    user_id
     (user_id, channel)
+    expires_at
   }
 }
 
