@@ -108,14 +108,21 @@ class NeevMiddleware
      * clears the account's policy -- expired, revoked, a second factor
      * enrolled from another session -- and it does not need to. From the
      * server's side there is one answer, and it is this one.
+     *
+     * A guest has no sign-in to end, so its session is left alone: wiping it
+     * would only throw away whatever else it carries — a locale, a draft,
+     * another package's flash data — for a visitor who merely hit a protected
+     * page.
      */
     protected function unauthenticated(Request $request, string $message, int $status = 401): Response
     {
-        Auth::logoutCurrentDevice();
+        if ($request->user()) {
+            Auth::logoutCurrentDevice();
 
-        if ($request->hasSession()) {
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
+            if ($request->hasSession()) {
+                $request->session()->invalidate();
+                $request->session()->regenerateToken();
+            }
         }
 
         if ($request->expectsJson()) {

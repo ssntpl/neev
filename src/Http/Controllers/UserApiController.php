@@ -32,6 +32,10 @@ class UserApiController extends Controller
 
     public function addMultiFactorAuthentication(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request, 'An API token cannot enrol a second factor.')) {
+            return $refusal;
+        }
+
         $request->validate([
             'auth_method' => ['required'],
         ]);
@@ -41,6 +45,19 @@ class UserApiController extends Controller
             return response()->json([
                 'message' => 'User not found.',
             ], 404);
+        }
+
+        // What cannot be enrolled is answered before the confirmation is
+        // asked for, so a single-use code is not spent on it.
+        if (!$user->supportsMultiFactorAuth($request->auth_method)) {
+            return response()->json([
+                'message' => 'Auth was not added.',
+            ], 400);
+        }
+        if ($error = $user->multiFactorAuthEnrolmentError($request->auth_method)) {
+            return response()->json([
+                'message' => $error,
+            ], 422);
         }
 
         // Adding a factor to an account that already has one is the same
@@ -74,6 +91,10 @@ class UserApiController extends Controller
 
     public function verifyMfaSetup(Request $request)
     {
+        if ($refusal = $this->refuseApiTokenCredential($request, 'An API token cannot enrol a second factor.')) {
+            return $refusal;
+        }
+
         $request->validate([
             'auth_method' => ['required', 'string'],
             'otp' => ['required'],

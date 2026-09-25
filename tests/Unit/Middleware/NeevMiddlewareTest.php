@@ -72,6 +72,24 @@ class NeevMiddlewareTest extends TestCase
         $this->assertLocationContains('/login', $response);
     }
 
+    /**
+     * A guest has no sign-in to end, so turning it away must not throw away
+     * the rest of its session.
+     */
+    public function test_a_guest_keeps_its_session_when_turned_away(): void
+    {
+        session(['locale' => 'fr']);
+        $token = session()->token();
+
+        $request = $this->buildRequest();
+
+        $response = $this->middleware->handle($request, $this->passThrough());
+
+        $this->assertLocationContains('/login', $response);
+        $this->assertSame('fr', session('locale'));
+        $this->assertSame($token, session()->token());
+    }
+
     // -----------------------------------------------------------------
     // Inactive user
     // -----------------------------------------------------------------

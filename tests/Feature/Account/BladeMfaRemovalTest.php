@@ -339,4 +339,34 @@ class BladeMfaRemovalTest extends TestCase
 
         $this->assertGreaterThan(0, $user->fresh()->recoveryCodes->count());
     }
+
+    /**
+     * An enrolment that cannot happen is refused before the confirmation is
+     * checked, so the single-use code is still good for the next action.
+     */
+    public function test_a_refused_enrolment_does_not_spend_the_confirmation_code(): void
+    {
+        Mail::fake();
+
+        $user = $this->userWithAuthenticator(['password' => null, 'email_verified_at' => null]);
+
+        $this->signedIn($user)->postJson(route('account.confirmation'))->assertOk();
+
+        $otp = null;
+        Mail::assertSent(EmailOTP::class, function (EmailOTP $mail) use (&$otp) {
+            $otp = $mail->otp;
+
+            return true;
+        });
+
+        $this->signedIn($user)
+            ->post(route('multi.auth'), ['auth_method' => 'email', 'otp' => $otp])
+            ->assertSessionHasErrors(['message' => 'Email is not verified.']);
+
+        $this->signedIn($user)
+            ->post(route('recovery.generate'), ['otp' => $otp])
+            ->assertSessionHasNoErrors();
+
+        $this->assertGreaterThan(0, $user->fresh()->recoveryCodes->count());
+    }
 }

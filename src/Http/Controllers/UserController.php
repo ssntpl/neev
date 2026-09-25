@@ -245,6 +245,15 @@ class UserController extends Controller
 
             return back()->with('status', 'Auth has been deleted.');
         }
+        // What cannot be enrolled is answered before the confirmation is
+        // asked for, so a single-use code is not spent on it.
+        if (!$user->supportsMultiFactorAuth($request->auth_method)) {
+            return back()->withErrors(['message' => 'Auth was not added.']);
+        }
+        if ($error = $user->multiFactorAuthEnrolmentError($request->auth_method)) {
+            return back()->withErrors(['message' => $error]);
+        }
+
         // Adding a factor to an account that already has one is confirmed,
         // like removing one: the attacker's own authenticator would otherwise
         // answer every future challenge. The first factor is onboarding.

@@ -102,6 +102,25 @@
         </x-slot>
     </x-neev-component::card>
 </x-neev-layout::app>
+<style>
+    @media print {
+        body * {
+            visibility: hidden;
+        }
+
+        #printable-area,
+        #printable-area * {
+            visibility: visible;
+        }
+
+        #printable-area {
+            display: block !important;
+            position: absolute;
+            inset: 0 auto auto 0;
+            width: 100%;
+        }
+    }
+</style>
 <script>
     function recoveryCodesHandler(appName) {
         return {
@@ -119,17 +138,12 @@
                 link.click();
             },
             printCodes() {
-                // No reload afterwards. The plaintext reaches this page once,
-                // flashed by the redirect that generated it, so reloading —
-                // after a cancelled print dialog, say — would replace the only
-                // copy of a freshly minted set with "shown once" and leave the
-                // account holding hashes nobody has read.
-                const originalContent = document.body.innerHTML;
-                const printable = document.getElementById('printable-area').innerHTML;
-
-                document.body.innerHTML = printable;
+                // The print stylesheet above shows only #printable-area, so the
+                // page itself is never touched. Swapping body.innerHTML out and
+                // back left dead markup Alpine no longer drove, and reloading
+                // to recover is not an option: the plaintext reaches this page
+                // once, flashed by the redirect that generated it.
                 window.print();
-                document.body.innerHTML = originalContent;
             },
             copyCodes() {
                 navigator.clipboard.writeText(this.getCodes())

@@ -160,9 +160,13 @@ their own authenticator. Both now take `password` — or `otp`, from
   the same thing internally. Those dead attributes are removed from the
   shipped views. If you pass anything similar in a view of your own, it is
   not taking effect — name the variable with `show` instead.
-- **The recovery-codes page no longer reloads after printing.** The plaintext
-  arrives once, so a reload after a cancelled print dialog would have replaced
-  the only copy of a freshly minted set.
+- **The recovery-codes page prints with a stylesheet, and no longer reloads.**
+  The plaintext arrives once, so a reload after a cancelled print dialog would
+  have replaced the only copy of a freshly minted set. It also no longer swaps
+  `document.body.innerHTML` out and back, which left markup Alpine had stopped
+  driving — Copy, Download and Generate went dead after a print. An
+  `@media print` block shows only `#printable-area` instead; keep that id if
+  you restyle the printed sheet.
 - **Recovery-code generation is limited to five a minute** on both surfaces.
 
 **A failed confirmation reports one message, keyed by the field it asked for
