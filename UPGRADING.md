@@ -11,7 +11,49 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## 0.6.3 → Unreleased
+## 0.6.6 → Unreleased
+
+**Emailed codes carry a purpose (schema change; action required on existing
+installs).**
+The `otp` table gains a `purpose` column and its unique index moves from
+`(owner_id, owner_type)` to `(owner_id, owner_type, purpose)`, so a user holds
+one code per purpose — email verification, confirmation, password reset — and a
+code is accepted only for the purpose it was sent for. The package edits its
+migration in place, so existing installs add a migration of their own. Codes
+live 15 minutes, so the simplest path drops any outstanding ones. Run it in
+maintenance mode (`php artisan down`) or at a quiet moment: a code issued
+between the delete and the column change makes the change fail on PostgreSQL,
+which cannot add a `NOT NULL` column to a table holding rows.
+
+```php
+DB::table('otp')->delete();
+
+Schema::table('otp', function (Blueprint $table) {
+    $table->dropUnique(['owner_id', 'owner_type']);
+    $table->string('purpose', 32)->after('owner_type');
+    $table->unique(['owner_id', 'owner_type', 'purpose']);
+});
+```
+
+If you call `AuthService::verifyEmailOtp()`, `checkEmailOtp()` or
+`discardEmailOtp()` yourself, pass an `Ssntpl\Neev\Enums\OtpPurpose` as the new
+last argument. If you create `OTP` rows directly, set `purpose`.
+
+**Codes are no longer interchangeable (action required if your client relied
+on it).** A code from `POST {prefix}/confirmation/otp` used to satisfy
+`POST {prefix}/email/verify-otp` too, and a verification code used to confirm
+an action or reset a password. Each is now refused outside its purpose: to
+verify an address, request a code from `POST {prefix}/email/send` (or the
+verification email) rather than from the confirmation endpoint.
+
+**Changing the email or the password retires outstanding codes (no action
+required).** An email change discards every code the user holds, since each was
+mailed to the old address; a password change discards a pending reset code, as
+it already retired the reset link; deleting an account deletes its codes.
+
+---
+
+## 0.6.5 → 0.6.6
 
 **A password can be reset with an emailed code (check what your
 forgot-password screen and email show).**
@@ -258,6 +300,10 @@ Schema::table('team_invitations', function (Blueprint $table) {
   lasted forever. Accepting an expired invitation is refused, on the
   registration path and for a signed-in invitee alike.
 
+---
+
+## 0.6.4 → 0.6.5
+
 **`POST /neev/logoutAll` now requires confirmation (action required).**
 It previously revoked every other login token on the bearer token alone
 — the one account-takeover tool in the API that asked for nothing, while
@@ -289,6 +335,10 @@ its Blade counterpart had always required a password.
   time: `GET /neev/sessions` to enumerate, then one `DELETE` per id.
   Gate them in your own application if that matters for your deployment.
 
+
+---
+
+## 0.6.3 → 0.6.4
 
 **OAuth logins are recorded as `oauth:<provider>` (action required if you read
 `login_attempts.method`).**

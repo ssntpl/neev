@@ -227,13 +227,16 @@ on. It stops a stolen cookie or bearer token, not a compromised mailbox.
 
 Two properties worth designing around:
 
-- **A user holds one code at a time.** The code lives in a single row keyed by
-  the user, so issuing one replaces any code outstanding for another purpose,
-  including an email verification in flight.
+- **A code works only for its purpose.** Each code is stored with a purpose —
+  email verification, confirmation or password reset — and checked only
+  against it, so a confirmation code does not satisfy
+  `POST /neev/email/verify-otp` or reset a password. A user holds one live code
+  per purpose: asking for one replaces an earlier code for the same purpose and
+  leaves the others working.
 - **A code is spent by the action it confirms.** A correct guess deletes it, so
-  one code confirms one action — request a fresh one each time. Nothing binds a
-  code to the action it was read for, which is exactly why single use matters:
-  the same code also satisfies `POST /neev/email/verify-otp`.
+  one code confirms one action — request a fresh one each time. Confirmation
+  codes are shared by every action that asks for one, so nothing binds a code
+  to the particular action it was read for.
 
 ---
 

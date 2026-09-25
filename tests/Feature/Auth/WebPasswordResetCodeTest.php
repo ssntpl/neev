@@ -7,6 +7,7 @@ use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
+use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\OTP;
 use Ssntpl\Neev\Models\User;
@@ -113,6 +114,29 @@ class WebPasswordResetCodeTest extends TestCase
             ->assertRedirect(route('password.request'))
             ->assertSessionHasErrors('otp')
             ->assertSessionHasInput('email', $user->email);
+
+        $this->assertTrue(Hash::check('original-password', $user->fresh()->getRawOriginal('password')));
+    }
+
+    /**
+     * The form checks only reset codes: a code mailed to verify the address or
+     * to confirm an action is refused like any wrong code.
+     */
+    public function test_a_code_sent_for_another_purpose_is_rejected(): void
+    {
+        $user = User::factory()->unverified()->create(['password' => 'original-password']);
+        Mail::fake();
+
+        app(AuthService::class)->sendEmailVerification($user);
+        $verification = (string) Mail::sent(VerifyUserEmail::class)->last()->otp;
+        app(AuthService::class)->sendConfirmationOtp($user);
+        $confirmation = (string) Mail::sent(EmailOTP::class)->last()->otp;
+
+        foreach ([$verification, $confirmation] as $otp) {
+            $this->resetWithCode($user, $otp)
+                ->assertRedirect(route('password.request'))
+                ->assertSessionHasErrors('otp');
+        }
 
         $this->assertTrue(Hash::check('original-password', $user->fresh()->getRawOriginal('password')));
     }

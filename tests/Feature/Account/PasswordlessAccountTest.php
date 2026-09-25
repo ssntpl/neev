@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Feature\Account;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Ssntpl\Neev\Enums\OtpPurpose;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\OTP;
@@ -43,7 +44,7 @@ class PasswordlessAccountTest extends TestCase
     protected function issueConfirmationCode(User $user, string $code = '123456'): string
     {
         OTP::updateOrCreate(
-            ['owner_id' => $user->id, 'owner_type' => $user->getMorphClass()],
+            ['owner_id' => $user->id, 'owner_type' => $user->getMorphClass(), 'purpose' => OtpPurpose::Confirmation],
             ['otp' => $code, 'attempts' => 0, 'expires_at' => now()->addMinutes(15)],
         );
 
@@ -211,6 +212,7 @@ class PasswordlessAccountTest extends TestCase
         $this->assertDatabaseHas('otp', [
             'owner_id' => $user->id,
             'owner_type' => $user->getMorphClass(),
+            'purpose' => OtpPurpose::Confirmation->value,
         ]);
 
         // Only the code — not the verification mail, which carries a signed
