@@ -289,7 +289,7 @@ return [
     // Store failed login attempts in database (true) or cache (false).
     'log_failed_logins' => false,
 
-    // Days to retain login history records.
+    // Days to retain login history records (0 or less disables the cleanup).
     'login_history_retention_days' => 30,
 
     /*

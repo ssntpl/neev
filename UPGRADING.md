@@ -11,7 +11,102 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## 0.6.3 → Unreleased
+## 0.6.6 → Unreleased
+
+**Emailed codes carry a purpose (schema change; action required on existing
+installs).**
+The `otp` table gains a `purpose` column and its unique index moves from
+`(owner_id, owner_type)` to `(owner_id, owner_type, purpose)`, so a user holds
+one code per purpose — email verification, confirmation, password reset — and a
+code is accepted only for the purpose it was sent for. The package edits its
+migration in place, so existing installs add a migration of their own. Codes
+live 15 minutes, so the simplest path drops any outstanding ones. Run it in
+maintenance mode (`php artisan down`) or at a quiet moment: a code issued
+between the delete and the column change makes the change fail on PostgreSQL,
+which cannot add a `NOT NULL` column to a table holding rows.
+
+```php
+DB::table('otp')->delete();
+
+Schema::table('otp', function (Blueprint $table) {
+    $table->dropUnique(['owner_id', 'owner_type']);
+    $table->string('purpose', 32)->after('owner_type');
+    $table->unique(['owner_id', 'owner_type', 'purpose']);
+});
+```
+
+If you call `AuthService::verifyEmailOtp()`, `checkEmailOtp()` or
+`discardEmailOtp()` yourself, pass an `Ssntpl\Neev\Enums\OtpPurpose` as the new
+last argument. If you create `OTP` rows directly, set `purpose`.
+
+**Codes are no longer interchangeable (action required if your client relied
+on it).** A code from `POST {prefix}/confirmation/otp` used to satisfy
+`POST {prefix}/email/verify-otp` too, and a verification code used to confirm
+an action or reset a password. Each is now refused outside its purpose: to
+verify an address, request a code from `POST {prefix}/email/send` (or the
+verification email) rather than from the confirmation endpoint.
+
+**Changing the email or the password retires outstanding codes (no action
+required).** An email change discards every code the user holds, since each was
+mailed to the old address; a password change discards a pending reset code, as
+it already retired the reset link; deleting an account deletes its codes.
+
+---
+
+## 0.6.5 → 0.6.6
+
+**A password can be reset with an emailed code (check what your
+forgot-password screen and email show).**
+The forgot-password email now carries a one-time code beside the link, and
+either resets the password — on the API (`POST {prefix}/resetPassword` with
+`email` + `otp`) and in the Blade kit (`POST /update-password` with `email` +
+`otp`; no new routes). Both proofs are always sent, and the email template
+decides which the user sees — the same arrangement as email verification. The
+link keeps working as before, so nothing breaks, but check what your users will
+see:
+
+- **If you ejected the Blade kit**, your `auth/forgot-password.blade.php` has no
+  field for the code. Copy the new one over yours (`--force` re-ejects every
+  kit view, so use it only if you have customised none): once a code is out it
+  shows the code form, posting to `user-password.update`. Or, to stay
+  link-only, remove the code from the email template (below).
+- **If you run headless**, your forgot-password screen needs a code input to
+  use the code; until it has one, hide the code in the template.
+- **The email template is yours** — `neev:ui` ejects
+  `emails/email-verify.blade.php` on install, and it already renders `$otp`
+  whenever one is set, so reset emails start showing the code as they are.
+  Your copy says "enter this code on the device you signed up on", which
+  reads oddly in a reset email; the package's now says "Or enter this code
+  instead:", which fits both — copy that line into yours (or branch on
+  `$purpose`). Every reset email — the API's, the Blade kit's, and the
+  signed-in "email me a reset link" action's — now carries the purpose
+  `Reset Password` (the kit's used to say `Forgot Password`). To keep resets link-only, hide the code for that
+  purpose:
+
+  ```blade
+  @if (!empty($otp) && $purpose !== 'Reset Password')
+  ```
+
+**A reset link works once (no action required).**
+A link is refused once the password has changed since it was sent. The send
+time is the link's signed `expires` less `url_expiry_time`, compared with
+`password_changed_at`; the URL is unchanged, so links sent before you deploy
+keep working under the same rule.
+
+- **If your code writes `password` directly** rather than through
+  `AuthService::changePassword()`, set `password_changed_at` in the same save,
+  or links sent before that change stay usable until they expire.
+- **If you change `url_expiry_time`**, links already out are judged by the new
+  value until they expire.
+- **Resets are now also limited per account**: 3 reset emails per 15 minutes
+  and 10 wrong codes per hour, answered with `429` and `Retry-After` on the
+  API. Handle `429` on your forgot-password and reset screens.
+
+**`VerifyUserEmail` subjects name their purpose (action required if you match
+on the subject).**
+The subject was always `Email Verification`; it is now the purpose the email
+was sent for — `Verify Email`, `Reset Password` or `Verify Email Change` — so
+update any test assertion or mail filter that matched the old subject.
 
 **Adding a factor and minting recovery codes now need confirmation (action
 required if you call either).**
@@ -262,6 +357,10 @@ Schema::table('team_invitations', function (Blueprint $table) {
   lasted forever. Accepting an expired invitation is refused, on the
   registration path and for a signed-in invitee alike.
 
+---
+
+## 0.6.4 → 0.6.5
+
 **`POST /neev/logoutAll` now requires confirmation (action required).**
 It previously revoked every other login token on the bearer token alone
 — the one account-takeover tool in the API that asked for nothing, while
@@ -293,6 +392,10 @@ its Blade counterpart had always required a password.
   time: `GET /neev/sessions` to enumerate, then one `DELETE` per id.
   Gate them in your own application if that matters for your deployment.
 
+
+---
+
+## 0.6.3 → 0.6.4
 
 **OAuth logins are recorded as `oauth:<provider>` (action required if you read
 `login_attempts.method`).**

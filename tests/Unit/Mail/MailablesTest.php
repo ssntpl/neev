@@ -24,6 +24,13 @@ class MailablesTest extends TestCase
         $this->assertSame('Email Verification', $envelope->subject);
     }
 
+    public function test_verify_user_email_subject_names_its_purpose(): void
+    {
+        $mailable = new VerifyUserEmail('https://example.com/reset', 'John', 'Reset Password');
+
+        $this->assertSame('Reset Password', $mailable->envelope()->subject);
+    }
+
     public function test_verify_user_email_has_correct_view(): void
     {
         $mailable = new VerifyUserEmail('https://example.com/verify', 'John');

@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Ssntpl\Neev\Enums\OtpPurpose;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\OTP;
 use Ssntpl\Neev\Models\User;
@@ -62,6 +63,7 @@ class EmailVerificationOtpTest extends TestCase
         $this->assertDatabaseHas('otp', [
             'owner_id' => $user->id,
             'owner_type' => $user->getMorphClass(),
+            'purpose' => OtpPurpose::EmailVerification->value,
         ]);
     }
 
@@ -76,7 +78,7 @@ class EmailVerificationOtpTest extends TestCase
         $this->assertSame(1, OTP::count());
         $this->assertSame(0, OTP::first()->attempts);
         // Verification only accepts the latest code.
-        $this->assertFalse(app(AuthService::class)->verifyEmailOtp($user->fresh(), $first === $second ? '000000' : $first));
+        $this->assertFalse(app(AuthService::class)->verifyEmailOtp($user->fresh(), $first === $second ? '000000' : $first, OtpPurpose::EmailVerification));
     }
 
     // -----------------------------------------------------------------
@@ -103,7 +105,7 @@ class EmailVerificationOtpTest extends TestCase
                 return false;
             });
 
-        $this->assertFalse(app(AuthService::class)->verifyEmailOtp($data['user'], '000000'));
+        $this->assertFalse(app(AuthService::class)->verifyEmailOtp($data['user'], '000000', OtpPurpose::EmailVerification));
         $this->assertSame(1, OTP::first()->attempts);
     }
 
@@ -191,18 +193,20 @@ class EmailVerificationOtpTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Reset / email-change mails carry no code
+    // The reset mail carries a code beside its link
     // -----------------------------------------------------------------
 
-    public function test_password_reset_mail_carries_no_otp(): void
+    public function test_password_reset_mail_carries_an_otp(): void
     {
+        // Reset accepts either proof, as verification does — see
+        // PasswordResetTest for the code route.
         Mail::fake();
         $user = User::factory()->create(['email_verified_at' => now()]);
 
         $this->postJson('/neev/forgotPassword', ['email' => $user->email])->assertOk();
 
         Mail::assertSent(VerifyUserEmail::class, function (VerifyUserEmail $mail) {
-            return $mail->otp === null;
+            return $mail->otp !== null && $mail->url !== null;
         });
     }
 }

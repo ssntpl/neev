@@ -25,7 +25,7 @@ class VerifyUserEmail extends Mailable
 
     public function envelope(): Envelope
     {
-        return new Envelope(subject: 'Email Verification');
+        return new Envelope(subject: $this->purpose ?: 'Email Verification');
     }
 
     public function content(): Content

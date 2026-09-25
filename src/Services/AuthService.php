@@ -10,10 +10,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedIn;
 use Ssntpl\Neev\Events\PasswordChanged;
+use Ssntpl\Neev\Exceptions\PasswordResetThrottledException;
+use Ssntpl\Neev\Enums\OtpPurpose;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
@@ -23,6 +25,24 @@ use Ssntpl\Neev\Rules\PasswordHistory;
 
 class AuthService
 {
+    /**
+     * Reset emails one account may be sent inside PASSWORD_RESET_SEND_WINDOW
+     * seconds, whoever asks.
+     */
+    public const PASSWORD_RESET_SEND_LIMIT = 3;
+
+    public const PASSWORD_RESET_SEND_WINDOW = 900;
+
+    /**
+     * Wrong reset codes one account may have tried against it inside
+     * PASSWORD_RESET_GUESS_WINDOW seconds, across every code it is sent.
+     * OTP::MAX_ATTEMPTS bounds one code; this bounds the account, since a new
+     * reset email brings a new code and a new allowance.
+     */
+    public const PASSWORD_RESET_GUESS_LIMIT = 10;
+
+    public const PASSWORD_RESET_GUESS_WINDOW = 3600;
+
     /**
      * @param bool $pendingMfa The login still owes a second factor, so the
      *                         attempt is left unsuccessful for the MFA step to
@@ -169,7 +189,7 @@ class AuthService
         // which to show. The code lets the user complete verification on
         // the device that is waiting (cross-device signup, TVs, SafeLinks-
         // mangled links); either proof invalidates the other on success.
-        $otp = $this->createEmailVerificationOtp($user);
+        $otp = $this->issueEmailOtp($user, OtpPurpose::EmailVerification);
 
         Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Verify Email', $expiryMinutes, config('neev.otp_expiry_time', 15), $otp));
     }
@@ -200,7 +220,7 @@ class AuthService
     {
         return $user->password !== null
             ? Hash::check((string) $request->input('password'), $user->password)
-            : $this->verifyEmailOtp($user, (string) $request->input('otp'));
+            : $this->verifyEmailOtp($user, (string) $request->input('otp'), OtpPurpose::Confirmation);
     }
 
     /**
@@ -246,28 +266,30 @@ class AuthService
      * signs the reader in does not belong beside "confirm deleting your
      * account".
      *
-     * The user holds one code at a time, so issuing here replaces any code
-     * outstanding for any purpose, including a verification in flight.
+     * The code is issued for OtpPurpose::Confirmation, so it replaces only an
+     * earlier confirmation code — a verification or reset in flight keeps
+     * working — and only confirmIdentity() accepts it.
      */
     public function sendConfirmationOtp(User $user): void
     {
-        $otp = $this->createEmailVerificationOtp($user);
+        $otp = $this->issueEmailOtp($user, OtpPurpose::Confirmation);
         $expiryMinutes = (int) config('neev.otp_expiry_time', 15);
 
         Mail::to($user->email)->send(new EmailOTP($user->name, $otp, $expiryMinutes));
     }
 
     /**
-     * Issue (or replace) the user's email-verification code. Stored
-     * hashed; resending resets the attempt counter.
+     * Issue (or replace) the user's emailed code for one purpose. Stored
+     * hashed; resending resets the attempt counter. Codes for other
+     * purposes are left alone.
      */
-    protected function createEmailVerificationOtp(User $user): string
+    protected function issueEmailOtp(User $user, OtpPurpose $purpose): string
     {
         $length = (int) config('neev.otp_length', 6);
         $otp = (string) random_int(10 ** ($length - 1), (10 ** $length) - 1);
 
         OTP::updateOrCreate(
-            ['owner_id' => $user->id, 'owner_type' => $user->getMorphClass()],
+            ['owner_id' => $user->id, 'owner_type' => $user->getMorphClass(), 'purpose' => $purpose],
             [
                 'otp' => $otp,
                 'attempts' => 0,
@@ -279,20 +301,31 @@ class AuthService
     }
 
     /**
-     * Verify an email-verification code for the waiting session.
-     * Wrong codes count toward OTP::MAX_ATTEMPTS, after which the code
-     * is invalidated and a fresh email must be requested.
+     * Verify and spend the user's code for $purpose. Wrong codes count
+     * toward OTP::MAX_ATTEMPTS, after which the code is invalidated and a
+     * fresh email must be requested.
      */
-    public function verifyEmailOtp(User $user, string $otp): bool
+    public function verifyEmailOtp(User $user, string $otp, OtpPurpose $purpose): bool
     {
-        $record = OTP::query()
-            ->where('owner_id', $user->id)
-            ->where('owner_type', $user->getMorphClass())
-            ->first();
+        $record = $this->checkEmailOtp($user, $otp, $purpose);
+
+        return $record !== null && $this->consumeEmailOtp($user, $record);
+    }
+
+    /**
+     * Check a code without spending it: a wrong guess counts toward
+     * OTP::MAX_ATTEMPTS, but a correct one costs nothing and leaves the code
+     * in place for consumeEmailOtp(). For a caller with more to validate once the code
+     * is proven — and that must not spend the code on a failure that is not
+     * the code's. Only the code issued for $purpose is compared.
+     */
+    public function checkEmailOtp(User $user, string $otp, OtpPurpose $purpose): ?OTP
+    {
+        $record = OTP::query()->forPurpose($user, $purpose)->first();
 
         if (!$record || $record->expires_at->isPast()) {
             $record?->delete();
-            return false;
+            return null;
         }
 
         // The guess is reserved with a conditional increment *before* the hash
@@ -306,7 +339,7 @@ class AuthService
 
         if ($reserved === 0) {
             $record->delete();
-            return false;
+            return null;
         }
 
         // Unlike the MFA row, which is only ever cleared, this row is deleted
@@ -314,13 +347,36 @@ class AuthService
         // re-read may find nothing. That is a spent code, not an error.
         $record = $record->fresh();
         if (!$record) {
-            return false;
+            return null;
         }
 
         if (!Hash::check($otp, $record->otp)) {
             if ($record->attempts >= OTP::MAX_ATTEMPTS) {
                 $record->delete();
             }
+            return null;
+        }
+
+        // A right code gives its reserved guess back, so a caller that then
+        // rejects something else — a weak new password — does not wear the
+        // code down: only wrong codes count toward OTP::MAX_ATTEMPTS.
+        $record->newQueryWithoutScopes()
+            ->whereKey($record->getKey())
+            ->where('attempts', '>', 0)
+            ->decrement('attempts');
+
+        return $record;
+    }
+
+    /**
+     * Spend a code checkEmailOtp() accepted. The delete is the claim: of two
+     * requests holding the same checked code, only the one that removes the
+     * row succeeds. A code of any purpose proves the user reads the mailbox,
+     * so any of them verifies an unverified address.
+     */
+    public function consumeEmailOtp(User $user, OTP $record): bool
+    {
+        if ($record->newQueryWithoutScopes()->whereKey($record->getKey())->delete() === 0) {
             return false;
         }
 
@@ -333,12 +389,103 @@ class AuthService
             $user->markEmailAsVerified();
         }
 
-        OTP::query()
-            ->where('owner_id', $user->id)
-            ->where('owner_type', $user->getMorphClass())
-            ->delete();
-
         return true;
+    }
+
+    /**
+     * Send a password reset link, and with it a code the user can enter
+     * instead — the same pairing as sendEmailVerification(), for the same
+     * reasons: the code finishes the reset on the device that asked for it
+     * when the link opens elsewhere or is mangled by a mail scanner.
+     *
+     * Both proofs are always sent; the app-owned template decides which to
+     * show. Issuing a code replaces only an earlier reset code.
+     *
+     * @throws PasswordResetThrottledException when the account has been sent
+     *         PASSWORD_RESET_SEND_LIMIT resets already; nothing is sent and
+     *         the code already out keeps working.
+     */
+    public function sendPasswordReset(User $user): void
+    {
+        $key = $this->passwordResetKey('send', $user);
+        if (RateLimiter::tooManyAttempts($key, self::PASSWORD_RESET_SEND_LIMIT)) {
+            throw PasswordResetThrottledException::sending(RateLimiter::availableIn($key));
+        }
+        RateLimiter::hit($key, self::PASSWORD_RESET_SEND_WINDOW);
+
+        $expiryMinutes = config('neev.url_expiry_time', 60);
+        $url = app(EmailLinks::class)->passwordResetUrl($user, now()->addMinutes($expiryMinutes));
+        $otp = $this->issueEmailOtp($user, OtpPurpose::PasswordReset);
+
+        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Reset Password', $expiryMinutes, config('neev.otp_expiry_time', 15), $otp));
+    }
+
+    /**
+     * checkEmailOtp() for a password reset, which anyone can attempt without
+     * signing in: wrong codes also count against the account, and once
+     * PASSWORD_RESET_GUESS_LIMIT is reached no code is checked at all until
+     * the window passes — the link still works.
+     *
+     * @throws PasswordResetThrottledException
+     */
+    public function checkPasswordResetOtp(User $user, string $otp): ?OTP
+    {
+        $key = $this->passwordResetKey('guess', $user);
+        if (RateLimiter::tooManyAttempts($key, self::PASSWORD_RESET_GUESS_LIMIT)) {
+            throw PasswordResetThrottledException::guessing(RateLimiter::availableIn($key));
+        }
+
+        $record = $this->checkEmailOtp($user, $otp, OtpPurpose::PasswordReset);
+        if (!$record) {
+            RateLimiter::hit($key, self::PASSWORD_RESET_GUESS_WINDOW);
+        }
+
+        return $record;
+    }
+
+    /**
+     * Finish a password reset, by either proof: set the password — which
+     * spends the code sent beside the link, so neither proof works twice —
+     * and give the account its reset allowances back.
+     */
+    public function completePasswordReset(User $user, string $newPassword): void
+    {
+        $this->changePassword($user, $newPassword);
+
+        RateLimiter::clear($this->passwordResetKey('send', $user));
+        RateLimiter::clear($this->passwordResetKey('guess', $user));
+    }
+
+    /**
+     * Whether a reset link was sent after the password last changed. The
+     * link's signed `expires` less `url_expiry_time` is when it was sent; a
+     * password change at or after that — by this link, its code, or anything
+     * else — retires it, so a link resets the password once.
+     */
+    public function passwordResetLinkIsCurrent(User $user, mixed $expires): bool
+    {
+        if (!is_numeric($expires)) {
+            return false;
+        }
+
+        $sentAt = (int) $expires - ((int) config('neev.url_expiry_time', 60) * 60);
+
+        return $user->password_changed_at === null
+            || $user->password_changed_at->getTimestamp() < $sentAt;
+    }
+
+    protected function passwordResetKey(string $kind, User $user): string
+    {
+        return 'neev-password-reset-' . $kind . ':' . $user->getMorphClass() . ':' . $user->getKey();
+    }
+
+    /**
+     * Drop the user's code for $purpose, so a proof that has done its job
+     * cannot be used a second time by the other proof sent beside it.
+     */
+    public function discardEmailOtp(User $user, OtpPurpose $purpose): void
+    {
+        OTP::query()->forPurpose($user, $purpose)->delete();
     }
 
     /**
@@ -376,6 +523,11 @@ class AuthService
         $user->email_verified_at = now();
         $user->save();
 
+        // Every outstanding code was mailed to the old address. Whoever still
+        // reads that mailbox — often the reason for the change — must not be
+        // able to spend one against the account now that it has moved.
+        OTP::query()->forOwner($user)->delete();
+
         return true;
     }
 
@@ -405,6 +557,12 @@ class AuthService
             $user->password_changed_at = now();
             $user->save();
         });
+
+        // A password change retires the reset link (passwordResetLinkIsCurrent)
+        // and must retire the code sent beside it too: a user who changes their
+        // password on seeing a reset email they never asked for would otherwise
+        // leave that code able to overwrite the new one.
+        $this->discardEmailOtp($user, OtpPurpose::PasswordReset);
 
         // The transaction worked on its own locked copy. Bring the caller's
         // instance up to date so whatever holds it — the auth guard, and through

@@ -391,7 +391,7 @@ Progressive delay replaces the old hard-lockout scheme (`login_soft_attempts`, `
 'login_history_retention_days' => 30,
 ```
 
-Days to keep login history records. Use `neev:clean-login-attempts` to remove old records.
+Days to keep login history records. Use `neev:clean-login-attempts` to remove old records. Set it to `0` (or any value below 1) to **disable** the cleanup and keep login history indefinitely.
 
 ---
 

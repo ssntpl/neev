@@ -77,7 +77,7 @@ Remove login attempt records older than the configured retention period.
 php artisan neev:clean-login-attempts
 ```
 
-Retention is controlled by `config('neev.login_history_retention_days')`.
+Retention is controlled by `config('neev.login_history_retention_days')`. Setting it to `0` (or any value below 1) **disables** the cleanup — the command deletes nothing and reports that it is disabled.
 
 ### `neev:clean-pending-mfa-setups`
 

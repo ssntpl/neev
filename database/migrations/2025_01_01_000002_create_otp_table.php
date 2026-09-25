@@ -14,11 +14,12 @@ return new class () extends Migration {
             $table->id();
             $table->unsignedBigInteger('owner_id');
             $table->string('owner_type');
+            $table->string('purpose');
             $table->string('otp');
             $table->unsignedTinyInteger('attempts')->default(0);
             $table->timestamp('expires_at');
             $table->timestamps();
-            $table->unique(['owner_id', 'owner_type']);
+            $table->unique(['owner_id', 'owner_type', 'purpose']);
         });
     }
 

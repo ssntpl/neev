@@ -11,16 +11,17 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Validation\ValidationException;
+use Ssntpl\Neev\Enums\OtpPurpose;
 use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
 use Ssntpl\Neev\Exceptions\MagicLinkThrottledException;
+use Ssntpl\Neev\Exceptions\PasswordResetThrottledException;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
 use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
 use Ssntpl\Neev\Mail\LoginUsingLink;
-use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
@@ -359,11 +360,17 @@ class UserAuthController extends Controller
             ]);
         }
 
-        $expiryMinutes = config('neev.url_expiry_time', 60);
-        $url = app(EmailLinks::class)->passwordResetUrl($user, now()->addMinutes($expiryMinutes));
+        try {
+            $this->auth->sendPasswordReset($user);
+        } catch (PasswordResetThrottledException $e) {
+            return back()->withInput($request->only('email'))->withErrors(['email' => __($e->getMessage())]);
+        }
 
-        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Forgot Password', $expiryMinutes));
-        return back()->with('status', __('Link has been sent to your email address.'));
+        // Kept (not flashed) so the code form survives a wrong guess or a
+        // refresh; cleared by a successful reset.
+        session()->put('password_reset_code_email', $user->email);
+
+        return back()->with('status', __('We have emailed you a reset link and a code. Open the link, or enter the code below.'));
     }
 
     public function updatePasswordCreate(Request $request, $id, $hash)
@@ -384,31 +391,99 @@ class UserAuthController extends Controller
             return redirect(route('password.request'))->withErrors(['message' => 'Invalid verification link.']);
         }
 
+        if (!$this->auth->passwordResetLinkIsCurrent($user, $request->query('expires'))) {
+            return redirect(route('password.request'))->withErrors(['message' => 'This reset link is no longer valid. Please request a new one.']);
+        }
+
         $resetToken = bin2hex(random_bytes(32));
-        session(['password_reset_token' => hash_hmac('sha256', $resetToken, config('app.key')), 'password_reset_email' => $user->email]);
+        // `expires` goes with the token so the form is checked again on
+        // submit: a password changed after the link was opened — the owner
+        // recovering the account — must retire a form already open elsewhere.
+        session([
+            'password_reset_token' => hash_hmac('sha256', $resetToken, config('app.key')),
+            'password_reset_email' => $user->email,
+            'password_reset_expires' => $request->query('expires'),
+        ]);
         return view('neev::auth.reset-password', ['email' => $user->email, 'reset_token' => $resetToken]);
     }
 
+    /**
+     * Reset a password with either proof the forgot-password email carries:
+     * the `reset_token` the link's form holds, or `email` + `otp`.
+     *
+     * Either way the proof is checked before the password rules run — they
+     * compare against the account's current and past passwords, so run first
+     * they would tell anyone naming an address whether a guess was one — and
+     * spent only after, so a rejected password leaves it usable.
+     */
     public function updatePasswordStore(Request $request)
+    {
+        if ($request->filled('reset_token')) {
+            return $this->resetPasswordWithLink($request);
+        }
+
+        $request->validate([
+            'email' => ['required', 'string', 'email'],
+            'otp' => ['required', 'string'],
+        ]);
+
+        // An unknown address gets the same answer as a wrong code.
+        $user = User::findByEmail($request->email);
+        try {
+            $record = $user ? $this->auth->checkPasswordResetOtp($user, (string) $request->otp) : null;
+        } catch (PasswordResetThrottledException $e) {
+            return back()->withInput($request->only('email'))->withErrors(['otp' => __($e->getMessage())]);
+        }
+        if (!$record) {
+            return back()->withInput($request->only('email'))
+                ->withErrors(['otp' => __('Invalid or expired code.')]);
+        }
+
+        $request->validate([
+            'password' => config('neev.password'),
+        ]);
+
+        if (!$this->auth->consumeEmailOtp($user, $record)) {
+            return back()->withInput($request->only('email'))
+                ->withErrors(['otp' => __('Invalid or expired code.')]);
+        }
+
+        $this->auth->completePasswordReset($user, $request->password);
+        session()->forget('password_reset_code_email');
+
+        event(new PasswordReset($user));
+
+        return redirect(route('login'))->with('status', __('Password has been successfully updated.'));
+    }
+
+    protected function resetPasswordWithLink(Request $request)
     {
         $request->validate([
             'email' => 'required|string|email|max:255',
-            'password' => config('neev.password'),
             'reset_token' => 'required|string',
         ]);
 
         // Verify the reset token matches the session
-        $sessionToken = session()->pull('password_reset_token');
-        $sessionEmail = session()->pull('password_reset_email');
+        $sessionToken = session('password_reset_token');
+        $sessionEmail = session('password_reset_email');
         if (!$sessionToken || !hash_equals($sessionToken, hash_hmac('sha256', $request->reset_token, config('app.key'))) || $sessionEmail !== $request->email) {
             return redirect(route('password.request'))->withErrors(['message' => 'Invalid or expired reset link. Please request a new one.']);
         }
 
         $user = User::findByEmail($request->email);
-        if (!$user) {
-            return back()->withErrors(['message' => 'Failed to update password.']);
+        if (!$user || !$this->auth->passwordResetLinkIsCurrent($user, session('password_reset_expires'))) {
+            session()->forget(['password_reset_token', 'password_reset_email', 'password_reset_expires']);
+
+            return redirect(route('password.request'))->withErrors(['message' => 'This reset link is no longer valid. Please request a new one.']);
         }
-        $this->auth->changePassword($user, $request->password);
+
+        $request->validate([
+            'password' => config('neev.password'),
+        ]);
+
+        session()->forget(['password_reset_token', 'password_reset_email', 'password_reset_expires', 'password_reset_code_email']);
+
+        $this->auth->completePasswordReset($user, $request->password);
 
         event(new PasswordReset($user));
 
@@ -457,7 +532,7 @@ class UserAuthController extends Controller
             return redirect(config('neev.home'));
         }
 
-        if (!$this->auth->verifyEmailOtp($user, (string) $request->otp)) {
+        if (!$this->auth->verifyEmailOtp($user, (string) $request->otp, OtpPurpose::EmailVerification)) {
             return back()->withErrors(['otp' => 'Code verification failed.']);
         }
 

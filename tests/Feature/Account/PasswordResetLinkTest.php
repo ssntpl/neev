@@ -45,7 +45,7 @@ class PasswordResetLinkTest extends TestCase
 
         Mail::assertSent(VerifyUserEmail::class, function (VerifyUserEmail $mail) use ($user) {
             return $mail->hasTo($user->email)
-                && $mail->purpose === 'Forgot Password'
+                && $mail->purpose === 'Reset Password'
                 && str_contains($mail->url, '/update-password/' . $user->id . '/');
         });
     }
@@ -110,6 +110,7 @@ class PasswordResetLinkTest extends TestCase
 
     protected function resetUrl(User $user): string
     {
+        $this->travel(1)->seconds();
         return URL::temporarySignedRoute('reset.request', now()->addMinutes(60), [
             'id' => $user->id,
             'hash' => hash('sha256', $user->email),
