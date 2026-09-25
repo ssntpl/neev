@@ -2,12 +2,12 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>Verify Your Email</title>
+    <title>{{ $purpose ?: 'Verify Your Email' }}</title>
 </head>
 <body style="padding: 8px">
     <h2>Hello {{ $username }},</h2>
 
-    <p>Please click the button below to {{ $purpose ?? 'verify your email address' }}:</p>
+    <p>Please click the button below to {{ $purpose ?: 'verify your email address' }}:</p>
 
     <p>
         <a href="{{ $url }}" style="
@@ -17,14 +17,14 @@
             text-decoration: none;
             display: inline-block;
             border-radius: 5px;">
-            {{ $purpose ?? 'Verify Email' }}
+            {{ $purpose ?: 'Verify Email' }}
         </a>
     </p>
 
     <p>This link is valid for {{ $link_expiry ?? '15' }} minutes after you receive this email.</p>
 
     @if (!empty($otp))
-        <p>Or enter this code on the device you signed up on:</p>
+        <p>Or enter this code instead:</p>
 
         <p style="
             font-size: 24px;

@@ -76,9 +76,29 @@ redirects to the MFA challenge (`otp.mfa.create`) rather than to `neev.home`.
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
 | GET | `/forgot-password` | `password.request` | Show forgot password form |
-| POST | `/forgot-password` | `password.email` | Send password reset link |
-| GET | `/update-password/{id}/{hash}` | `reset.request` | Show reset password form |
-| POST | `/update-password` | `user-password.update` | Process password update |
+| POST | `/forgot-password` | `password.email` | Send password reset link and code |
+| GET | `/update-password/{id}/{hash}` | `reset.request` | Show reset password form (from the link) |
+| POST | `/update-password` | `user-password.update` | Reset the password with the link's `reset_token`, or with `email` + `otp` |
+
+One email carries both proofs, and either resets the password. After sending,
+the forgot-password page shows a code field and a new-password form, which
+posts to `user-password.update` like the link's form does. The code expires
+after `otp_expiry_time` minutes, allows 5 wrong guesses, and is used up by
+whichever proof resets the password first. Either way the proof is checked
+before the password rules run, and spent only once the new password passes.
+
+The same per-account limits as the API apply: 3 reset emails per 15 minutes
+(a fourth shows an error on `email`), and 10 wrong codes per hour, after which
+the code field is refused (an error on `otp`) while the link still works. A
+link works once — it is refused once the password has changed since it was
+sent, both when it is opened and when its form is submitted, so a form left
+open is retired by the owner resetting the password another way.
+
+Both proofs are always sent. Which the user sees is the app's choice: the
+email template is app-owned (`resources/views/vendor/neev/emails/email-verify.blade.php`
+renders the code whenever `$otp` is set), as is the forgot-password page that
+renders the code field — the same arrangement as email verification. The email
+is sent with the purpose `Reset Password`, which is also its subject.
 
 ---
 
@@ -372,7 +392,7 @@ php artisan neev:ui blade
 | `auth/login.blade.php` | Login form |
 | `auth/confirm-login-link.blade.php` | Magic-link confirmation page (shown on GET when `require_confirmation` is on) |
 | `auth/login-password.blade.php` | Password entry after email, plus the passwordless options (OAuth, magic link, passkey) |
-| `auth/forgot-password.blade.php` | Password reset request |
+| `auth/forgot-password.blade.php` | Password reset request, then the emailed-code form |
 | `auth/reset-password.blade.php` | New password form |
 | `auth/verify-email.blade.php` | Verification pending |
 | `auth/change-email.blade.php` | Change email form |

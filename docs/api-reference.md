@@ -424,7 +424,7 @@ that has none — created through OAuth or SSO — sends `otp` instead, a code f
 
 ### Forgot Password
 
-Send a signed URL password reset link to the user's email.
+Email the user a signed password reset link and, in the same email, a one-time code that resets the password without the link.
 
 ```http
 POST /neev/forgotPassword
@@ -457,17 +457,36 @@ the Blade kit sends it to its own `reset.request` form, while a headless
 install sends it to `{app.url}/reset-password` carrying the signed query for
 your page to forward here.
 
+The code works like the email-verification code: it expires after
+`otp_expiry_time` minutes (default 15), is invalidated after 5 wrong guesses,
+and is used up when a reset succeeds. Requesting it replaces any code the user
+already holds, whatever it was for. Whichever of the two proofs resets the
+password first, the code is gone afterwards.
+
+One account can be sent 3 reset emails per 15 minutes, whoever asks; a fourth
+request returns `429` with `retry_after` and a `Retry-After` header, sends
+nothing, and leaves the code already out working. The count is per account,
+not per caller, because each email brings a fresh code with a fresh allowance
+of guesses. A successful reset restores the allowance.
+
+Both proofs are always sent; your app decides which to surface, as with email
+verification. The email template is app-owned
+(`resources/views/vendor/neev/emails/email-verify.blade.php` shows the link,
+and the code whenever `$otp` is set — edit it to show either or both), and
+your UI decides whether to render a code input. The email is sent with the
+purpose `Reset Password`, which is also its subject.
+
 ---
 
 ### Reset Password
 
-Reset the user's password using a signed URL from the forgot password email. The frontend receives the signed URL parameters and forwards them to this endpoint.
+Reset the user's password with either proof from the forgot-password email — one endpoint accepts both.
+
+**With the link** — the frontend receives the signed URL parameters and forwards them to this endpoint:
 
 ```http
 POST /neev/resetPassword?id={user_id}&hash={email_hash}&signature={signature}&expires={timestamp}
 ```
-
-**Request Body:**
 
 ```json
 {
@@ -476,6 +495,32 @@ POST /neev/resetPassword?id={user_id}&hash={email_hash}&signature={signature}&ex
 }
 ```
 
+**With the code** — no query string:
+
+```http
+POST /neev/resetPassword
+```
+
+```json
+{
+    "email": "john@example.com",
+    "otp": "123456",
+    "password": "NewSecurePass123!",
+    "password_confirmation": "NewSecurePass123!"
+}
+```
+
+A request carrying `signature` is treated as a link reset; any other needs
+`email` and `otp`. A link works once: it is refused if the password has
+changed since it was sent (its signed `expires` less `url_expiry_time`,
+against `password_changed_at`) — by this link, its code, or anything else
+that goes through `AuthService::changePassword()`.
+
+On the code route the password rules run only once the code is proven — they compare against the account's current and past
+passwords, so running them first would let anyone naming an address test
+guesses — and a password the rules reject leaves the code usable for the next
+attempt. A successful code reset also marks an unverified address verified.
+
 **Response:**
 
 ```json
@@ -483,6 +528,12 @@ POST /neev/resetPassword?id={user_id}&hash={email_hash}&signature={signature}&ex
     "message": "Password has been updated."
 }
 ```
+
+| Status | Meaning |
+|--------|---------|
+| 403 | `Invalid or expired reset link.` (also once the password has changed since the link was sent) / `Invalid or expired code.` (also returned for an unknown email) |
+| 429 | `Too many incorrect codes. Use the link in the email, or try again later.` — the account has had 10 wrong codes tried in the last hour; no code is checked until the window passes, and the link still works. Carries `retry_after` and a `Retry-After` header |
+| 422 | Validation error — no `signature`, and `email` or `otp` missing; or the new password fails the password rules |
 
 Resetting the password revokes the account's other login tokens and, on the
 database session driver, its other web sessions; other signed-in devices start

@@ -96,6 +96,7 @@ class AuthEventsTest extends TestCase
         Event::fake([PasswordReset::class]);
 
         $user = User::factory()->create(['email_verified_at' => now()]);
+        $this->travel(1)->seconds();
         $url = URL::temporarySignedRoute('neev.resetPassword', now()->addMinutes(60), [
             'id' => $user->id,
             'hash' => hash('sha256', $user->email),

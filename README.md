@@ -242,8 +242,8 @@ All API routes are prefixed with `/neev` — the prefix is configurable via `rou
 | GET / POST | `/neev/loginUsingLink/validate` | Validate a magic-link token without using it | No |
 | POST | `/neev/logout` | Logout current session | Yes |
 | POST | `/neev/logoutAll` | Logout all other sessions | Yes |
-| POST | `/neev/forgotPassword` | Send password reset link | No |
-| POST | `/neev/resetPassword` | Reset password (signed URL) | No |
+| POST | `/neev/forgotPassword` | Send password reset link and code | No |
+| POST | `/neev/resetPassword` | Reset password (signed URL or email + code) | No |
 
 ### Email Endpoints
 

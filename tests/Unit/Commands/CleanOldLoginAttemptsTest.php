@@ -130,10 +130,38 @@ class CleanOldLoginAttemptsTest extends TestCase
         ]);
 
         $this->artisan('neev:clean-login-attempts')
+            ->expectsOutputToContain('disabled')
             ->assertSuccessful();
 
         // Record should still exist because config is falsy
         $this->assertSame(1, LoginAttempt::count());
+    }
+
+    // -----------------------------------------------------------------
+    // Does nothing when config is negative
+    // -----------------------------------------------------------------
+
+    public function test_does_nothing_when_config_is_negative(): void
+    {
+        // subDays(-1) is "a day from now", which used to delete every record.
+        config(['neev.login_history_retention_days' => -1]);
+
+        $user = User::factory()->create();
+
+        LoginAttemptFactory::new()->create([
+            'user_id' => $user->id,
+            'created_at' => now()->subDays(100),
+        ]);
+        LoginAttemptFactory::new()->create([
+            'user_id' => $user->id,
+            'created_at' => now(),
+        ]);
+
+        $this->artisan('neev:clean-login-attempts')
+            ->expectsOutputToContain('disabled')
+            ->assertSuccessful();
+
+        $this->assertSame(2, LoginAttempt::count());
     }
 
     // -----------------------------------------------------------------
