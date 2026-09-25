@@ -473,7 +473,8 @@ Both proofs are always sent; your app decides which to surface, as with email
 verification. The email template is app-owned
 (`resources/views/vendor/neev/emails/email-verify.blade.php` shows the link,
 and the code whenever `$otp` is set — edit it to show either or both), and
-your UI decides whether to render a code input.
+your UI decides whether to render a code input. The email is sent with the
+purpose `Reset Password`, which is also its subject.
 
 ---
 

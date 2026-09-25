@@ -163,7 +163,7 @@ class UserController extends Controller
         $expiryMinutes = config('neev.url_expiry_time', 60);
         $url = app(EmailLinks::class)->passwordResetUrl($user, now()->addMinutes($expiryMinutes));
 
-        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Forgot Password', $expiryMinutes));
+        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Reset Password', $expiryMinutes));
 
         return back()->with('status', __('A password reset link has been sent to your email address.'));
     }

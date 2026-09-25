@@ -45,7 +45,7 @@ class PasswordResetLinkTest extends TestCase
 
         Mail::assertSent(VerifyUserEmail::class, function (VerifyUserEmail $mail) use ($user) {
             return $mail->hasTo($user->email)
-                && $mail->purpose === 'Forgot Password'
+                && $mail->purpose === 'Reset Password'
                 && str_contains($mail->url, '/update-password/' . $user->id . '/');
         });
     }

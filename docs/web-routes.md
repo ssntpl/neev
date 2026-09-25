@@ -97,7 +97,8 @@ open is retired by the owner resetting the password another way.
 Both proofs are always sent. Which the user sees is the app's choice: the
 email template is app-owned (`resources/views/vendor/neev/emails/email-verify.blade.php`
 renders the code whenever `$otp` is set), as is the forgot-password page that
-renders the code field — the same arrangement as email verification.
+renders the code field — the same arrangement as email verification. The email
+is sent with the purpose `Reset Password`, which is also its subject.
 
 ---
 

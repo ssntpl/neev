@@ -33,12 +33,12 @@ see:
 - **The email template is yours** — `neev:ui` ejects
   `emails/email-verify.blade.php` on install, and it already renders `$otp`
   whenever one is set, so reset emails start showing the code as they are.
-  Your copy says "enter this code on the device you signed up on"; the
-  package's now says "on the device to verify email". Both read oddly in a
-  reset email, so reword yours for both purposes (or branch on `$purpose`).
-  Reset emails from both the API and the Blade kit
-  now carry the purpose `Reset Password` (the kit's used to say
-  `Forgot Password`). To keep resets link-only, hide the code for that
+  Your copy says "enter this code on the device you signed up on", which
+  reads oddly in a reset email; the package's now says "Or enter this code
+  instead:", which fits both — copy that line into yours (or branch on
+  `$purpose`). Every reset email — the API's, the Blade kit's, and the
+  signed-in "email me a reset link" action's — now carries the purpose
+  `Reset Password` (the kit's used to say `Forgot Password`). To keep resets link-only, hide the code for that
   purpose:
 
   ```blade
@@ -59,6 +59,12 @@ keep working under the same rule.
 - **Resets are now also limited per account**: 3 reset emails per 15 minutes
   and 10 wrong codes per hour, answered with `429` and `Retry-After` on the
   API. Handle `429` on your forgot-password and reset screens.
+
+**`VerifyUserEmail` subjects name their purpose (action required if you match
+on the subject).**
+The subject was always `Email Verification`; it is now the purpose the email
+was sent for — `Verify Email`, `Reset Password` or `Verify Email Change` — so
+update any test assertion or mail filter that matched the old subject.
 
 **A failed confirmation reports one message, keyed by the field it asked for
 (action required if you match on the old strings).**
