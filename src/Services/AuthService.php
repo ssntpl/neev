@@ -291,9 +291,9 @@ class AuthService
     }
 
     /**
-     * Check a code without spending it: a wrong guess still counts toward
-     * OTP::MAX_ATTEMPTS, but a correct one leaves the code in place for
-     * consumeEmailOtp(). For a caller with more to validate once the code
+     * Check a code without spending it: a wrong guess counts toward
+     * OTP::MAX_ATTEMPTS, but a correct one costs nothing and leaves the code
+     * in place for consumeEmailOtp(). For a caller with more to validate once the code
      * is proven — and that must not spend the code on a failure that is not
      * the code's.
      */
@@ -337,6 +337,14 @@ class AuthService
             }
             return null;
         }
+
+        // A right code gives its reserved guess back, so a caller that then
+        // rejects something else — a weak new password — does not wear the
+        // code down: only wrong codes count toward OTP::MAX_ATTEMPTS.
+        $record->newQueryWithoutScopes()
+            ->whereKey($record->getKey())
+            ->where('attempts', '>', 0)
+            ->decrement('attempts');
 
         return $record;
     }

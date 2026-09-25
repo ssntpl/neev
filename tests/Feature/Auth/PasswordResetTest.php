@@ -355,6 +355,29 @@ class PasswordResetTest extends TestCase
         ])->assertOk();
     }
 
+    public function test_rejected_passwords_do_not_wear_down_the_code(): void
+    {
+        $user = User::factory()->create();
+        $otp = $this->requestResetCode($user);
+
+        // More rejections than the code has guesses: only wrong codes count.
+        for ($i = 0; $i <= OTP::MAX_ATTEMPTS; $i++) {
+            $this->postJson('/neev/resetPassword', [
+                'email' => $user->email,
+                'otp' => $otp,
+                'password' => 'newpassword123',
+                'password_confirmation' => 'mismatch',
+            ])->assertUnprocessable()->assertJsonValidationErrors(['password']);
+        }
+
+        $this->postJson('/neev/resetPassword', [
+            'email' => $user->email,
+            'otp' => $otp,
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertOk();
+    }
+
     public function test_code_reset_verifies_an_unverified_address(): void
     {
         $user = User::factory()->unverified()->create();
