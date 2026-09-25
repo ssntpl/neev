@@ -412,7 +412,7 @@ curl -X POST https://yourapp.com/neev/login \
   -d '{"email": "john@example.com", "password": "password"}'
 ```
 
-Response includes `auth_state` and `mfa_options` (active methods only):
+Response includes `auth_state` and `mfa_options` (active methods only, the preferred method first and the rest in the order they were enrolled):
 
 ```json
 {

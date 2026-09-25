@@ -175,9 +175,18 @@ class UserAuthApiController extends Controller
         ]), $expiryMinutes);
     }
 
+    /**
+     * The user's active factors, preferred method first so a client can offer
+     * it by default; the rest follow in the order they were enrolled.
+     */
     private function getMfaOptions(User $user): array
     {
-        return $user->activeMultiFactorAuths()->pluck('method')->values()->all();
+        return $user->activeMultiFactorAuths()
+            ->orderByDesc('preferred')
+            ->orderBy('id')
+            ->pluck('method')
+            ->values()
+            ->all();
     }
 
     private function sendMfaEmailOTP(User $user, bool $force = false): void

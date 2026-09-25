@@ -214,6 +214,28 @@ class LoginTest extends TestCase
         $this->assertNotEmpty($response->json('token'));
     }
 
+    public function test_mfa_options_list_the_preferred_method_first(): void
+    {
+        $user = $this->createUser();
+        $user->multiFactorAuths()->create([
+            'method' => 'authenticator',
+            'preferred' => false,
+            'secret' => 'testsecret',
+        ]);
+        $user->multiFactorAuths()->create([
+            'method' => 'email',
+            'preferred' => true,
+        ]);
+
+        $response = $this->postJson('/neev/login', [
+            'email' => $user->email,
+            'password' => 'password',
+        ]);
+
+        $response->assertOk();
+        $response->assertJsonPath('mfa_options', ['email', 'authenticator']);
+    }
+
     public function test_non_mfa_user_gets_null_preferred_mfa(): void
     {
         $user = $this->createUser();
