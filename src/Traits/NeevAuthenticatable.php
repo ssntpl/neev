@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Traits;
 
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Ssntpl\Neev\Enums\OtpPurpose;
 use Ssntpl\Neev\Events\EmailVerified;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\OTP;
@@ -13,6 +14,15 @@ trait NeevAuthenticatable
 {
     use HasMultiAuth;
     use HasAccessToken;
+
+    public static function bootNeevAuthenticatable(): void
+    {
+        // The otp table is polymorphic, so no foreign key cascades a deleted
+        // account's codes away the way its other rows go.
+        static::deleted(function ($user) {
+            OTP::query()->forOwner($user)->delete();
+        });
+    }
 
     public function loginAttempts()
     {
@@ -38,11 +48,9 @@ trait NeevAuthenticatable
 
         if ($saved && !$wasVerified) {
             // Whichever proof completed verification (signed link or
-            // emailed code), the outstanding code is now dead.
-            OTP::query()
-                ->where('owner_id', $this->id)
-                ->where('owner_type', $this->getMorphClass())
-                ->delete();
+            // emailed code), the outstanding verification code is now dead.
+            // Codes for other purposes (a reset in flight) are kept.
+            OTP::query()->forPurpose($this, OtpPurpose::EmailVerification)->delete();
 
             // Registration flows call this inside a transaction; only
             // announce the verification once it is durable.

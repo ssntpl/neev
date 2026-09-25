@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Ssntpl\Neev\Enums\OtpPurpose;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\OTP;
 use Ssntpl\Neev\Models\User;
@@ -62,6 +63,7 @@ class EmailVerificationOtpTest extends TestCase
         $this->assertDatabaseHas('otp', [
             'owner_id' => $user->id,
             'owner_type' => $user->getMorphClass(),
+            'purpose' => OtpPurpose::EmailVerification->value,
         ]);
     }
 
@@ -76,7 +78,7 @@ class EmailVerificationOtpTest extends TestCase
         $this->assertSame(1, OTP::count());
         $this->assertSame(0, OTP::first()->attempts);
         // Verification only accepts the latest code.
-        $this->assertFalse(app(AuthService::class)->verifyEmailOtp($user->fresh(), $first === $second ? '000000' : $first));
+        $this->assertFalse(app(AuthService::class)->verifyEmailOtp($user->fresh(), $first === $second ? '000000' : $first, OtpPurpose::EmailVerification));
     }
 
     // -----------------------------------------------------------------
@@ -103,7 +105,7 @@ class EmailVerificationOtpTest extends TestCase
                 return false;
             });
 
-        $this->assertFalse(app(AuthService::class)->verifyEmailOtp($data['user'], '000000'));
+        $this->assertFalse(app(AuthService::class)->verifyEmailOtp($data['user'], '000000', OtpPurpose::EmailVerification));
         $this->assertSame(1, OTP::first()->attempts);
     }
 

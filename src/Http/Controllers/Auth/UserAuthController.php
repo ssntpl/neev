@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Auth\Events\PasswordReset;
 use Illuminate\Validation\ValidationException;
+use Ssntpl\Neev\Enums\OtpPurpose;
 use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
@@ -531,7 +532,7 @@ class UserAuthController extends Controller
             return redirect(config('neev.home'));
         }
 
-        if (!$this->auth->verifyEmailOtp($user, (string) $request->otp)) {
+        if (!$this->auth->verifyEmailOtp($user, (string) $request->otp, OtpPurpose::EmailVerification)) {
             return back()->withErrors(['otp' => 'Code verification failed.']);
         }
 

@@ -459,9 +459,12 @@ your page to forward here.
 
 The code works like the email-verification code: it expires after
 `otp_expiry_time` minutes (default 15), is invalidated after 5 wrong guesses,
-and is used up when a reset succeeds. Requesting it replaces any code the user
-already holds, whatever it was for. Whichever of the two proofs resets the
-password first, the code is gone afterwards.
+and is used up when a reset succeeds. Requesting it replaces only an earlier
+reset code; a verification or confirmation code the user holds keeps working,
+and neither of those resets the password. Whichever of the two proofs resets
+the password first, the code is gone afterwards. Any other password change
+retires the code as well, and an email change discards every code the user
+holds, since each was mailed to the old address.
 
 One account can be sent 3 reset emails per 15 minutes, whoever asks; a fourth
 request returns `429` with `retry_after` and a `Retry-After` header, sends
@@ -579,14 +582,14 @@ refuses to mail to.
 The code expires after `neev.otp_expiry_time` minutes (default 15) and allows 5
 wrong guesses before it is discarded. Throttled to 5 requests/minute.
 
-> **A user holds one code at a time, and a code is spent when it is used.**
-> The code lives in a single row keyed by the user, so requesting one here
-> replaces any code outstanding for any other purpose — including an email
-> verification in flight. The codes are interchangeable for the same reason: a
-> code issued here will satisfy `POST /neev/email/verify-otp`, and vice versa.
-> A correct guess deletes the row, so **one code confirms one action** —
-> request a fresh code for each. Nothing binds a code to the action it was read
-> for, so treat a code as proof of mailbox access and nothing more.
+> **A code works only for its purpose, and is spent when it is used.**
+> A code issued here is a confirmation code: it confirms sensitive actions and
+> nothing else — it does not satisfy `POST /neev/email/verify-otp` or reset a
+> password, and codes issued for those do not confirm an action. Requesting one
+> replaces only an earlier confirmation code, so an email verification or
+> password reset in flight keeps working. A correct guess deletes the row, so
+> **one code confirms one action** — request a fresh code for each. Nothing
+> binds a confirmation code to the particular action it was read for.
 
 ---
 

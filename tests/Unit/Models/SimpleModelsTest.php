@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Hash;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Enums\OtpPurpose;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\DomainRule;
 use Ssntpl\Neev\Models\Membership;
@@ -50,6 +51,7 @@ class SimpleModelsTest extends TestCase
         $otp = OTP::create([
             'owner_id' => $user->id,
             'owner_type' => User::class,
+            'purpose' => OtpPurpose::EmailVerification,
             'otp' => 654321,
             'expires_at' => now()->addMinutes(15),
         ]);
@@ -68,6 +70,7 @@ class SimpleModelsTest extends TestCase
         $otp = OTP::create([
             'owner_id' => $user->id,
             'owner_type' => User::class,
+            'purpose' => OtpPurpose::EmailVerification,
             'otp' => $plainOtp,
             'expires_at' => now()->addMinutes(15),
         ]);
@@ -88,6 +91,7 @@ class SimpleModelsTest extends TestCase
         $otp = OTP::create([
             'owner_id' => $user->id,
             'owner_type' => User::class,
+            'purpose' => OtpPurpose::EmailVerification,
             'otp' => 111222,
             'expires_at' => now()->addMinutes(15),
         ]);

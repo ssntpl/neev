@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\ValidationException;
+use Ssntpl\Neev\Enums\OtpPurpose;
 use Ssntpl\Neev\Events\LoggedOut;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
@@ -233,7 +234,7 @@ class UserAuthApiController extends Controller
             ], 400);
         }
 
-        if (!app(AuthService::class)->verifyEmailOtp($user, (string) $request->otp)) {
+        if (!app(AuthService::class)->verifyEmailOtp($user, (string) $request->otp, OtpPurpose::EmailVerification)) {
             return response()->json([
                 'message' => 'Code verification failed.',
             ], 400);
