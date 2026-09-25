@@ -397,4 +397,24 @@ class APITokenTest extends TestCase
             'token_type' => AccessToken::api_token,
         ]);
     }
+
+    /**
+     * The page that shows a just-created token also has to offer the
+     * permissions dialog. The two used to be either/or on session('token')
+     * and share one `show` flag, so "Permissions" reopened the copy dialog.
+     */
+    public function test_the_tokens_page_keeps_the_permissions_dialog_beside_a_new_token(): void
+    {
+        $user = User::factory()->create();
+
+        $this->actingAs($user)
+            ->withSession(['token' => 'plain-new-token'])
+            ->get('/account/tokens')
+            ->assertOk()
+            ->assertSee('plain-new-token')
+            ->assertSee('API Token Permissions')
+            ->assertSee('x-show="showToken"', false)
+            ->assertSee('showToken: true', false)
+            ->assertSee('show: false', false);
+    }
 }

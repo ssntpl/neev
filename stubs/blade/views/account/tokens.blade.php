@@ -116,7 +116,7 @@
             </x-slot>
         </x-neev-component::card>
         @if (session('token'))
-            <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="closeModal" @click.away="closeModal">
+            <x-neev-component::dialog-modal show="showToken">
                 <x-slot name="title">
                     {{ __('New Token') }}
                 </x-slot>
@@ -138,76 +138,76 @@
                 </x-slot>
 
                 <x-slot name="footer">
-                    <x-neev-component::secondary-button @click="closeModal()">
+                    <x-neev-component::secondary-button @click="showToken = false">
                         {{ __('Done') }}
                     </x-neev-component::secondary-button>
                 </x-slot>
             </x-neev-component::dialog-modal>
-        @else
-            <x-neev-component::dialog-modal x-show="show" x-cloak @keydown.escape.window="closeModal" @click.away="closeModal">
-                <x-slot name="title">
-                    {{ __('API Token Permissions') }}
-                </x-slot>
-                
-                <x-slot name="content">
-                    {{ __('Choose the minimal permissions necessary for your needs.') }}
-                    <div class="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
-                        <template x-for="permission in allPermissions" x-bind:key="permission.name">
-                            <label class="flex items-center gap-2">
-                                <template x-if="tokenId !== 0">
-                                    <input
-                                        type="checkbox"
-                                        x-bind:value="permission.name"
-                                        name="permissions[]"
-                                        x-model="selected"
-                                    >
-                                </template>
-                                <template x-if="tokenId === 0">
-                                    <input
-                                        type="checkbox"
-                                        x-bind:value="permission.name"
-                                        name="permissions[]"
-                                        x-model="newSelected"
-                                    >
-                                </template>
-                                <span x-text="permission.name"></span>
-                            </label>
-                        </template>
-                    </div>
-
-                    <template x-if="tokenId !== 0">
-                        <form method="POST" action="{{ route('tokens.update') }}" x-ref="changePermissionForm" class="hidden">
-                            @csrf
-                            @method('PUT')
-                            
-                            <input type="hidden" name="token_id" x-bind:value="tokenId">
-                            <template x-for="permission in selected" x-bind:key="permission">
-                                <input type="hidden" name="permissions[]" x-bind:value="permission">
-                            </template>
-                        </form>
-                    </template>
-                </x-slot>
-
-                <x-slot name="footer">
-                    <template x-if="tokenId === 0">
-                        <x-neev-component::secondary-button @click="closeModal()">
-                            {{ __('Done') }}
-                        </x-neev-component::secondary-button>
-                    </template>
-
-                    <template x-if="tokenId !== 0">
-                        <div class="flex gap-2 justify-end w-full">
-                            <x-neev-component::secondary-button @click="closeModal()">
-                                {{ __('Cancel') }}
-                            </x-neev-component::secondary-button>
-                            <x-neev-component::button @click.prevent="$refs.changePermissionForm.submit()">
-                                {{ __('Save') }}
-                            </x-neev-component::button>
-                        </div>
-                    </template>
-                </x-slot>
-            </x-neev-component::dialog-modal>
         @endif
+
+        <x-neev-component::dialog-modal>
+            <x-slot name="title">
+                {{ __('API Token Permissions') }}
+            </x-slot>
+            
+            <x-slot name="content">
+                {{ __('Choose the minimal permissions necessary for your needs.') }}
+                <div class="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto">
+                    <template x-for="permission in allPermissions" x-bind:key="permission.name">
+                        <label class="flex items-center gap-2">
+                            <template x-if="tokenId !== 0">
+                                <input
+                                    type="checkbox"
+                                    x-bind:value="permission.name"
+                                    name="permissions[]"
+                                    x-model="selected"
+                                >
+                            </template>
+                            <template x-if="tokenId === 0">
+                                <input
+                                    type="checkbox"
+                                    x-bind:value="permission.name"
+                                    name="permissions[]"
+                                    x-model="newSelected"
+                                >
+                            </template>
+                            <span x-text="permission.name"></span>
+                        </label>
+                    </template>
+                </div>
+
+                <template x-if="tokenId !== 0">
+                    <form method="POST" action="{{ route('tokens.update') }}" x-ref="changePermissionForm" class="hidden">
+                        @csrf
+                        @method('PUT')
+                        
+                        <input type="hidden" name="token_id" x-bind:value="tokenId">
+                        <template x-for="permission in selected" x-bind:key="permission">
+                            <input type="hidden" name="permissions[]" x-bind:value="permission">
+                        </template>
+                    </form>
+                </template>
+            </x-slot>
+
+            <x-slot name="footer">
+                <template x-if="tokenId === 0">
+                    <x-neev-component::secondary-button @click="closeModal()">
+                        {{ __('Done') }}
+                    </x-neev-component::secondary-button>
+                </template>
+
+                <template x-if="tokenId !== 0">
+                    <div class="flex gap-2 justify-end w-full">
+                        <x-neev-component::secondary-button @click="closeModal()">
+                            {{ __('Cancel') }}
+                        </x-neev-component::secondary-button>
+                        <x-neev-component::button @click.prevent="$refs.changePermissionForm.submit()">
+                            {{ __('Save') }}
+                        </x-neev-component::button>
+                    </div>
+                </template>
+            </x-slot>
+        </x-neev-component::dialog-modal>
     </div>
 </x-neev-layout::app>
 <script>
@@ -215,26 +215,34 @@
         return {
             tokenOpen: false,
             allPermissions: permissions,
-            show: {{ session()->has('token') ? 'true' : 'false' }},
+            // The just-created token's copy dialog. It has its own state so the
+            // permissions dialog still opens while it is on the page.
+            showToken: {{ session()->has('token') ? 'true' : 'false' }},
+            show: false,
             tokenId: null,
             selected: [],
             newSelected: [],
-            openModal(tokenId, currentPermissions = []) {
-                this.show = true;
-                this.tokenId = tokenId;
+            init() {
+                // Escape and the backdrop close the dialog inside the modal
+                // component, which only sets `show` = false and never calls
+                // closeModal(), so the reset follows `show` instead. The new
+                // token's newSelected is kept: it feeds the create form.
+                this.$watch('show', (open) => {
+                    if (!open) {
+                        this.selected = [];
+                        this.tokenId = null;
+                    }
+                });
+            },
 
-                if (tokenId !== 'new') {
-                    this.selected = [...currentPermissions];
-                }
+            openModal(tokenId, currentPermissions = []) {
+                this.tokenId = tokenId;
+                this.selected = [...currentPermissions];
+                this.show = true;
             },
 
             closeModal() {
                 this.show = false;
-
-                if (this.tokenId !== 'new') {
-                    this.selected = [];
-                    this.tokenId = null;
-                }
             }
         }
     }
