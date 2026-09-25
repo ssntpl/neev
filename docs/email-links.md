@@ -169,6 +169,12 @@ class AppEmailLinks extends EmailLinks
 Expiry is passed in, not decided here — callers derive it from
 `config('neev.url_expiry_time')` (60 minutes by default).
 
+Both reset endpoints refuse a `passwordResetUrl()` link once the password has
+changed since it was sent — the signed `expires` less `url_expiry_time`,
+compared with `password_changed_at` — so a link resets the password once. If
+you override the method, pass `$expiresAt` through unchanged to `signed()`, or
+that send time is wrong.
+
 ---
 
 ## Response hooks

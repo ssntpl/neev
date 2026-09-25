@@ -110,6 +110,7 @@ class PasswordResetLinkTest extends TestCase
 
     protected function resetUrl(User $user): string
     {
+        $this->travel(1)->seconds();
         return URL::temporarySignedRoute('reset.request', now()->addMinutes(60), [
             'id' => $user->id,
             'hash' => hash('sha256', $user->email),

@@ -14,6 +14,7 @@ use Ssntpl\Neev\Exceptions\InvalidInvitationException;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
 use Ssntpl\Neev\Exceptions\MagicLinkThrottledException;
 use Ssntpl\Neev\Exceptions\MagicLinkChannelException;
+use Ssntpl\Neev\Exceptions\PasswordResetThrottledException;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
@@ -327,15 +328,15 @@ class UserAuthApiController extends Controller
                 ], 404);
             }
 
-            $expiryMinutes = config('neev.url_expiry_time', 60);
-            $url = app(EmailLinks::class)->passwordResetUrl($user, now()->addMinutes($expiryMinutes));
-            Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Reset Password', $expiryMinutes));
+            app(AuthService::class)->sendPasswordReset($user);
 
             return response()->json([
                 'message' => 'Password reset link has been sent to your email.'
             ]);
         } catch (ValidationException $e) {
             throw $e;
+        } catch (PasswordResetThrottledException $e) {
+            return $this->passwordResetThrottled($e);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
@@ -344,28 +345,66 @@ class UserAuthApiController extends Controller
         }
     }
 
+    /**
+     * Reset a password with either proof the forgot-password email carries:
+     * the signed link's query, or `email` + `otp`.
+     */
     public function resetPassword(Request $request)
     {
         try {
-            if (!$request->hasValidSignature()) {
-                return response()->json([
-                    'message' => 'Invalid or expired reset link.',
-                ], 403);
+            $auth = app(AuthService::class);
+
+            if ($request->has('signature')) {
+                if (!$request->hasValidSignature()) {
+                    return response()->json([
+                        'message' => 'Invalid or expired reset link.',
+                    ], 403);
+                }
+
+                $user = User::model()->find($request->id);
+                if (!$user
+                    || !hash_equals(hash('sha256', $user->email), (string) $request->hash)
+                    || !$auth->passwordResetLinkIsCurrent($user, $request->query('expires'))) {
+                    return response()->json([
+                        'message' => 'Invalid or expired reset link.',
+                    ], 403);
+                }
+
+                $request->validate([
+                    'password' => config('neev.password'),
+                ]);
+            } else {
+                $request->validate([
+                    'email' => ['required', 'string', 'email'],
+                    'otp' => ['required', 'string'],
+                ]);
+
+                // An unknown address gets the same answer as a wrong code.
+                $user = User::findByEmail($request->email);
+                $record = $user ? $auth->checkPasswordResetOtp($user, (string) $request->otp) : null;
+                if (!$record) {
+                    return response()->json([
+                        'message' => 'Invalid or expired code.',
+                    ], 403);
+                }
+
+                // Only after the code: the rules compare the new password with
+                // the account's current and past ones, so run first they would
+                // tell anyone naming an address whether a guess was one of
+                // them. And before spending it, so a rejected password leaves
+                // the code usable for the next attempt.
+                $request->validate([
+                    'password' => config('neev.password'),
+                ]);
+
+                if (!$auth->consumeEmailOtp($user, $record)) {
+                    return response()->json([
+                        'message' => 'Invalid or expired code.',
+                    ], 403);
+                }
             }
 
-            $user = User::model()->find($request->id);
-            if (!$user
-                || !hash_equals(hash('sha256', $user->email), (string) $request->hash)) {
-                return response()->json([
-                    'message' => 'Invalid or expired reset link.',
-                ], 403);
-            }
-
-            $request->validate([
-                'password' => config('neev.password'),
-            ]);
-
-            app(AuthService::class)->changePassword($user, $request->password);
+            $auth->completePasswordReset($user, $request->password);
 
             event(new PasswordReset($user));
 
@@ -374,12 +413,22 @@ class UserAuthApiController extends Controller
             ]);
         } catch (ValidationException $e) {
             throw $e;
+        } catch (PasswordResetThrottledException $e) {
+            return $this->passwordResetThrottled($e);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
                 'message' => 'Password reset failed.',
             ], 500);
         }
+    }
+
+    private function passwordResetThrottled(PasswordResetThrottledException $e)
+    {
+        return response()->json([
+            'message' => $e->getMessage(),
+            'retry_after' => $e->retryAfter,
+        ], 429)->header('Retry-After', (string) $e->retryAfter);
     }
 
     public function sendLoginLink(Request $request, MagicLinkManager $magicLink)

@@ -24,7 +24,7 @@
     <p>This link is valid for {{ $link_expiry ?? '15' }} minutes after you receive this email.</p>
 
     @if (!empty($otp))
-        <p>Or enter this code on the device you signed up on:</p>
+        <p>Or enter this code on the device to verify email:</p>
 
         <p style="
             font-size: 24px;

@@ -191,18 +191,20 @@ class EmailVerificationOtpTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Reset / email-change mails carry no code
+    // The reset mail carries a code beside its link
     // -----------------------------------------------------------------
 
-    public function test_password_reset_mail_carries_no_otp(): void
+    public function test_password_reset_mail_carries_an_otp(): void
     {
+        // Reset accepts either proof, as verification does — see
+        // PasswordResetTest for the code route.
         Mail::fake();
         $user = User::factory()->create(['email_verified_at' => now()]);
 
         $this->postJson('/neev/forgotPassword', ['email' => $user->email])->assertOk();
 
         Mail::assertSent(VerifyUserEmail::class, function (VerifyUserEmail $mail) {
-            return $mail->otp === null;
+            return $mail->otp !== null && $mail->url !== null;
         });
     }
 }

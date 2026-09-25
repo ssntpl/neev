@@ -10,12 +10,22 @@ class CleanOldLoginAttempts extends Command
     protected $signature = 'neev:clean-login-attempts';
     protected $description = 'Delete login attempts older than given days in config.';
 
-    public function handle()
+    public function handle(): int
     {
-        if (config('neev.login_history_retention_days')) {
-            $count = LoginAttempt::where('created_at', '<', now()->subDays(config('neev.login_history_retention_days')))->delete();
+        $days = (int) config('neev.login_history_retention_days');
 
-            $this->info("Deleted $count login attempts record(s) older than ".config('neev.login_history_retention_days')." days.");
+        // A negative retention would be "older than a day from now", which
+        // deletes every record — so anything below 1 disables the cleanup.
+        if ($days <= 0) {
+            $this->info('Login history cleanup is disabled (login_history_retention_days is not a positive number of days).');
+
+            return self::SUCCESS;
         }
+
+        $count = LoginAttempt::where('created_at', '<', now()->subDays($days))->delete();
+
+        $this->info("Deleted $count login attempts record(s) older than $days days.");
+
+        return self::SUCCESS;
     }
 }

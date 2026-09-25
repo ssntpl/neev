@@ -13,6 +13,53 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.3 → Unreleased
 
+**A password can be reset with an emailed code (check what your
+forgot-password screen and email show).**
+The forgot-password email now carries a one-time code beside the link, and
+either resets the password — on the API (`POST {prefix}/resetPassword` with
+`email` + `otp`) and in the Blade kit (`POST /update-password` with `email` +
+`otp`; no new routes). Both proofs are always sent, and the email template
+decides which the user sees — the same arrangement as email verification. The
+link keeps working as before, so nothing breaks, but check what your users will
+see:
+
+- **If you ejected the Blade kit**, your `auth/forgot-password.blade.php` has no
+  field for the code. Copy the new one over yours (`--force` re-ejects every
+  kit view, so use it only if you have customised none): once a code is out it
+  shows the code form, posting to `user-password.update`. Or, to stay
+  link-only, remove the code from the email template (below).
+- **If you run headless**, your forgot-password screen needs a code input to
+  use the code; until it has one, hide the code in the template.
+- **The email template is yours** — `neev:ui` ejects
+  `emails/email-verify.blade.php` on install, and it already renders `$otp`
+  whenever one is set, so reset emails start showing the code as they are.
+  Your copy says "enter this code on the device you signed up on"; the
+  package's now says "on the device to verify email". Both read oddly in a
+  reset email, so reword yours for both purposes (or branch on `$purpose`).
+  Reset emails from both the API and the Blade kit
+  now carry the purpose `Reset Password` (the kit's used to say
+  `Forgot Password`). To keep resets link-only, hide the code for that
+  purpose:
+
+  ```blade
+  @if (!empty($otp) && $purpose !== 'Reset Password')
+  ```
+
+**A reset link works once (no action required).**
+A link is refused once the password has changed since it was sent. The send
+time is the link's signed `expires` less `url_expiry_time`, compared with
+`password_changed_at`; the URL is unchanged, so links sent before you deploy
+keep working under the same rule.
+
+- **If your code writes `password` directly** rather than through
+  `AuthService::changePassword()`, set `password_changed_at` in the same save,
+  or links sent before that change stay usable until they expire.
+- **If you change `url_expiry_time`**, links already out are judged by the new
+  value until they expire.
+- **Resets are now also limited per account**: 3 reset emails per 15 minutes
+  and 10 wrong codes per hour, answered with `429` and `Retry-After` on the
+  API. Handle `429` on your forgot-password and reset screens.
+
 **A failed confirmation reports one message, keyed by the field it asked for
 (action required if you match on the old strings).**
 The four actions that ask an account to prove itself each carried their own
