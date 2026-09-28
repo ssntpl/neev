@@ -11,7 +11,7 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## 0.6.6 → Unreleased
+## 0.6.6 → 0.6.7
 
 **Emailed codes carry a purpose (schema change; action required on existing
 installs).**

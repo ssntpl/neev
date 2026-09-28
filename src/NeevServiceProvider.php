@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Ssntpl\Neev\Commands\Auth\ConfigureAuthCommand;
 use Ssntpl\Neev\Commands\Auth\ShowAuthCommand;
+use Ssntpl\Neev\Commands\CleanExpiredAccessTokens;
 use Ssntpl\Neev\Commands\CleanExpiredMagicLinks;
 use Ssntpl\Neev\Commands\CleanOldLoginAttempts;
 use Ssntpl\Neev\Commands\CleanPendingMfaSetups;
@@ -196,6 +197,7 @@ class NeevServiceProvider extends ServiceProvider
             DownloadGeoLiteDb::class,
             CleanOldLoginAttempts::class,
             CleanExpiredMagicLinks::class,
+            CleanExpiredAccessTokens::class,
             CleanPendingMfaSetups::class,
 
             CreateTenantCommand::class,
