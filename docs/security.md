@@ -1016,6 +1016,9 @@ php artisan neev:download-geoip
 # Clean old login attempts
 php artisan neev:clean-login-attempts
 
+# Delete expired access tokens
+php artisan neev:clean-access-tokens
+
 # Update GeoIP database
 php artisan neev:download-geoip
 ```
@@ -1027,6 +1030,7 @@ php artisan neev:download-geoip
 protected function schedule(Schedule $schedule)
 {
     $schedule->command('neev:clean-login-attempts')->daily();
+    $schedule->command('neev:clean-access-tokens')->daily();
     $schedule->command('neev:download-geoip')->monthly();
 }
 ```

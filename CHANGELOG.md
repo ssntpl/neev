@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`neev:clean-access-tokens`** — deletes expired access tokens across every tenant. An expired token was only deleted when presented, so one its holder never sent again stayed in `access_tokens` forever. Tokens with no expiry are kept. Schedule it daily beside the other maintenance commands; see [docs/cli-commands.md](./docs/cli-commands.md#neevclean-access-tokens)
+
+## [0.6.7] - 2026-09-25
+
 ### Changed
 
 - **BREAKING: Emailed codes are scoped by purpose** — the `otp` table gains a `purpose` column (`email_verification`, `confirmation`, `password_reset`; see `Ssntpl\Neev\Enums\OtpPurpose`) and is unique on owner + purpose, so a user holds one live code per purpose. Asking for a confirmation code no longer cancels a password reset in flight, and verifying an address no longer discards a reset code. `AuthService::verifyEmailOtp()`, `checkEmailOtp()` and `discardEmailOtp()` take an `OtpPurpose`. A code of any purpose still verifies an unverified address when spent, since each proves the user reads the mailbox. A code from `POST /neev/confirmation/otp` no longer satisfies `POST /neev/email/verify-otp`.
@@ -532,7 +538,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive Blade views and email templates
 - Artisan commands for installation, GeoIP download, and cleanup
 
-[Unreleased]: https://github.com/ssntpl/neev/compare/v0.6.6...HEAD
+[Unreleased]: https://github.com/ssntpl/neev/compare/v0.6.7...HEAD
+[0.6.7]: https://github.com/ssntpl/neev/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/ssntpl/neev/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/ssntpl/neev/compare/v0.6.4...v0.6.5
 [0.6.4]: https://github.com/ssntpl/neev/compare/v0.6.3...v0.6.4

@@ -735,6 +735,7 @@ php artisan neev:auth:show            # Show tenant/team auth settings
 
 ```bash
 php artisan neev:clean-login-attempts # Clean old login records
+php artisan neev:clean-access-tokens  # Delete expired access tokens
 ```
 
 ### Scheduled Tasks
@@ -744,6 +745,7 @@ php artisan neev:clean-login-attempts # Clean old login records
 use Illuminate\Support\Facades\Schedule;
 
 Schedule::command('neev:clean-login-attempts')->daily();
+Schedule::command('neev:clean-access-tokens')->daily();
 Schedule::command('neev:download-geoip')->monthly();
 ```
 

@@ -114,6 +114,27 @@ Schedule it alongside the other maintenance commands:
 $schedule->command('neev:clean-magic-links')->daily();
 ```
 
+### `neev:clean-access-tokens`
+
+Delete expired access tokens, login and API tokens alike.
+
+```bash
+php artisan neev:clean-access-tokens
+```
+
+An expired token is refused and deleted when it is presented, so the only rows
+that linger are ones their holder never sends again — an abandoned SPA session,
+a closed CLI. They cannot authenticate, but without this sweep the table grows
+without bound. A token with no `expires_at` never expires and is kept. Like
+`neev:clean-magic-links`, it ignores tenancy config and purges every tenant's
+rows.
+
+Schedule it alongside the other maintenance commands:
+
+```php
+$schedule->command('neev:clean-access-tokens')->daily();
+```
+
 ---
 
 ## Tenant / Team Provisioning
