@@ -298,6 +298,11 @@ class TeamController extends Controller
                 ->contains(fn (Domain $domain) => str_ends_with($email, '@' . strtolower($domain->domain)));
 
             if ($onVerifiedDomain) {
+                // Deactivating is account-wide: a member leaving on their own
+                // would lock themselves out of everything, not just this team.
+                if ($user->id === $actor->id) {
+                    return back()->withErrors(['message' => 'You cannot leave a team your email domain manages.']);
+                }
                 if ($user->active) {
                     $user->deactivate();
                     return back()->with('status', 'User Deactivated Successfully');
@@ -394,7 +399,7 @@ class TeamController extends Controller
         try {
             $team = $this->requestedTeam($request);
 
-            if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
+            if ($team && $team->acceptsJoinRequests()) {
                 $owner = $team->owner;
                 if ($team->users->contains($user)) {
                     return back()->with('status', 'Already Added.');

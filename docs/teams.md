@@ -387,8 +387,11 @@ route (`POST {prefix}/teams/members/request`) accepts the same two, plus an
 `email` (the owner's) and `team` (the team name) pair. It tries `team_id`
 first, then `slug`, then the pair.
 
-A team whose domain federation is enforced or verified does not take join
-requests — membership there follows from the verified domain instead.
+A team does not take join requests when its primary domain is verified, or
+when any of its verified domains is enforced — membership there follows from
+the verified domain instead. `Team::acceptsJoinRequests()` answers the same
+question, and the Blade profile page shows **Request to join** only when it is
+true.
 
 The Blade team profile page is the one team page an outsider can open, so it
 carries the **Request to join** button, and shows **Request pending** once a
@@ -430,6 +433,8 @@ curl -X PUT https://yourapp.com/neev/teams/leave \
 ### Members on a Verified Domain
 
 Removing a member whose email is on any of the team's verified domains does not take them out of the team: the domain governs their membership, so their account is **deactivated** instead (`User Deactivated Successfully`). Removing them again reactivates it (`User Activated Successfully`). Members on other addresses are removed as usual.
+
+Such a member cannot remove themselves: deactivation is account-wide, so leaving would lock them out of the whole application. The attempt answers `403 You cannot leave a team your email domain manages.`, and the Blade pages do not offer **Leave** to them. `Team::hasVerifiedDomainFor($email)` tells whether an address is on one of the team's verified domains.
 
 ### Note: Owners Cannot Leave
 
@@ -577,7 +582,7 @@ To get a new token (for example when the old one was lost), send `"token": true`
 
 When `enforce` is true on any of the team's verified domains:
 - Only users whose email is on one of the team's **verified** domains can be invited — not only the domain that is enforced, and not only the primary
-- Join requests are blocked
+- Join requests are refused
 - Members whose email matches none of the team's verified domains are reported as `outside_members` in the domains listing, the same count the domain page shows
 
 ```bash

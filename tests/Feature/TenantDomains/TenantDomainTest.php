@@ -236,6 +236,23 @@ class TenantDomainTest extends TestCase
         $this->assertSame(0, Domain::count());
     }
 
+    public function test_add_domain_refuses_another_spelling_of_one_the_team_holds(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains', ['team_id' => $team->id, 'domain' => 'ACME.com.'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['domain']);
+
+        $this->assertSame(1, Domain::where('domain', 'acme.com')->count());
+    }
+
     public function test_add_domain_rejects_non_owner(): void
     {
         [$user, $token] = $this->authenticatedUser();

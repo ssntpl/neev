@@ -1977,6 +1977,16 @@ Authorization: Bearer {token}
 }
 ```
 
+Send `user_id` as well to remove another member. A member whose email is on
+one of the team's verified domains is deactivated rather than removed
+(`User Deactivated Successfully`; again, `User Activated Successfully`).
+
+**Errors:**
+- `403 You cannot perform this action on this team.` — the owner is named, or
+  the caller is not a member.
+- `403 You cannot leave a team your email domain manages.` — the caller names
+  themselves and their email is on one of the team's verified domains.
+
 ---
 
 ### Request to Join Team
@@ -2009,8 +2019,8 @@ as is a slug that matches no team.
 
 The request is recorded as a pending membership with
 `action = request_from_user`, and the team owner is emailed. A team whose
-domain federation is enforced or verified does not accept join requests —
-membership there follows from the verified domain.
+primary domain is verified, or with any enforced verified domain, does not
+accept join requests — membership there follows from the verified domain.
 
 ---
 
@@ -2266,7 +2276,9 @@ claiming team, against the `platform_domain` config — the request cannot
 influence it. A team's own subdomain (its slug under a platform domain) is
 verified immediately and the response carries no token; anything else comes back
 with `verification_token` and `dns_record` to publish. A `domain` that is
-nothing once canonicalised (`...`) is refused with `422`.
+nothing once canonicalised (`...`) is refused with `422`. The domain is compared
+in canonical form (lowercase, no trailing dot), so `ACME.com.` beside the
+team's `acme.com` is refused with `422` too.
 
 ---
 

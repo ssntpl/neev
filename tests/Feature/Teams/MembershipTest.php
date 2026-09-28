@@ -898,6 +898,69 @@ class MembershipTest extends TestCase
         $this->assertTrue($team->allUsers()->whereKey($member->id)->exists());
     }
 
+    public function test_member_on_a_verified_domain_cannot_leave_and_deactivate_themselves(): void
+    {
+        $this->enableDomainFederation();
+
+        $owner = User::factory()->create();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+            'is_primary' => true,
+        ]);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.io',
+            'is_primary' => false,
+        ]);
+
+        [$member, $token] = $this->authenticatedUser();
+        $member->update(['active' => true, 'email' => 'employee@acme.io']);
+        $team->allUsers()->attach($member, ['joined' => true]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/leave', [
+                'team_id' => $team->id,
+                'user_id' => $member->id,
+            ])
+            ->assertStatus(403)
+            ->assertJsonPath('message', 'You cannot leave a team your email domain manages.');
+
+        $this->assertTrue($member->fresh()->active);
+        $this->assertTrue($team->allUsers()->whereKey($member->id)->exists());
+    }
+
+    public function test_join_request_is_refused_when_a_non_primary_verified_domain_is_enforced(): void
+    {
+        Mail::fake();
+        $this->enableDomainFederation();
+
+        [$requester, $token] = $this->authenticatedUser();
+        $owner = User::factory()->create();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'is_public' => true]);
+
+        DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+            'is_primary' => true,
+        ]);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.io',
+            'is_primary' => false,
+            'enforce' => true,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/teams/request', ['team_id' => $team->id])
+            ->assertStatus(400);
+
+        $this->assertFalse($team->allUsers()->whereKey($requester->id)->exists());
+        Mail::assertNothingSent();
+    }
+
     public function test_leave_removes_user_on_an_unverified_domain(): void
     {
         $this->enableDomainFederation();

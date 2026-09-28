@@ -149,9 +149,25 @@ a harmless action on a verified domain.
 
 **Enforcement follows every verified domain (behaviour change).** Invitations
 to a team with an enforced verified domain are limited to addresses on any of
-the team's verified domains, and removing a member on any verified domain
-deactivates the account rather than detaching it. Both used to look at the
-primary domain only.
+the team's verified domains, such a team no longer accepts join requests, and
+removing a member on any verified domain deactivates the account rather than
+detaching it. All three used to look at the primary domain only.
+
+**A member on a verified domain cannot leave on their own (behaviour change).**
+`PUT /neev/teams/leave` naming the caller answers
+`403 You cannot leave a team your email domain manages.` when their email is on
+one of the team's verified domains, as does the Blade route. Removing such a
+member deactivates their account, so leaving used to lock them out of the whole
+application. Another member can still deactivate and reactivate them.
+
+**The Blade team pages follow every verified domain (re-eject to pick up).**
+`team/members.blade.php`, `account/teams.blade.php` and
+`team/profile.blade.php` decided **Leave**, **Deactivate**/**Remove**,
+**Activate**, the outside-member highlight and **Request to join** from the
+primary domain alone. They now call `Team::hasVerifiedDomainFor()`,
+`Team::enforcesDomain()` and `Team::acceptsJoinRequests()`. An ejected copy
+keeps working but can offer a button the server then refuses; re-eject the
+three views, or switch their conditions to those methods.
 
 **Federating validates `domain` (API clients).** `POST /neev/domains` answers
 `422` for a missing domain or one that is only dots, and `400` (not `200`) when

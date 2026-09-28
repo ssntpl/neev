@@ -497,6 +497,13 @@ class TeamApiController extends Controller
                 ->contains(fn (Domain $domain) => str_ends_with($email, '@' . strtolower($domain->domain)));
 
             if ($onVerifiedDomain) {
+                // Deactivating is account-wide: a member leaving on their own
+                // would lock themselves out of everything, not just this team.
+                if ($user->id === $actor->id) {
+                    return response()->json([
+                        'message' => 'You cannot leave a team your email domain manages.',
+                    ], 403);
+                }
                 if ($user->active) {
                     $user->deactivate();
                     return response()->json([
@@ -531,7 +538,7 @@ class TeamApiController extends Controller
         try {
             $team = $this->requestedTeam($request);
             $team?->loadMissing('owner');
-            if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
+            if ($team && $team->acceptsJoinRequests()) {
                 if ($team->users->contains($user)) {
                     return response()->json([
                         'message' => 'Already Added.',

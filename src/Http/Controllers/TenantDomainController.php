@@ -69,6 +69,13 @@ class TenantDomainController extends Controller
             ], 403);
         }
 
+        // Compare the stored spelling, not whatever was typed: `ACME.com.` and
+        // `acme.com` are one host, and the unique rules below would otherwise
+        // miss the row that holds it.
+        if (is_string($request->domain) && Domain::canonicalHost($request->domain) !== '') {
+            $request->merge(['domain' => Domain::canonicalHost($request->domain)]);
+        }
+
         $request->validate([
             'domain' => [
                 'required',

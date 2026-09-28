@@ -239,10 +239,43 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     /**
      * Get custom domains for this team (web-serving domains).
      * These are verified domains that can be used for tenant routing.
+     *
+     * @return MorphMany<Domain, $this>
      */
     public function customDomains(): MorphMany
     {
         return $this->morphMany(Domain::class, 'owner')->whereNotNull('verified_at');
+    }
+
+    /**
+     * Whether any of the team's verified domains is enforced, not only the
+     * primary one.
+     */
+    public function enforcesDomain(): bool
+    {
+        return $this->customDomains->contains('enforce', true);
+    }
+
+    /**
+     * Whether the email is on one of the team's verified domains, which then
+     * manages that member: removing them deactivates their account.
+     */
+    public function hasVerifiedDomainFor(string $email): bool
+    {
+        $email = strtolower($email);
+
+        return $this->customDomains->contains(
+            fn (Domain $domain) => str_ends_with($email, '@' . strtolower($domain->domain))
+        );
+    }
+
+    /**
+     * Whether users may ask to join. A verified primary domain closes the team
+     * to requests, as does enforcement on any verified domain.
+     */
+    public function acceptsJoinRequests(): bool
+    {
+        return !$this->domain?->enforce && !$this->domain?->verified_at && !$this->enforcesDomain();
     }
 
     /**

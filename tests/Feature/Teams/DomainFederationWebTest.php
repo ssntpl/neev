@@ -278,6 +278,56 @@ class DomainFederationWebTest extends TestCase
         $this->assertTrue($team->refresh()->hasMember($member));
     }
 
+    public function test_a_member_on_a_verified_domain_cannot_leave_and_deactivate_themselves(): void
+    {
+        [$team] = $this->teamWithOwner();
+        DomainFactory::new()->primary()->forTeam($team)->create(['domain' => 'acme.com']);
+        DomainFactory::new()->verified()->forTeam($team)->create(['domain' => 'acme.io']);
+        $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.io']);
+        $team->addMember($member);
+
+        $this->actingAs($member)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertSessionHasErrors(['message' => 'You cannot leave a team your email domain manages.']);
+
+        $this->assertTrue($member->fresh()->active);
+        $this->assertTrue($team->refresh()->hasMember($member));
+    }
+
+    public function test_members_page_offers_deactivate_for_a_member_on_a_non_primary_verified_domain(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        DomainFactory::new()->primary()->forTeam($team)->create(['domain' => 'acme.com']);
+        DomainFactory::new()->verified()->forTeam($team)->create(['domain' => 'acme.io']);
+        $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.io']);
+        $team->addMember($member);
+
+        $this->actingAs($owner)
+            ->get(route('teams.members', $team->id))
+            ->assertOk()
+            ->assertSee('Deactivate')
+            ->assertDontSee('Remove');
+    }
+
+    public function test_join_request_is_refused_when_a_non_primary_verified_domain_is_enforced(): void
+    {
+        Mail::fake();
+        [$team] = $this->teamWithOwner();
+        $team->update(['is_public' => true]);
+        DomainFactory::new()->primary()->forTeam($team)->create(['domain' => 'acme.com']);
+        DomainFactory::new()->verified()->forTeam($team)->create(['domain' => 'acme.io', 'enforce' => true]);
+        $requester = User::factory()->create();
+
+        $this->actingAs($requester)
+            ->from(config('neev.home'))
+            ->post(route('teams.request'), ['team_id' => $team->id])
+            ->assertSessionHasErrors();
+
+        $this->assertFalse($team->allUsers()->whereKey($requester->id)->exists());
+        Mail::assertNothingSent();
+    }
+
     // -----------------------------------------------------------------
     // The DNS dialog on the domain page
     // -----------------------------------------------------------------
