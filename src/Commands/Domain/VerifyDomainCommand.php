@@ -93,13 +93,14 @@ class VerifyDomainCommand extends Command
         if ($this->option('force')) {
             // Skipping DNS does not skip the rule verify() applies: the first
             // owner of a kind to verify a host gets it.
-            if (! $domain->isVerified() && Domain::findByHostForOwnerType($domain->domain, (string) $domain->owner_type)) {
-                $this->error("This domain is already verified by another {$domain->owner_type}.");
+            try {
+                $domain->markVerified();
+            } catch (DomainAlreadyVerifiedException $e) {
+                $this->error($e->getMessage());
 
                 return self::FAILURE;
             }
 
-            $domain->update(['verified_at' => now()]);
             $this->info("Domain force-verified: {$domainName}");
 
             return self::SUCCESS;

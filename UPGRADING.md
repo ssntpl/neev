@@ -139,7 +139,29 @@ pending claim on a host another owner of the same type has already verified;
 the message reads `This domain is already verified by another team.` (or
 `tenant`). The package's endpoints, `neev:domain:verify` and `VerifyDomainJob`
 catch it. Code of your own that calls `verify()` should catch it too, or it
-surfaces as an error.
+surfaces as an error. Code that marks a domain verified by writing
+`verified_at` itself skips the rule; call `$domain->markVerified()` instead,
+which applies it (and throws the same exception).
+
+**Check for hosts already verified by two owners (action recommended).** The
+rule applies to claims verified from now on; it does not touch rows verified
+before the upgrade. If two teams (or two tenants) already hold a verified row
+for the same host, both stay verified, and tenant routing and email federation
+keep choosing between them arbitrarily. Find them with:
+
+```sql
+SELECT domain, owner_type, COUNT(*) AS verified_claims
+FROM domains
+WHERE verified_at IS NOT NULL
+GROUP BY domain, owner_type
+HAVING COUNT(*) > 1;
+```
+
+For each host listed, decide which owner it belongs to, and unverify or delete
+the other rows (`UPDATE domains SET verified_at = NULL WHERE id = ...`). An
+unverified row is then a pending claim like any other and can no longer be
+verified while the rightful owner holds the host. `neev:domain:list` shows the
+rows with their owners.
 
 **A new token unverifies the domain (behaviour change).** Asking for a
 verification token, or re-federating a domain the team already holds, now
@@ -151,7 +173,9 @@ a harmless action on a verified domain.
 to a team with an enforced verified domain are limited to addresses on any of
 the team's verified domains, such a team no longer accepts join requests, and
 removing a member on any verified domain deactivates the account rather than
-detaching it. All three used to look at the primary domain only.
+detaching it. All three used to look at the primary domain only. The other
+way round, a team whose only enforced domain is still unverified now accepts
+join requests; it used to refuse them.
 
 **A member on a verified domain cannot leave on their own (behaviour change).**
 `PUT /neev/teams/leave` naming the caller answers

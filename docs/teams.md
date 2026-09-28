@@ -262,7 +262,8 @@ endpoints never confirm which team ids are real.
 | `GET /neev/domains` | any member |
 | `PUT /neev/teams/request` (accept/reject a join request) | any member |
 | `PUT {prefix}/teams/members/request/action` (the Blade form) | the owner |
-| `PUT /neev/teams/leave` (remove a member) | any member; the owner cannot be removed |
+| `PUT /neev/teams/leave` (remove a member) | any member, and only for another member of the same team; the owner cannot be removed |
+| `PUT /neev/teams/leave` (withdraw a pending membership) | any member, or the user it names withdrawing their own invitation or join request |
 | `PUT /neev/teams/leave` (revoke an invitation) | any member (the owner included), or the invitee declining their own |
 | `PUT /neev/teams/inviteUser` | the owner |
 | `DELETE /neev/teams` | the owner, and only when they own another team |
@@ -434,7 +435,11 @@ curl -X PUT https://yourapp.com/neev/teams/leave \
 
 Removing a member whose email is on any of the team's verified domains does not take them out of the team: the domain governs their membership, so their account is **deactivated** instead (`User Deactivated Successfully`). Removing them again reactivates it (`User Activated Successfully`). Members on other addresses are removed as usual.
 
-Such a member cannot remove themselves: deactivation is account-wide, so leaving would lock them out of the whole application. The attempt answers `403 You cannot leave a team your email domain manages.`, and the Blade pages do not offer **Leave** to them. `Team::hasVerifiedDomainFor($email)` tells whether an address is on one of the team's verified domains.
+Only members of the team can be removed, deactivated or reactivated this way. A `user_id` with no membership in the team answers `403 You cannot perform this action on this team.`, even when that user's email is on one of the team's verified domains, since deactivation reaches their whole account.
+
+A pending membership (an invitation not yet accepted, or a join request not yet answered) is simply withdrawn (`Removed Successfully`), never deactivated, whatever the user's domain. Any member can withdraw it, and so can the user it names, by sending only `team_id`. The **Remove** button under pending invitations on the members page and **Revoke** on a sent request on the account teams page both do this.
+
+Such a member cannot remove themselves: deactivation is account-wide, so leaving would lock them out of the whole application. The attempt answers `403 You cannot leave a team your email domain manages.`, and the Blade pages do not offer **Leave** to them. Members on other addresses can leave, and the Blade pages offer them **Leave**, even when the team's primary domain is verified. `Team::hasVerifiedDomainFor($email)` tells whether an address is on one of the team's verified domains.
 
 ### Note: Owners Cannot Leave
 
@@ -577,6 +582,12 @@ curl -X PUT https://yourapp.com/neev/domains \
 Verifying again after a new token keeps the domain's rules and their values.
 
 To get a new token (for example when the old one was lost), send `"token": true` instead; the response carries `token` and `dns_record` as above, and the domain is unverified until the new record is verified.
+
+#### Verifying from your own code
+
+`$domain->verify()` checks DNS and records the result. It throws `Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException` when another owner of the same type has already verified the host.
+
+To mark a claim verified without DNS (an admin tool, say), call `$domain->markVerified()` rather than setting `verified_at` yourself. It applies the same first-owner rule and throws the same exception. It re-checks the rule with every claim on the host locked, so two claims verified at the same moment cannot both win. Writing `verified_at` directly skips that check.
 
 ### Domain Enforcement
 

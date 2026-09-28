@@ -320,6 +320,57 @@ class DomainTest extends TestCase
         $this->assertNull($claim->verification_failed_at);
     }
 
+    public function test_verify_refuses_a_host_another_owner_verified_during_the_dns_lookup(): void
+    {
+        $rival = DomainFactory::new()->create(['domain' => 'acme.com']);
+        $claim = DomainFactory::new()->create(['domain' => 'acme.com']);
+        $token = $claim->generateVerificationToken();
+
+        FakeDns::txt('_neev-verification.acme.com', $token);
+        // The rival wins after the check before the lookup has passed.
+        FakeDns::duringLookup(fn () => $rival->update(['verified_at' => now()]));
+
+        try {
+            $claim->verify();
+            $this->fail('Expected DomainAlreadyVerifiedException.');
+        } catch (DomainAlreadyVerifiedException $e) {
+            $this->assertSame('This domain is already verified by another team.', $e->getMessage());
+        }
+
+        $this->assertNull($claim->fresh()->verified_at);
+        $this->assertSame(1, Domain::where('domain', 'acme.com')->whereNotNull('verified_at')->count());
+    }
+
+    public function test_mark_verified_refuses_a_host_another_owner_already_verified(): void
+    {
+        DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        $claim = DomainFactory::new()->create(['domain' => 'acme.com']);
+
+        $this->expectException(DomainAlreadyVerifiedException::class);
+
+        try {
+            $claim->markVerified();
+        } finally {
+            $this->assertNull($claim->fresh()->verified_at);
+        }
+    }
+
+    public function test_mark_verified_re_stamps_a_domain_this_owner_already_verified(): void
+    {
+        DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        $mine = DomainFactory::new()->verified()->create([
+            'domain' => 'acme.com',
+            'verified_at' => now()->subDays(10),
+            'verification_failed_at' => now(),
+        ]);
+
+        $mine->markVerified();
+
+        $mine->refresh();
+        $this->assertTrue($mine->verified_at->isToday());
+        $this->assertNull($mine->verification_failed_at);
+    }
+
     // -----------------------------------------------------------------
     // verify() — DNS answers
     // -----------------------------------------------------------------
@@ -558,6 +609,17 @@ class DomainTest extends TestCase
         Domain::create(['owner_type' => 'team', 'owner_id' => 1, 'domain' => 'acme.com']);
 
         $this->assertFalse(Domain::isVerifiedForEmail('someone@acme.com'));
+    }
+
+    public function test_an_address_in_another_case_matches_the_verified_domain(): void
+    {
+        Domain::create([
+            'owner_type' => 'team', 'owner_id' => 1,
+            'domain' => 'acme.com',
+            'verified_at' => now(),
+        ]);
+
+        $this->assertTrue(Domain::isVerifiedForEmail('Alice@ACME.com'));
     }
 
     public function test_an_address_without_a_domain_is_not_verified(): void

@@ -397,6 +397,30 @@ class TenantDomainTest extends TestCase
         $this->assertTrue($secondary->is_primary);
     }
 
+    public function test_delete_primary_domain_prefers_a_verified_domain(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+
+        $primary = DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+        ]);
+        // Created first, so it is what an unordered first() would pick.
+        $pending = DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+        ]);
+        $verified = DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/tenant-domains/' . $primary->id)
+            ->assertOk();
+
+        $this->assertTrue($verified->fresh()->is_primary);
+        $this->assertFalse($pending->fresh()->is_primary);
+    }
+
     public function test_delete_domain_rejects_non_owner(): void
     {
         [$user, $token] = $this->authenticatedUser();

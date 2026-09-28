@@ -1981,9 +1981,15 @@ Send `user_id` as well to remove another member. A member whose email is on
 one of the team's verified domains is deactivated rather than removed
 (`User Deactivated Successfully`; again, `User Activated Successfully`).
 
+A membership not yet joined — an invitation the user has not accepted, or a
+join request the team has not answered — is withdrawn (`Removed Successfully`)
+by any member, or by the user it names (send only `team_id`). It is always
+detached, never deactivated.
+
 **Errors:**
-- `403 You cannot perform this action on this team.` — the owner is named, or
-  the caller is not a member.
+- `403 You cannot perform this action on this team.` — the owner is named; the
+  named user has no membership in the team; or the caller is not a member and
+  is not withdrawing their own pending membership.
 - `403 You cannot leave a team your email domain manages.` — the caller names
   themselves and their email is on one of the team's verified domains.
 

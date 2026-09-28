@@ -284,9 +284,33 @@ class TeamController extends Controller
                 return back()->with('status', 'Invitation Revoked Successfully');
             }
 
-            // Leaving, or removing someone. The owner holds the team, so they
-            // are not a member who can be taken out of it.
-            if ($user->id == $team->user_id || !$team->hasMember($actor)) {
+            // The owner holds the team, so they are not a member who can be
+            // taken out of it.
+            if ($user->id == $team->user_id) {
+                return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
+            }
+
+            // A membership not yet joined — an invitation not accepted, a join
+            // request not answered — is withdrawn by a member, or by the user
+            // it names. It is only ever detached: nothing has been joined, so
+            // there is no account for the domain to deactivate.
+            if ($team->hasPendingMember($user)) {
+                if ($user->id !== $actor->id && !$team->hasMember($actor)) {
+                    return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
+                }
+
+                DB::transaction(function () use ($team, $user) {
+                    $team->allUsers()->detach($user);
+                    $user->removeRole($team);
+                });
+
+                return back()->with('status', 'Removed Successfully');
+            }
+
+            // Leaving, or removing a member. The subject must have joined:
+            // deactivation is account-wide, and without this any member could
+            // deactivate every user on the team's verified domains.
+            if (!$team->hasMember($actor) || !$team->hasMember($user)) {
                 return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
             }
 
@@ -629,7 +653,7 @@ class TeamController extends Controller
 
             // Deleting the primary leaves the team with none, and whatever
             // reads the primary stops working. Hand it to a verified domain,
-            // or failing that any remaining one, as the tenant flow does.
+            // or failing that any remaining one.
             if ($wasPrimary && $owner) {
                 $next = $owner->domains()->whereNotNull('verified_at')->first()
                     ?? $owner->domains()->first();

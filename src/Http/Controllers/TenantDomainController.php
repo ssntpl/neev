@@ -209,12 +209,13 @@ class TenantDomainController extends Controller
             $wasPrimary = $tenantDomain->is_primary;
             $tenantDomain->delete();
 
-            // If we deleted the primary domain, set another as primary
+            // If we deleted the primary domain, set another as primary,
+            // preferring a verified one: setPrimary() refuses an unverified
+            // domain, and an unverified primary gives the team no web domain.
             if ($wasPrimary) {
-                $newPrimary = $owner->domains()->first();
-                if ($newPrimary) {
-                    $newPrimary->markAsPrimary();
-                }
+                $newPrimary = $owner->domains()->whereNotNull('verified_at')->first()
+                    ?? $owner->domains()->first();
+                $newPrimary?->markAsPrimary();
             }
 
             return response()->json([

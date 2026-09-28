@@ -6,6 +6,7 @@ use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Events\DomainReverified;
 use Ssntpl\Neev\Events\DomainVerificationFailed;
 use Ssntpl\Neev\Events\DomainVerified;
@@ -82,8 +83,10 @@ class Domain extends Model
             return false;
         }
 
+        // Rows hold the canonical spelling, so `Alice@ACME.com` has to be
+        // compared as `acme.com` to find the claim on it.
         return static::query()
-            ->where('domain', substr($emailDomain, 1))
+            ->where('domain', static::canonicalHost(substr($emailDomain, 1)))
             ->whereNotNull('verified_at')
             ->exists();
     }
@@ -279,9 +282,7 @@ class Domain extends Model
             $wasFailingVerification = $this->verification_failed_at !== null;
             $isFirstVerification = $this->verified_at === null;
 
-            $this->verified_at = now();
-            $this->verification_failed_at = null;
-            $this->save();
+            $this->markVerified();
 
             if ($isFirstVerification) {
                 event(new DomainVerified($this));
@@ -300,6 +301,38 @@ class Domain extends Model
         $this->save();
 
         return false;
+    }
+
+    /**
+     * Record this claim as verified, without looking at DNS.
+     *
+     * The check at the top of verify() runs before the DNS lookup, so two
+     * pending claims on one host could both pass it and both be saved. The
+     * rule is decided again here with every claim on the host locked, so the
+     * second of two concurrent claims waits for the first and then sees it.
+     *
+     * @throws DomainAlreadyVerifiedException when another owner of the same
+     *         kind has verified the host first
+     */
+    public function markVerified(): void
+    {
+        DB::transaction(function () {
+            if ($this->verified_at === null) {
+                $taken = static::where('domain', $this->domain)
+                    ->where('owner_type', $this->owner_type)
+                    ->lockForUpdate()
+                    ->get()
+                    ->contains(fn (Domain $claim) => $claim->id !== $this->id && $claim->verified_at !== null);
+
+                if ($taken) {
+                    throw new DomainAlreadyVerifiedException((string) $this->owner_type);
+                }
+            }
+
+            $this->verified_at = now();
+            $this->verification_failed_at = null;
+            $this->save();
+        });
     }
 
     /**

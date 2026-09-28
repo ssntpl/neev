@@ -290,7 +290,7 @@ php artisan neev:domain:verify --all
 
 Performs a `dns_get_record()` lookup on `_neev-verification.{domain}` and matches the TXT value against the stored verification token.
 
-When more than one owner has claimed the domain, the command lists the claims and exits without verifying any; pass `--owner-type` and `--owner-id` to choose one. `--force` skips the DNS check but not the ownership rule: it refuses a claim when another owner of the same type has already verified the domain.
+When more than one owner has claimed the domain, the command lists the claims and exits without verifying any; pass `--owner-type` and `--owner-id` to choose one. `--force` skips the DNS check but not the ownership rule: it refuses a claim when another owner of the same type has already verified the domain. It goes through `Domain::markVerified()`, as a DNS match does, so it also clears any earlier verification failure.
 
 `--all` queues a `VerifyDomainJob` per verified domain. A job whose domain was unverified by a new token after it was queued, on a host another owner has verified since, is skipped and logged rather than failed.
 

@@ -33,17 +33,36 @@ namespace Ssntpl\Neev\Tests\Support {
             );
         }
 
+        /** @var callable|null */
+        private static $onLookup = null;
+
+        /**
+         * Run $callback during the next lookups, standing in for whatever
+         * happens elsewhere while a real DNS query is in flight.
+         */
+        public static function duringLookup(callable $callback): void
+        {
+            self::$onLookup = $callback;
+        }
+
         /**
          * @return array<int, array<string, mixed>>|null
          */
         public static function lookup(string $name): ?array
         {
+            if (self::$onLookup !== null) {
+                $callback = self::$onLookup;
+                self::$onLookup = null;
+                $callback($name);
+            }
+
             return self::$txt[$name] ?? null;
         }
 
         public static function reset(): void
         {
             self::$txt = [];
+            self::$onLookup = null;
         }
     }
 }

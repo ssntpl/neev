@@ -45,8 +45,8 @@ class UserController extends Controller
         }
 
         // Each team row asks whether the user may leave, which reads the
-        // team's primary and verified domains; load them for all rows at once.
-        $user->loadMissing('teams.domain', 'teams.customDomains');
+        // team's verified domains; load them for all rows at once.
+        $user->loadMissing('teams.customDomains');
 
         // The page names this user's role on every team row, and `getRole()`
         // is a query per call, so the two lists are resolved in one query

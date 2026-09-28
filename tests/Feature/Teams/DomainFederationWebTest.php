@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\Support\FakeDns;
@@ -293,6 +294,82 @@ class DomainFederationWebTest extends TestCase
 
         $this->assertTrue($member->fresh()->active);
         $this->assertTrue($team->refresh()->hasMember($member));
+    }
+
+    public function test_leave_refuses_to_deactivate_a_user_who_is_not_a_member(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        DomainFactory::new()->verified()->primary()->forTeam($team)->create(['domain' => 'acme.com']);
+        // On the team's verified domain, but never joined this team.
+        $outsider = User::factory()->create(['active' => true, 'email' => 'someone@acme.com']);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'user_id' => $outsider->id])
+            ->assertSessionHasErrors(['message' => 'You cannot perform this action on this team.']);
+
+        $this->assertTrue($outsider->fresh()->active);
+    }
+
+    public function test_leave_withdraws_a_pending_invitation_without_deactivating(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        DomainFactory::new()->verified()->primary()->forTeam($team)->create(['domain' => 'acme.com']);
+        // Invited, not yet joined, on the team's verified domain.
+        $invitee = User::factory()->create(['active' => true, 'email' => 'invitee@acme.com']);
+        $team->addMember($invitee, joined: false, action: Membership::REQUEST_TO_USER);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'user_id' => $invitee->id])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', 'Removed Successfully');
+
+        $this->assertFalse($team->allUsers()->whereKey($invitee->id)->exists());
+        $this->assertTrue($invitee->fresh()->active);
+    }
+
+    public function test_leave_lets_a_user_withdraw_their_own_join_request(): void
+    {
+        [$team] = $this->teamWithOwner();
+        $requester = User::factory()->create();
+        $team->addMember($requester, joined: false, action: Membership::REQUEST_FROM_USER);
+
+        $this->actingAs($requester)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('status', 'Removed Successfully');
+
+        $this->assertFalse($team->allUsers()->whereKey($requester->id)->exists());
+    }
+
+    public function test_account_teams_page_offers_leave_to_a_member_outside_the_verified_domains(): void
+    {
+        [$team] = $this->teamWithOwner();
+        DomainFactory::new()->verified()->primary()->forTeam($team)->create(['domain' => 'acme.com']);
+        // The server lets this member leave, so the page must offer it.
+        $member = User::factory()->create(['email' => 'contractor@elsewhere.com']);
+        $team->addMember($member);
+
+        $this->actingAs($member)
+            ->get(route('account.teams'))
+            ->assertOk()
+            ->assertSee('Are you sure you want to leave the team?');
+    }
+
+    public function test_account_teams_page_does_not_offer_leave_to_a_member_on_a_verified_domain(): void
+    {
+        [$team] = $this->teamWithOwner();
+        DomainFactory::new()->primary()->forTeam($team)->create(['domain' => 'acme.com']);
+        DomainFactory::new()->verified()->forTeam($team)->create(['domain' => 'acme.io']);
+        $member = User::factory()->create(['email' => 'employee@acme.io']);
+        $team->addMember($member);
+
+        $this->actingAs($member)
+            ->get(route('account.teams'))
+            ->assertOk()
+            ->assertDontSee('Are you sure you want to leave the team?');
     }
 
     public function test_members_page_offers_deactivate_for_a_member_on_a_non_primary_verified_domain(): void

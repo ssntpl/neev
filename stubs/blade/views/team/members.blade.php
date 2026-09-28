@@ -232,7 +232,7 @@
                                             <input type="hidden" name="team_id" value="{{ $team->id }}"/>
                                             <input type="hidden" name="user_id" value="{{ $member->id }}"/>
                                             @php
-                                                $isDisabled = $team->user_id === $member->id || ($team->user_id !== $user->id && $user->id !== $member->id) || (($team->domain?->verified_at || $team->hasVerifiedDomainFor($member->email)) && $member->id === $user->id);
+                                                $isDisabled = $team->user_id === $member->id || ($team->user_id !== $user->id && $user->id !== $member->id) || ($team->hasVerifiedDomainFor($member->email) && $member->id === $user->id);
                                                 $disabledAttr = $isDisabled ? 'disabled' : '';
                                             @endphp
                                             @if (!$member->active && $team->hasVerifiedDomainFor($member->email) && $user->id !== $member->id)

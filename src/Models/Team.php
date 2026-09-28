@@ -271,11 +271,12 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
 
     /**
      * Whether users may ask to join. A verified primary domain closes the team
-     * to requests, as does enforcement on any verified domain.
+     * to requests, as does enforcement on any verified domain. An unverified
+     * domain proves nothing, so its enforce flag closes nothing either.
      */
     public function acceptsJoinRequests(): bool
     {
-        return !$this->domain?->enforce && !$this->domain?->verified_at && !$this->enforcesDomain();
+        return !$this->domain?->verified_at && !$this->enforcesDomain();
     }
 
     /**
@@ -289,6 +290,18 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     public function hasUser($user): bool
     {
         return $this->users()->withoutGlobalScope(TenantScope::class)->where('users.id', $user->id)->exists();
+    }
+
+    /**
+     * Whether the user holds a membership not yet joined: an invitation they
+     * have not accepted, or a join request the team has not answered.
+     */
+    public function hasPendingMember($user): bool
+    {
+        return $this->allUsers()->withoutGlobalScope(TenantScope::class)
+            ->where('users.id', $user->id)
+            ->wherePivot('joined', false)
+            ->exists();
     }
 
     public function tenant(): BelongsTo
