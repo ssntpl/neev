@@ -419,6 +419,7 @@ that has none — created through OAuth or SSO — sends `otp` instead, a code f
 |--------|---------|
 | 422 | Validation error — neither `password` nor `otp` supplied |
 | 403 | `The password is incorrect.` / `The confirmation code is invalid or has expired.` |
+| 429 | Too many answers — the sixth within a minute, right or wrong, across every confirmed action (bucket `neev-confirmation`, per account). Carries `Retry-After` |
 
 ---
 
@@ -788,7 +789,9 @@ the first one is onboarding and asks for nothing. After that, send `password`,
 or `otp` for an account that has none (from `POST /neev/confirmation/otp`): an
 attacker with a stolen token who enrols their own authenticator would otherwise
 answer the challenge at every future sign-in. A missing field is `422`, a wrong
-one `403`. See
+one `403`, and the sixth answer within a minute `429` (one bucket for every
+confirmed action; `Retry-After` is set). A scoped API token is refused with
+`403 An API token cannot enrol a second factor.` — use a login token. See
 [Confirming a sensitive action](./security.md#confirming-a-sensitive-action).
 
 **Response (authenticator):**
@@ -801,7 +804,7 @@ one `403`. See
 }
 ```
 
-The authenticator method is created in a **pending** state and is not enforced at login until activated via [Verify MFA Setup](#verify-mfa-setup). The email method is created active immediately.
+The authenticator method is created in a **pending** state and is not enforced at login until activated via [Verify MFA Setup](#verify-mfa-setup). Calling this again while the setup is pending replaces its secret and returns the new one; only the QR shown last verifies. The email method is created active immediately.
 
 **Response (`422`)** — the request could not be satisfied. The body carries the
 reason:
@@ -1375,6 +1378,7 @@ send `otp` instead, a code from [Send One-Time Code](#send-one-time-code):
 |--------|---------|
 | 422 | Validation error — neither `password` nor `otp` supplied |
 | 403 | `The password is incorrect.` / `The confirmation code is invalid or has expired.` |
+| 429 | Too many answers — the sixth within a minute, right or wrong, across every confirmed action (bucket `neev-confirmation`, per account). Carries `Retry-After` |
 
 ---
 
@@ -1420,6 +1424,7 @@ unaffected — see
 | 403 | `Current Password is Wrong.` |
 | 403 | `Your account has no password yet. Use the emailed link to set one.` |
 | 404 | `User not found.` |
+| 429 | Too many answers — the sixth within a minute, right or wrong, across every confirmed action (bucket `neev-confirmation`, per account). Carries `Retry-After` |
 
 An account with no password cannot use this endpoint — there is no current
 password to check. It sets its first one through the emailed link:

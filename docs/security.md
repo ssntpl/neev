@@ -93,6 +93,16 @@ PasswordHistory::notReused(5)  // Cannot reuse last 5 passwords
 
 Passwords are stored hashed on the `users` table, with password history maintained as a JSON column.
 
+Both this rule and `PasswordUserData` compare against **one account only**: the
+signed-in user, or — on the reset paths — the account the link or code has just
+proven, which the controller names with
+`Ssntpl\Neev\Support\PasswordSubject::set($request, $user)` before validating.
+The request body's `email` and `id` are never consulted. Read from there, as
+they once were, the rules answered for any account whether a guess was its
+password; the validation error said so. A registration has no account to
+compare against, so both rules pass. If your application validates a password
+on behalf of an account that is not the caller, set the subject first.
+
 ### What a Password Change Revokes
 
 Changing or resetting a password drops the account's other **sessions** and
@@ -189,6 +199,13 @@ to, so it is unauthenticated instead, session and all. Signing in again
 parks at the challenge properly. Redirecting it to the challenge page
 instead is what produced an infinite loop through `/login`.
 
+The session that does the enrolling is stamped as holding the factor when the
+enrolment **completes** — it verifies the authenticator it scanned, or turns
+email OTP on, which is active at once — and never when a setup merely starts.
+A setup that is opened and walked away from proves nothing, so the session
+that opened it is ended like any other once a factor is enrolled elsewhere.
+An attempt that already names the factor it signed in with keeps it.
+
 Two first factors are exempt, because they answer for themselves.
 
 A **passkey** ceremony runs with `userVerification: 'required'` and is
@@ -274,7 +291,7 @@ For each login attempt:
 | Field | Description |
 |-------|-------------|
 | `method` | Login method (password, passkey, sso, etc.) |
-| `multi_factor_method` | Second factor the login demands, named when the challenge opens |
+| `multi_factor_method` | Second factor the session holds: written when the challenge is answered, or when the session completes an enrolment |
 | `ip_address` | User's IP address |
 | `platform` | Operating system |
 | `browser` | Browser name and version |
@@ -764,7 +781,17 @@ to answer either branch; see [UPGRADING](../UPGRADING.md) if you have any from
 an earlier version. A missing field is `422`, a wrong one `403`, and
 nothing happens. `AuthService::confirmationRules()` and `confirmIdentity()`
 decide what proof an account owes, so these actions cannot drift from
-one another. See
+one another.
+
+**Five answers a minute.** Every route that re-checks the password — the five
+actions above, passkey enrolment, and the change-password forms, eleven routes
+across the API and the Blade kit — shares one named bucket per account,
+`throttle:5,1,neev-confirmation`. The sixth answer within a minute is `429`
+with `Retry-After`, right or wrong. Without it, `confirmIdentity()` is a bare
+`Hash::check()` that counts nothing and never reaches the login lockout, so a
+stolen session or token had an unlimited online oracle for the one thing it
+lacked; the gate meant to contain a stolen session was handing it the password.
+Minting recovery codes keeps its own bucket. See
 [Accounts Without a Password](./authentication.md#accounts-without-a-password).
 
 Three of these fire an event an application can notify on: `MfaMethodRemoved`

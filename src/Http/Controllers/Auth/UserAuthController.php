@@ -21,6 +21,7 @@ use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Http\Requests\Auth\LoginRequest;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
 use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
+use Ssntpl\Neev\Support\PasswordSubject;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\TeamInvitation;
@@ -439,6 +440,8 @@ class UserAuthController extends Controller
                 ->withErrors(['otp' => __('Invalid or expired code.')]);
         }
 
+        // The code has proven this account, so the rules compare against it.
+        PasswordSubject::set($request, $user);
         $request->validate([
             'password' => config('neev.password'),
         ]);
@@ -477,6 +480,9 @@ class UserAuthController extends Controller
             return redirect(route('password.request'))->withErrors(['message' => 'This reset link is no longer valid. Please request a new one.']);
         }
 
+        // The link's token has proven this account, so the rules compare
+        // against it.
+        PasswordSubject::set($request, $user);
         $request->validate([
             'password' => config('neev.password'),
         ]);
@@ -761,6 +767,10 @@ class UserAuthController extends Controller
             }
 
             if ($user->verifyMfaSetup($request->auth_method, (string) $request->otp)) {
+                // The factor is active now and this session just proved it,
+                // so it keeps its place behind the gate the factor raises.
+                $this->auth->stampSessionWithFactor($user, $request->auth_method);
+
                 return back()->with('status', 'Method verified and enabled.');
             }
             if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {

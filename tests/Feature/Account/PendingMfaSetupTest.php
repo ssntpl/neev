@@ -52,14 +52,17 @@ class PendingMfaSetupTest extends TestCase
         $this->assertSame(MultiFactorAuth::STATUS_ACTIVE, $auth->status);
     }
 
-    public function test_re_adding_pending_authenticator_reuses_secret(): void
+    public function test_re_adding_pending_authenticator_rotates_the_secret(): void
     {
         $user = User::factory()->create();
         $first = $user->addMultiFactorAuth('authenticator');
         $second = $user->addMultiFactorAuth('authenticator');
 
-        $this->assertSame($first['secret'], $second['secret']);
+        // A fresh secret each time setup starts, on the same pending row: a
+        // secret left behind by an earlier session is never the one scanned.
+        $this->assertNotSame($first['secret'], $second['secret']);
         $this->assertSame(1, $user->multiFactorAuths()->count());
+        $this->assertSame($second['secret'], $user->multiFactorAuths()->first()->secret);
     }
 
     // -----------------------------------------------------------------

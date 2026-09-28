@@ -20,6 +20,7 @@ use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Mail\LoginUsingLink;
 use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
 use Ssntpl\Neev\Support\MagicLink\MagicLinkResult;
+use Ssntpl\Neev\Support\PasswordSubject;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\Models\LoginAttempt;
@@ -380,6 +381,9 @@ class UserAuthApiController extends Controller
                     ], 403);
                 }
 
+                // The link has proven this account, so the rules compare
+                // against it — not against whatever `email` the body names.
+                PasswordSubject::set($request, $user);
                 $request->validate([
                     'password' => config('neev.password'),
                 ]);
@@ -403,6 +407,7 @@ class UserAuthApiController extends Controller
                 // tell anyone naming an address whether a guess was one of
                 // them. And before spending it, so a rejected password leaves
                 // the code usable for the next attempt.
+                PasswordSubject::set($request, $user);
                 $request->validate([
                     'password' => config('neev.password'),
                 ]);

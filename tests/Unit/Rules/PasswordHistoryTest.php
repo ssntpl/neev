@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Unit\Rules;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Rules\PasswordHistory;
+use Ssntpl\Neev\Support\PasswordSubject;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Tests\TestCase;
 
@@ -161,39 +162,66 @@ class PasswordHistoryTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Works when user found via email input
+    // The body's email names nobody: only a proven account is compared
     // -----------------------------------------------------------------
 
-    public function test_works_when_user_found_via_email_input(): void
+    /**
+     * Read from the request body, this rule was a password oracle: anyone
+     * could post a victim's address with a guess and learn from the error
+     * whether it was that account's password.
+     */
+    public function test_ignores_an_email_in_the_request_body(): void
     {
         $user = User::factory()->create();
 
-        // Simulate a request with an email input (no authenticated user)
+        // No authenticated user, no proven subject — only an address in the body.
         $this->app['request']->merge(['email' => $user->email]);
 
         $rule = PasswordHistory::notReused(5);
 
         // 'password' was set by the factory
-        $failed = $this->runRule($rule, 'password');
-
-        $this->assertTrue($failed);
+        $this->assertFalse($this->runRule($rule, 'password'));
     }
 
-    // -----------------------------------------------------------------
-    // Passes with email input when password is new
-    // -----------------------------------------------------------------
-
-    public function test_passes_via_email_input_when_password_is_new(): void
+    public function test_ignores_an_id_in_the_request_body(): void
     {
         $user = User::factory()->create();
 
-        $this->app['request']->merge(['email' => $user->email]);
+        $this->app['request']->merge(['id' => $user->id]);
 
         $rule = PasswordHistory::notReused(5);
 
-        $failed = $this->runRule($rule, 'brand-new-unique-password');
+        $this->assertFalse($this->runRule($rule, 'password'));
+    }
 
-        $this->assertFalse($failed);
+    public function test_the_body_email_cannot_redirect_the_check_away_from_the_signed_in_user(): void
+    {
+        $user = User::factory()->create(['password' => 'mine-123']);
+        $victim = User::factory()->create(['password' => 'theirs-456']);
+
+        $this->setRequestUser($user);
+        $this->app['request']->merge(['email' => $victim->email]);
+
+        $rule = PasswordHistory::notReused(5);
+
+        $this->assertTrue($this->runRule($rule, 'mine-123'), 'the signed-in user is still compared');
+        $this->assertFalse($this->runRule($rule, 'theirs-456'), "another account's password is never compared");
+    }
+
+    // -----------------------------------------------------------------
+    // A proven subject (a reset path) is compared without a sign-in
+    // -----------------------------------------------------------------
+
+    public function test_compares_against_the_subject_a_controller_has_proven(): void
+    {
+        $user = User::factory()->create();
+
+        PasswordSubject::set($this->app['request'], $user);
+
+        $rule = PasswordHistory::notReused(5);
+
+        $this->assertTrue($this->runRule($rule, 'password'));
+        $this->assertFalse($this->runRule($rule, 'brand-new-unique-password'));
     }
 
     // -----------------------------------------------------------------

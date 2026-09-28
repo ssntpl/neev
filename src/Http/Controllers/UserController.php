@@ -266,12 +266,6 @@ class UserController extends Controller
             }
         }
 
-        $attemptID = session('attempt_id');
-        $attempt = $user->loginAttempts()->where('id', $attemptID)->first();
-        if ($attempt) {
-            $attempt->multi_factor_method = $request->auth_method;
-            $attempt->save();
-        }
         $res = $user->addMultiFactorAuth($request->auth_method);
         if (!$res) {
             return back()->withErrors(['message' => 'Auth was not added.']);
@@ -279,6 +273,15 @@ class UserController extends Controller
         if (($res['status'] ?? null) === 'Error') {
             return back()->withErrors(['message' => $res['message'] ?? 'Auth was not added.']);
         }
+
+        // Email OTP is active the moment it is added, so this session has
+        // completed the enrolment and keeps its place. An authenticator is
+        // only pending here; the session is stamped when it verifies the
+        // code (verifyMFAOTPStore), never for a setup it walked away from.
+        if ($user->multiFactorAuth($request->auth_method)?->isActive()) {
+            $auth->stampSessionWithFactor($user, $request->auth_method);
+        }
+
         return back()->with($res);
     }
 

@@ -396,6 +396,8 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 
 Only **active** methods trigger the MFA challenge — pending setups never gate login, and the verify endpoint rejects codes for pending methods.
 
+Starting an authenticator setup again while one is pending replaces its secret: the QR shown last is the only one that verifies. A secret left behind by an earlier session — planted, or simply abandoned — is never the one the owner scans.
+
 ### Enrolling while other sessions are open
 
 A factor takes effect immediately, including for sessions that signed in
@@ -408,7 +410,10 @@ at the challenge writes, so there is nothing for it to read. The web session
 is **ended** instead — `NeevMiddleware` treats it as unauthenticated, session
 and all — and the next page load lands on the login form. Signing in again
 goes through the challenge normally. The session that did the enrolling is
-unaffected; so are API tokens, which are not re-gated once issued.
+unaffected once it has **completed** the enrolment — verified the authenticator
+it scanned, or turned email OTP on; a setup it started and walked away from
+does not count, and that session is ended with the rest. API tokens are not
+re-gated once issued.
 
 Nothing distinguishes this from any other expired session in the response:
 the web request redirects to `loginUrl()`, and a JSON request under

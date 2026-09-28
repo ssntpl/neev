@@ -224,6 +224,38 @@ class AuthService
     }
 
     /**
+     * Record that the signed-in web session holds the factor it has just
+     * completed enrolling, so NeevMiddleware keeps it open.
+     *
+     * `login_attempts.multi_factor_method` is what the gate reads as proof a
+     * session answered its challenge. A session that completes an enrolment —
+     * verifies the authenticator it scanned, or turns email OTP on — has
+     * proven the factor as surely as answering a challenge with it would, so
+     * it is stamped here and stays signed in. Only here: stamping at the
+     * *start* of an enrolment let a setup that was never verified vouch for
+     * the session for good, so it survived a factor enrolled from elsewhere
+     * that was meant to end it. An attempt that already names a factor keeps
+     * it; the login-attempt history should say what the session signed in
+     * with, not what it enrolled afterwards.
+     */
+    public function stampSessionWithFactor(User $user, string $method): void
+    {
+        $request = request();
+        if (!$request->hasSession()) {
+            return;
+        }
+
+        $attemptId = $request->session()->get('attempt_id');
+        $attempt = $attemptId ? $user->loginAttempts()->whereKey($attemptId)->first() : null;
+        if (!$attempt || $attempt->multi_factor_method !== null) {
+            return;
+        }
+
+        $attempt->multi_factor_method = $method;
+        $attempt->save();
+    }
+
+    /**
      * Whether enrolling another factor has to be confirmed.
      *
      * Only once the account already holds one. Enrolling the *first* factor
@@ -525,8 +557,11 @@ class AuthService
 
         // Every outstanding code was mailed to the old address. Whoever still
         // reads that mailbox — often the reason for the change — must not be
-        // able to spend one against the account now that it has moved.
+        // able to spend one against the account now that it has moved. That
+        // includes the MFA email code, which lives on the factor's own row
+        // rather than in `otp`.
         OTP::query()->forOwner($user)->delete();
+        $user->multiFactorAuths()->where('method', 'email')->first()?->clearOtp();
 
         return true;
     }

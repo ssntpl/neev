@@ -83,11 +83,20 @@ trait HasMultiAuth
         switch ($method) {
             case 'authenticator':
                 $auth = $this->multiFactorAuth($method);
-                $secret = $auth?->secret ?? Base32::encodeUpper(random_bytes(32));
+                // An active factor shows its own secret again (that is what
+                // "Set up" on an enrolled authenticator is for). A pending
+                // one gets a fresh secret every time setup starts: reusing
+                // it let whoever planted a setup — a stolen session on an
+                // account with no factor yet — keep the secret the owner
+                // would later scan from their own device.
+                $secret = $auth?->isActive() ? $auth->secret : Base32::encodeUpper(random_bytes(32));
                 $totp = TOTP::create($secret);
                 $totp->setLabel($this->email);
                 $totp->setIssuer(config('app.name', 'Neev'));
-                if (!$auth) {
+                if ($auth && !$auth->isActive()) {
+                    $auth->secret = $totp->getSecret();
+                    $auth->save();
+                } elseif (!$auth) {
                     // Created pending: the method only becomes active (and
                     // enforced at login) once the user proves they scanned
                     // the QR code via verifyMfaSetup(). MfaMethodAdded fires
@@ -98,8 +107,8 @@ trait HasMultiAuth
                         'preferred' => false,
                         'secret' => $totp->getSecret(),
                     ]);
-                    $this->load('multiFactorAuths');
                 }
+                $this->load('multiFactorAuths');
 
                 $renderer = new ImageRenderer(
                     new RendererStyle(200),

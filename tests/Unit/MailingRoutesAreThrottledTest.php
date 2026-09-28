@@ -46,6 +46,10 @@ class MailingRoutesAreThrottledTest extends TestCase
             'api confirmation code' => ['POST', 'neev/confirmation/otp', true],
             'api magic link' => ['POST', 'neev/sendLoginLink', false],
             'api forgot password' => ['POST', 'neev/forgotPassword', false],
+            'blade magic link' => ['POST', 'login/link', false],
+            'blade forgot password' => ['POST', 'forgot-password', false],
+            'blade mfa code resend' => ['POST', 'otp/mfa/send', false],
+            'blade password reset link' => ['POST', 'account/password/reset-link', true],
         ];
     }
 
