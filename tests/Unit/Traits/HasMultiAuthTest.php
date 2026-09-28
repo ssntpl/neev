@@ -142,23 +142,42 @@ class HasMultiAuthTest extends TestCase
         ]);
     }
 
-    public function test_add_multi_factor_auth_authenticator_reuses_existing_secret(): void
+    /**
+     * A pending setup gets a fresh secret each time setup starts. Reusing it
+     * let whoever planted a setup keep the secret the owner would later scan.
+     */
+    public function test_add_multi_factor_auth_authenticator_rotates_a_pending_secret(): void
     {
         $user = User::factory()->create();
 
-        // Create the first authenticator MFA
         $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
         $firstResult = $user->addMultiFactorAuth('authenticator');
-        $firstSecret = $firstResult['secret'];
 
-        // Reload relations and call again
         $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
         $secondResult = $user->addMultiFactorAuth('authenticator');
 
-        // Should reuse the same secret
-        $this->assertEquals($firstSecret, $secondResult['secret']);
+        $this->assertNotEquals($firstResult['secret'], $secondResult['secret']);
 
-        // Should not create a duplicate record
+        // The row is updated in place, not duplicated, and holds the secret shown.
+        $rows = $user->multiFactorAuths()->where('method', 'authenticator')->get();
+        $this->assertCount(1, $rows);
+        $this->assertSame($secondResult['secret'], $rows->first()->secret);
+        $this->assertSame(MultiFactorAuth::STATUS_PENDING, $rows->first()->status);
+    }
+
+    /** An active factor shows its own live secret again; rotating it would break the user's app. */
+    public function test_add_multi_factor_auth_authenticator_keeps_an_active_secret(): void
+    {
+        $user = User::factory()->create();
+
+        $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
+        $first = $user->addMultiFactorAuth('authenticator');
+        $user->multiFactorAuths()->where('method', 'authenticator')->update(['status' => MultiFactorAuth::STATUS_ACTIVE]);
+
+        $user->load('multiFactorAuths', 'preferredMultiFactorAuth');
+        $second = $user->addMultiFactorAuth('authenticator');
+
+        $this->assertEquals($first['secret'], $second['secret']);
         $this->assertEquals(1, $user->multiFactorAuths()->where('method', 'authenticator')->count());
     }
 

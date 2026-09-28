@@ -4,12 +4,12 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Http\JsonResponse;
 use Ssntpl\Neev\Models\AccessToken;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Exceptions\ConfirmationThrottledException;
 use Ssntpl\Neev\Services\AuthService;
 
 class UserApiController extends Controller
@@ -101,6 +101,16 @@ class UserApiController extends Controller
         ]);
 
         $user = User::model()->find($request->user()?->id);
+
+        // A setup that was discarded — enrolling another factor drops every
+        // pending one — is a different answer from a wrong code: the user
+        // has to start again, and this time confirm.
+        if ($user && !$user->multiFactorAuth($request->auth_method)) {
+            return response()->json([
+                'message' => 'No setup is in progress for this method. Start it again.',
+            ], 400);
+        }
+
         if (!$user?->verifyMfaSetup($request->auth_method, (string) $request->otp)) {
             return response()->json([
                 'message' => 'Code verification failed.',
@@ -304,7 +314,7 @@ class UserApiController extends Controller
         try {
             $request->validate([
                 'current_password' => ['required'],
-                'password' => config('neev.password'),
+                'password' => ['required'],
             ]);
 
             $user = User::model()->find($request->user()->id);
@@ -320,18 +330,27 @@ class UserApiController extends Controller
                 ], 403);
             }
 
-            if (!Hash::check($request->current_password, $user->password)) {
+            // The current password first, under the confirmation budget. The
+            // rules below compare the new password with the account's current
+            // and past ones, so run before this check they graded two guesses
+            // a request for a token that did not know the password.
+            $auth = app(AuthService::class);
+            if (!$auth->checkPassword($user, (string) $request->current_password, 'current_password')) {
                 return response()->json([
                     'message' => 'Current Password is Wrong.',
                 ], 403);
             }
 
-            app(AuthService::class)->changePassword($user, $request->password);
+            $request->validate([
+                'password' => config('neev.password'),
+            ]);
+
+            $auth->changePassword($user, $request->password);
 
             return response()->json([
                 'message' => 'Password has been successfully updated.',
             ]);
-        } catch (ValidationException $e) {
+        } catch (ValidationException | ConfirmationThrottledException $e) {
             throw $e;
         } catch (Exception $e) {
             Log::error($e);

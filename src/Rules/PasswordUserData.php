@@ -4,7 +4,7 @@ namespace Ssntpl\Neev\Rules;
 
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Support\PasswordSubject;
 use Illuminate\Support\Str;
 use Ssntpl\Neev\Support\ExportsState;
 
@@ -25,11 +25,9 @@ class PasswordUserData implements ValidationRule
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        $user = User::model()->find(request()->user()?->id);
-        $email = request()->input('email');
-        if ($email) {
-            $user = User::findByEmail($email);
-        }
+        // Only an account the request has proven (see PasswordSubject); the
+        // body's `email` is not trusted to name whose data to compare against.
+        $user = PasswordSubject::resolve();
 
         if (!$user) {
             return;

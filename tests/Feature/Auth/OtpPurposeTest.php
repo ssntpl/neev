@@ -14,6 +14,10 @@ use Ssntpl\Neev\Models\OTP;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Tests\TestCase;
+use Ssntpl\Neev\Models\MagicLinkToken;
+use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
+use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
+use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
 
 /**
  * A code is issued for one purpose and checked only against it, and a user
@@ -22,6 +26,7 @@ use Ssntpl\Neev\Tests\TestCase;
 class OtpPurposeTest extends TestCase
 {
     use RefreshDatabase;
+    use WithNeevConfig;
 
     protected function setUp(): void
     {
@@ -186,6 +191,43 @@ class OtpPurposeTest extends TestCase
         $this->assertSame(0, OTP::query()->forOwner($user)->count());
         $this->resetWith($user->fresh(), $reset)->assertForbidden();
         $this->assertTrue(Hash::check('original-password', $user->fresh()->getRawOriginal('password')));
+    }
+
+    /**
+     * The MFA email code is not in the `otp` table — it lives on the factor's
+     * own row — and it was mailed to the old address like every other code.
+     */
+    public function test_changing_the_email_retires_the_mfa_email_code_too(): void
+    {
+        $this->enableMFA();
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        MultiFactorAuthFactory::new()->create(['user_id' => $user->id, 'method' => 'email', 'preferred' => true]);
+
+        $this->auth()->sendMfaEmailCode($user, force: true);
+        $code = null;
+        Mail::assertSent(EmailOTP::class, function (EmailOTP $mail) use (&$code) {
+            $code = (string) $mail->otp;
+
+            return true;
+        });
+        $this->assertNotNull($code);
+
+        $this->assertTrue($this->auth()->applyEmailChange($user, 'moved@example.com'));
+
+        $this->assertFalse($user->fresh()->verifyMFAOTP('email', $code), 'a code mailed to the old address must not answer a challenge');
+    }
+
+    /** A magic login link is a code by another name, mailed to the same old address. */
+    public function test_changing_the_email_revokes_magic_login_links_sent_to_the_old_address(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $link = app(MagicLinkManager::class)->generate($user);
+        $this->assertNotNull($link['model']->fresh());
+
+        $this->assertTrue($this->auth()->applyEmailChange($user, 'moved@example.com'));
+
+        $this->assertNull($link['model']->fresh(), 'the link mailed to the old address must not sign in any more');
+        $this->assertSame(0, MagicLinkToken::withoutGlobalScopes()->where('user_id', $user->id)->count());
     }
 
     public function test_the_api_email_change_link_discards_outstanding_codes(): void

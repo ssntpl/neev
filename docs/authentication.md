@@ -1207,7 +1207,7 @@ For each login attempt, Neev records:
 | Field | Description |
 |-------|-------------|
 | `method` | Login method used (password, passkey, sso, etc.) |
-| `multi_factor_method` | Second factor the login demands, named when the challenge opens (null if none) |
+| `multi_factor_method` | Second factor the session holds: named when the challenge opens (`is_success` stays false until it is answered), or written when the session completes an enrolment (null if none) |
 | `ip_address` | User's IP address |
 | `platform` | Operating system |
 | `browser` | Browser name |

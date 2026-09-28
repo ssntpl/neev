@@ -419,6 +419,7 @@ that has none — created through OAuth or SSO — sends `otp` instead, a code f
 |--------|---------|
 | 422 | Validation error — neither `password` nor `otp` supplied |
 | 403 | `The password is incorrect.` / `The confirmation code is invalid or has expired.` |
+| 429 | Five wrong answers in a minute, across every action that checks the password or code, per account. Body carries `retry_after`; header `Retry-After` |
 
 ---
 
@@ -490,6 +491,8 @@ Reset the user's password with either proof from the forgot-password email — o
 ```http
 POST /neev/resetPassword?id={user_id}&hash={email_hash}&signature={signature}&expires={timestamp}
 ```
+
+With a link, `id`, `hash`, `expires` and `signature` are read from the **query string** the link carries — forward it as-is. Values in the request body are ignored: the signature covers the query alone, and a body that could override it would let a link for one account act on another.
 
 ```json
 {
@@ -696,6 +699,12 @@ Authorization: Bearer {token}
 
 Request to change the authenticated user's email address. Sends a verification link to the new email. Requires current password for security.
 
+The password check draws on the same budget as every other confirmed action:
+five wrong answers in a minute across all of them, per account, and this
+endpoint too answers `429` with `retry_after` and `Retry-After` until the
+minute passes. The route's own limit of five requests a minute applies as well.
+See [Confirming a sensitive action](./security.md#confirming-a-sensitive-action).
+
 An account created through OAuth has no password, so
 there is nothing to check: the request is refused with `403` and *Set a password
 on your account before changing your email address.* until one is set. See
@@ -788,7 +797,10 @@ the first one is onboarding and asks for nothing. After that, send `password`,
 or `otp` for an account that has none (from `POST /neev/confirmation/otp`): an
 attacker with a stolen token who enrols their own authenticator would otherwise
 answer the challenge at every future sign-in. A missing field is `422`, a wrong
-one `403`. See
+one `403`, and after five wrong answers in a minute — across every action that
+checks the password — `429` with `retry_after` and `Retry-After`. A scoped API
+token is refused with
+`403 An API token cannot enrol a second factor.` — use a login token. See
 [Confirming a sensitive action](./security.md#confirming-a-sensitive-action).
 
 **Response (authenticator):**
@@ -801,7 +813,7 @@ one `403`. See
 }
 ```
 
-The authenticator method is created in a **pending** state and is not enforced at login until activated via [Verify MFA Setup](#verify-mfa-setup). The email method is created active immediately.
+The authenticator method is created in a **pending** state and is not enforced at login until activated via [Verify MFA Setup](#verify-mfa-setup). Calling this again while the setup is pending replaces its secret and returns the new one; only the QR shown last verifies. The email method is created active immediately.
 
 **Response (`422`)** — the request could not be satisfied. The body carries the
 reason:
@@ -961,7 +973,9 @@ Authorization: Bearer {token}
 
 Confirmed like account deletion: send `password`, or `otp` for an account that
 has none (get one from `POST /neev/confirmation/otp`). A missing field is
-`422`, a wrong one `403`, and the factor stays.
+`422`, a wrong one `403`, and the factor stays. Five wrong answers in a minute,
+counted across every action that checks the password, make every one of them
+`429` (with `retry_after` and `Retry-After`) until the minute passes.
 
 **Response:**
 
@@ -996,7 +1010,9 @@ Always confirmed: a recovery code signs you in on its own, so this hands back a
 complete second factor in plaintext. Send `password`, or `otp` for an account
 that has none. `400` when no factor is enabled — answered before the
 confirmation is asked for, so a single-use code is not spent on something that
-cannot happen. Limited to five a minute.
+cannot happen. Limited to five requests a minute, and the confirmation draws on
+the budget every confirmed action shares: five wrong answers in a minute, on
+any of them, and this too answers `429` with `retry_after` and `Retry-After`.
 
 **Response:**
 
@@ -1069,7 +1085,12 @@ POST /neev/passkeys/register/options
 Authorization: Bearer {token}
 ```
 
-The request takes no body. It is a `POST` so that the browser attaches
+The request carries the confirmation — `password`, or `otp` for an account
+that has none (from `POST /neev/confirmation/otp`) — because enrolling a passkey
+is always confirmed; see
+[Confirming a sensitive action](./security.md#confirming-a-sensitive-action).
+A missing field is `422`, a wrong one `403`, and five wrong answers in a minute
+across every confirmed action `429`. It is a `POST` so that the browser attaches
 `Origin`, which the relying party is resolved from — see below.
 
 **Response:**
@@ -1375,6 +1396,7 @@ send `otp` instead, a code from [Send One-Time Code](#send-one-time-code):
 |--------|---------|
 | 422 | Validation error — neither `password` nor `otp` supplied |
 | 403 | `The password is incorrect.` / `The confirmation code is invalid or has expired.` |
+| 429 | Five wrong answers in a minute, across every action that checks the password or code, per account. Body carries `retry_after`; header `Retry-After` |
 
 ---
 
@@ -1420,6 +1442,7 @@ unaffected — see
 | 403 | `Current Password is Wrong.` |
 | 403 | `Your account has no password yet. Use the emailed link to set one.` |
 | 404 | `User not found.` |
+| 429 | Five wrong answers in a minute, across every action that checks the password or code, per account. Body carries `retry_after`; header `Retry-After` |
 
 An account with no password cannot use this endpoint — there is no current
 password to check. It sets its first one through the emailed link:

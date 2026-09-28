@@ -14,11 +14,13 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedIn;
 use Ssntpl\Neev\Events\PasswordChanged;
+use Ssntpl\Neev\Exceptions\ConfirmationThrottledException;
 use Ssntpl\Neev\Exceptions\PasswordResetThrottledException;
 use Ssntpl\Neev\Enums\OtpPurpose;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
+use Ssntpl\Neev\Models\MagicLinkToken;
 use Ssntpl\Neev\Models\OTP;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Rules\PasswordHistory;
@@ -218,9 +220,116 @@ class AuthService
      */
     public function confirmIdentity(User $user, Request $request): bool
     {
-        return $user->password !== null
+        $this->reserveConfirmation($user, array_key_first($this->confirmationRules($user)));
+
+        $confirmed = $user->password !== null
             ? Hash::check((string) $request->input('password'), $user->password)
             : $this->verifyEmailOtp($user, (string) $request->input('otp'), OtpPurpose::Confirmation);
+
+        $this->settleConfirmation($user, $confirmed);
+
+        return $confirmed;
+    }
+
+    /**
+     * Check the account's password for an action that asks for it directly
+     * rather than through `confirmationRules()` — the current password on a
+     * password change, the password on an email change — under the same
+     * budget as every other confirmation, so a stolen session cannot pick
+     * the one check that does not count.
+     *
+     * @throws ConfirmationThrottledException
+     */
+    public function checkPassword(User $user, string $password, string $field = 'password'): bool
+    {
+        $this->reserveConfirmation($user, $field);
+
+        $correct = $user->password !== null && Hash::check($password, $user->password);
+
+        $this->settleConfirmation($user, $correct);
+
+        return $correct;
+    }
+
+    /**
+     * How many wrong confirmations an account may give in the window before
+     * every action that confirms refuses with 429 until it passes.
+     *
+     * Wrong answers only: the owner's own actions never count against them,
+     * and requests that confirm nothing spend nothing. A right answer clears
+     * the count. Keyed on the account, not the caller, because the caller is
+     * whoever holds the session and that is exactly who is being limited —
+     * which also means five wrong guesses from a thief lock the owner out of
+     * these actions for the window. The reset link, which revokes every other
+     * session and login token, is the way through; that trade is the lockout.
+     */
+    public const CONFIRMATION_GUESS_LIMIT = 5;
+
+    public const CONFIRMATION_GUESS_WINDOW = 60;
+
+    protected function confirmationKey(User $user): string
+    {
+        return 'neev-confirmation:' . $user->getMorphClass() . ':' . $user->getKey();
+    }
+
+    /**
+     * Take one guess from the account's budget before comparing anything.
+     *
+     * Reserved first, settled after: a limiter that only counted a miss once
+     * bcrypt had returned let every request in flight during that window
+     * through, so the cap was the server's concurrency rather than five. The
+     * OTP checks reserve their attempt the same way, for the same reason. A
+     * right answer hands the reservation back with everything else.
+     *
+     * @throws ConfirmationThrottledException
+     */
+    protected function reserveConfirmation(User $user, string $field): void
+    {
+        $key = $this->confirmationKey($user);
+
+        if (RateLimiter::tooManyAttempts($key, self::CONFIRMATION_GUESS_LIMIT)
+            || RateLimiter::hit($key, self::CONFIRMATION_GUESS_WINDOW) > self::CONFIRMATION_GUESS_LIMIT) {
+            throw new ConfirmationThrottledException(max(1, RateLimiter::availableIn($key)), $field);
+        }
+    }
+
+    protected function settleConfirmation(User $user, bool $confirmed): void
+    {
+        if ($confirmed) {
+            RateLimiter::clear($this->confirmationKey($user));
+        }
+    }
+
+    /**
+     * Record that the signed-in web session holds the factor it has just
+     * completed enrolling, so NeevMiddleware keeps it open.
+     *
+     * `login_attempts.multi_factor_method` is what the gate reads as proof a
+     * session answered its challenge. A session that completes an enrolment —
+     * verifies the authenticator it scanned, or turns email OTP on — has
+     * proven the factor as surely as answering a challenge with it would, so
+     * it is stamped here and stays signed in. Only here: stamping at the
+     * *start* of an enrolment let a setup that was never verified vouch for
+     * the session for good, so it survived a factor enrolled from elsewhere
+     * that was meant to end it. An attempt that already names a factor keeps
+     * it; the login-attempt history should say what the session signed in
+     * with, not what it enrolled afterwards.
+     */
+    public function stampSessionWithFactor(User $user, string $method): void
+    {
+        $request = request();
+        if (!$request->hasSession()) {
+            return;
+        }
+
+        $attemptId = $request->session()->get('attempt_id');
+        $attempt = $attemptId ? $user->loginAttempts()->whereKey($attemptId)->first() : null;
+        if (!$attempt || $attempt->multi_factor_method !== null) {
+            return;
+        }
+
+        $attempt->multi_factor_method = $method;
+        $attempt->save();
     }
 
     /**
@@ -525,8 +634,15 @@ class AuthService
 
         // Every outstanding code was mailed to the old address. Whoever still
         // reads that mailbox — often the reason for the change — must not be
-        // able to spend one against the account now that it has moved.
+        // able to spend one against the account now that it has moved. That
+        // includes the MFA email code, which lives on the factor's own row
+        // rather than in `otp`.
         OTP::query()->forOwner($user)->delete();
+        $user->multiFactorAuths()->where('method', 'email')->first()?->clearOtp();
+
+        // A magic login link is a code by another name, and was mailed to the
+        // same address. Filtered by the account, so no tenant scope applies.
+        MagicLinkToken::withoutGlobalScopes()->where('user_id', $user->getKey())->delete();
 
         return true;
     }

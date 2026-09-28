@@ -176,7 +176,7 @@ These routes require the `neev:web` middleware.
 | GET | `/email/verify` | `verification.notice` | Show verification pending page |
 | GET | `/email/send` | `email.verification.send` | Resend verification email |
 | GET | `/email/change` | `email.change` | Show change email form |
-| PUT | `/email/change` | `email.update` | Request email change (sends verification) |
+| PUT | `/email/change` | `email.update` | Request email change (sends verification; password checked under the 5 wrong answers/min budget) |
 
 ---
 
@@ -210,10 +210,10 @@ All prefixed with `/account`.
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
 | PUT | `/account/profileUpdate` | `profile.update` | Update profile |
-| POST | `/account/change-password` | `password.change` | Change password |
+| POST | `/account/change-password` | `password.change` | Change password (current password first; 5 wrong answers/min per account) |
 | POST | `/account/password/reset-link` | `password.reset.link` | Email a link to set or reset the password |
 | POST | `/account/confirmation/otp` | `account.confirmation` | Email a one-time code (throttled 5/min) |
-| DELETE | `/account/accountDelete` | `account.delete` | Delete account |
+| DELETE | `/account/accountDelete` | `account.delete` | Delete account (confirmed; 5 wrong answers/min per account) |
 
 **Confirming the deletion.** An account with a password posts `password`. An
 account without one — created through OAuth or SSO — posts `otp`, a code from
@@ -226,7 +226,7 @@ account without one — created through OAuth or SSO — posts `otp`, a code fro
 
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| POST | `/account/multiFactorAuth` | `multi.auth` | Add, re-issue or remove an MFA method (`action=delete` removes) |
+| POST | `/account/multiFactorAuth` | `multi.auth` | Add, re-issue or remove an MFA method (`action=delete` removes; confirmed actions share the 5 wrong answers/min budget) |
 | PUT | `/account/multiFactorAuth` | `multi.preferred` | Set preferred MFA |
 | GET | `/account/recovery/codes` | `recovery.codes` | Show recovery codes (shows a set only on the request that generated it) |
 | POST | `/account/recovery/codes` | `recovery.generate` | Generate new codes (throttled 5/min) |
@@ -243,7 +243,7 @@ one, re-issuing one, and generating recovery codes are confirmed always. See
 
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| POST | `/account/passkeys/register/options` | `passkeys.register.options` | Get registration options (confirmed: `password` or `otp`) |
+| POST | `/account/passkeys/register/options` | `passkeys.register.options` | Get registration options (confirmed: `password` or `otp`; 5 wrong answers/min per account) |
 | POST | `/account/passkeys/register` | `passkeys.register` | Register new passkey |
 | DELETE | `/account/passkeys` | `passkeys.delete` | Delete passkey |
 
@@ -253,7 +253,7 @@ one, re-issuing one, and generating recovery codes are confirmed always. See
 
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| POST | `/account/logoutSessions` | `logout.sessions` | Logout other sessions |
+| POST | `/account/logoutSessions` | `logout.sessions` | Logout other sessions (confirmed without `session_id`; 5 wrong answers/min per account) |
 
 **Request Parameters:**
 - `password` - Required to logout all sessions, when the account has a password

@@ -462,6 +462,11 @@ Import the rule from `Ssntpl\Neev\Rules` in your published `config/neev.php`.
 | `PasswordHistory::notReused(5)` | Cannot reuse last 5 passwords |
 | `PasswordUserData::notContain()` | Cannot contain user's personal data |
 
+The last two compare against the signed-in user, or the account a password
+reset has just proven; the request body never chooses the account. To validate
+a password for someone else, call `PasswordSubject::set($request, $user)`
+first — see [Password History](./security.md#password-history).
+
 ---
 
 ## Username Validation

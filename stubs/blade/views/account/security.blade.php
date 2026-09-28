@@ -172,7 +172,11 @@
 
                                                 <x-slot name="content">
                                                     <p class="text-start">
-                                                        {{ __('Setting this factor up again shows its secret, so confirm it is you.') }}
+                                                        @if ($user->multiFactorAuth($method)?->isActive())
+                                                            {{ __('Setting this factor up again shows its secret, so confirm it is you.') }}
+                                                        @else
+                                                            {{ __('Starting the setup again replaces the code you scanned with a new one, so confirm it is you.') }}
+                                                        @endif
                                                     </p>
 
                                                     <form method="POST" action="{{ route('multi.auth') }}" x-ref="editForm">
@@ -511,6 +515,13 @@
 
         if (resp.status === 422 || resp.status === 403) {
             showPasskeyError('{{ __('Confirm it is you before adding a passkey: enter your password, or the code we emailed.') }}');
+            return;
+        }
+
+        if (resp.status === 429) {
+            {{-- Too many wrong answers: the server says how long to wait. --}}
+            const throttled = await resp.json().catch(() => ({}));
+            showPasskeyError(throttled.message || '{{ __('Too many attempts. Please wait a minute and try again.') }}');
             return;
         }
 

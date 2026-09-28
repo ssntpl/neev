@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Unit\Rules;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Rules\PasswordUserData;
+use Ssntpl\Neev\Support\PasswordSubject;
 use Ssntpl\Neev\Tests\TestCase;
 
 class PasswordUserDataTest extends TestCase
@@ -170,21 +171,30 @@ class PasswordUserDataTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Works when user found via email input
+    // The body's email names nobody: only a proven account is compared
     // -----------------------------------------------------------------
 
-    public function test_works_when_user_found_via_email_input(): void
+    public function test_ignores_an_email_in_the_request_body(): void
     {
         $user = User::factory()->create(['name' => 'SamuelJackson']);
 
-        // Simulate request with email input (no authenticated user)
+        // No authenticated user, no proven subject — only an address in the body.
         $this->app['request']->merge(['email' => $user->email]);
 
         $rule = PasswordUserData::notContain(['name']);
 
-        $failed = $this->runRule($rule, 'mySamuelJacksonPass');
+        $this->assertFalse($this->runRule($rule, 'mySamuelJacksonPass'));
+    }
 
-        $this->assertTrue($failed);
+    public function test_compares_against_the_subject_a_controller_has_proven(): void
+    {
+        $user = User::factory()->create(['name' => 'SamuelJackson']);
+
+        PasswordSubject::set($this->app['request'], $user);
+
+        $rule = PasswordUserData::notContain(['name']);
+
+        $this->assertTrue($this->runRule($rule, 'mySamuelJacksonPass'));
     }
 
     // -----------------------------------------------------------------

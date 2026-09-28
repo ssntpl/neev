@@ -93,6 +93,16 @@ PasswordHistory::notReused(5)  // Cannot reuse last 5 passwords
 
 Passwords are stored hashed on the `users` table, with password history maintained as a JSON column.
 
+Both this rule and `PasswordUserData` compare against **one account only**: the
+signed-in user, or — on the reset paths — the account the link or code has just
+proven, which the controller names with
+`Ssntpl\Neev\Support\PasswordSubject::set($request, $user)` before validating.
+The request body's `email` and `id` are never consulted. Read from there, as
+they once were, the rules answered for any account whether a guess was its
+password; the validation error said so. A registration has no account to
+compare against, so both rules pass. If your application validates a password
+on behalf of an account that is not the caller, set the subject first.
+
 ### What a Password Change Revokes
 
 Changing or resetting a password drops the account's other **sessions** and
@@ -189,6 +199,16 @@ to, so it is unauthenticated instead, session and all. Signing in again
 parks at the challenge properly. Redirecting it to the challenge page
 instead is what produced an infinite loop through `/login`.
 
+The session that does the enrolling is stamped as holding the factor when the
+enrolment **completes** — it verifies the authenticator it scanned, or turns
+email OTP on, which is active at once — and never when a setup merely starts.
+A setup that is opened and walked away from proves nothing, so the session
+that opened it is ended like any other once a factor is enrolled elsewhere —
+and the setup itself is discarded when any factor is enrolled, so it cannot be
+finished from the verify route, which sits outside the gate because the login
+challenge shares it. An attempt that already names the factor it signed in
+with keeps it.
+
 Two first factors are exempt, because they answer for themselves.
 
 A **passkey** ceremony runs with `userVerification: 'required'` and is
@@ -274,7 +294,7 @@ For each login attempt:
 | Field | Description |
 |-------|-------------|
 | `method` | Login method (password, passkey, sso, etc.) |
-| `multi_factor_method` | Second factor the login demands, named when the challenge opens |
+| `multi_factor_method` | Second factor the session holds: named when the challenge opens (with `is_success` false until it is answered), or written when the session completes an enrolment |
 | `ip_address` | User's IP address |
 | `platform` | Operating system |
 | `browser` | Browser name and version |
@@ -764,7 +784,28 @@ to answer either branch; see [UPGRADING](../UPGRADING.md) if you have any from
 an earlier version. A missing field is `422`, a wrong one `403`, and
 nothing happens. `AuthService::confirmationRules()` and `confirmIdentity()`
 decide what proof an account owes, so these actions cannot drift from
-one another. See
+one another.
+
+**Five wrong answers a minute.** Every check of the password or the
+confirmation code — the five actions above, passkey enrolment, the current
+password on a password change, the password on an email change: fifteen
+routes across the API and the Blade kit — runs through
+`AuthService::confirmIdentity()` or `checkPassword()`, which count wrong
+answers per account. At five in a minute every one of them refuses with `429`
+(`retry_after` and `Retry-After` on the API; the Blade kit back on its form
+with the message under the field) until the window passes. A right answer
+clears the count, and a request that confirms nothing — dropping one named
+session, the first setup on an account with no factor — spends nothing. Five
+wrong guesses do, whoever makes them, so a thief holding a session can keep the
+owner's confirmed actions locked by guessing wrong five times a minute; that
+is the lockout's inherent cost, and the owner's way through is the password
+reset, which revokes every other session and login token. The guess is
+reserved before the password is compared, so requests in flight together
+cannot each slip under the count. Without this, `confirmIdentity()` was a bare
+`Hash::check()` that counted nothing and never reached the login lockout: the
+gate meant to contain a stolen session was handing it an unlimited oracle for
+the one thing it lacked. The per-minute route limits on recovery codes and
+email change apply as well. See
 [Accounts Without a Password](./authentication.md#accounts-without-a-password).
 
 Three of these fire an event an application can notify on: `MfaMethodRemoved`

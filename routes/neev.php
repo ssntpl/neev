@@ -135,6 +135,10 @@ if (config('neev.ui') === 'blade') {
                 Route::get('/loginAttempts', [UserController::class, 'loginAttempts'])
                     ->name('account.loginAttempts');
 
+                // Actions that ask the account to prove itself again are
+                // limited in AuthService::confirmIdentity(), on wrong answers
+                // only — not here, where a route throttle would also count
+                // the unconfirmed requests these routes serve.
                 Route::post('/multiFactorAuth', [UserController::class, 'addMultiFactorAuth'])
                     ->name('multi.auth');
                 Route::put('/multiFactorAuth', [UserController::class, 'preferredMultiFactorAuth'])

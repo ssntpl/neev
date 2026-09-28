@@ -11,6 +11,130 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
+## 0.6.7 → Unreleased
+
+**The password rules compare only against a proven account (action required
+if you validate a password on someone else's behalf).**
+`PasswordHistory` and `PasswordUserData` used to resolve the account from the
+request body — `email`, then `id` — ahead of the signed-in user, which made
+them a password oracle for any address a request cared to name. They now read
+it from `Ssntpl\Neev\Support\PasswordSubject`: the signed-in user, or the
+account a reset link or code has just proven, which the package's reset
+controllers name before validating. A registration compares against nobody —
+the package's register actions say so with `PasswordSubject::none($request)`,
+so a registration posted from a signed-in session is not graded against that
+session's account either.
+
+- **If you validate a password for an account that is not the caller** — an
+  admin "set a user's password" form, an invitation flow that sets one on a
+  freshly created account — call `PasswordSubject::set($request, $user)`
+  before `$request->validate([...])`, or the history and personal-data checks
+  will find no account and pass.
+- **If your own forms relied on posting `email` to pick the account**, that no
+  longer does anything; use `PasswordSubject::set()`.
+- Nothing changes for the signed-in change-password forms or the package's
+  reset paths.
+
+**Signed links read their parameters from the signed query only (action
+required if your client posted them in the body).**
+`POST {prefix}/resetPassword`, `POST {prefix}/email/change/verify` and
+`GET {prefix}/email/verify` used to read `id`, `hash` and `email` through
+`input()`, where a body overrides the query while the signature covers only
+the query — which let anyone holding a link for their own account act on any
+other. They now read the signed query and nothing else. A client that forwards
+the link's query string, as the API reference describes, is unaffected. One
+that copied `id`/`hash` or `id`/`email` into the request body instead gets
+`403 Invalid or expired reset link.` (or the email-change failure) and must
+forward the query.
+
+**Wrong confirmations are rate limited (handle `429`).**
+Every check of the account's password or confirmation code now runs through
+`AuthService::confirmIdentity()` or the new `checkPassword()`, which count
+wrong answers per account: five in a minute, and every action that confirms
+refuses with `429` until the window passes. A right answer clears the count.
+The fifteen routes: `POST {prefix}/mfa/add`, `DELETE {prefix}/mfa/delete`,
+`POST {prefix}/passkeys/register/options`, `PUT {prefix}/changePassword`,
+`POST {prefix}/email/change`, `DELETE {prefix}/users`,
+`POST {prefix}/logoutAll` and `POST {prefix}/recoveryCodes` on the API, and
+`POST /account/multiFactorAuth`, `POST /account/passkeys/register/options`,
+`POST /account/change-password`, `PUT /email/change`,
+`DELETE /account/accountDelete`, `POST /account/logoutSessions` and
+`POST /account/recovery/codes` in the Blade kit.
+
+- **API**: the `429` body is `{"message": …, "retry_after": <seconds>}` with a
+  `Retry-After` header. Show it; retrying sooner is refused.
+- **Blade kit**: the request lands back on the form with the message under the
+  field it asked for (`password`, `otp` or `current_password`), so nothing
+  changes for an ejected view — the shipped views already render every error.
+  The passkey script in `account/security.blade.php` now shows that message on
+  a `429`; re-eject the view, or copy the `resp.status === 429` branch in.
+- Only wrong answers count. Requests that confirm nothing — dropping one named
+  session with `session_id`, the first setup on an account with no factor —
+  never spend the budget. Five wrong guesses do, whoever makes them: a thief
+  holding a session can keep the owner's confirmed actions answering `429` by
+  guessing wrong five times a minute. That is the lockout's inherent cost; the
+  owner's way through is the password reset, which revokes every other session
+  and login token. Recovery-code minting and email change also keep their own
+  per-minute route limits (five requests a minute each); on those two routes a
+  sixth request in a minute meets that limit first — Laravel's plain `429`, as
+  before.
+- If you call `confirmIdentity()` yourself, it now throws
+  `Ssntpl\Neev\Exceptions\ConfirmationThrottledException` when the account is
+  locked. The exception renders itself (JSON `429`, or a redirect back with
+  errors), so a controller that does not catch it answers correctly; a
+  `catch (Exception $e)` around it should rethrow it.
+
+**Changing the password proves the current one first (check your client's
+error handling).**
+`PUT {prefix}/changePassword` and `POST /account/change-password` used to run
+the new password through the password rules before checking
+`current_password`, so a wrong current password could still come back as a
+`422` about the new one. They now answer `403 Current Password is Wrong.`
+first and grade the new password only once the current one is right. A client
+that showed the `422` validation errors before the `403` sees them in the
+other order.
+
+**Enrolling a factor discards any setup still pending (no action required).**
+Turning email OTP on deletes a pending authenticator setup, so a setup started
+before the account had a factor cannot be finished afterwards without the
+confirmation that adding a factor now needs. A user who started an
+authenticator setup, then enabled email in another tab, is told "No setup is in
+progress for this method. Start it again." when they enter the code, and starts
+the authenticator again — confirming this time. (Only an authenticator is ever
+pending, so verifying one has nothing else to discard.)
+
+**A pending authenticator setup gets a new secret each time setup starts (check
+how your UI shows the QR).**
+Clicking Add or Set up on a setup that is still pending used to show the same
+secret again; it now mints a fresh one and updates the pending row, so a
+secret planted by whoever held a session earlier is never the one the owner
+scans. Only the QR shown *last* verifies. If your UI re-posts to redraw the
+QR, the user's earlier scan is stale and they must scan again — show it once,
+or keep the response. An active factor is unchanged: Set up on an enrolled
+authenticator still shows its live secret. The shipped `account/security.blade.php`
+says so in its Set up dialog for a pending factor; re-eject it or copy the
+`@if ($user->multiFactorAuth($method)?->isActive())` branch into yours.
+
+**A web session is stamped as holding a factor when it completes an enrolment,
+not when it starts one (no action required).**
+`login_attempts.multi_factor_method` is written when the session verifies the
+authenticator it scanned, or turns email OTP on — never for a setup that was
+merely started. A session that starts a setup and walks away is ended, like
+any other session that predates a factor, once one is enrolled from elsewhere.
+The attempt keeps the factor it signed in with if it already names one, and
+"Set up" on a factor that is already active writes nothing. Sessions that were
+open at deploy time and had *started* a setup under the old code keep the stamp
+that code wrote until they expire; sign them out (`POST /account/logoutSessions`
+or `AuthService::revokeOtherSessions()`) if that matters to you.
+
+**Changing the email retires the MFA email code and magic login links as well
+(no action required).**
+The 0.6.7 note promised every outstanding code was discarded; the MFA email
+code, stored on the factor's own row, and magic login links in
+`magic_link_tokens` — mailed to the same old address — now are too.
+
+---
+
 ## 0.6.6 → 0.6.7
 
 **Emailed codes carry a purpose (schema change; action required on existing
@@ -63,6 +187,66 @@ new-token dialog `show="showToken"` and have its Done button set
 `dialog-modal` tags, which the component never rendered; and copy the new
 `permissionManager()` script over yours. The dialog `show` prop needs the
 modal components from this release.
+
+**Adding a factor and minting recovery codes now need confirmation (action
+required if you call either).**
+Removing a factor was confirmed in the previous change; these two reach the
+same end from the other side. `POST {prefix}/recoveryCodes` and
+`POST /account/recovery/codes` hand back a complete second factor in
+plaintext, and `POST {prefix}/mfa/add` lets whoever holds a stolen token enrol
+their own authenticator. Both now take `password` — or `otp`, from
+`POST {prefix}/confirmation/otp` — exactly as removal does.
+
+- **Enrolling the *first* factor is unchanged.** The gate starts once the
+  account already holds an active one, so onboarding asks for nothing. A
+  pending setup does not count.
+- **`GET /account/recovery/codes` no longer generates codes.** It used to mint
+  a set whenever the account held none, which meant reading a page created
+  credentials. Generating is the confirmed `POST`; the plaintext is flashed to
+  the page that follows it and is never recoverable afterwards.
+- **Enrolling a passkey is confirmed too, and always.**
+  `POST {prefix}/passkeys/register/options` and
+  `POST /account/passkeys/register/options` take `password` or `otp`. A passkey
+  signs in with the account's whole authority and is never parked at the MFA
+  challenge, so it is more than a second factor. Clients that start the
+  ceremony must collect the proof first and send it with the options request.
+- **`POST {prefix}/mfa/add` and `POST {prefix}/mfa/setup/verify` refuse a
+  scoped API token**, as passkey enrolment and token management already did.
+  Use a login token.
+- **If you ejected the Blade kit**, three views changed. The security page
+  gained confirmation dialogs on Add, Edit and the passkey form, the recovery-codes page gained a dialog on Generate and an
+  empty state for an account with no codes yet, and all of them — plus the
+  delete-account, remove-factor and log-out-other-sessions dialogs, which each
+  carried their own copy — now use a new
+  `resources/views/vendor/neev/components/confirm-identity.blade.php`. That is
+  five dialogs and the passkey form. Re-eject with
+  `php artisan neev:ui blade --force` if you have not customised them;
+  otherwise copy the component in and point each dialog at it.
+- **The modal components take a `show` prop naming the Alpine variable that
+  opens them** — `components/modal.blade.php` and the `dialog-modal` and
+  `confirmation-modal` wrappers around it. It defaults to `show`, so every
+  existing call site behaves exactly as before and needs no change. **Re-eject
+  all three together with the security page**, though: that page's new Set up
+  dialog passes `show="showEdit"`, and against an older copy of the components
+  the prop is ignored and the dialog binds to `show` — the same variable as
+  the Delete and Add controls beside it, so one button opens two dialogs.
+
+  The reason it needs a prop at all: `modal.blade.php` never renders
+  `{{ $attributes }}`, so attributes passed at the call site are dropped
+  rather than reaching the panel. The kit's own dialogs used to pass
+  `x-show="show" x-cloak @keydown.escape.window="show = false"
+  @click.away="show = false"` and worked only because the component hardcoded
+  the same thing internally. Those dead attributes are removed from the
+  shipped views. If you pass anything similar in a view of your own, it is
+  not taking effect — name the variable with `show` instead.
+- **The recovery-codes page prints with a stylesheet, and no longer reloads.**
+  The plaintext arrives once, so a reload after a cancelled print dialog would
+  have replaced the only copy of a freshly minted set. It also no longer swaps
+  `document.body.innerHTML` out and back, which left markup Alpine had stopped
+  driving — Copy, Download and Generate went dead after a print. An
+  `@media print` block shows only `#printable-area` instead; keep that id if
+  you restyle the printed sheet.
+- **Recovery-code generation is limited to five a minute** on both surfaces.
 
 ---
 
@@ -120,67 +304,6 @@ on the subject).**
 The subject was always `Email Verification`; it is now the purpose the email
 was sent for — `Verify Email`, `Reset Password` or `Verify Email Change` — so
 update any test assertion or mail filter that matched the old subject.
-
-**Adding a factor and minting recovery codes now need confirmation (action
-required if you call either).**
-Removing a factor was confirmed in the previous change; these two reach the
-same end from the other side. `POST {prefix}/recoveryCodes` and
-`POST /account/recovery/codes` hand back a complete second factor in
-plaintext, and `POST {prefix}/mfa/add` lets whoever holds a stolen token enrol
-their own authenticator. Both now take `password` — or `otp`, from
-`POST {prefix}/confirmation/otp` — exactly as removal does.
-
-- **Enrolling the *first* factor is unchanged.** The gate starts once the
-  account already holds an active one, so onboarding asks for nothing. A
-  pending setup does not count.
-- **`GET /account/recovery/codes` no longer generates codes.** It used to mint
-  a set whenever the account held none, which meant reading a page created
-  credentials. Generating is the confirmed `POST`; the plaintext is flashed to
-  the page that follows it and is never recoverable afterwards.
-- **Enrolling a passkey is confirmed too, and always.**
-  `POST {prefix}/passkeys/register/options` and
-  `POST /account/passkeys/register/options` take `password` or `otp`. A passkey
-  signs in with the account's whole authority and is never parked at the MFA
-  challenge, so it is more than a second factor. Clients that start the
-  ceremony must collect the proof first and send it with the options request.
-- **`POST {prefix}/mfa/add` and `POST {prefix}/mfa/setup/verify` refuse a
-  scoped API token**, as passkey enrolment and token management already did.
-  Use a login token.
-- **If you ejected the Blade kit**, three views changed. The security page
-  gained confirmation dialogs on Add and Edit and a confirmation field beside
-  the passkey form, the recovery-codes page gained a dialog on Generate and an
-  empty state for an account with no codes yet, and all of them — plus the
-  delete-account, remove-factor and log-out-other-sessions dialogs, which each
-  carried their own copy — now use a new
-  `resources/views/vendor/neev/components/confirm-identity.blade.php`. That is
-  five dialogs and the passkey form. Re-eject with
-  `php artisan neev:ui blade --force` if you have not customised them;
-  otherwise copy the component in and point each dialog at it.
-- **The modal components take a `show` prop naming the Alpine variable that
-  opens them** — `components/modal.blade.php` and the `dialog-modal` and
-  `confirmation-modal` wrappers around it. It defaults to `show`, so every
-  existing call site behaves exactly as before and needs no change. **Re-eject
-  all three together with the security page**, though: that page's new Set up
-  dialog passes `show="showEdit"`, and against an older copy of the components
-  the prop is ignored and the dialog binds to `show` — the same variable as
-  the Delete and Add controls beside it, so one button opens two dialogs.
-
-  The reason it needs a prop at all: `modal.blade.php` never renders
-  `{{ $attributes }}`, so attributes passed at the call site are dropped
-  rather than reaching the panel. The kit's own dialogs used to pass
-  `x-show="show" x-cloak @keydown.escape.window="show = false"
-  @click.away="show = false"` and worked only because the component hardcoded
-  the same thing internally. Those dead attributes are removed from the
-  shipped views. If you pass anything similar in a view of your own, it is
-  not taking effect — name the variable with `show` instead.
-- **The recovery-codes page prints with a stylesheet, and no longer reloads.**
-  The plaintext arrives once, so a reload after a cancelled print dialog would
-  have replaced the only copy of a freshly minted set. It also no longer swaps
-  `document.body.innerHTML` out and back, which left markup Alpine had stopped
-  driving — Copy, Download and Generate went dead after a print. An
-  `@media print` block shows only `#printable-area` instead; keep that id if
-  you restyle the printed sheet.
-- **Recovery-code generation is limited to five a minute** on both surfaces.
 
 **A failed confirmation reports one message, keyed by the field it asked for
 (action required if you match on the old strings).**

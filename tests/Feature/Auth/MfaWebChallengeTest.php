@@ -6,7 +6,6 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use OTPHP\TOTP;
 use ParagonIE\ConstantTime\Base32;
-use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
@@ -278,13 +277,21 @@ class MfaWebChallengeTest extends TestCase
         $this->post(route('multi.auth'), ['auth_method' => 'authenticator'])
             ->assertSessionHasNoErrors();
 
-        // The attempt now names the factor, so the gate stays open for it.
+        // Starting the setup proves nothing yet: the attempt is untouched, so
+        // a setup that is walked away from cannot vouch for the session.
         $attempt = $user->loginAttempts()->latest('id')->first();
-        $this->assertSame('authenticator', $attempt->multi_factor_method);
+        $this->assertNull($attempt->multi_factor_method);
 
-        $user->multiFactorAuths()->where('method', 'authenticator')
-            ->update(['status' => MultiFactorAuth::STATUS_ACTIVE]);
+        $secret = $user->multiFactorAuths()->where('method', 'authenticator')->first()->secret;
+        $this->post(route('otp.mfa.store'), [
+            'action' => 'verify',
+            'email' => $user->email,
+            'auth_method' => 'authenticator',
+            'otp' => TOTP::create(secret: $secret)->now(),
+        ])->assertSessionHas('status', 'Method verified and enabled.');
 
+        // Verified, the attempt names the factor and the gate stays open.
+        $this->assertSame('authenticator', $attempt->fresh()->multi_factor_method);
         $this->get('/mfa-protected')->assertOk()->assertSee('PROTECTED-PAYLOAD');
     }
 
