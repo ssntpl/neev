@@ -178,6 +178,24 @@
                 
                 <x-slot name="content">
                     {{ __('Add this TXT record to your domain’s DNS.') }}
+                    <div class="mt-2 text-sm font-semibold">{{ __('Type') }}</div>
+                    <div class="bg-gray-100 px-2 py-1 rounded text-sm">TXT</div>
+
+                    <div class="mt-2 text-sm font-semibold">{{ __('Name') }}</div>
+                    <div class="bg-gray-100 px-1 rounded flex gap-2 justify-between items-center">
+                        <input
+                            type="text"
+                            x-ref="dnsRecordNameInput"
+                            readonly
+                            class="bg-transparent border-0 px-1 w-full text-sm"
+                            value="{{ session('dns_record_name') }}"
+                        >
+                        <x-neev-component::button type="button" @click="navigator.clipboard.writeText($refs.dnsRecordNameInput.value)">
+                            {{ __('Copy') }}
+                        </x-neev-component::button>
+                    </div>
+
+                    <div class="mt-2 text-sm font-semibold">{{ __('Value') }}</div>
                     <div class="bg-gray-100 px-1 rounded flex gap-2 justify-between items-center">
                         <input
                             type="text"

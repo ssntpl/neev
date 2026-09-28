@@ -864,6 +864,73 @@ class MembershipTest extends TestCase
         $this->assertFalse($member->active);
     }
 
+    public function test_leave_deactivates_user_on_a_non_primary_verified_domain(): void
+    {
+        $this->enableDomainFederation();
+
+        [$owner, $ownerToken] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
+
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+            'is_primary' => true,
+        ]);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.io',
+            'is_primary' => false,
+        ]);
+
+        $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.io']);
+        $team->allUsers()->attach($member, ['joined' => true]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
+            ->putJson('/neev/teams/leave', [
+                'team_id' => $team->id,
+                'user_id' => $member->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('message', 'User Deactivated Successfully');
+
+        $this->assertFalse($member->fresh()->active);
+        $this->assertTrue($team->allUsers()->whereKey($member->id)->exists());
+    }
+
+    public function test_leave_removes_user_on_an_unverified_domain(): void
+    {
+        $this->enableDomainFederation();
+
+        [$owner, $ownerToken] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
+
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+            'is_primary' => true,
+        ]);
+        DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.io',
+        ]);
+
+        $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.io']);
+        $team->allUsers()->attach($member, ['joined' => true]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
+            ->putJson('/neev/teams/leave', [
+                'team_id' => $team->id,
+                'user_id' => $member->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('message', 'Removed Successfully');
+
+        $this->assertTrue($member->fresh()->active);
+        $this->assertFalse($team->allUsers()->whereKey($member->id)->exists());
+    }
+
     public function test_leave_activates_inactive_user_when_email_matches_verified_domain(): void
     {
         $this->enableDomainFederation();
@@ -921,6 +988,66 @@ class MembershipTest extends TestCase
 
         $response->assertStatus(400)
             ->assertJsonPath('message', 'You cannot invite member in this team.');
+    }
+
+    public function test_invite_rejects_email_outside_an_enforced_non_primary_domain(): void
+    {
+        $this->enableDomainFederation();
+
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'company.com',
+            'enforce' => false,
+            'is_primary' => true,
+        ]);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'company.io',
+            'enforce' => true,
+            'is_primary' => false,
+        ]);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/teams/inviteUser', [
+                'team_id' => $team->id,
+                'email' => 'outsider@gmail.com',
+            ]);
+
+        $response->assertStatus(400)
+            ->assertJsonPath('message', 'You cannot invite member in this team.');
+    }
+
+    public function test_invite_accepts_email_on_another_verified_domain_of_the_team(): void
+    {
+        Mail::fake();
+        $this->enableDomainFederation();
+
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'company.com',
+            'enforce' => true,
+            'is_primary' => true,
+        ]);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'company.io',
+            'enforce' => false,
+            'is_primary' => false,
+        ]);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/teams/inviteUser', [
+                'team_id' => $team->id,
+                'email' => 'new.hire@company.io',
+            ]);
+
+        $response->assertOk();
     }
 
     // -----------------------------------------------------------------

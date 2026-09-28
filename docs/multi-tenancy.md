@@ -289,6 +289,10 @@ curl -X POST https://yourapp.com/neev/tenant-domains/1/verify \
   -H "Authorization: Bearer {token}"
 ```
 
+The first team to verify a domain gets it: once one has, verifying another team's claim answers `400 This domain is already verified by another team.`
+
+`POST /neev/tenant-domains/{id}/regenerate-token` issues a new token and returns it with `dns_record`. The domain goes back to unverified, with any earlier failure cleared, until the new record is verified.
+
 ### Set Primary Domain
 
 ```bash

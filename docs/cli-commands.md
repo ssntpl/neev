@@ -273,6 +273,9 @@ php artisan neev:domain:verify app.acme.com
 # Force-verify without DNS check (local dev)
 php artisan neev:domain:verify app.acme.com --force
 
+# Pick one claim when several owners have claimed the domain
+php artisan neev:domain:verify acme.com --owner-type=team --owner-id=acme
+
 # Re-verify all previously verified domains (dispatches queued jobs)
 php artisan neev:domain:verify --all
 ```
@@ -280,10 +283,16 @@ php artisan neev:domain:verify --all
 | Argument / Option | Description |
 |-------------------|-------------|
 | `domain` | The domain to verify (optional when using `--all`) |
+| `--owner-type=` | `team` or `tenant`; narrows to that owner's claim |
+| `--owner-id=` | Owner ID or slug (needs `--owner-type`) |
 | `--force` | Mark verified without DNS check |
 | `--all` | Re-verify all previously verified domains |
 
 Performs a `dns_get_record()` lookup on `_neev-verification.{domain}` and matches the TXT value against the stored verification token.
+
+When more than one owner has claimed the domain, the command lists the claims and exits without verifying any; pass `--owner-type` and `--owner-id` to choose one. `--force` skips the DNS check but not the ownership rule: it refuses a claim when another owner of the same type has already verified the domain.
+
+`--all` queues a `VerifyDomainJob` per verified domain. A job whose domain was unverified by a new token after it was queued, on a host another owner has verified since, is skipped and logged rather than failed.
 
 ### `neev:domain:list`
 

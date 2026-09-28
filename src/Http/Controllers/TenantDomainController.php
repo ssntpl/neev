@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\TenantResolver;
@@ -72,6 +73,12 @@ class TenantDomainController extends Controller
             'domain' => [
                 'required',
                 'string',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    // `...` passes `required` but is nothing once canonicalised.
+                    if (Domain::canonicalHost((string) $value) === '') {
+                        $fail('The domain must be a host name.');
+                    }
+                },
                 // This team cannot register the same domain twice.
                 Rule::unique('domains', 'domain')->where(
                     fn ($query) => $query->where('owner_type', 'team')->where('owner_id', $team->id)
@@ -253,6 +260,10 @@ class TenantDomainController extends Controller
             return response()->json([
                 'message' => 'DNS verification failed. Please check your DNS record.',
             ], 400);
+        } catch (DomainAlreadyVerifiedException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 400);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
@@ -292,6 +303,7 @@ class TenantDomainController extends Controller
         try {
             $token = $tenantDomain->generateVerificationToken();
             $tenantDomain->verified_at = null;
+            $tenantDomain->verification_failed_at = null;
             $tenantDomain->save();
 
             return response()->json([

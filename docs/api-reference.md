@@ -2151,9 +2151,24 @@ Authorization: Bearer {token}
 ```json
 {
     "message": "Domain federated successfully.",
-    "token": "abc123verification..."
+    "token": "abc123verification...",
+    "dns_record": {
+        "type": "TXT",
+        "name": "_neev-verification.company.com",
+        "value": "abc123verification..."
+    }
 }
 ```
+
+`domain` is required and compared in canonical form (lowercase, no trailing
+dot), so re-submitting `Company.com.` updates the team's existing `company.com`
+row. Re-submitting a domain issues a new token and unverifies it until the new
+record is verified; its primary flag is kept.
+
+**Errors:**
+- `422` — `domain` is missing, or is nothing once canonicalised (`...`).
+- `400 This domain is already verified by another team.`
+- `400 An unexpected error occurred.` — the domain could not be saved.
 
 ---
 
@@ -2177,6 +2192,15 @@ Authorization: Bearer {token}
 }
 ```
 
+**Errors:**
+- `400 DNS record not found. Please try again later.`
+- `400 This domain is already verified by another team.` — another team
+  verified the domain first; this claim cannot be verified.
+
+To get a new token, send `"token": true` instead of `"verify"`. The response
+carries `token` and `dns_record` as for [Add Domain](#add-domain), and the
+domain is unverified until the new record is verified.
+
 ---
 
 ### Delete Domain
@@ -2197,6 +2221,9 @@ Authorization: Bearer {token}
     "domain_id": 1
 }
 ```
+
+Deleting the primary domain makes one of the remaining domains primary,
+preferring a verified one.
 
 ---
 
@@ -2238,7 +2265,8 @@ Whether the domain needs DNS verification is derived from the host and the
 claiming team, against the `platform_domain` config — the request cannot
 influence it. A team's own subdomain (its slug under a platform domain) is
 verified immediately and the response carries no token; anything else comes back
-with `verification_token` and `dns_record` to publish.
+with `verification_token` and `dns_record` to publish. A `domain` that is
+nothing once canonicalised (`...`) is refused with `422`.
 
 ---
 
@@ -2247,6 +2275,9 @@ with `verification_token` and `dns_record` to publish.
 ```http
 POST /neev/tenant-domains/{id}/verify
 ```
+
+Answers `400 This domain is already verified by another team.` when another
+team verified the domain first.
 
 ---
 

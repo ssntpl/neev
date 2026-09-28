@@ -133,6 +133,35 @@ The 0.6.7 note promised every outstanding code was discarded; the MFA email
 code, stored on the factor's own row, and magic login links in
 `magic_link_tokens` — mailed to the same old address — now are too.
 
+**`Domain::verify()` can throw (action required if you call it yourself).**
+It throws `Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException` for a
+pending claim on a host another owner of the same type has already verified;
+the message reads `This domain is already verified by another team.` (or
+`tenant`). The package's endpoints, `neev:domain:verify` and `VerifyDomainJob`
+catch it. Code of your own that calls `verify()` should catch it too, or it
+surfaces as an error.
+
+**A new token unverifies the domain (behaviour change).** Asking for a
+verification token, or re-federating a domain the team already holds, now
+clears `verified_at` until the new TXT record is verified — including for a
+domain that was verified. Make sure your UI does not offer "get a new token" as
+a harmless action on a verified domain.
+
+**Enforcement follows every verified domain (behaviour change).** Invitations
+to a team with an enforced verified domain are limited to addresses on any of
+the team's verified domains, and removing a member on any verified domain
+deactivates the account rather than detaching it. Both used to look at the
+primary domain only.
+
+**Federating validates `domain` (API clients).** `POST /neev/domains` answers
+`422` for a missing domain or one that is only dots, and `400` (not `200`) when
+it fails to save.
+
+**The Blade token dialog shows the record name (no action required).** Only
+the shipped `team/domain-federation.blade.php` changed. An ejected copy keeps
+working but shows the token value alone; re-eject it, or add a field reading
+`session('dns_record_name')`, to show where the record goes.
+
 ---
 
 ## 0.6.6 → 0.6.7

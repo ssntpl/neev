@@ -211,6 +211,8 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
 
     /**
      * Get all domains claimed by this team.
+     *
+     * @return MorphMany<Domain, $this>
      */
     public function domains(): MorphMany
     {

@@ -11,6 +11,7 @@ use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
+use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
@@ -263,7 +264,18 @@ class TeamApiController extends Controller
         try {
             /** @var Team|null $team */
             $team = Team::model()->find($request->team_id);
-            if ($user->id != $team->user_id || ($team->domain?->enforce && $team->domain?->verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->domain?->domain)))) {
+            if ($user->id != $team->user_id) {
+                return response()->json([
+                    'message' => 'You cannot invite member in this team.',
+                ], 400);
+            }
+            // Enforcement applies to every verified domain the team federates,
+            // not only the primary one. When any of them is enforced, the
+            // invitee must be on one of the team's verified domains.
+            $verified = $team->domains()->whereNotNull('verified_at')->get();
+            $email = strtolower((string) $request->email);
+            if ($verified->contains('enforce', true)
+                && !$verified->contains(fn (Domain $domain) => str_ends_with($email, '@' . strtolower($domain->domain)))) {
                 return response()->json([
                     'message' => 'You cannot invite member in this team.',
                 ], 400);
@@ -477,7 +489,14 @@ class TeamApiController extends Controller
                 ], 403);
             }
 
-            if ($team->domain?->verified_at && str_ends_with(strtolower($user->email), '@' . strtolower($team->domain?->domain))) {
+            // A member on any of the team's verified domains is managed by the
+            // domain, not only one on the primary: deactivate them rather than
+            // remove them.
+            $email = strtolower((string) $user->email);
+            $onVerifiedDomain = $team->domains()->whereNotNull('verified_at')->get()
+                ->contains(fn (Domain $domain) => str_ends_with($email, '@' . strtolower($domain->domain)));
+
+            if ($onVerifiedDomain) {
                 if ($user->active) {
                     $user->deactivate();
                     return response()->json([
@@ -636,15 +655,26 @@ class TeamApiController extends Controller
         // Eager load users with their emails to avoid N+1 queries
         $team->loadMissing('users');
 
+        // A member on any of the team's verified domains is inside its
+        // boundary, as on the web domain page. Counting per domain flagged
+        // members of one federated domain as outside every other one.
+        $verified = $domains->filter(fn ($domain) => $domain->verified_at !== null)
+            ->map(fn ($domain) => '@' . strtolower($domain->domain))
+            ->all();
+
+        $outside = $team->users->filter(function ($member) use ($verified) {
+            foreach ($verified as $suffix) {
+                if (str_ends_with(strtolower($member->email), $suffix)) {
+                    return false;
+                }
+            }
+
+            return true;
+        })->count();
+
         foreach ($domains as $domain) {
             if ($domain->enforce && $domain->verified_at) {
-                $count = 0;
-                foreach ($team->users as $member) {
-                    if (!str_ends_with(strtolower($member->email), '@' . strtolower($domain->domain))) {
-                        $count++;
-                    }
-                }
-                $domain->outside_members = $count;
+                $domain->outside_members = $outside;
             }
         }
 
@@ -673,9 +703,26 @@ class TeamApiController extends Controller
             ], 400);
         }
 
-        $held = $team->domains()->where('domain', $request->domain)->exists();
+        $request->validate([
+            'domain' => [
+                'required',
+                'string',
+                'max:255',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    // `...` passes `required` but is nothing once canonicalised.
+                    if (Domain::canonicalHost((string) $value) === '') {
+                        $fail('The domain must be a host name.');
+                    }
+                },
+            ],
+        ]);
 
-        if (!$held && Domain::findByHostForOwnerType($request->domain, 'team')) {
+        // Compare the stored spelling, not whatever was typed: `ACME.com.` and
+        // `acme.com` are one host, and the row keeps only the canonical form.
+        $name = Domain::canonicalHost((string) $request->domain);
+        $held = $team->domains()->where('domain', $name)->first();
+
+        if (!$held && Domain::findByHostForOwnerType($name, 'team')) {
             return response()->json([
                 'message' => 'This domain is already verified by another team.',
             ], 400);
@@ -683,23 +730,34 @@ class TeamApiController extends Controller
 
         try {
             $token = Str::random(32);
-            $team->domains()->updateOrCreate([
-                'domain' => $request->domain
+            /** @var Domain $domain */
+            $domain = $team->domains()->updateOrCreate([
+                'domain' => $name
             ], [
                 'enforce' => (bool) $request->enforce,
                 'verification_token' => $token,
-                'is_primary' => !$team->domain,
+                'verified_at' => null,
+                'verification_failed_at' => null,
+                // A domain already held keeps its own flag; `$team->domain` is
+                // that very row when it is the primary, so recomputing it here
+                // would take the primary flag away.
+                'is_primary' => $held ? $held->is_primary : !$team->domain,
             ]);
 
             return response()->json([
                 'message' => 'Domain federated successfully.',
-                'token' => $token
+                'token' => $token,
+                'dns_record' => [
+                    'type' => 'TXT',
+                    'name' => $domain->getDnsRecordName(),
+                    'value' => $token,
+                ],
             ]);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
                 'message' => 'An unexpected error occurred.',
-            ]);
+            ], 400);
         }
     }
 
@@ -718,10 +776,10 @@ class TeamApiController extends Controller
                 if ($domain->verify()) {
                     $domain_rules = ["mfa"];
                     foreach ($domain_rules as $rule) {
-                        $domain->rules()->create([
-                            'name' => $rule,
-                            'value' => false,
-                        ]);
+                        // Verifying again, after a new token, finds the rule
+                        // already there; keep its value rather than fail on the
+                        // unique (name, domain_id) index.
+                        $domain->rules()->firstOrCreate(['name' => $rule], ['value' => false]);
                     }
 
                     return response()->json([
@@ -737,11 +795,18 @@ class TeamApiController extends Controller
             if ($request->token) {
                 $token = Str::random(32);
                 $domain->verification_token = $token;
+                $domain->verified_at = null;
+                $domain->verification_failed_at = null;
                 $domain->save();
 
                 return response()->json([
                     'message' => 'Domain verification token has been updated.',
-                    'token' => $token
+                    'token' => $token,
+                    'dns_record' => [
+                        'type' => 'TXT',
+                        'name' => $domain->getDnsRecordName(),
+                        'value' => $token,
+                    ],
                 ]);
             }
 
@@ -754,6 +819,10 @@ class TeamApiController extends Controller
                 'message' => 'Domain has been updated.',
                 'data' => $domain
             ]);
+        } catch (DomainAlreadyVerifiedException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 400);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
@@ -773,8 +842,21 @@ class TeamApiController extends Controller
             ], 400);
         }
         try {
+            /** @var Team|null $owner */
+            $owner = $domain->owner;
+            $wasPrimary = $domain->is_primary;
+
             $domain->rules()->delete();
             $domain->delete();
+
+            // Deleting the primary leaves the team with none, and whatever
+            // reads the primary stops working. Hand it to a verified domain,
+            // or failing that any remaining one, as the tenant flow does.
+            if ($wasPrimary && $owner) {
+                $next = $owner->domains()->whereNotNull('verified_at')->first()
+                    ?? $owner->domains()->first();
+                $next?->markAsPrimary();
+            }
 
             return response()->json([
                 'message' => 'Domain has been deleted.',

@@ -8,8 +8,12 @@ use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Tests\Support\FakeDns;
 use Ssntpl\Neev\Tests\TestCase;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
+
+// Must load before any test calls Domain::verify(); see the file for why.
+require_once __DIR__ . '/../../Support/FakeDns.php';
 
 class DomainFederationTest extends TestCase
 {
@@ -30,6 +34,13 @@ class DomainFederationTest extends TestCase
     {
         parent::setUp();
         $this->enableDomainFederation();
+    }
+
+    protected function tearDown(): void
+    {
+        FakeDns::reset();
+
+        parent::tearDown();
     }
 
     /**
@@ -61,13 +72,93 @@ class DomainFederationTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonStructure(['token']);
+            ->assertJsonStructure(['token'])
+            ->assertJsonPath('dns_record.type', 'TXT')
+            ->assertJsonPath('dns_record.name', '_neev-verification.example.com')
+            ->assertJsonPath('dns_record.value', $response->json('token'));
 
         $this->assertDatabaseHas('domains', [
             'owner_type' => 'team',
             'owner_id' => $team->id,
             'domain' => 'example.com',
         ]);
+    }
+
+    public function test_refederating_the_primary_domain_keeps_it_primary(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $domain = DomainFactory::new()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/domains', [
+                'team_id' => $team->id,
+                'domain' => 'acme.com',
+            ])
+            ->assertOk();
+
+        $this->assertTrue($domain->fresh()->is_primary);
+    }
+
+    public function test_federating_another_spelling_of_a_held_domain_updates_the_same_row(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/domains', [
+                'team_id' => $team->id,
+                'domain' => 'ACME.com.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('dns_record.name', '_neev-verification.acme.com');
+
+        $this->assertSame(1, Domain::where('owner_type', 'team')->where('owner_id', $team->id)->count());
+    }
+
+    public function test_federating_requires_a_domain(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/domains', ['team_id' => $team->id])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('domain');
+
+        $this->assertSame(0, Domain::count());
+    }
+
+    public function test_federating_a_domain_that_is_only_dots_is_refused(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/domains', ['team_id' => $team->id, 'domain' => '...'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['domain' => 'The domain must be a host name.']);
+
+        $this->assertSame(0, Domain::count());
+    }
+
+    public function test_federating_answers_400_when_saving_fails(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        Domain::saving(fn () => throw new \RuntimeException('database down'));
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/domains', ['team_id' => $team->id, 'domain' => 'acme.com'])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'An unexpected error occurred.');
     }
 
     public function test_first_domain_is_set_as_primary(): void
@@ -177,7 +268,49 @@ class DomainFederationTest extends TestCase
             ]);
 
         $response->assertOk()
-            ->assertJsonStructure(['token']);
+            ->assertJsonStructure(['token'])
+            ->assertJsonPath('dns_record.name', '_neev-verification.' . $domain->domain)
+            ->assertJsonPath('dns_record.value', $response->json('token'));
+    }
+
+    public function test_regenerating_the_token_unverifies_the_domain(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $domain = DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'verification_failed_at' => now(),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/domains', [
+                'domain_id' => $domain->id,
+                'token' => true,
+            ])
+            ->assertOk();
+
+        $domain->refresh();
+        $this->assertNull($domain->verified_at);
+        $this->assertNull($domain->verification_failed_at);
+    }
+
+    public function test_refederating_a_verified_domain_unverifies_it(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $domain = DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/domains', [
+                'team_id' => $team->id,
+                'domain' => 'acme.com',
+            ])
+            ->assertOk();
+
+        $this->assertNull($domain->fresh()->verified_at);
     }
 
     public function test_non_owner_cannot_update_domain(): void
@@ -260,6 +393,36 @@ class DomainFederationTest extends TestCase
         $response->assertOk();
 
         $this->assertDatabaseMissing('domains', ['id' => $domain->id]);
+    }
+
+    public function test_deleting_the_primary_domain_promotes_a_verified_one(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $primary = DomainFactory::new()->verified()->primary()->forTeam($team)->create();
+        DomainFactory::new()->forTeam($team)->create();
+        $verified = DomainFactory::new()->verified()->forTeam($team)->create();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/domains', ['domain_id' => $primary->id])
+            ->assertOk();
+
+        $this->assertTrue($verified->fresh()->is_primary);
+        $this->assertSame(1, $team->domains()->where('is_primary', true)->count());
+    }
+
+    public function test_deleting_a_non_primary_domain_keeps_the_primary(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $primary = DomainFactory::new()->verified()->primary()->forTeam($team)->create();
+        $other = DomainFactory::new()->verified()->forTeam($team)->create();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/domains', ['domain_id' => $other->id])
+            ->assertOk();
+
+        $this->assertTrue($primary->fresh()->is_primary);
     }
 
     public function test_non_owner_cannot_delete_domain(): void
@@ -416,6 +579,33 @@ class DomainFederationTest extends TestCase
         $response->assertOk();
     }
 
+    public function test_list_domains_api_does_not_flag_a_member_on_a_second_federated_domain(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $owner->forceFill(['email' => 'owner@acme.com'])->save();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->allUsers()->attach($owner, ['joined' => true]);
+
+        foreach (['acme.com', 'acme.io'] as $domain) {
+            DomainFactory::new()->verified()->create([
+                'owner_type' => 'team', 'owner_id' => $team->id,
+                'domain' => $domain,
+                'enforce' => true,
+            ]);
+        }
+
+        $member = User::factory()->create(['email' => 'member@acme.io']);
+        $team->allUsers()->attach($member, ['joined' => true]);
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/domains?team_id=' . $team->id);
+
+        $response->assertOk();
+        foreach ($response->json('data') as $domain) {
+            $this->assertSame(0, $domain['outside_members']);
+        }
+    }
+
     // -----------------------------------------------------------------
     // GET /neev/teams/{team}/domain — the web page's "outside members"
     // warning counts a member against every federated domain at once
@@ -536,6 +726,55 @@ class DomainFederationTest extends TestCase
             ]);
 
         $response->assertStatus(400);
+    }
+
+    /**
+     * Verifying again after a new token finds the domain's rules already in
+     * place; it must succeed and leave them as they are.
+     */
+    public function test_verifying_again_after_a_new_token_keeps_the_rules(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $domain = DomainFactory::new()->verified()->forTeam($team)->create(['domain' => 'acme.com']);
+        $domain->rules()->create(['name' => 'mfa', 'value' => true]);
+
+        $newToken = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/domains', ['domain_id' => $domain->id, 'token' => true])
+            ->assertOk()
+            ->json('token');
+
+        FakeDns::txt('_neev-verification.acme.com', $newToken);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/domains', ['domain_id' => $domain->id, 'verify' => true])
+            ->assertOk()
+            ->assertJsonPath('message', 'Domain verified successfully!');
+
+        $this->assertNotNull($domain->fresh()->verified_at);
+        $this->assertSame(1, $domain->rules()->where('name', 'mfa')->count());
+        $this->assertTrue((bool) $domain->rules()->where('name', 'mfa')->value('value'));
+    }
+
+    public function test_verify_refuses_a_domain_another_team_already_verified(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        $claim = DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/domains', [
+                'domain_id' => $claim->id,
+                'verify' => true,
+            ])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'This domain is already verified by another team.');
+
+        $this->assertNull($claim->fresh()->verified_at);
     }
 
     // -----------------------------------------------------------------

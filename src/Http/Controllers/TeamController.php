@@ -12,6 +12,7 @@ use InvalidArgumentException;
 use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
+use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
@@ -183,7 +184,13 @@ class TeamController extends Controller
             if ($user->id != $team->user_id) {
                 return back()->withErrors(['message' => 'You cannot invite member in this team.']);
             }
-            if ($team->domain?->enforce && $team->domain?->verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->domain->domain))) {
+            // Enforcement applies to every verified domain the team federates,
+            // not only the primary one. When any of them is enforced, the
+            // invitee must be on one of the team's verified domains.
+            $verified = $team->domains()->whereNotNull('verified_at')->get();
+            $email = strtolower((string) $request->email);
+            if ($verified->contains('enforce', true)
+                && !$verified->contains(fn (Domain $domain) => str_ends_with($email, '@' . strtolower($domain->domain)))) {
                 return back()->withErrors(['message' => 'You cannot invite member in this team.']);
             }
             $member = User::findByEmail($request->email);
@@ -283,7 +290,14 @@ class TeamController extends Controller
                 return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
             }
 
-            if ($team->domain?->verified_at && str_ends_with(strtolower($user->email), '@' . strtolower($team->domain?->domain))) {
+            // A member on any of the team's verified domains is managed by the
+            // domain, not only one on the primary: deactivate them rather than
+            // remove them.
+            $email = strtolower((string) $user->email);
+            $onVerifiedDomain = $team->domains()->whereNotNull('verified_at')->get()
+                ->contains(fn (Domain $domain) => str_ends_with($email, '@' . strtolower($domain->domain)));
+
+            if ($onVerifiedDomain) {
                 if ($user->active) {
                     $user->deactivate();
                     return back()->with('status', 'User Deactivated Successfully');
@@ -508,23 +522,46 @@ class TeamController extends Controller
             return back()->withErrors(['message' => 'You do not have the required permissions to federate domain.']);
         }
 
-        $held = $team->domains()->where('domain', $request->domain)->exists();
+        $request->validate([
+            'domain' => [
+                'required',
+                'string',
+                'max:255',
+                function (string $attribute, mixed $value, \Closure $fail) {
+                    // `...` passes `required` but is nothing once canonicalised.
+                    if (Domain::canonicalHost((string) $value) === '') {
+                        $fail('The domain must be a host name.');
+                    }
+                },
+            ],
+        ]);
 
-        if (!$held && Domain::findByHostForOwnerType($request->domain, 'team')) {
+        // Compare the stored spelling, not whatever was typed: `ACME.com.` and
+        // `acme.com` are one host, and the row keeps only the canonical form.
+        $name = Domain::canonicalHost((string) $request->domain);
+        $held = $team->domains()->where('domain', $name)->first();
+
+        if (!$held && Domain::findByHostForOwnerType($name, 'team')) {
             return back()->withErrors(['message' => 'This domain is already verified by another team.']);
         }
 
         try {
             $token = Str::random(32);
-            $team->domains()->updateOrCreate([
-                'domain' => $request->domain
+            /** @var Domain $domain */
+            $domain = $team->domains()->updateOrCreate([
+                'domain' => $name
             ], [
                 'enforce' => (bool) $request->enforce,
                 'verification_token' => $token,
-                'is_primary' => !$team->domain,
+                'verified_at' => null,
+                'verification_failed_at' => null,
+                // A domain already held keeps its own flag; `$team->domain` is
+                // that very row when it is the primary, so recomputing it here
+                // would take the primary flag away.
+                'is_primary' => $held ? $held->is_primary : !$team->domain,
             ]);
 
-            return back()->with('token', $token);
+            return back()->with('token', $token)->with('dns_record_name', $domain->getDnsRecordName());
         } catch (Exception $e) {
             Log::error($e);
             return back()->withErrors(['message' => 'Failed to federate domain.']);
@@ -543,10 +580,7 @@ class TeamController extends Controller
                 $domain_rules = ["mfa"];
                 if ($domain->verify()) {
                     foreach ($domain_rules as $rule) {
-                        $domain->rules()->create([
-                            'name' => $rule,
-                            'value' => false,
-                        ]);
+                        $domain->rules()->firstOrCreate(['name' => $rule], ['value' => false]);
                     }
                     return back()->with('status', 'Domain verified successfully!');
                 }
@@ -556,13 +590,17 @@ class TeamController extends Controller
             if ($request->token) {
                 $token = Str::random(32);
                 $domain->verification_token = $token;
+                $domain->verified_at = null;
+                $domain->verification_failed_at = null;
                 $domain->save();
-                return back()->with('token', $token);
+                return back()->with('token', $token)->with('dns_record_name', $domain->getDnsRecordName());
             }
 
             $domain->enforce = (bool) $request->enforce;
             $domain->save();
             return back()->with('status', 'domain has been updated.');
+        } catch (DomainAlreadyVerifiedException $e) {
+            return back()->withErrors(['message' => $e->getMessage()]);
         } catch (Exception $e) {
             Log::error($e);
             return back()->withErrors(['message' => 'Failed to update domain.']);
@@ -577,8 +615,22 @@ class TeamController extends Controller
             return back()->withErrors(['message' => 'You do not have the required permissions to delete domain.']);
         }
         try {
+            /** @var Team|null $owner */
+            $owner = $domain->owner;
+            $wasPrimary = $domain->is_primary;
+
             $domain->rules()->delete();
             $domain->delete();
+
+            // Deleting the primary leaves the team with none, and whatever
+            // reads the primary stops working. Hand it to a verified domain,
+            // or failing that any remaining one, as the tenant flow does.
+            if ($wasPrimary && $owner) {
+                $next = $owner->domains()->whereNotNull('verified_at')->first()
+                    ?? $owner->domains()->first();
+                $next?->markAsPrimary();
+            }
+
             return back()->with('status', 'Domain has been deleted.');
         } catch (Exception $e) {
             Log::error($e);

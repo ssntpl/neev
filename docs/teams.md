@@ -427,6 +427,10 @@ curl -X PUT https://yourapp.com/neev/teams/leave \
   -d '{"team_id": 1, "user_id": 5}'
 ```
 
+### Members on a Verified Domain
+
+Removing a member whose email is on any of the team's verified domains does not take them out of the team: the domain governs their membership, so their account is **deactivated** instead (`User Deactivated Successfully`). Removing them again reactivates it (`User Activated Successfully`). Members on other addresses are removed as usual.
+
 ### Note: Owners Cannot Leave
 
 Team owners cannot leave their team, and cannot be removed by another member.
@@ -511,7 +515,9 @@ Automatically associate users with teams based on email domain. Available whenev
 
 A domain belongs to **one team and one tenant** — never to two teams, or two tenants. A tenant and one of its teams may both federate the same company domain; a second team may not take a domain another team holds.
 
-A claim only reserves the domain once it has been **verified**. An unverified row proves nothing and blocks nobody, so several teams may hold pending claims on the same domain and whichever verifies first wins. The same team cannot register the same domain twice — re-submitting it updates the existing row (rotating the verification token) instead of adding another.
+A claim only reserves the domain once it has been **verified**. An unverified row proves nothing and blocks nobody, so several teams may hold pending claims on the same domain and whichever verifies first wins. Once one has, verifying any other team's claim is refused with `400 This domain is already verified by another team.` — even if that team's TXT record is in place. The same team cannot register the same domain twice — re-submitting it updates the existing row instead of adding another. The domain is compared in its canonical form (lowercase, no trailing dot), so `ACME.com.` is the same domain as `acme.com`.
+
+Re-submitting a domain issues a new verification token, and so does asking for one (`"token": true`, or **Get Token** on the domain page). A new token no longer matches the TXT record already published, so the domain goes back to **unverified** until the new record is verified. Its primary flag is kept.
 
 ### Members across several federated domains
 
@@ -534,9 +540,18 @@ curl -X POST https://yourapp.com/neev/domains \
 ```json
 {
   "message": "Domain federated successfully.",
-  "token": "abc123def456..."
+  "token": "abc123def456...",
+  "dns_record": {
+    "type": "TXT",
+    "name": "_neev-verification.company.com",
+    "value": "abc123def456..."
+  }
 }
 ```
+
+`dns_record` says exactly what to publish: a `TXT` record at `name` whose value is the token. The domain page's token dialog shows the same three fields.
+
+A missing `domain`, or one that is nothing once canonicalised (`...`), is refused with a `422` validation error.
 
 ### Verify Domain
 
@@ -554,18 +569,26 @@ curl -X PUT https://yourapp.com/neev/domains \
   -d '{"domain_id": 1, "verify": true}'
 ```
 
+Verifying again after a new token keeps the domain's rules and their values.
+
+To get a new token (for example when the old one was lost), send `"token": true` instead; the response carries `token` and `dns_record` as above, and the domain is unverified until the new record is verified.
+
 ### Domain Enforcement
 
-When `enforce` is true (and the domain is verified):
-- Only users with a matching email domain can be invited
+When `enforce` is true on any of the team's verified domains:
+- Only users whose email is on one of the team's **verified** domains can be invited — not only the domain that is enforced, and not only the primary
 - Join requests are blocked
-- Members with non-matching email domains are reported as `outside_members` in the domains listing
+- Members whose email matches none of the team's verified domains are reported as `outside_members` in the domains listing, the same count the domain page shows
 
 ```bash
 curl -X PUT https://yourapp.com/neev/domains \
   -H "Authorization: Bearer {token}" \
   -d '{"domain_id": 1, "enforce": true}'
 ```
+
+### Deleting the Primary Domain
+
+Deleting the team's primary domain hands the primary flag to one of the remaining domains, a verified one if there is any, so the team is not left without a primary.
 
 ---
 

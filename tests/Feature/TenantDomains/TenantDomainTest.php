@@ -223,6 +223,19 @@ class TenantDomainTest extends TestCase
         $this->assertNull($domain->verified_at);
     }
 
+    public function test_add_domain_that_is_only_dots_is_refused(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains', ['team_id' => $team->id, 'domain' => ' . . '])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['domain' => 'The domain must be a host name.']);
+
+        $this->assertSame(0, Domain::count());
+    }
+
     public function test_add_domain_rejects_non_owner(): void
     {
         [$user, $token] = $this->authenticatedUser();
@@ -400,6 +413,25 @@ class TenantDomainTest extends TestCase
 
         $response->assertStatus(400)
             ->assertJsonPath('message', 'Only domains with verification tokens can be regenerated.');
+    }
+
+    public function test_regenerate_token_restarts_the_claim(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        $domain = DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'verification_token' => 'old',
+            'verification_failed_at' => now(),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains/' . $domain->id . '/regenerate-token')
+            ->assertOk();
+
+        $domain->refresh();
+        $this->assertNull($domain->verified_at);
+        $this->assertNull($domain->verification_failed_at);
     }
 
     public function test_regenerate_token_rejects_non_owner(): void
@@ -594,6 +626,24 @@ class TenantDomainTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('message', 'Domain is already verified.');
+    }
+
+    public function test_verify_refuses_a_domain_another_team_already_verified(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        $claim = DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains/' . $claim->id . '/verify')
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'This domain is already verified by another team.');
+
+        $this->assertNull($claim->fresh()->verified_at);
     }
 
     // -----------------------------------------------------------------

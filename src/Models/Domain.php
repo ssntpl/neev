@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\Cache;
 use Ssntpl\Neev\Events\DomainReverified;
 use Ssntpl\Neev\Events\DomainVerificationFailed;
 use Ssntpl\Neev\Events\DomainVerified;
+use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
 
 /**
  * @property int $id
@@ -258,9 +259,19 @@ class Domain extends Model
     /**
      * Verify the domain via DNS TXT record lookup.
      * Returns true if the DNS record matches the verification token.
+     *
+     * @throws DomainAlreadyVerifiedException when another owner of the same
+     *         kind has verified the host first
      */
     public function verify(): bool
     {
+        // A pending claim on a host someone else already holds cannot win,
+        // whatever DNS says. That is not a DNS failure, so the row is left as
+        // it is. A row already verified is being re-checked, not claimed.
+        if ($this->verified_at === null && static::findByHostForOwnerType($this->domain, $this->owner_type)) {
+            throw new DomainAlreadyVerifiedException((string) $this->owner_type);
+        }
+
         $records = @dns_get_record($this->getDnsRecordName(), DNS_TXT) ?: [];
         $matched = collect($records)->contains(fn ($r) => ($r['txt'] ?? '') === $this->verification_token);
 
