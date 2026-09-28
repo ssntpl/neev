@@ -70,10 +70,14 @@ The fifteen routes: `POST {prefix}/mfa/add`, `DELETE {prefix}/mfa/delete`,
   a `429`; re-eject the view, or copy the `resp.status === 429` branch in.
 - Only wrong answers count. Requests that confirm nothing — dropping one named
   session with `session_id`, the first setup on an account with no factor —
-  never spend the budget, so a stolen session cannot lock the owner out with
-  cheap requests. Recovery-code minting and email change keep their own
-  per-minute mail limits as well; on those two routes a sixth request in a
-  minute meets that route throttle first — Laravel's plain `429`, as before.
+  never spend the budget. Five wrong guesses do, whoever makes them: a thief
+  holding a session can keep the owner's confirmed actions answering `429` by
+  guessing wrong five times a minute. That is the lockout's inherent cost; the
+  owner's way through is the password reset, which revokes every other session
+  and login token. Recovery-code minting and email change also keep their own
+  per-minute route limits (five requests a minute each); on those two routes a
+  sixth request in a minute meets that limit first — Laravel's plain `429`, as
+  before.
 - If you call `confirmIdentity()` yourself, it now throws
   `Ssntpl\Neev\Exceptions\ConfirmationThrottledException` when the account is
   locked. The exception renders itself (JSON `429`, or a redirect back with
@@ -91,11 +95,13 @@ that showed the `422` validation errors before the `403` sees them in the
 other order.
 
 **Enrolling a factor discards any setup still pending (no action required).**
-Turning a factor on — email OTP, or verifying an authenticator — deletes every
-other pending setup on the account, so a setup started before the account had
-a factor cannot be finished afterwards without the confirmation that adding a
-factor now needs. A user who started an authenticator setup, then enabled email
-in another tab, starts the authenticator again and confirms.
+Turning email OTP on deletes a pending authenticator setup, so a setup started
+before the account had a factor cannot be finished afterwards without the
+confirmation that adding a factor now needs. A user who started an
+authenticator setup, then enabled email in another tab, is told "No setup is in
+progress for this method. Start it again." when they enter the code, and starts
+the authenticator again — confirming this time. (Only an authenticator is ever
+pending, so verifying one has nothing else to discard.)
 
 **A pending authenticator setup gets a new secret each time setup starts (check
 how your UI shows the QR).**

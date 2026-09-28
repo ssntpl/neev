@@ -795,12 +795,17 @@ answers per account. At five in a minute every one of them refuses with `429`
 (`retry_after` and `Retry-After` on the API; the Blade kit back on its form
 with the message under the field) until the window passes. A right answer
 clears the count, and a request that confirms nothing — dropping one named
-session, the first setup on an account with no factor — spends nothing, so a
-stolen session cannot lock the owner out with cheap requests, only with real
-guesses. Without this, `confirmIdentity()` was a bare `Hash::check()` that
-counted nothing and never reached the login lockout: the gate meant to contain
-a stolen session was handing it an unlimited oracle for the one thing it
-lacked. The mail limits on recovery codes and email change apply as well. See
+session, the first setup on an account with no factor — spends nothing. Five
+wrong guesses do, whoever makes them, so a thief holding a session can keep the
+owner's confirmed actions locked by guessing wrong five times a minute; that
+is the lockout's inherent cost, and the owner's way through is the password
+reset, which revokes every other session and login token. The guess is
+reserved before the password is compared, so requests in flight together
+cannot each slip under the count. Without this, `confirmIdentity()` was a bare
+`Hash::check()` that counted nothing and never reached the login lockout: the
+gate meant to contain a stolen session was handing it an unlimited oracle for
+the one thing it lacked. The per-minute route limits on recovery codes and
+email change apply as well. See
 [Accounts Without a Password](./authentication.md#accounts-without-a-password).
 
 Three of these fire an event an application can notify on: `MfaMethodRemoved`

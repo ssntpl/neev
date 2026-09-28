@@ -201,16 +201,27 @@ class MfaEnrolmentStampTest extends TestCase
         $this->assertSame(['email'], $user->fresh()->activeMultiFactorAuths->pluck('method')->all());
     }
 
-    public function test_verifying_an_authenticator_discards_any_other_pending_setup(): void
+    /** The user is told the setup was discarded, not that their code was wrong. */
+    public function test_a_discarded_setup_is_named_as_such_on_both_surfaces(): void
     {
-        $user = User::factory()->create(['email_verified_at' => now()]);
-        $user->addMultiFactorAuth('authenticator');
-        $other = $user->multiFactorAuths()->create(['method' => 'future-method', 'status' => MultiFactorAuth::STATUS_PENDING, 'preferred' => false]);
+        [$user] = $this->sessionWithoutAFactor();
+        $this->post(route('multi.auth'), ['auth_method' => 'authenticator']);
+        $planted = $user->fresh()->multiFactorAuths()->first()->secret;
+        $user->fresh()->addMultiFactorAuth('email');
 
-        $secret = $user->fresh()->multiFactorAuths()->where('method', 'authenticator')->first()->secret;
-        $this->assertTrue($user->fresh()->verifyMfaSetup('authenticator', TOTP::create(secret: $secret)->now()));
+        $this->post(route('otp.mfa.store'), [
+            'action' => 'verify',
+            'email' => $user->email,
+            'auth_method' => 'authenticator',
+            'otp' => TOTP::create(secret: $planted)->now(),
+        ]);
+        $this->assertStringContainsString('No setup is in progress', session('errors')->first('message'));
 
-        $this->assertNull($other->fresh());
+        $token = $user->createLoginToken(1440)->plainTextToken;
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/setup/verify', ['auth_method' => 'authenticator', 'otp' => TOTP::create(secret: $planted)->now()])
+            ->assertStatus(400)
+            ->assertJsonFragment(['message' => 'No setup is in progress for this method. Start it again.']);
     }
 
     // -----------------------------------------------------------------

@@ -126,13 +126,6 @@ class MultiFactorAuth extends Model
         $saved = $this->save();
 
         if ($saved) {
-            // Any other setup still pending predates this factor; enrolling
-            // is confirmed from here on, so it cannot be finished as it stands.
-            $user->multiFactorAuths()
-                ->where('status', self::STATUS_PENDING)
-                ->whereKeyNot($this->getKey())
-                ->delete();
-
             $user->load('multiFactorAuths');
             event(new MfaMethodAdded($user, $this->method));
         }

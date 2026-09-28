@@ -220,14 +220,13 @@ class AuthService
      */
     public function confirmIdentity(User $user, Request $request): bool
     {
-        $field = array_key_first($this->confirmationRules($user));
-        $this->refuseWhenConfirmationLocked($user, $field);
+        $this->reserveConfirmation($user, array_key_first($this->confirmationRules($user)));
 
         $confirmed = $user->password !== null
             ? Hash::check((string) $request->input('password'), $user->password)
             : $this->verifyEmailOtp($user, (string) $request->input('otp'), OtpPurpose::Confirmation);
 
-        $this->recordConfirmation($user, $confirmed);
+        $this->settleConfirmation($user, $confirmed);
 
         return $confirmed;
     }
@@ -243,11 +242,11 @@ class AuthService
      */
     public function checkPassword(User $user, string $password, string $field = 'password'): bool
     {
-        $this->refuseWhenConfirmationLocked($user, $field);
+        $this->reserveConfirmation($user, $field);
 
         $correct = $user->password !== null && Hash::check($password, $user->password);
 
-        $this->recordConfirmation($user, $correct);
+        $this->settleConfirmation($user, $correct);
 
         return $correct;
     }
@@ -257,11 +256,12 @@ class AuthService
      * every action that confirms refuses with 429 until it passes.
      *
      * Wrong answers only: the owner's own actions never count against them,
-     * and a stolen session cannot lock the owner out with cheap requests —
-     * only with real guesses, which is the lockout's purpose. A right answer
-     * clears the count. Keyed on the account, not the caller, because the
-     * caller is whoever holds the session and that is exactly who is being
-     * limited.
+     * and requests that confirm nothing spend nothing. A right answer clears
+     * the count. Keyed on the account, not the caller, because the caller is
+     * whoever holds the session and that is exactly who is being limited —
+     * which also means five wrong guesses from a thief lock the owner out of
+     * these actions for the window. The reset link, which revokes every other
+     * session and login token, is the way through; that trade is the lockout.
      */
     public const CONFIRMATION_GUESS_LIMIT = 5;
 
@@ -273,23 +273,30 @@ class AuthService
     }
 
     /**
+     * Take one guess from the account's budget before comparing anything.
+     *
+     * Reserved first, settled after: a limiter that only counted a miss once
+     * bcrypt had returned let every request in flight during that window
+     * through, so the cap was the server's concurrency rather than five. The
+     * OTP checks reserve their attempt the same way, for the same reason. A
+     * right answer hands the reservation back with everything else.
+     *
      * @throws ConfirmationThrottledException
      */
-    protected function refuseWhenConfirmationLocked(User $user, string $field): void
+    protected function reserveConfirmation(User $user, string $field): void
     {
         $key = $this->confirmationKey($user);
-        if (RateLimiter::tooManyAttempts($key, self::CONFIRMATION_GUESS_LIMIT)) {
-            throw new ConfirmationThrottledException(RateLimiter::availableIn($key), $field);
+
+        if (RateLimiter::tooManyAttempts($key, self::CONFIRMATION_GUESS_LIMIT)
+            || RateLimiter::hit($key, self::CONFIRMATION_GUESS_WINDOW) > self::CONFIRMATION_GUESS_LIMIT) {
+            throw new ConfirmationThrottledException(max(1, RateLimiter::availableIn($key)), $field);
         }
     }
 
-    protected function recordConfirmation(User $user, bool $confirmed): void
+    protected function settleConfirmation(User $user, bool $confirmed): void
     {
-        $key = $this->confirmationKey($user);
         if ($confirmed) {
-            RateLimiter::clear($key);
-        } else {
-            RateLimiter::hit($key, self::CONFIRMATION_GUESS_WINDOW);
+            RateLimiter::clear($this->confirmationKey($user));
         }
     }
 

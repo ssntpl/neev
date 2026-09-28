@@ -699,6 +699,12 @@ Authorization: Bearer {token}
 
 Request to change the authenticated user's email address. Sends a verification link to the new email. Requires current password for security.
 
+The password check draws on the same budget as every other confirmed action:
+five wrong answers in a minute across all of them, per account, and this
+endpoint too answers `429` with `retry_after` and `Retry-After` until the
+minute passes. The route's own limit of five requests a minute applies as well.
+See [Confirming a sensitive action](./security.md#confirming-a-sensitive-action).
+
 An account created through OAuth has no password, so
 there is nothing to check: the request is refused with `403` and *Set a password
 on your account before changing your email address.* until one is set. See
@@ -1004,7 +1010,9 @@ Always confirmed: a recovery code signs you in on its own, so this hands back a
 complete second factor in plaintext. Send `password`, or `otp` for an account
 that has none. `400` when no factor is enabled — answered before the
 confirmation is asked for, so a single-use code is not spent on something that
-cannot happen. Limited to five a minute.
+cannot happen. Limited to five requests a minute, and the confirmation draws on
+the budget every confirmed action shares: five wrong answers in a minute, on
+any of them, and this too answers `429` with `retry_after` and `Retry-After`.
 
 **Response:**
 

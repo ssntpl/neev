@@ -36,7 +36,10 @@ class ConfirmationThrottledException extends Exception
 
     public function render(Request $request): Response
     {
-        if ($request->expectsJson()) {
+        // Token-authenticated and session-less callers are machines and get
+        // JSON whatever their Accept header says: a redirect would send them
+        // to an HTML page, as it would for every other refusal on the API.
+        if ($request->expectsJson() || $request->bearerToken() !== null || !$request->hasSession()) {
             return response()->json([
                 'message' => $this->getMessage(),
                 'retry_after' => $this->retryAfter,

@@ -396,7 +396,7 @@ curl -X POST https://yourapp.com/neev/mfa/otp/verify \
 
 Only **active** methods trigger the MFA challenge — pending setups never gate login, and the verify endpoint rejects codes for pending methods.
 
-Starting an authenticator setup again while one is pending replaces its secret: the QR shown last is the only one that verifies. A secret left behind by an earlier session — planted, or simply abandoned — is never the one the owner scans. And enrolling any factor discards every setup still pending: a setup started before the account had a factor cannot be finished once it has one, because adding a factor is confirmed from then on.
+Starting an authenticator setup again while one is pending replaces its secret: the QR shown last is the only one that verifies. A secret left behind by an earlier session — planted, or simply abandoned — is never the one the owner scans. And enrolling email OTP discards a pending authenticator setup: a setup started before the account had a factor cannot be finished once it has one, because adding a factor is confirmed from then on. The code entered for it answers "No setup is in progress for this method. Start it again."
 
 ### Enrolling while other sessions are open
 

@@ -3,8 +3,11 @@
 namespace Ssntpl\Neev\Tests\Feature\Account;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Hashing\BcryptHasher;
 use Illuminate\Session\ArraySessionHandler;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Testing\TestResponse;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
@@ -86,6 +89,12 @@ class ConfirmationThrottleTest extends TestCase
 
     private function attempt(string $endpoint, string $password): TestResponse
     {
+        // withHeader() persists for the rest of the test; a browser form does
+        // not carry the bearer token an earlier API attempt set.
+        if (str_starts_with($endpoint, 'blade')) {
+            $this->flushHeaders();
+        }
+
         $api = fn () => $this->withHeader('Authorization', 'Bearer ' . $this->token);
 
         return match ($endpoint) {
@@ -250,6 +259,82 @@ class ConfirmationThrottleTest extends TestCase
         $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/mfa/delete', ['auth_method' => 'authenticator', 'otp' => '000000'])
             ->assertStatus(429);
+    }
+
+    public static ?int $attemptsSeenDuringCompare = null;
+
+    public static string $observedKey = '';
+
+    /**
+     * The guess is counted before the password is compared. Counted after,
+     * every request in flight during bcrypt slipped under the limit, so the
+     * cap was the server's concurrency rather than five.
+     */
+    public function test_the_guess_is_reserved_before_the_password_is_compared(): void
+    {
+        $user = $this->enrolledUser();
+        self::$observedKey = 'neev-confirmation:' . $user->getMorphClass() . ':' . $user->getKey();
+        self::$attemptsSeenDuringCompare = null;
+
+        for ($i = 1; $i <= 4; $i++) {
+            $this->attempt('api mfa delete', "wrong-{$i}")->assertForbidden();
+        }
+
+        $inner = app('hash');
+        Hash::swap(new class ($inner) extends BcryptHasher {
+            public function __construct(private $inner)
+            {
+                parent::__construct();
+            }
+
+            public function check(#[\SensitiveParameter] $value, $hashedValue, array $options = []): bool
+            {
+                \Ssntpl\Neev\Tests\Feature\Account\ConfirmationThrottleTest::$attemptsSeenDuringCompare =
+                    RateLimiter::attempts(\Ssntpl\Neev\Tests\Feature\Account\ConfirmationThrottleTest::$observedKey);
+
+                return $this->inner->check($value, $hashedValue, $options);
+            }
+        });
+
+        $this->attempt('api mfa delete', self::PASSWORD)->assertOk();
+
+        $this->assertSame(5, self::$attemptsSeenDuringCompare, 'the fifth guess is on the count while bcrypt runs, not after');
+        $this->assertSame(0, RateLimiter::attempts(self::$observedKey), 'a right answer hands the reservation back');
+    }
+
+    /** Machines get JSON whatever their Accept header says; a redirect would land them on an HTML page. */
+    public function test_a_token_client_without_an_accept_header_still_gets_a_json_429(): void
+    {
+        $this->enrolledUser();
+        for ($i = 1; $i <= 5; $i++) {
+            $this->attempt('api logout all', "wrong-{$i}");
+        }
+
+        $this->withHeader('Authorization', 'Bearer ' . $this->token)
+            ->post('/neev/logoutAll', ['password' => self::PASSWORD])
+            ->assertStatus(429)
+            ->assertJsonStructure(['message', 'retry_after'])
+            ->assertHeader('Retry-After');
+    }
+
+    /** Email change draws on the shared budget too, on both surfaces, under its own route limit. */
+    public function test_email_change_spends_and_obeys_the_shared_budget(): void
+    {
+        $this->enrolledUser();
+        for ($i = 1; $i <= 4; $i++) {
+            $this->attempt('api mfa delete', "wrong-{$i}")->assertForbidden();
+        }
+
+        // The fifth wrong answer, given to email change, is counted...
+        $this->attempt('api email change', 'wrong-5')->assertForbidden();
+
+        // ...so the right password is refused everywhere, email change included.
+        $this->attempt('api mfa delete', self::PASSWORD)->assertStatus(429);
+        $this->attempt('api email change', self::PASSWORD)
+            ->assertStatus(429)
+            ->assertJsonStructure(['message', 'retry_after']);
+        $this->attempt('blade email change', self::PASSWORD)->assertRedirect();
+        $this->assertStringContainsString('Too many attempts', implode(' ', session('errors')->all()));
     }
 
     public function test_the_limit_is_five_a_minute(): void

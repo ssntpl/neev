@@ -101,6 +101,16 @@ class UserApiController extends Controller
         ]);
 
         $user = User::model()->find($request->user()?->id);
+
+        // A setup that was discarded — enrolling another factor drops every
+        // pending one — is a different answer from a wrong code: the user
+        // has to start again, and this time confirm.
+        if ($user && !$user->multiFactorAuth($request->auth_method)) {
+            return response()->json([
+                'message' => 'No setup is in progress for this method. Start it again.',
+            ], 400);
+        }
+
         if (!$user?->verifyMfaSetup($request->auth_method, (string) $request->otp)) {
             return response()->json([
                 'message' => 'Code verification failed.',

@@ -780,6 +780,13 @@ class UserAuthController extends Controller
                 return back()->with('status', 'Code verified.');
             }
 
+            // Enrolling another factor drops every pending setup, so a code
+            // for a method the account no longer holds is not "invalid" —
+            // the setup is gone, and starting again now needs confirming.
+            if (!$user->multiFactorAuth($request->auth_method)) {
+                return back()->withErrors(['message' => __('No setup is in progress for this method. Start it again.')]);
+            }
+
             return back()->withErrors(['message' => 'Code is invalid']);
         }
 
