@@ -2,7 +2,6 @@
 
 namespace Ssntpl\Neev\Http\Controllers;
 
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Mail;
@@ -127,7 +126,7 @@ class UserController extends Controller
     {
         $request->validate([
             'current_password' => ['required'],
-            'password' => config('neev.password'),
+            'password' => ['required'],
         ]);
 
         $user = User::model()->find($request->user()?->id);
@@ -143,13 +142,22 @@ class UserController extends Controller
             ]);
         }
 
-        if (!Hash::check($request->current_password, $user->password)) {
+        // The current password first, under the confirmation budget. The
+        // rules below compare the new password with the account's current
+        // and past ones, so run before this check they graded two guesses a
+        // request for a session that did not know the password.
+        $auth = app(AuthService::class);
+        if (!$auth->checkPassword($user, (string) $request->current_password, 'current_password')) {
             return back()->withErrors([
                 'message' => 'Current Password is Wrong.'
             ]);
         }
 
-        app(AuthService::class)->changePassword($user, $request->password);
+        $request->validate([
+            'password' => config('neev.password'),
+        ]);
+
+        $auth->changePassword($user, $request->password);
         return back()->with('status', 'Password has been successfully updated.');
     }
 
@@ -266,6 +274,8 @@ class UserController extends Controller
             }
         }
 
+        $wasActive = (bool) $user->multiFactorAuth($request->auth_method)?->isActive();
+
         $res = $user->addMultiFactorAuth($request->auth_method);
         if (!$res) {
             return back()->withErrors(['message' => 'Auth was not added.']);
@@ -278,7 +288,10 @@ class UserController extends Controller
         // completed the enrolment and keeps its place. An authenticator is
         // only pending here; the session is stamped when it verifies the
         // code (verifyMFAOTPStore), never for a setup it walked away from.
-        if ($user->multiFactorAuth($request->auth_method)?->isActive()) {
+        // Only an enrolment this request completed counts: "Set up" on a
+        // factor that was already active completes nothing, and must not
+        // rewrite what a passkey or SSO login signed in with.
+        if (!$wasActive && $user->multiFactorAuth($request->auth_method)?->isActive()) {
             $auth->stampSessionWithFactor($user, $request->auth_method);
         }
 

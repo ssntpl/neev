@@ -31,7 +31,32 @@ final class PasswordSubject
      */
     public static function set(Request $request, User $user): void
     {
-        $request->attributes->set(self::ATTRIBUTE, $user);
+        self::write($request, $user);
+    }
+
+    /**
+     * Declare that this request chooses a password for nobody it already
+     * holds — a registration. Without this, a registration posted from a
+     * signed-in session would be graded against that session's account.
+     */
+    public static function none(Request $request): void
+    {
+        self::write($request, false);
+    }
+
+    /**
+     * A FormRequest is its own instance, built from the request the container
+     * holds, and the rules read the container's through `request()`. Write to
+     * both so a controller may pass whichever it was given.
+     */
+    private static function write(Request $request, User|false $value): void
+    {
+        $request->attributes->set(self::ATTRIBUTE, $value);
+
+        $current = app()->bound('request') ? app('request') : null;
+        if ($current instanceof Request && $current !== $request) {
+            $current->attributes->set(self::ATTRIBUTE, $value);
+        }
     }
 
     /**
@@ -43,6 +68,9 @@ final class PasswordSubject
         $request ??= request();
 
         $subject = $request->attributes->get(self::ATTRIBUTE);
+        if ($subject === false) {
+            return null;
+        }
         if ($subject instanceof User) {
             return $subject;
         }

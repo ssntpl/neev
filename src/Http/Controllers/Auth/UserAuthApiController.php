@@ -15,6 +15,7 @@ use Ssntpl\Neev\Exceptions\InvalidInvitationException;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
 use Ssntpl\Neev\Exceptions\MagicLinkThrottledException;
 use Ssntpl\Neev\Exceptions\MagicLinkChannelException;
+use Ssntpl\Neev\Exceptions\ConfirmationThrottledException;
 use Ssntpl\Neev\Exceptions\PasswordResetThrottledException;
 use Ssntpl\Neev\Http\Controllers\Controller;
 use Ssntpl\Neev\Mail\LoginUsingLink;
@@ -37,6 +38,9 @@ class UserAuthApiController extends Controller
     public function register(Request $request, GeoIP $geoIP)
     {
         try {
+            // A registration picks a password for a new account: the rules must
+            // not grade it against whoever happens to be signed in.
+            PasswordSubject::none($request);
             $request->validate(app(RegistrationService::class)->rules());
 
             $user = app(RegistrationService::class)->register(
@@ -305,11 +309,14 @@ class UserAuthApiController extends Controller
     public function emailVerify(Request $request)
     {
         $links = app(EmailLinks::class);
-        $user = User::model()->find($request->id);
+        // From the signed query only. `$request->id` reads input(), where a
+        // request body overrides the query string, and the signature covers
+        // the query alone — so a body `id` named any account at all.
+        $user = User::model()->find($request->query('id'));
 
         if (!$request->hasValidSignature()
             || !$user
-            || !hash_equals(hash('sha256', $user->email), (string) $request->hash)) {
+            || !hash_equals(hash('sha256', $user->email), (string) $request->query('hash'))) {
             return $links->verificationFailed($request);
         }
 
@@ -372,9 +379,13 @@ class UserAuthApiController extends Controller
                     ], 403);
                 }
 
-                $user = User::model()->find($request->id);
+                // From the signed query only: a body `id`/`hash` would win
+                // over the query in input(), and the signature does not
+                // cover the body — anyone could reset any account with
+                // their own link.
+                $user = User::model()->find($request->query('id'));
                 if (!$user
-                    || !hash_equals(hash('sha256', $user->email), (string) $request->hash)
+                    || !hash_equals(hash('sha256', $user->email), (string) $request->query('hash'))
                     || !$auth->passwordResetLinkIsCurrent($user, $request->query('expires'))) {
                     return response()->json([
                         'message' => 'Invalid or expired reset link.',
@@ -614,7 +625,7 @@ class UserAuthApiController extends Controller
                 ], 403);
             }
 
-            if (!Hash::check($request->password, $user->password)) {
+            if (!app(AuthService::class)->checkPassword($user, (string) $request->password)) {
                 return response()->json([
                     'message' => 'Password is incorrect.',
                 ], 403);
@@ -633,7 +644,7 @@ class UserAuthApiController extends Controller
             return response()->json([
                 'message' => 'Verification link has been sent to your new email address.',
             ]);
-        } catch (ValidationException $e) {
+        } catch (ValidationException | ConfirmationThrottledException $e) {
             throw $e;
         } catch (Exception $e) {
             Log::error($e);
@@ -646,8 +657,10 @@ class UserAuthApiController extends Controller
     public function verifyEmailChange(Request $request)
     {
         $links = app(EmailLinks::class);
-        $user = User::model()->find($request->id);
-        $newEmail = $request->email;
+        // From the signed query only — see emailVerify(). A body `id` and
+        // `email` would move any account to any address.
+        $user = User::model()->find($request->query('id'));
+        $newEmail = $request->query('email');
 
         if (!$request->hasValidSignature() || !$user || !$newEmail) {
             return $links->emailChangeFailed($request);

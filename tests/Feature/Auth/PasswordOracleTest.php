@@ -113,8 +113,10 @@ class PasswordOracleTest extends TestCase
         $attacker = User::factory()->create(['password' => bcrypt('Attacker-Pass-1!')]);
         $token = $attacker->createLoginToken(1440)->plainTextToken;
 
+        // With the caller's own current password proven, the rules run — on
+        // the caller. A mismatched confirmation keeps their password as it is.
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)->putJson('/neev/changePassword', [
-            'current_password' => 'whatever',
+            'current_password' => 'Attacker-Pass-1!',
             'email' => $this->victim->email,
             'password' => self::VICTIM_PASSWORD,
             'password_confirmation' => 'mismatch',
@@ -142,13 +144,60 @@ class PasswordOracleTest extends TestCase
         session(['attempt_id' => $attempt->id]);
 
         $this->post(route('password.change'), [
-            'current_password' => 'whatever',
+            'current_password' => 'Attacker-Pass-1!',
             'email' => $this->victim->email,
             'password' => self::VICTIM_PASSWORD,
             'password_confirmation' => 'mismatch',
         ])->assertSessionHasErrors('password');
 
         $this->assertSaysNothingAboutTheVictim(session('errors')->toArray());
+    }
+
+    /** A registration posted from a stolen session must not grade the session owner's passwords. */
+    public function test_blade_registration_from_a_signed_in_session_does_not_grade_the_sessions_owner(): void
+    {
+        $attempt = $this->victim->loginAttempts()->create(['method' => LoginAttempt::Password, 'is_success' => true]);
+        $this->actingAs($this->victim);
+        session(['attempt_id' => $attempt->id]);
+
+        $this->post('/register', [
+            'name' => 'Anyone',
+            'email' => 'not-an-address',
+            'password' => self::VICTIM_PASSWORD,
+            'password_confirmation' => self::VICTIM_PASSWORD,
+        ])->assertSessionHasErrors('email');
+
+        $this->assertSaysNothingAboutTheVictim(session('errors')->toArray());
+    }
+
+    /** The new password is graded only after the current one is proven, so a wrong current password reveals nothing. */
+    public function test_change_password_does_not_grade_the_new_password_before_the_current_one_is_right(): void
+    {
+        $token = $this->victim->createLoginToken(1440)->plainTextToken;
+
+        $response = $this->withHeader('Authorization', 'Bearer ' . $token)->putJson('/neev/changePassword', [
+            'current_password' => 'not-it',
+            'password' => self::VICTIM_OLD_PASSWORD,
+            'password_confirmation' => self::VICTIM_OLD_PASSWORD,
+        ])->assertForbidden();
+        $this->assertSaysNothingAboutTheVictim((array) $response->json());
+
+        $attempt = $this->victim->loginAttempts()->create(['method' => LoginAttempt::Password, 'is_success' => true]);
+        $this->actingAs($this->victim);
+        session(['attempt_id' => $attempt->id]);
+        $this->post(route('password.change'), [
+            'current_password' => 'not-it',
+            'password' => self::VICTIM_OLD_PASSWORD,
+            'password_confirmation' => self::VICTIM_OLD_PASSWORD,
+        ])->assertSessionHasErrors('message');
+        $this->assertSaysNothingAboutTheVictim(session('errors')->toArray());
+
+        // With the current password proven, the history rule still applies.
+        $this->withHeader('Authorization', 'Bearer ' . $token)->putJson('/neev/changePassword', [
+            'current_password' => self::VICTIM_PASSWORD,
+            'password' => self::VICTIM_OLD_PASSWORD,
+            'password_confirmation' => self::VICTIM_OLD_PASSWORD,
+        ])->assertUnprocessable()->assertJsonValidationErrors(['password']);
     }
 
     // -----------------------------------------------------------------
@@ -201,5 +250,13 @@ class PasswordOracleTest extends TestCase
             'password' => self::VICTIM_OLD_PASSWORD,
             'password_confirmation' => self::VICTIM_OLD_PASSWORD,
         ])->assertUnprocessable()->assertJsonValidationErrors(['password']);
+
+        // And the personal-data rule sees the same proven account.
+        $this->postJson('/neev/resetPassword', [
+            'email' => $this->victim->email,
+            'otp' => $otp,
+            'password' => 'Victoria Victimson 1!',
+            'password_confirmation' => 'Victoria Victimson 1!',
+        ])->assertUnprocessable()->assertJsonValidationErrors(['password' => 'should not contain your name']);
     }
 }

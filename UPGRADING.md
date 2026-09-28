@@ -20,8 +20,10 @@ request body — `email`, then `id` — ahead of the signed-in user, which made
 them a password oracle for any address a request cared to name. They now read
 it from `Ssntpl\Neev\Support\PasswordSubject`: the signed-in user, or the
 account a reset link or code has just proven, which the package's reset
-controllers name before validating. A registration has neither, so both rules
-pass there as before.
+controllers name before validating. A registration compares against nobody —
+the package's register actions say so with `PasswordSubject::none($request)`,
+so a registration posted from a signed-in session is not graded against that
+session's account either.
 
 - **If you validate a password for an account that is not the caller** — an
   admin "set a user's password" form, an invitation flow that sets one on a
@@ -33,19 +35,67 @@ pass there as before.
 - Nothing changes for the signed-in change-password forms or the package's
   reset paths.
 
-**Confirmed actions are rate limited (handle `429`).**
-Every endpoint that re-checks the account's password now sits in one named
-bucket, `throttle:5,1,neev-confirmation`, keyed per account: the sixth answer
-within a minute — right or wrong — is `429` with a `Retry-After` header.
-They are `POST {prefix}/mfa/add`, `DELETE {prefix}/mfa/delete`,
+**Signed links read their parameters from the signed query only (action
+required if your client posted them in the body).**
+`POST {prefix}/resetPassword`, `POST {prefix}/email/change/verify` and
+`GET {prefix}/email/verify` used to read `id`, `hash` and `email` through
+`input()`, where a body overrides the query while the signature covers only
+the query — which let anyone holding a link for their own account act on any
+other. They now read the signed query and nothing else. A client that forwards
+the link's query string, as the API reference describes, is unaffected. One
+that copied `id`/`hash` or `id`/`email` into the request body instead gets
+`403 Invalid or expired reset link.` (or the email-change failure) and must
+forward the query.
+
+**Wrong confirmations are rate limited (handle `429`).**
+Every check of the account's password or confirmation code now runs through
+`AuthService::confirmIdentity()` or the new `checkPassword()`, which count
+wrong answers per account: five in a minute, and every action that confirms
+refuses with `429` until the window passes. A right answer clears the count.
+The fifteen routes: `POST {prefix}/mfa/add`, `DELETE {prefix}/mfa/delete`,
 `POST {prefix}/passkeys/register/options`, `PUT {prefix}/changePassword`,
-`DELETE {prefix}/users` and `POST {prefix}/logoutAll` on the API, and
+`POST {prefix}/email/change`, `DELETE {prefix}/users`,
+`POST {prefix}/logoutAll` and `POST {prefix}/recoveryCodes` on the API, and
 `POST /account/multiFactorAuth`, `POST /account/passkeys/register/options`,
-`POST /account/change-password`, `DELETE /account/accountDelete` and
-`POST /account/logoutSessions` in the Blade kit. Recovery-code minting keeps
-its own bucket. API clients should show the `429` and its `retry_after`; the
-Blade kit gets Laravel's 429 page, so a custom `errors/429.blade.php` is worth
-having if you do not already.
+`POST /account/change-password`, `PUT /email/change`,
+`DELETE /account/accountDelete`, `POST /account/logoutSessions` and
+`POST /account/recovery/codes` in the Blade kit.
+
+- **API**: the `429` body is `{"message": …, "retry_after": <seconds>}` with a
+  `Retry-After` header. Show it; retrying sooner is refused.
+- **Blade kit**: the request lands back on the form with the message under the
+  field it asked for (`password`, `otp` or `current_password`), so nothing
+  changes for an ejected view — the shipped views already render every error.
+  The passkey script in `account/security.blade.php` now shows that message on
+  a `429`; re-eject the view, or copy the `resp.status === 429` branch in.
+- Only wrong answers count. Requests that confirm nothing — dropping one named
+  session with `session_id`, the first setup on an account with no factor —
+  never spend the budget, so a stolen session cannot lock the owner out with
+  cheap requests. Recovery-code minting and email change keep their own
+  per-minute mail limits as well; on those two routes a sixth request in a
+  minute meets that route throttle first — Laravel's plain `429`, as before.
+- If you call `confirmIdentity()` yourself, it now throws
+  `Ssntpl\Neev\Exceptions\ConfirmationThrottledException` when the account is
+  locked. The exception renders itself (JSON `429`, or a redirect back with
+  errors), so a controller that does not catch it answers correctly; a
+  `catch (Exception $e)` around it should rethrow it.
+
+**Changing the password proves the current one first (check your client's
+error handling).**
+`PUT {prefix}/changePassword` and `POST /account/change-password` used to run
+the new password through the password rules before checking
+`current_password`, so a wrong current password could still come back as a
+`422` about the new one. They now answer `403 Current Password is Wrong.`
+first and grade the new password only once the current one is right. A client
+that showed the `422` validation errors before the `403` sees them in the
+other order.
+
+**Enrolling a factor discards any setup still pending (no action required).**
+Turning a factor on — email OTP, or verifying an authenticator — deletes every
+other pending setup on the account, so a setup started before the account had
+a factor cannot be finished afterwards without the confirmation that adding a
+factor now needs. A user who started an authenticator setup, then enabled email
+in another tab, starts the authenticator again and confirms.
 
 **A pending authenticator setup gets a new secret each time setup starts (check
 how your UI shows the QR).**
@@ -55,7 +105,9 @@ secret planted by whoever held a session earlier is never the one the owner
 scans. Only the QR shown *last* verifies. If your UI re-posts to redraw the
 QR, the user's earlier scan is stale and they must scan again — show it once,
 or keep the response. An active factor is unchanged: Set up on an enrolled
-authenticator still shows its live secret.
+authenticator still shows its live secret. The shipped `account/security.blade.php`
+says so in its Set up dialog for a pending factor; re-eject it or copy the
+`@if ($user->multiFactorAuth($method)?->isActive())` branch into yours.
 
 **A web session is stamped as holding a factor when it completes an enrolment,
 not when it starts one (no action required).**
@@ -63,11 +115,17 @@ not when it starts one (no action required).**
 authenticator it scanned, or turns email OTP on — never for a setup that was
 merely started. A session that starts a setup and walks away is ended, like
 any other session that predates a factor, once one is enrolled from elsewhere.
-The attempt keeps the factor it signed in with if it already names one.
+The attempt keeps the factor it signed in with if it already names one, and
+"Set up" on a factor that is already active writes nothing. Sessions that were
+open at deploy time and had *started* a setup under the old code keep the stamp
+that code wrote until they expire; sign them out (`POST /account/logoutSessions`
+or `AuthService::revokeOtherSessions()`) if that matters to you.
 
-**Changing the email retires the MFA email code as well (no action required).**
+**Changing the email retires the MFA email code and magic login links as well
+(no action required).**
 The 0.6.7 note promised every outstanding code was discarded; the MFA email
-code, stored on the factor's own row, now is too.
+code, stored on the factor's own row, and magic login links in
+`magic_link_tokens` — mailed to the same old address — now are too.
 
 ---
 

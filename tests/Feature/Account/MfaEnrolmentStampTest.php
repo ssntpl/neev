@@ -154,6 +154,85 @@ class MfaEnrolmentStampTest extends TestCase
     }
 
     // -----------------------------------------------------------------
+    // A planted setup dies when the owner turns a factor on
+    // -----------------------------------------------------------------
+
+    /**
+     * The verify route sits outside the session gate, so a stolen session
+     * could finish a setup it planted after the owner had enrolled a factor
+     * elsewhere — activating a second factor with no confirmation. Enrolling
+     * a factor discards every setup still pending instead.
+     */
+    public function test_enrolling_a_factor_elsewhere_discards_a_pending_setup(): void
+    {
+        [$user] = $this->sessionWithoutAFactor();
+        $this->post(route('multi.auth'), ['auth_method' => 'authenticator']);
+        $planted = $user->fresh()->multiFactorAuths()->first()->secret;
+
+        // The owner turns email OTP on from another device.
+        $user->fresh()->addMultiFactorAuth('email');
+
+        $this->assertSame(0, $user->fresh()->multiFactorAuths()->where('status', MultiFactorAuth::STATUS_PENDING)->count());
+
+        $this->post(route('otp.mfa.store'), [
+            'action' => 'verify',
+            'email' => $user->email,
+            'auth_method' => 'authenticator',
+            'otp' => TOTP::create(secret: $planted)->now(),
+        ])->assertSessionHasErrors('message');
+
+        $this->assertCount(1, $user->fresh()->activeMultiFactorAuths, 'only the owner\'s email factor is active');
+        $this->assertNull($user->loginAttempts()->latest('id')->first()->multi_factor_method);
+    }
+
+    public function test_the_api_cannot_finish_a_setup_the_owner_has_moved_past_either(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $token = $user->createLoginToken(1440)->plainTextToken;
+        $planted = $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'authenticator'])->assertOk()->json('secret');
+
+        $user->fresh()->addMultiFactorAuth('email');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/setup/verify', ['auth_method' => 'authenticator', 'otp' => TOTP::create(secret: $planted)->now()])
+            ->assertStatus(400);
+
+        $this->assertSame(['email'], $user->fresh()->activeMultiFactorAuths->pluck('method')->all());
+    }
+
+    public function test_verifying_an_authenticator_discards_any_other_pending_setup(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $user->addMultiFactorAuth('authenticator');
+        $other = $user->multiFactorAuths()->create(['method' => 'future-method', 'status' => MultiFactorAuth::STATUS_PENDING, 'preferred' => false]);
+
+        $secret = $user->fresh()->multiFactorAuths()->where('method', 'authenticator')->first()->secret;
+        $this->assertTrue($user->fresh()->verifyMfaSetup('authenticator', TOTP::create(secret: $secret)->now()));
+
+        $this->assertNull($other->fresh());
+    }
+
+    // -----------------------------------------------------------------
+    // Only an enrolment this request completed stamps the session
+    // -----------------------------------------------------------------
+
+    /** "Set up" on an active authenticator completes nothing, and a passkey login's history stays a passkey login. */
+    public function test_reopening_set_up_on_an_active_factor_does_not_stamp_a_passkey_session(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now(), 'password' => bcrypt('Password123!')]);
+        MultiFactorAuthFactory::new()->create(['user_id' => $user->id, 'method' => 'authenticator', 'preferred' => true]);
+        $attempt = $user->loginAttempts()->create(['method' => LoginAttempt::Passkey, 'multi_factor_method' => null, 'is_success' => true]);
+        $this->actingAs($user);
+        session(['attempt_id' => $attempt->id]);
+
+        $this->post(route('multi.auth'), ['auth_method' => 'authenticator', 'password' => 'Password123!'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertNull($attempt->fresh()->multi_factor_method);
+    }
+
+    // -----------------------------------------------------------------
     // A pending setup's secret is not reusable by whoever planted it
     // -----------------------------------------------------------------
 

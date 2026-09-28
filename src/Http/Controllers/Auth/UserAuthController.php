@@ -5,7 +5,6 @@ namespace Ssntpl\Neev\Http\Controllers\Auth;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Session;
@@ -76,6 +75,9 @@ class UserAuthController extends Controller
     */
     public function registerStore(LoginRequest $request, GeoIP $geoIP)
     {
+        // A registration picks a password for a new account: the rules must
+        // not grade it against whoever happens to be signed in.
+        PasswordSubject::none($request);
         $request->validate(app(RegistrationService::class)->rules());
 
         try {
@@ -611,7 +613,7 @@ class UserAuthController extends Controller
                 ->withErrors(['message' => __('Set a password on your account before changing your email address.')]);
         }
 
-        if (!Hash::check($request->password, $user->password)) {
+        if (!$this->auth->checkPassword($user, (string) $request->password)) {
             return back()->withErrors(['password' => 'Password is incorrect.']);
         }
 
@@ -627,7 +629,8 @@ class UserAuthController extends Controller
     {
         $links = app(EmailLinks::class);
         $user = User::model()->find($id);
-        $newEmail = $request->email;
+        // From the signed query only: the signature does not cover a body.
+        $newEmail = $request->query('email');
 
         if (!$request->hasValidSignature() || !$user || !$newEmail) {
             return $links->emailChangeFailed($request);

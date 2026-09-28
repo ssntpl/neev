@@ -14,6 +14,8 @@ use Ssntpl\Neev\Models\OTP;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Tests\TestCase;
+use Ssntpl\Neev\Models\MagicLinkToken;
+use Ssntpl\Neev\Services\MagicLink\MagicLinkManager;
 use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
 
@@ -213,6 +215,19 @@ class OtpPurposeTest extends TestCase
         $this->assertTrue($this->auth()->applyEmailChange($user, 'moved@example.com'));
 
         $this->assertFalse($user->fresh()->verifyMFAOTP('email', $code), 'a code mailed to the old address must not answer a challenge');
+    }
+
+    /** A magic login link is a code by another name, mailed to the same old address. */
+    public function test_changing_the_email_revokes_magic_login_links_sent_to_the_old_address(): void
+    {
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $link = app(MagicLinkManager::class)->generate($user);
+        $this->assertNotNull($link['model']->fresh());
+
+        $this->assertTrue($this->auth()->applyEmailChange($user, 'moved@example.com'));
+
+        $this->assertNull($link['model']->fresh(), 'the link mailed to the old address must not sign in any more');
+        $this->assertSame(0, MagicLinkToken::withoutGlobalScopes()->where('user_id', $user->id)->count());
     }
 
     public function test_the_api_email_change_link_discards_outstanding_codes(): void

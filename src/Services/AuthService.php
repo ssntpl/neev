@@ -14,11 +14,13 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Validation\ValidationException;
 use Ssntpl\Neev\Events\LoggedIn;
 use Ssntpl\Neev\Events\PasswordChanged;
+use Ssntpl\Neev\Exceptions\ConfirmationThrottledException;
 use Ssntpl\Neev\Exceptions\PasswordResetThrottledException;
 use Ssntpl\Neev\Enums\OtpPurpose;
 use Ssntpl\Neev\Mail\EmailOTP;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
 use Ssntpl\Neev\Models\LoginAttempt;
+use Ssntpl\Neev\Models\MagicLinkToken;
 use Ssntpl\Neev\Models\OTP;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Rules\PasswordHistory;
@@ -218,9 +220,77 @@ class AuthService
      */
     public function confirmIdentity(User $user, Request $request): bool
     {
-        return $user->password !== null
+        $field = array_key_first($this->confirmationRules($user));
+        $this->refuseWhenConfirmationLocked($user, $field);
+
+        $confirmed = $user->password !== null
             ? Hash::check((string) $request->input('password'), $user->password)
             : $this->verifyEmailOtp($user, (string) $request->input('otp'), OtpPurpose::Confirmation);
+
+        $this->recordConfirmation($user, $confirmed);
+
+        return $confirmed;
+    }
+
+    /**
+     * Check the account's password for an action that asks for it directly
+     * rather than through `confirmationRules()` — the current password on a
+     * password change, the password on an email change — under the same
+     * budget as every other confirmation, so a stolen session cannot pick
+     * the one check that does not count.
+     *
+     * @throws ConfirmationThrottledException
+     */
+    public function checkPassword(User $user, string $password, string $field = 'password'): bool
+    {
+        $this->refuseWhenConfirmationLocked($user, $field);
+
+        $correct = $user->password !== null && Hash::check($password, $user->password);
+
+        $this->recordConfirmation($user, $correct);
+
+        return $correct;
+    }
+
+    /**
+     * How many wrong confirmations an account may give in the window before
+     * every action that confirms refuses with 429 until it passes.
+     *
+     * Wrong answers only: the owner's own actions never count against them,
+     * and a stolen session cannot lock the owner out with cheap requests —
+     * only with real guesses, which is the lockout's purpose. A right answer
+     * clears the count. Keyed on the account, not the caller, because the
+     * caller is whoever holds the session and that is exactly who is being
+     * limited.
+     */
+    public const CONFIRMATION_GUESS_LIMIT = 5;
+
+    public const CONFIRMATION_GUESS_WINDOW = 60;
+
+    protected function confirmationKey(User $user): string
+    {
+        return 'neev-confirmation:' . $user->getMorphClass() . ':' . $user->getKey();
+    }
+
+    /**
+     * @throws ConfirmationThrottledException
+     */
+    protected function refuseWhenConfirmationLocked(User $user, string $field): void
+    {
+        $key = $this->confirmationKey($user);
+        if (RateLimiter::tooManyAttempts($key, self::CONFIRMATION_GUESS_LIMIT)) {
+            throw new ConfirmationThrottledException(RateLimiter::availableIn($key), $field);
+        }
+    }
+
+    protected function recordConfirmation(User $user, bool $confirmed): void
+    {
+        $key = $this->confirmationKey($user);
+        if ($confirmed) {
+            RateLimiter::clear($key);
+        } else {
+            RateLimiter::hit($key, self::CONFIRMATION_GUESS_WINDOW);
+        }
     }
 
     /**
@@ -562,6 +632,10 @@ class AuthService
         // rather than in `otp`.
         OTP::query()->forOwner($user)->delete();
         $user->multiFactorAuths()->where('method', 'email')->first()?->clearOtp();
+
+        // A magic login link is a code by another name, and was mailed to the
+        // same address. Filtered by the account, so no tenant scope applies.
+        MagicLinkToken::withoutGlobalScopes()->where('user_id', $user->getKey())->delete();
 
         return true;
     }

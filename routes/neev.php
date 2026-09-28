@@ -135,13 +135,11 @@ if (config('neev.ui') === 'blade') {
                 Route::get('/loginAttempts', [UserController::class, 'loginAttempts'])
                     ->name('account.loginAttempts');
 
-                // Every action that asks the account to prove itself again
-                // shares one bucket: a stolen session or token must not get
-                // an unlimited run at the password. Signed-in throttles key
-                // on the user, so the bucket has to be named or it would be
-                // shared with every other per-user limit.
+                // Actions that ask the account to prove itself again are
+                // limited in AuthService::confirmIdentity(), on wrong answers
+                // only — not here, where a route throttle would also count
+                // the unconfirmed requests these routes serve.
                 Route::post('/multiFactorAuth', [UserController::class, 'addMultiFactorAuth'])
-                    ->middleware('throttle:5,1,neev-confirmation')
                     ->name('multi.auth');
                 Route::put('/multiFactorAuth', [UserController::class, 'preferredMultiFactorAuth'])
                     ->name('multi.preferred');
@@ -152,7 +150,6 @@ if (config('neev.ui') === 'blade') {
                     ->name('recovery.generate');
 
                 Route::post('/passkeys/register/options', [PasskeyController::class,'generateRegistrationOptions'])
-                    ->middleware('throttle:5,1,neev-confirmation')
                     ->name('passkeys.register.options');
                 Route::post('/passkeys/register', [PasskeyController::class,'registerViaWeb'])
                     ->name('passkeys.register');
@@ -162,7 +159,6 @@ if (config('neev.ui') === 'blade') {
                 Route::put('/profileUpdate', [UserController::class, 'profileUpdate'])
                     ->name('profile.update');
                 Route::post('/change-password', [UserController::class, 'changePassword'])
-                    ->middleware('throttle:5,1,neev-confirmation')
                     ->name('password.change');
                 Route::post('/confirmation/otp', [UserController::class, 'sendConfirmationOtp'])
                     ->middleware('throttle:5,1,neev-confirmation-otp')
@@ -171,10 +167,8 @@ if (config('neev.ui') === 'blade') {
                     ->middleware('throttle:5,1,neev-password-reset-link')
                     ->name('password.reset.link');
                 Route::delete('/accountDelete', [UserController::class, 'accountDelete'])
-                    ->middleware('throttle:5,1,neev-confirmation')
                     ->name('account.delete');
                 Route::post('/logoutSessions', [UserAuthController::class, 'destroyAll'])
-                    ->middleware('throttle:5,1,neev-confirmation')
                     ->name('logout.sessions');
                 Route::post('/tokens/store', [UserController::class, 'tokenStore'])
                     ->name('tokens.store');
@@ -267,10 +261,7 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
 
     Route::middleware('neev:api')->group(function () {
         Route::post('/logout', [UserAuthApiController::class, 'logout']);
-        // `neev-confirmation`: one bucket for every action that re-checks
-        // the password, so a stolen token cannot guess it without limit.
-        Route::post('/logoutAll', [UserAuthApiController::class, 'logoutAll'])
-            ->middleware('throttle:5,1,neev-confirmation');
+        Route::post('/logoutAll', [UserAuthApiController::class, 'logoutAll']);
 
         Route::prefix('/email')->group(function () {
             Route::post('/send', [UserAuthApiController::class, 'sendMailVerificationLink'])
@@ -283,12 +274,10 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
 
         Route::prefix('/mfa')->group(function () {
             Route::get('/', [UserApiController::class, 'getMFAMethods']);
-            Route::post('/add', [UserApiController::class, 'addMultiFactorAuthentication'])
-                ->middleware('throttle:5,1,neev-confirmation');
+            Route::post('/add', [UserApiController::class, 'addMultiFactorAuthentication']);
             Route::post('/setup/verify', [UserApiController::class, 'verifyMfaSetup']);
             Route::put('/preferred', [UserApiController::class, 'setPreferredMFA']);
-            Route::delete('/delete', [UserApiController::class, 'deleteMultiFactorAuthentication'])
-                ->middleware('throttle:5,1,neev-confirmation');
+            Route::delete('/delete', [UserApiController::class, 'deleteMultiFactorAuthentication']);
         });
 
         Route::post('/recoveryCodes', [UserApiController::class, 'generateRecoveryCodes'])
@@ -299,18 +288,15 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
 
         Route::get('/users', [UserApiController::class, 'getUser']);
         Route::put('/users', [UserApiController::class, 'updateUser']);
-        Route::delete('/users', [UserApiController::class, 'deleteUser'])
-            ->middleware('throttle:5,1,neev-confirmation');
+        Route::delete('/users', [UserApiController::class, 'deleteUser']);
         Route::get('/sessions', [UserApiController::class, 'sessions']);
         Route::delete('/sessions/{id}', [UserApiController::class, 'deleteSession'])->whereNumber('id');
         Route::get('/loginAttempts', [UserApiController::class, 'loginAttempts']);
-        Route::put('/changePassword', [UserApiController::class, 'changePassword'])
-            ->middleware('throttle:5,1,neev-confirmation');
+        Route::put('/changePassword', [UserApiController::class, 'changePassword']);
 
         Route::prefix('/passkeys')->group(function () {
             Route::get('/', [PasskeyController::class,'getPasskeys']);
-            Route::post('/register/options', [PasskeyController::class,'generateRegistrationOptions'])
-                ->middleware('throttle:5,1,neev-confirmation');
+            Route::post('/register/options', [PasskeyController::class,'generateRegistrationOptions']);
             Route::post('/register', [PasskeyController::class,'registerViaAPI']);
             Route::delete('/', [PasskeyController::class,'deletePasskeyViaAPI']);
             Route::put('/', [PasskeyController::class,'updatePasskeyName']);

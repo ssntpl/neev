@@ -203,8 +203,11 @@ The session that does the enrolling is stamped as holding the factor when the
 enrolment **completes** — it verifies the authenticator it scanned, or turns
 email OTP on, which is active at once — and never when a setup merely starts.
 A setup that is opened and walked away from proves nothing, so the session
-that opened it is ended like any other once a factor is enrolled elsewhere.
-An attempt that already names the factor it signed in with keeps it.
+that opened it is ended like any other once a factor is enrolled elsewhere —
+and the setup itself is discarded when any factor is enrolled, so it cannot be
+finished from the verify route, which sits outside the gate because the login
+challenge shares it. An attempt that already names the factor it signed in
+with keeps it.
 
 Two first factors are exempt, because they answer for themselves.
 
@@ -291,7 +294,7 @@ For each login attempt:
 | Field | Description |
 |-------|-------------|
 | `method` | Login method (password, passkey, sso, etc.) |
-| `multi_factor_method` | Second factor the session holds: written when the challenge is answered, or when the session completes an enrolment |
+| `multi_factor_method` | Second factor the session holds: named when the challenge opens (with `is_success` false until it is answered), or written when the session completes an enrolment |
 | `ip_address` | User's IP address |
 | `platform` | Operating system |
 | `browser` | Browser name and version |
@@ -783,15 +786,21 @@ nothing happens. `AuthService::confirmationRules()` and `confirmIdentity()`
 decide what proof an account owes, so these actions cannot drift from
 one another.
 
-**Five answers a minute.** Every route that re-checks the password — the five
-actions above, passkey enrolment, and the change-password forms, eleven routes
-across the API and the Blade kit — shares one named bucket per account,
-`throttle:5,1,neev-confirmation`. The sixth answer within a minute is `429`
-with `Retry-After`, right or wrong. Without it, `confirmIdentity()` is a bare
-`Hash::check()` that counts nothing and never reaches the login lockout, so a
-stolen session or token had an unlimited online oracle for the one thing it
-lacked; the gate meant to contain a stolen session was handing it the password.
-Minting recovery codes keeps its own bucket. See
+**Five wrong answers a minute.** Every check of the password or the
+confirmation code — the five actions above, passkey enrolment, the current
+password on a password change, the password on an email change: fifteen
+routes across the API and the Blade kit — runs through
+`AuthService::confirmIdentity()` or `checkPassword()`, which count wrong
+answers per account. At five in a minute every one of them refuses with `429`
+(`retry_after` and `Retry-After` on the API; the Blade kit back on its form
+with the message under the field) until the window passes. A right answer
+clears the count, and a request that confirms nothing — dropping one named
+session, the first setup on an account with no factor — spends nothing, so a
+stolen session cannot lock the owner out with cheap requests, only with real
+guesses. Without this, `confirmIdentity()` was a bare `Hash::check()` that
+counted nothing and never reached the login lockout: the gate meant to contain
+a stolen session was handing it an unlimited oracle for the one thing it
+lacked. The mail limits on recovery codes and email change apply as well. See
 [Accounts Without a Password](./authentication.md#accounts-without-a-password).
 
 Three of these fire an event an application can notify on: `MfaMethodRemoved`

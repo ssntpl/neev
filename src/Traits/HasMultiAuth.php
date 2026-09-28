@@ -133,6 +133,13 @@ trait HasMultiAuth
                     ];
                 }
 
+                // A setup still pending was started before the account had
+                // a factor, and enrolling one is confirmed from here on: a
+                // planted setup must not be finishable once the owner has
+                // turned a factor on. Whoever started it starts again,
+                // confirmed this time.
+                $this->multiFactorAuths()->where('status', MultiFactorAuth::STATUS_PENDING)->delete();
+
                 // The account email is verified, so email OTP is active
                 // immediately.
                 $this->multiFactorAuths()->create([
