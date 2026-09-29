@@ -13,6 +13,7 @@ use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
 use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Rules\Hostname;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation as TeamInvitationModel;
@@ -272,10 +273,7 @@ class TeamApiController extends Controller
             // Enforcement applies to every verified domain the team federates,
             // not only the primary one. When any of them is enforced, the
             // invitee must be on one of the team's verified domains.
-            $verified = $team->domains()->whereNotNull('verified_at')->get();
-            $email = strtolower((string) $request->email);
-            if ($verified->contains('enforce', true)
-                && !$verified->contains(fn (Domain $domain) => str_ends_with($email, '@' . strtolower($domain->domain)))) {
+            if ($team->enforcesDomain() && !$team->hasVerifiedDomainFor((string) $request->email)) {
                 return response()->json([
                     'message' => 'You cannot invite member in this team.',
                 ], 400);
@@ -405,6 +403,14 @@ class TeamApiController extends Controller
                 /** @var Team|null $team */
                 $team = Team::model()->find($request->team_id);
                 if ($request->action == 'reject') {
+                    // Only an invitation not yet accepted can be rejected. A
+                    // joined member leaves through leave(), which decides
+                    // whether their domain lets them.
+                    if (!$team || !$team->hasPendingMember($user)) {
+                        return response()->json([
+                            'message' => 'Invitation not found',
+                        ], 400);
+                    }
                     $team->allUsers()->detach($user);
                     $user->removeRole($team);
                     return response()->json([
@@ -522,9 +528,7 @@ class TeamApiController extends Controller
             // A member on any of the team's verified domains is managed by the
             // domain, not only one on the primary: deactivate them rather than
             // remove them.
-            $email = strtolower((string) $user->email);
-            $onVerifiedDomain = $team->domains()->whereNotNull('verified_at')->get()
-                ->contains(fn (Domain $domain) => str_ends_with($email, '@' . strtolower($domain->domain)));
+            $onVerifiedDomain = $team->hasVerifiedDomainFor((string) $user->email);
 
             if ($onVerifiedDomain) {
                 // Deactivating is account-wide: a member leaving on their own
@@ -547,8 +551,21 @@ class TeamApiController extends Controller
                 }
             }
 
-            $team->users()->detach($user);
-            $user->removeRole($team);
+            // An unverified domain manages nobody, so the member is removed as
+            // any other would be. One deactivated through a domain the team
+            // still holds — verified until a new token unverified it — gets
+            // their account back as they go: detached and still deactivated,
+            // they would be locked out of the whole application with nothing
+            // left to undo it.
+            $reactivate = !$user->active && $team->holdsDomainFor((string) $user->email);
+
+            DB::transaction(function () use ($team, $user, $reactivate) {
+                $team->users()->detach($user);
+                $user->removeRole($team);
+                if ($reactivate) {
+                    $user->activate();
+                }
+            });
 
             return response()->json([
                 'message' => 'Removed Successfully',
@@ -631,8 +648,15 @@ class TeamApiController extends Controller
             }
 
             if ($request->action == 'reject') {
-                // Rejecting also removes an already-joined member, so the
-                // team-scoped role has to go with the membership.
+                // Only a membership not yet joined can be rejected. A joined
+                // member is removed through leave(), which keeps the owner and
+                // deactivates a member the team's domain manages.
+                if (!$team->hasPendingMember($member)) {
+                    return response()->json([
+                        'message' => 'Request not found',
+                    ], 400);
+                }
+
                 DB::transaction(function () use ($team, $member) {
                     $team->allUsers()->detach($member);
                     $member->removeRole($team);
@@ -695,19 +719,9 @@ class TeamApiController extends Controller
         // A member on any of the team's verified domains is inside its
         // boundary, as on the web domain page. Counting per domain flagged
         // members of one federated domain as outside every other one.
-        $verified = $domains->filter(fn ($domain) => $domain->verified_at !== null)
-            ->map(fn ($domain) => '@' . strtolower($domain->domain))
-            ->all();
-
-        $outside = $team->users->filter(function ($member) use ($verified) {
-            foreach ($verified as $suffix) {
-                if (str_ends_with(strtolower($member->email), $suffix)) {
-                    return false;
-                }
-            }
-
-            return true;
-        })->count();
+        $outside = $team->users
+            ->reject(fn ($member) => $team->hasVerifiedDomainFor((string) $member->email))
+            ->count();
 
         foreach ($domains as $domain) {
             if ($domain->enforce && $domain->verified_at) {
@@ -742,15 +756,13 @@ class TeamApiController extends Controller
 
         $request->validate([
             'domain' => [
+                // Stop at the first failure: a value already refused need not
+                // be judged as a host name too.
+                'bail',
                 'required',
                 'string',
                 'max:255',
-                function (string $attribute, mixed $value, \Closure $fail) {
-                    // `...` passes `required` but is nothing once canonicalised.
-                    if (Domain::canonicalHost((string) $value) === '') {
-                        $fail('The domain must be a host name.');
-                    }
-                },
+                new Hostname(),
             ],
         ]);
 
@@ -762,6 +774,16 @@ class TeamApiController extends Controller
         if (!$held && Domain::findByHostForOwnerType($name, 'team')) {
             return response()->json([
                 'message' => 'This domain is already verified by another team.',
+            ], 400);
+        }
+
+        // Re-submitting issues a new token and unverifies the domain. A
+        // platform subdomain is verified by the platform, and its owner cannot
+        // publish a record in the platform's zone, so it could never verify
+        // again.
+        if ($held && Domain::isPlatformSubdomain($name)) {
+            return response()->json([
+                'message' => 'A platform subdomain does not use a verification token.',
             ], 400);
         }
 
@@ -830,6 +852,14 @@ class TeamApiController extends Controller
             }
 
             if ($request->token) {
+                // A new token unverifies the domain until the record is
+                // published, and nobody can publish one in the platform's zone.
+                if (Domain::isPlatformSubdomain($domain->domain)) {
+                    return response()->json([
+                        'message' => 'A platform subdomain does not use a verification token.',
+                    ], 400);
+                }
+
                 $token = Str::random(32);
                 $domain->verification_token = $token;
                 $domain->verified_at = null;
@@ -883,17 +913,22 @@ class TeamApiController extends Controller
             $owner = $domain->owner;
             $wasPrimary = $domain->is_primary;
 
-            $domain->rules()->delete();
-            $domain->delete();
-
             // Deleting the primary leaves the team with none, and whatever
             // reads the primary stops working. Hand it to a verified domain,
-            // or failing that any remaining one.
-            if ($wasPrimary && $owner) {
-                $next = $owner->domains()->whereNotNull('verified_at')->first()
-                    ?? $owner->domains()->first();
-                $next?->markAsPrimary();
-            }
+            // or failing that any remaining one, the oldest first so the
+            // choice does not depend on row order. One transaction, so a
+            // failed promotion does not leave the domain deleted and the team
+            // without a primary.
+            DB::transaction(function () use ($domain, $owner, $wasPrimary) {
+                $domain->rules()->delete();
+                $domain->delete();
+
+                if ($wasPrimary && $owner) {
+                    $next = $owner->domains()->whereNotNull('verified_at')->orderBy('id')->first()
+                        ?? $owner->domains()->orderBy('id')->first();
+                    $next?->markAsPrimary();
+                }
+            });
 
             return response()->json([
                 'message' => 'Domain has been deleted.',

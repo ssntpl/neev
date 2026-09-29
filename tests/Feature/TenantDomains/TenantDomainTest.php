@@ -772,4 +772,32 @@ class TenantDomainTest extends TestCase
 
         $response->assertStatus(404);
     }
+
+    public function test_adding_a_domain_that_is_not_a_string_is_refused(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains/', ['team_id' => $team->id, 'domain' => ['acme.com']])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('domain');
+
+        $this->assertSame(0, Domain::count());
+    }
+
+    public function test_adding_something_that_is_not_a_host_name_is_refused(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+
+        foreach (['https://acme.com/x', 'ac me.com', str_repeat('a', 250) . '.com'] as $value) {
+            $this->withHeader('Authorization', 'Bearer ' . $token)
+                ->postJson('/neev/tenant-domains/', ['team_id' => $team->id, 'domain' => $value])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors('domain');
+        }
+
+        $this->assertSame(0, Domain::count());
+    }
 }

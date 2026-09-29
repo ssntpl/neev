@@ -262,11 +262,36 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
      */
     public function hasVerifiedDomainFor(string $email): bool
     {
+        return static::emailIsOnAnyOf($email, $this->customDomains);
+    }
+
+    /**
+     * Whether the email is on any domain the team holds, verified or not. An
+     * unverified domain manages nobody; this only tells whether a deactivated
+     * member removed from the team gets their account back.
+     */
+    public function holdsDomainFor(string $email): bool
+    {
+        return static::emailIsOnAnyOf($email, $this->domains);
+    }
+
+    /**
+     * The one place an address is matched against domains, so the controllers
+     * and the Blade views cannot drift apart on it.
+     *
+     * @param  iterable<Domain>  $domains
+     */
+    protected static function emailIsOnAnyOf(string $email, iterable $domains): bool
+    {
         $email = strtolower($email);
 
-        return $this->customDomains->contains(
-            fn (Domain $domain) => str_ends_with($email, '@' . strtolower($domain->domain))
-        );
+        foreach ($domains as $domain) {
+            if (str_ends_with($email, '@' . strtolower($domain->domain))) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

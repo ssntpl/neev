@@ -1292,4 +1292,118 @@ class MembershipTest extends TestCase
         $response->assertStatus(400)
             ->assertJsonPath('message', 'Invalid Action.');
     }
+
+    // -----------------------------------------------------------------
+    // Rejecting reaches pending memberships only
+    // -----------------------------------------------------------------
+
+    /**
+     * Rejecting an invitation by team_id is for one not yet accepted. A joined
+     * member on a verified domain, refused by leave(), must not get out this way.
+     */
+    public function test_rejecting_an_invitation_does_not_remove_a_joined_member(): void
+    {
+        $this->enableDomainFederation();
+
+        [$owner] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
+        DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+        $member = User::factory()->create(['email' => 'employee@acme.com']);
+        $team->addMember($member);
+        $token = $member->createLoginToken(60)->plainTextToken;
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/inviteUser', ['team_id' => $team->id, 'action' => 'reject'])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Invitation not found');
+
+        $this->assertTrue($team->refresh()->hasMember($member));
+    }
+
+    public function test_rejecting_an_invitation_for_a_missing_team_is_refused(): void
+    {
+        [, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/inviteUser', ['team_id' => 999999, 'action' => 'reject'])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Invitation not found');
+    }
+
+    /**
+     * Rejecting a join request must not remove a joined member: that is
+     * leave()'s job, which keeps the owner and deactivates a member the
+     * team's domain manages.
+     */
+    public function test_rejecting_a_request_does_not_remove_a_joined_member_or_the_owner(): void
+    {
+        $this->enableDomainFederation();
+
+        [$owner] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
+        DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+        [$member, $token] = $this->authenticatedUser();
+        $team->addMember($member);
+        $colleague = User::factory()->create(['email' => 'colleague@acme.com']);
+        $team->addMember($colleague);
+
+        foreach ([$colleague, $owner] as $subject) {
+            $this->withHeader('Authorization', 'Bearer ' . $token)
+                ->putJson('/neev/teams/request', [
+                    'team_id' => $team->id,
+                    'user_id' => $subject->id,
+                    'action' => 'reject',
+                ])
+                ->assertStatus(400)
+                ->assertJsonPath('message', 'Request not found');
+        }
+
+        $team->refresh();
+        $this->assertTrue($team->hasMember($colleague));
+        $this->assertTrue($team->hasMember($owner));
+    }
+
+    /**
+     * Once a new token unverifies the domain it manages nobody, so removing a
+     * member deactivated through it removes them like anyone else — and gives
+     * their account back, rather than leaving it locked application-wide.
+     */
+    public function test_removing_a_member_after_a_new_token_unverifies_the_domain_detaches_and_reactivates_them(): void
+    {
+        $this->enableDomainFederation();
+
+        [$owner, $ownerToken] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
+        $domain = DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+        $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.com']);
+        $team->addMember($member);
+
+        $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
+            ->putJson('/neev/teams/leave', ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertJsonPath('message', 'User Deactivated Successfully');
+
+        $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
+            ->putJson('/neev/domains', ['domain_id' => $domain->id, 'token' => true])
+            ->assertOk();
+
+        $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
+            ->putJson('/neev/teams/leave', ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertOk()
+            ->assertJsonPath('message', 'Removed Successfully');
+
+        $this->assertTrue($member->fresh()->active);
+        $this->assertFalse($team->refresh()->hasMember($member));
+    }
 }

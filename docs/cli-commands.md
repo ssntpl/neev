@@ -290,9 +290,9 @@ php artisan neev:domain:verify --all
 
 Performs a `dns_get_record()` lookup on `_neev-verification.{domain}` and matches the TXT value against the stored verification token.
 
-When more than one owner has claimed the domain, the command lists the claims and exits without verifying any; pass `--owner-type` and `--owner-id` to choose one. `--force` skips the DNS check but not the ownership rule: it refuses a claim when another owner of the same type has already verified the domain. It goes through `Domain::markVerified()`, as a DNS match does, so it also clears any earlier verification failure.
+When more than one owner has claimed the domain, the command lists the claims and exits without verifying any; pass `--owner-type` and `--owner-id` to choose one. `--force` skips the DNS check but not the ownership rule: it refuses a claim when another owner of the same type has already verified the domain. It goes through `Domain::markVerified()`, as a DNS match does, so it also clears any earlier verification failure and fires `DomainVerified` for a pending claim.
 
-`--all` queues a `VerifyDomainJob` per verified domain. A job whose domain was unverified by a new token after it was queued, on a host another owner has verified since, is skipped and logged rather than failed.
+`--all` queues a `VerifyDomainJob` per verified domain. `VerifyDomainJob` re-checks a domain that is verified when the job runs, and does nothing for any other. A domain unverified by a new token after its job was queued is therefore skipped: it is a new claim waiting for its record, not one to re-check, so it is neither verified nor marked failed. Verify a pending claim with this command without `--all`, or with `Domain::verify()`.
 
 ### `neev:domain:list`
 
@@ -302,12 +302,13 @@ List domains with optional filters.
 php artisan neev:domain:list
 php artisan neev:domain:list --owner-type=tenant --unverified
 php artisan neev:domain:list --owner-type=team --owner-id=1 --json
+php artisan neev:domain:list --owner-type=team --owner-id=acme
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--owner-type=` | Filter by owner type (`team` or `tenant`) |
-| `--owner-id=` | Filter by owner ID |
+| `--owner-id=` | Filter by owner ID, or by slug (a slug needs `--owner-type`) |
 | `--unverified` | Show only unverified domains |
 | `--json` | Output as JSON |
 

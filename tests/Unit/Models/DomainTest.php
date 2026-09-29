@@ -371,6 +371,47 @@ class DomainTest extends TestCase
         $this->assertNull($mine->verification_failed_at);
     }
 
+    public function test_mark_verified_fires_domain_verified_for_a_pending_claim(): void
+    {
+        Event::fake([DomainVerified::class]);
+        $claim = DomainFactory::new()->create(['domain' => 'acme.com']);
+
+        $claim->markVerified();
+
+        Event::assertDispatched(DomainVerified::class, fn (DomainVerified $e) => $e->domain->is($claim));
+    }
+
+    public function test_mark_verified_does_not_fire_domain_verified_again_for_a_verified_domain(): void
+    {
+        Event::fake([DomainVerified::class]);
+        $domain = DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+
+        $domain->markVerified();
+
+        Event::assertNotDispatched(DomainVerified::class);
+    }
+
+    /**
+     * A model loaded while verified, whose row a new token then reset, must
+     * not skip the first-owner check because of what it remembers.
+     */
+    public function test_mark_verified_decides_from_the_row_not_a_stale_model(): void
+    {
+        $stale = DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        Domain::whereKey($stale->id)->update(['verified_at' => null]);
+        DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        $this->travel(5)->seconds();
+
+        $this->expectException(DomainAlreadyVerifiedException::class);
+
+        try {
+            $stale->markVerified();
+        } finally {
+            $this->assertNull($stale->fresh()->verified_at);
+            $this->assertSame(1, Domain::where('domain', 'acme.com')->whereNotNull('verified_at')->count());
+        }
+    }
+
     // -----------------------------------------------------------------
     // verify() — DNS answers
     // -----------------------------------------------------------------

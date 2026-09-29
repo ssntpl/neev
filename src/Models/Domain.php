@@ -280,11 +280,10 @@ class Domain extends Model
 
         if ($matched) {
             $wasFailingVerification = $this->verification_failed_at !== null;
-            $isFirstVerification = $this->verified_at === null;
 
-            $this->markVerified();
-
-            if ($isFirstVerification) {
+            // Whether this is the first verification is read from the locked
+            // row, not this model, which may predate a new token.
+            if ($this->saveVerified()) {
                 event(new DomainVerified($this));
             } elseif ($wasFailingVerification) {
                 event(new DomainReverified($this));
@@ -311,27 +310,48 @@ class Domain extends Model
      * rule is decided again here with every claim on the host locked, so the
      * second of two concurrent claims waits for the first and then sees it.
      *
+     * Fires DomainVerified when the claim was pending, as a DNS match does.
+     *
      * @throws DomainAlreadyVerifiedException when another owner of the same
      *         kind has verified the host first
      */
     public function markVerified(): void
     {
-        DB::transaction(function () {
-            if ($this->verified_at === null) {
-                $taken = static::where('domain', $this->domain)
-                    ->where('owner_type', $this->owner_type)
-                    ->lockForUpdate()
-                    ->get()
-                    ->contains(fn (Domain $claim) => $claim->id !== $this->id && $claim->verified_at !== null);
+        if ($this->saveVerified()) {
+            event(new DomainVerified($this));
+        }
+    }
 
-                if ($taken) {
-                    throw new DomainAlreadyVerifiedException((string) $this->owner_type);
-                }
+    /**
+     * Save the claim as verified under the first-owner rule, and say whether
+     * it was pending until now.
+     *
+     * Whether the claim is pending is read from its locked row rather than
+     * this model: a model loaded while verified and then reset by a new token
+     * would otherwise skip the check, and a second owner would be saved
+     * verified beside the first.
+     *
+     * @throws DomainAlreadyVerifiedException
+     */
+    private function saveVerified(): bool
+    {
+        return DB::transaction(function () {
+            $claims = static::where('domain', $this->domain)
+                ->where('owner_type', $this->owner_type)
+                ->lockForUpdate()
+                ->get();
+
+            $wasPending = $claims->firstWhere('id', $this->id)?->verified_at === null;
+
+            if ($wasPending && $claims->contains(fn (Domain $claim) => $claim->id !== $this->id && $claim->verified_at !== null)) {
+                throw new DomainAlreadyVerifiedException((string) $this->owner_type);
             }
 
             $this->verified_at = now();
             $this->verification_failed_at = null;
             $this->save();
+
+            return $wasPending;
         });
     }
 

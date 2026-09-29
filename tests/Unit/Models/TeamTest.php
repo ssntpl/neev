@@ -682,4 +682,18 @@ class TeamTest extends TestCase
 
         TeamFactory::new()->create(['slug' => 'shared', 'tenant_id' => $two->id]);
     }
+
+    public function test_an_address_on_an_unverified_domain_is_held_but_not_verified(): void
+    {
+        $team = TeamFactory::new()->create();
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.com']);
+        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.io']);
+
+        $this->assertTrue($team->holdsDomainFor('Alice@ACME.com'));
+        $this->assertFalse($team->hasVerifiedDomainFor('Alice@ACME.com'));
+        $this->assertTrue($team->hasVerifiedDomainFor('bob@acme.io'));
+        $this->assertFalse($team->holdsDomainFor('carol@other.com'));
+        // The suffix is the whole domain, not any tail of it.
+        $this->assertFalse($team->holdsDomainFor('dave@notacme.com'));
+    }
 }

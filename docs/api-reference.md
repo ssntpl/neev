@@ -1947,6 +1947,11 @@ Authorization: Bearer {token}
 }
 ```
 
+`reject` with `team_id` declines an invitation not yet accepted. It does not
+remove a joined member — that is [Leave Team](#leave-team) — and answers
+`400 Invitation not found` when the caller has no pending membership in the
+team, or the team does not exist.
+
 Or for email invitations:
 
 ```json
@@ -1979,7 +1984,11 @@ Authorization: Bearer {token}
 
 Send `user_id` as well to remove another member. A member whose email is on
 one of the team's verified domains is deactivated rather than removed
-(`User Deactivated Successfully`; again, `User Activated Successfully`).
+(`User Deactivated Successfully`; again, `User Activated Successfully`). An
+unverified domain manages nobody: a member on it is removed
+(`Removed Successfully`), and a deactivated member whose email is on a domain
+the team still holds, such as one a new token has unverified, is reactivated as
+they are removed, whoever deactivated them.
 
 A membership not yet joined — an invitation the user has not accepted, or a
 join request the team has not answered — is withdrawn (`Removed Successfully`)
@@ -2051,6 +2060,11 @@ Authorization: Bearer {token}
     "role": "member"
 }
 ```
+
+`reject` declines a membership not yet joined. It does not remove a joined
+member — that is [Leave Team](#leave-team), which keeps the owner and
+deactivates a member on a verified domain — and answers `400 Request not found`
+for one.
 
 ---
 
@@ -2182,8 +2196,13 @@ row. Re-submitting a domain issues a new token and unverifies it until the new
 record is verified; its primary flag is kept.
 
 **Errors:**
-- `422` — `domain` is missing, or is nothing once canonicalised (`...`).
+- `422` — `domain` is not a host name: missing, not a string, nothing once
+  canonicalised (`...`), or a URL, path, port, space, single label or IP
+  address.
 - `400 This domain is already verified by another team.`
+- `400 A platform subdomain does not use a verification token.` — the team
+  already holds this platform subdomain; it is verified by the platform and
+  cannot be re-verified through DNS.
 - `400 An unexpected error occurred.` — the domain could not be saved.
 
 ---
@@ -2215,7 +2234,8 @@ Authorization: Bearer {token}
 
 To get a new token, send `"token": true` instead of `"verify"`. The response
 carries `token` and `dns_record` as for [Add Domain](#add-domain), and the
-domain is unverified until the new record is verified.
+domain is unverified until the new record is verified. A platform subdomain is
+refused with `400 A platform subdomain does not use a verification token.`
 
 ---
 
@@ -2239,7 +2259,7 @@ Authorization: Bearer {token}
 ```
 
 Deleting the primary domain makes one of the remaining domains primary,
-preferring a verified one.
+preferring a verified one, and among those the oldest.
 
 ---
 
@@ -2282,7 +2302,9 @@ claiming team, against the `platform_domain` config — the request cannot
 influence it. A team's own subdomain (its slug under a platform domain) is
 verified immediately and the response carries no token; anything else comes back
 with `verification_token` and `dns_record` to publish. A `domain` that is
-nothing once canonicalised (`...`) is refused with `422`. The domain is compared
+not a host name (nothing once canonicalised, not a string, a URL, a path, a
+port, a space, a single label, an IP address, or over 255 characters) is
+refused with `422`. The domain is compared
 in canonical form (lowercase, no trailing dot), so `ACME.com.` beside the
 team's `acme.com` is refused with `422` too.
 

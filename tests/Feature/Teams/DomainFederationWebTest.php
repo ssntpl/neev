@@ -423,4 +423,128 @@ class DomainFederationWebTest extends TestCase
             ->assertSee('_neev-verification.acme.com')
             ->assertSee('the-token-value');
     }
+
+    public function test_a_platform_subdomain_does_not_get_a_new_token(): void
+    {
+        config(['neev.platform_domain' => 'otper.com']);
+        [$team, $owner] = $this->teamWithOwner();
+        $domain = DomainFactory::new()->verified()->forTeam($team)->create(['domain' => 'acme.otper.com']);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->put(route('teams.domain', $domain->id), ['token' => 'token'])
+            ->assertSessionHasErrors(['message' => 'A platform subdomain does not use a verification token.']);
+
+        $this->assertNotNull($domain->fresh()->verified_at);
+    }
+
+    public function test_refederating_a_platform_subdomain_is_refused(): void
+    {
+        config(['neev.platform_domain' => 'otper.com']);
+        [$team, $owner] = $this->teamWithOwner();
+        $domain = DomainFactory::new()->verified()->forTeam($team)->create(['domain' => 'acme.otper.com']);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->post(route('teams.domain', $team->id), ['domain' => 'acme.otper.com'])
+            ->assertSessionHasErrors(['message' => 'A platform subdomain does not use a verification token.']);
+
+        $this->assertNotNull($domain->fresh()->verified_at);
+    }
+
+    public function test_federating_a_domain_that_is_not_a_string_is_refused(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->post(route('teams.domain', $team->id), ['domain' => ['acme.com']])
+            ->assertSessionHasErrors('domain');
+
+        $this->assertSame(0, Domain::count());
+    }
+
+    public function test_rejecting_an_invitation_does_not_remove_a_joined_member(): void
+    {
+        [$team] = $this->teamWithOwner();
+        DomainFactory::new()->verified()->primary()->forTeam($team)->create(['domain' => 'acme.com']);
+        $member = User::factory()->create(['email' => 'employee@acme.com']);
+        $team->addMember($member);
+
+        $this->actingAs($member)
+            ->from(config('neev.home'))
+            ->put(route('teams.invite.action'), ['team_id' => $team->id, 'action' => 'reject'])
+            ->assertSessionHasErrors(['message' => 'Invitation not found.']);
+
+        $this->assertTrue($team->refresh()->hasMember($member));
+    }
+
+    public function test_rejecting_a_request_does_not_remove_a_joined_member(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        DomainFactory::new()->verified()->primary()->forTeam($team)->create(['domain' => 'acme.com']);
+        $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.com']);
+        $team->addMember($member);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->put(route('teams.request.action'), [
+                'team_id' => $team->id,
+                'user_id' => $member->id,
+                'action' => 'reject',
+            ])
+            ->assertSessionHasErrors(['message' => 'Join request not found.']);
+
+        $this->assertTrue($team->refresh()->hasMember($member));
+        $this->assertTrue($member->fresh()->active);
+    }
+
+    public function test_removing_a_member_on_an_unverified_domain_detaches_and_reactivates_them(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        DomainFactory::new()->primary()->forTeam($team)->create(['domain' => 'acme.com']);
+        $member = User::factory()->create(['active' => false, 'email' => 'employee@acme.com']);
+        $team->addMember($member);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertSessionHas('status', 'Removed Successfully');
+
+        $this->assertTrue($member->fresh()->active);
+        $this->assertFalse($team->refresh()->hasMember($member));
+    }
+
+    /**
+     * A member deactivated through a domain the team does not hold was
+     * deactivated by someone else; removing them must not undo that.
+     */
+    public function test_removing_a_deactivated_member_off_the_teams_domains_keeps_them_deactivated(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        DomainFactory::new()->verified()->primary()->forTeam($team)->create(['domain' => 'acme.com']);
+        $member = User::factory()->create(['active' => false, 'email' => 'someone@other.com']);
+        $team->addMember($member);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertSessionHas('status', 'Removed Successfully');
+
+        $this->assertFalse($member->fresh()->active);
+        $this->assertFalse($team->refresh()->hasMember($member));
+    }
+
+    public function test_members_page_offers_remove_not_activate_for_a_member_on_an_unverified_domain(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        DomainFactory::new()->primary()->forTeam($team)->create(['domain' => 'acme.com']);
+        $member = User::factory()->create(['active' => false, 'email' => 'employee@acme.com']);
+        $team->addMember($member);
+
+        $this->actingAs($owner)
+            ->get(route('teams.members', $team->id))
+            ->assertOk()
+            ->assertDontSee('Activate');
+    }
 }

@@ -433,13 +433,17 @@ curl -X PUT https://yourapp.com/neev/teams/leave \
 
 ### Members on a Verified Domain
 
-Removing a member whose email is on any of the team's verified domains does not take them out of the team: the domain governs their membership, so their account is **deactivated** instead (`User Deactivated Successfully`). Removing them again reactivates it (`User Activated Successfully`). Members on other addresses are removed as usual.
+Removing a member whose email is on any of the team's verified domains does not take them out of the team: the domain governs their membership, so their account is **deactivated** instead (`User Deactivated Successfully`). Removing them again reactivates it (`User Activated Successfully`).
+
+An unverified domain manages nobody. Once a new token unverifies it, removing a member on it detaches them like any other member (`Removed Successfully`). A deactivated member whose email is on a domain the team still holds is reactivated as they are removed, so a member deactivated through that domain is not left locked out of the whole application. Neev does not record why an account was deactivated, so this applies whoever deactivated them; a deactivated member on no domain of the team's keeps that state. Members on other addresses are removed as usual.
 
 Only members of the team can be removed, deactivated or reactivated this way. A `user_id` with no membership in the team answers `403 You cannot perform this action on this team.`, even when that user's email is on one of the team's verified domains, since deactivation reaches their whole account.
 
 A pending membership (an invitation not yet accepted, or a join request not yet answered) is simply withdrawn (`Removed Successfully`), never deactivated, whatever the user's domain. Any member can withdraw it, and so can the user it names, by sending only `team_id`. The **Remove** button under pending invitations on the members page and **Revoke** on a sent request on the account teams page both do this.
 
-Such a member cannot remove themselves: deactivation is account-wide, so leaving would lock them out of the whole application. The attempt answers `403 You cannot leave a team your email domain manages.`, and the Blade pages do not offer **Leave** to them. Members on other addresses can leave, and the Blade pages offer them **Leave**, even when the team's primary domain is verified. `Team::hasVerifiedDomainFor($email)` tells whether an address is on one of the team's verified domains.
+Rejecting (`PUT /neev/teams/inviteUser` with `team_id` and `"action": "reject"`, or `PUT /neev/teams/request` with `"action": "reject"`) also acts only on a membership not yet joined. A joined member is never removed that way; it answers `400 Invitation not found` / `400 Request not found`, and removing a member goes through `leave` and the rules above.
+
+Such a member cannot remove themselves: deactivation is account-wide, so leaving would lock them out of the whole application. The attempt answers `403 You cannot leave a team your email domain manages.`, and the Blade pages do not offer **Leave** to them. Members on other addresses can leave, and the Blade pages offer them **Leave**, even when the team's primary domain is verified. `Team::hasVerifiedDomainFor($email)` tells whether an address is on one of the team's verified domains, and `Team::holdsDomainFor($email)` whether it is on any domain the team holds, verified or not.
 
 ### Note: Owners Cannot Leave
 
@@ -529,6 +533,8 @@ A claim only reserves the domain once it has been **verified**. An unverified ro
 
 Re-submitting a domain issues a new verification token, and so does asking for one (`"token": true`, or **Get Token** on the domain page). A new token no longer matches the TXT record already published, so the domain goes back to **unverified** until the new record is verified. Its primary flag is kept.
 
+A platform subdomain (a host under `neev.platform_domain`) never gets a new token: it is verified by the platform, and nobody can publish a record in the platform's zone, so it could never verify again. Asking for one, or re-submitting it, answers `400 A platform subdomain does not use a verification token.`
+
 ### Members across several federated domains
 
 When a team federates more than one domain, the "outside members" warning on the domain page counts a member as outside only if their address matches **none** of the team's verified domains. A member on `@acme.io` is not flagged against `@acme.com` when the team federates both.
@@ -561,7 +567,7 @@ curl -X POST https://yourapp.com/neev/domains \
 
 `dns_record` says exactly what to publish: a `TXT` record at `name` whose value is the token. The domain page's token dialog shows the same three fields.
 
-A missing `domain`, or one that is nothing once canonicalised (`...`), is refused with a `422` validation error.
+A `domain` that is not a host name — missing, not a string, nothing once canonicalised (`...`), a URL, a path, a port, a space, a single label such as `localhost`, or an IP address — is refused with a `422` validation error. Internationalised names are accepted in their punycode form (`xn--mnchen-3ya.de`).
 
 ### Verify Domain
 
@@ -587,7 +593,7 @@ To get a new token (for example when the old one was lost), send `"token": true`
 
 `$domain->verify()` checks DNS and records the result. It throws `Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException` when another owner of the same type has already verified the host.
 
-To mark a claim verified without DNS (an admin tool, say), call `$domain->markVerified()` rather than setting `verified_at` yourself. It applies the same first-owner rule and throws the same exception. It re-checks the rule with every claim on the host locked, so two claims verified at the same moment cannot both win. Writing `verified_at` directly skips that check.
+To mark a claim verified without DNS (an admin tool, say), call `$domain->markVerified()` rather than setting `verified_at` yourself. It applies the same first-owner rule and throws the same exception, and fires `DomainVerified` when the claim was pending, as a DNS match does. It re-checks the rule with every claim on the host locked, reading whether this claim is pending from its locked row, so two claims verified at the same moment cannot both win. Writing `verified_at` directly skips that check.
 
 ### Domain Enforcement
 
@@ -604,7 +610,7 @@ curl -X PUT https://yourapp.com/neev/domains \
 
 ### Deleting the Primary Domain
 
-Deleting the team's primary domain hands the primary flag to one of the remaining domains, a verified one if there is any, so the team is not left without a primary.
+Deleting the team's primary domain hands the primary flag to one of the remaining domains, a verified one if there is any and the oldest among them, so the team is not left without a primary.
 
 ---
 

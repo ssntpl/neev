@@ -867,4 +867,103 @@ class DomainFederationTest extends TestCase
         $this->assertDatabaseMissing('domains', ['id' => $domain->id]);
         $this->assertDatabaseMissing('domain_rules', ['domain_id' => $domain->id]);
     }
+
+    // -----------------------------------------------------------------
+    // Platform subdomains and malformed input
+    // -----------------------------------------------------------------
+
+    /**
+     * A new token unverifies the domain until its record is published, and
+     * nobody can publish a record in the platform's zone: the subdomain would
+     * never verify again.
+     */
+    public function test_a_platform_subdomain_does_not_get_a_new_token(): void
+    {
+        config(['neev.platform_domain' => 'otper.com']);
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'slug' => 'acme']);
+        $domain = DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.otper.com',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/domains', ['domain_id' => $domain->id, 'token' => true])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'A platform subdomain does not use a verification token.');
+
+        $this->assertNotNull($domain->fresh()->verified_at);
+    }
+
+    public function test_refederating_a_platform_subdomain_is_refused(): void
+    {
+        config(['neev.platform_domain' => 'otper.com']);
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'slug' => 'acme']);
+        $domain = DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.otper.com',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/domains', ['team_id' => $team->id, 'domain' => 'acme.otper.com'])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'A platform subdomain does not use a verification token.');
+
+        $this->assertNotNull($domain->fresh()->verified_at);
+    }
+
+    public function test_federating_a_domain_that_is_not_a_string_is_refused(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/domains', ['team_id' => $team->id, 'domain' => ['acme.com']])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('domain');
+
+        $this->assertSame(0, Domain::count());
+    }
+
+    public function test_federating_something_that_is_not_a_host_name_is_refused(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+
+        foreach (['https://acme.com/x', 'ac me.com', 'acme.com:8080'] as $value) {
+            $this->withHeader('Authorization', 'Bearer ' . $token)
+                ->postJson('/neev/domains', ['team_id' => $team->id, 'domain' => $value])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors('domain');
+        }
+
+        $this->assertSame(0, Domain::count());
+    }
+
+    /**
+     * With several candidates, the oldest verified one becomes primary, so the
+     * choice does not depend on the order the database returns rows in.
+     */
+    public function test_deleting_the_primary_promotes_the_oldest_verified_domain(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $primary = DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.com',
+        ]);
+        $oldest = DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.io',
+        ]);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.dev',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/domains', ['domain_id' => $primary->id])
+            ->assertOk();
+
+        $this->assertTrue($oldest->fresh()->is_primary);
+        $this->assertSame(1, $team->domains()->where('is_primary', true)->count());
+    }
 }

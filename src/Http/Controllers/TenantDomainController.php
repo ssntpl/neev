@@ -4,11 +4,13 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
 use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Rules\Hostname;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\TenantResolver;
 
@@ -78,14 +80,13 @@ class TenantDomainController extends Controller
 
         $request->validate([
             'domain' => [
+                // Stop at the first failure: the unique checks below need not
+                // query for a value already refused.
+                'bail',
                 'required',
                 'string',
-                function (string $attribute, mixed $value, \Closure $fail) {
-                    // `...` passes `required` but is nothing once canonicalised.
-                    if (Domain::canonicalHost((string) $value) === '') {
-                        $fail('The domain must be a host name.');
-                    }
-                },
+                'max:255',
+                new Hostname(),
                 // This team cannot register the same domain twice.
                 Rule::unique('domains', 'domain')->where(
                     fn ($query) => $query->where('owner_type', 'team')->where('owner_id', $team->id)
@@ -207,16 +208,22 @@ class TenantDomainController extends Controller
 
         try {
             $wasPrimary = $tenantDomain->is_primary;
-            $tenantDomain->delete();
 
             // If we deleted the primary domain, set another as primary,
             // preferring a verified one: setPrimary() refuses an unverified
             // domain, and an unverified primary gives the team no web domain.
-            if ($wasPrimary) {
-                $newPrimary = $owner->domains()->whereNotNull('verified_at')->first()
-                    ?? $owner->domains()->first();
-                $newPrimary?->markAsPrimary();
-            }
+            // The oldest first, so the choice does not depend on row order,
+            // and in one transaction with the delete, so a failed promotion
+            // does not leave the team without a primary.
+            DB::transaction(function () use ($tenantDomain, $owner, $wasPrimary) {
+                $tenantDomain->delete();
+
+                if ($wasPrimary) {
+                    $newPrimary = $owner->domains()->whereNotNull('verified_at')->orderBy('id')->first()
+                        ?? $owner->domains()->orderBy('id')->first();
+                    $newPrimary?->markAsPrimary();
+                }
+            });
 
             return response()->json([
                 'message' => 'Domain deleted successfully.',
