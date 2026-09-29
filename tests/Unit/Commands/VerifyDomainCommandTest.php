@@ -5,11 +5,23 @@ namespace Ssntpl\Neev\Tests\Unit\Commands;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Models\Tenant;
+use Ssntpl\Neev\Tests\Support\FakeDns;
 use Ssntpl\Neev\Tests\TestCase;
+
+// Must load before any test calls Domain::verify(); see the file for why.
+require_once __DIR__ . '/../../Support/FakeDns.php';
 
 class VerifyDomainCommandTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        FakeDns::reset();
+
+        parent::tearDown();
+    }
 
     // -----------------------------------------------------------------
     // One claim — unchanged behaviour
@@ -85,6 +97,27 @@ class VerifyDomainCommandTest extends TestCase
         $this->assertNotNull($mine->fresh()->verified_at);
     }
 
+    public function test_owner_options_pick_a_tenant_claim(): void
+    {
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme']);
+        $other = DomainFactory::new()->create(['domain' => 'acme.com']);
+        $mine = DomainFactory::new()->create([
+            'domain' => 'acme.com',
+            'owner_type' => 'tenant',
+            'owner_id' => $tenant->id,
+        ]);
+
+        $this->artisan('neev:domain:verify', [
+            'domain' => 'acme.com',
+            '--owner-type' => 'tenant',
+            '--owner-id' => $tenant->slug,
+            '--force' => true,
+        ])->assertSuccessful();
+
+        $this->assertNotNull($mine->fresh()->verified_at);
+        $this->assertNull($other->fresh()->verified_at);
+    }
+
     public function test_owner_id_needs_owner_type(): void
     {
         DomainFactory::new()->create(['domain' => 'acme.com']);
@@ -92,6 +125,35 @@ class VerifyDomainCommandTest extends TestCase
         $this->artisan('neev:domain:verify', ['domain' => 'acme.com', '--owner-id' => '1'])
             ->expectsOutputToContain('--owner-id needs --owner-type')
             ->assertFailed();
+    }
+
+    // -----------------------------------------------------------------
+    // DNS check
+    // -----------------------------------------------------------------
+
+    public function test_verifies_when_the_txt_record_matches(): void
+    {
+        $domain = DomainFactory::new()->create(['domain' => 'acme.com']);
+        FakeDns::txt('_neev-verification.acme.com', $domain->generateVerificationToken());
+
+        $this->artisan('neev:domain:verify', ['domain' => 'acme.com'])
+            ->expectsOutputToContain('Domain verified successfully: acme.com')
+            ->assertSuccessful();
+
+        $this->assertNotNull($domain->fresh()->verified_at);
+    }
+
+    public function test_fails_when_the_txt_record_does_not_match(): void
+    {
+        $domain = DomainFactory::new()->create(['domain' => 'acme.com']);
+        $domain->generateVerificationToken();
+        FakeDns::txt('_neev-verification.acme.com', 'someone-elses-token');
+
+        $this->artisan('neev:domain:verify', ['domain' => 'acme.com'])
+            ->expectsOutputToContain('DNS verification failed.')
+            ->assertFailed();
+
+        $this->assertNull($domain->fresh()->verified_at);
     }
 
     // -----------------------------------------------------------------

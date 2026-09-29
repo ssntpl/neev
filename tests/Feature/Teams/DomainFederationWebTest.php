@@ -344,6 +344,22 @@ class DomainFederationWebTest extends TestCase
         $this->assertFalse($team->allUsers()->whereKey($requester->id)->exists());
     }
 
+    public function test_leave_refuses_to_withdraw_someone_elses_pending_membership_for_a_non_member(): void
+    {
+        [$team] = $this->teamWithOwner();
+        $requester = User::factory()->create();
+        $team->addMember($requester, joined: false, action: Membership::REQUEST_FROM_USER);
+
+        $stranger = User::factory()->create();
+
+        $this->actingAs($stranger)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'user_id' => $requester->id])
+            ->assertSessionHasErrors(['message' => 'You cannot perform this action on this team.']);
+
+        $this->assertTrue($team->allUsers()->whereKey($requester->id)->exists());
+    }
+
     public function test_account_teams_page_offers_leave_to_a_member_outside_the_verified_domains(): void
     {
         [$team] = $this->teamWithOwner();

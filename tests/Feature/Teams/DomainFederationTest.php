@@ -411,6 +411,20 @@ class DomainFederationTest extends TestCase
         $this->assertSame(1, $team->domains()->where('is_primary', true)->count());
     }
 
+    public function test_deleting_the_last_primary_falls_back_to_an_unverified_domain(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $primary = DomainFactory::new()->verified()->primary()->forTeam($team)->create();
+        $pending = DomainFactory::new()->forTeam($team)->create();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/domains', ['domain_id' => $primary->id])
+            ->assertOk();
+
+        $this->assertTrue($pending->fresh()->is_primary);
+    }
+
     public function test_deleting_a_non_primary_domain_keeps_the_primary(): void
     {
         [$owner, $token] = $this->authenticatedUser();
