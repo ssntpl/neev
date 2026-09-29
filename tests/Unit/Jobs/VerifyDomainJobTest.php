@@ -33,17 +33,25 @@ class VerifyDomainJobTest extends TestCase
      */
     public function test_skips_a_claim_another_owner_now_holds(): void
     {
-        DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
-        $claim = DomainFactory::new()->create([
+        Event::fake([DomainVerified::class]);
+        $claim = DomainFactory::new()->verified()->create([
             'domain' => 'acme.com',
-            'verification_token' => 'pending',
+            'verification_token' => 'old',
         ]);
+        $job = new VerifyDomainJob($claim);
 
-        (new VerifyDomainJob($claim))->handle();
+        // While the job runs on the model it loaded verified, a new token
+        // resets the row and another owner verifies the host.
+        Domain::whereKey($claim->id)->update(['verified_at' => null, 'verification_token' => 'new']);
+        DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        FakeDns::txt('_neev-verification.acme.com', 'old');
+
+        $job->handle();
 
         $claim->refresh();
         $this->assertNull($claim->verified_at);
         $this->assertNull($claim->verification_failed_at);
+        Event::assertNotDispatched(DomainVerified::class);
     }
 
     /**

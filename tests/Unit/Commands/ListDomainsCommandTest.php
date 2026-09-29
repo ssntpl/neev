@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Unit\Commands;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Tests\TestCase;
 
 class ListDomainsCommandTest extends TestCase
@@ -30,6 +31,18 @@ class ListDomainsCommandTest extends TestCase
         DomainFactory::new()->create(['domain' => 'other.com']);
 
         $this->artisan('neev:domain:list', ['--owner-type' => 'team', '--owner-id' => $team->slug])
+            ->expectsOutputToContain('mine.com')
+            ->doesntExpectOutputToContain('other.com')
+            ->assertSuccessful();
+    }
+
+    public function test_owner_id_accepts_a_tenant_slug(): void
+    {
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme']);
+        DomainFactory::new()->create(['owner_type' => 'tenant', 'owner_id' => $tenant->id, 'domain' => 'mine.com']);
+        DomainFactory::new()->create(['domain' => 'other.com']);
+
+        $this->artisan('neev:domain:list', ['--owner-type' => 'tenant', '--owner-id' => $tenant->slug])
             ->expectsOutputToContain('mine.com')
             ->doesntExpectOutputToContain('other.com')
             ->assertSuccessful();
