@@ -186,7 +186,9 @@ one of the team's verified domains, as does the Blade route. Removing such a
 member deactivates their account, so leaving used to lock them out of the whole
 application. Another member can still deactivate and reactivate them. Once a
 new token unverifies the domain, removing such a member detaches them and
-reactivates their account.
+reactivates their account, unless another team they belong to also holds a
+claim on that domain. Deleting a domain, verified or since unverified by a new
+token, reactivates the team's deactivated members on it.
 
 **`VerifyDomainJob` re-checks verified domains only (behaviour change).** The
 job now does nothing for a domain that is not verified when it runs. The
@@ -220,10 +222,17 @@ three views, or switch their conditions to those methods.
 
 **New public methods on `Team` (check a custom team model).** This release adds
 `hasVerifiedDomainFor()`, `holdsDomainFor()`, `enforcesDomain()`,
-`acceptsJoinRequests()` and `hasPendingMember()` to `Ssntpl\Neev\Models\Team`.
+`acceptsJoinRequests()`, `hasPendingMember()`, `reactivatesOnRemoval()`,
+`reactivateMembersOn()` and `federateDomain()` to `Ssntpl\Neev\Models\Team`.
 The package's controllers and views call them. If your `team_model` extends
 `Team` and already defines a method with one of these names, rename yours, or
 make sure it keeps the same signature and meaning.
+
+**Team domain tokens are 64 hex characters (API clients).** `POST /neev/domains`
+and `PUT /neev/domains` with `token` issue tokens from the same generator as the
+tenant-domain endpoints, so they are 64 hexadecimal characters rather than 32
+alphanumerics. Tokens already issued, and the TXT records holding them, keep
+working. Only a client that checks the token's length or alphabet needs a change.
 
 **Federating validates `domain` (API clients).** `POST /neev/domains`, the Blade
 federate form and `POST /neev/tenant-domains` answer `422` for a `domain` that

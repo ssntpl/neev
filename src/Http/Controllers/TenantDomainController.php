@@ -4,7 +4,6 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Exception;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
 use Ssntpl\Neev\Models\Team;
@@ -207,23 +206,7 @@ class TenantDomainController extends Controller
         }
 
         try {
-            $wasPrimary = $tenantDomain->is_primary;
-
-            // If we deleted the primary domain, set another as primary,
-            // preferring a verified one: setPrimary() refuses an unverified
-            // domain, and an unverified primary gives the team no web domain.
-            // The oldest first, so the choice does not depend on row order,
-            // and in one transaction with the delete, so a failed promotion
-            // does not leave the team without a primary.
-            DB::transaction(function () use ($tenantDomain, $owner, $wasPrimary) {
-                $tenantDomain->delete();
-
-                if ($wasPrimary) {
-                    $newPrimary = $owner->domains()->whereNotNull('verified_at')->orderBy('id')->first()
-                        ?? $owner->domains()->orderBy('id')->first();
-                    $newPrimary?->markAsPrimary();
-                }
-            });
+            $tenantDomain->deleteAndPromote();
 
             return response()->json([
                 'message' => 'Domain deleted successfully.',
@@ -316,10 +299,7 @@ class TenantDomainController extends Controller
         }
 
         try {
-            $token = $tenantDomain->generateVerificationToken();
-            $tenantDomain->verified_at = null;
-            $tenantDomain->verification_failed_at = null;
-            $tenantDomain->save();
+            $token = $tenantDomain->regenerateVerificationToken();
 
             return response()->json([
                 'message' => 'Verification token regenerated.',

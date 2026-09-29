@@ -1988,7 +1988,9 @@ one of the team's verified domains is deactivated rather than removed
 unverified domain manages nobody: a member on it is removed
 (`Removed Successfully`), and a deactivated member whose email is on a domain
 the team still holds, such as one a new token has unverified, is reactivated as
-they are removed, whoever deactivated them.
+they are removed. If another team the member belongs to also holds a claim on
+that domain, the account is left deactivated: Neev does not record which team
+deactivated it, and it may have been that one.
 
 A membership not yet joined — an invitation the user has not accepted, or a
 join request the team has not answered — is withdrawn (`Removed Successfully`)
@@ -2259,7 +2261,9 @@ Authorization: Bearer {token}
 ```
 
 Deleting the primary domain makes one of the remaining domains primary,
-preferring a verified one, and among those the oldest.
+preferring a verified one, and among those the oldest. Deleting a domain,
+including one a new token has unverified, reactivates the team's deactivated
+members whose email is on it, since nothing manages them once it is gone.
 
 ---
 

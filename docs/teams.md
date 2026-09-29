@@ -435,7 +435,7 @@ curl -X PUT https://yourapp.com/neev/teams/leave \
 
 Removing a member whose email is on any of the team's verified domains does not take them out of the team: the domain governs their membership, so their account is **deactivated** instead (`User Deactivated Successfully`). Removing them again reactivates it (`User Activated Successfully`).
 
-An unverified domain manages nobody. Once a new token unverifies it, removing a member on it detaches them like any other member (`Removed Successfully`). A deactivated member whose email is on a domain the team still holds is reactivated as they are removed, so a member deactivated through that domain is not left locked out of the whole application. Neev does not record why an account was deactivated, so this applies whoever deactivated them; a deactivated member on no domain of the team's keeps that state. Members on other addresses are removed as usual.
+An unverified domain manages nobody. Once a new token unverifies it, removing a member on it detaches them like any other member (`Removed Successfully`). A deactivated member whose email is on a domain the team still holds is reactivated as they are removed, so a member deactivated through that domain is not left locked out of the whole application. Neev does not record which team deactivated an account, so when another team the member belongs to also holds a claim on that domain, the account is left deactivated; removing them from a team that is the only one of theirs with a claim on it does reactivate them. A deactivated member on no domain of the team's keeps that state. `Team::reactivatesOnRemoval($user)` answers whether removing a member gives their account back. Members on other addresses are removed as usual.
 
 Only members of the team can be removed, deactivated or reactivated this way. A `user_id` with no membership in the team answers `403 You cannot perform this action on this team.`, even when that user's email is on one of the team's verified domains, since deactivation reaches their whole account.
 
@@ -593,6 +593,8 @@ To get a new token (for example when the old one was lost), send `"token": true`
 
 `$domain->verify()` checks DNS and records the result. It throws `Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException` when another owner of the same type has already verified the host.
 
+To issue a new token, call `$domain->regenerateVerificationToken()`. It returns the token and unverifies the domain, clearing any earlier failure, as the endpoints do.
+
 To mark a claim verified without DNS (an admin tool, say), call `$domain->markVerified()` rather than setting `verified_at` yourself. It applies the same first-owner rule and throws the same exception, and fires `DomainVerified` when the claim was pending, as a DNS match does. It re-checks the rule with every claim on the host locked, reading whether this claim is pending from its locked row, so two claims verified at the same moment cannot both win. Writing `verified_at` directly skips that check.
 
 ### Domain Enforcement
@@ -608,9 +610,13 @@ curl -X PUT https://yourapp.com/neev/domains \
   -d '{"domain_id": 1, "enforce": true}'
 ```
 
-### Deleting the Primary Domain
+### Deleting a Domain
 
 Deleting the team's primary domain hands the primary flag to one of the remaining domains, a verified one if there is any and the oldest among them, so the team is not left without a primary.
+
+Deleting a domain also reactivates the team's deactivated members whose email is on it, including after a new token has unverified it: once the domain is gone nothing manages them, and the package would offer no way to reactivate them.
+
+From your own code, `$domain->deleteAndPromote()` does both, with the domain's rules, in one transaction.
 
 ---
 

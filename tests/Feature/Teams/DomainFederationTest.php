@@ -60,6 +60,20 @@ class DomainFederationTest extends TestCase
     // POST /neev/domains — federate domain
     // -----------------------------------------------------------------
 
+    public function test_federating_a_domain_another_team_verified_is_refused(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'domain' => 'acme.com']);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/domains', ['team_id' => $team->id, 'domain' => 'ACME.com.'])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'This domain is already verified by another team.');
+
+        $this->assertSame(0, $team->domains()->count());
+    }
+
     public function test_owner_can_add_domain_to_team(): void
     {
         [$owner, $token] = $this->authenticatedUser();
@@ -76,6 +90,8 @@ class DomainFederationTest extends TestCase
             ->assertJsonPath('dns_record.type', 'TXT')
             ->assertJsonPath('dns_record.name', '_neev-verification.example.com')
             ->assertJsonPath('dns_record.value', $response->json('token'));
+        // The same generator as the tenant-domain endpoints.
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $response->json('token'));
 
         $this->assertDatabaseHas('domains', [
             'owner_type' => 'team',
@@ -271,6 +287,7 @@ class DomainFederationTest extends TestCase
             ->assertJsonStructure(['token'])
             ->assertJsonPath('dns_record.name', '_neev-verification.' . $domain->domain)
             ->assertJsonPath('dns_record.value', $response->json('token'));
+        $this->assertMatchesRegularExpression('/^[0-9a-f]{64}$/', $response->json('token'));
     }
 
     public function test_regenerating_the_token_unverifies_the_domain(): void
@@ -979,5 +996,115 @@ class DomainFederationTest extends TestCase
 
         $this->assertTrue($oldest->fresh()->is_primary);
         $this->assertSame(1, $team->domains()->where('is_primary', true)->count());
+    }
+
+    // -----------------------------------------------------------------
+    // Deleting a domain gives back the accounts it deactivated
+    // -----------------------------------------------------------------
+
+    /**
+     * A verified domain deactivates members without detaching them. Once it
+     * is deleted nothing manages them, so their accounts come back rather than
+     * staying locked with nothing left to undo it.
+     */
+    public function test_deleting_a_verified_domain_reactivates_the_members_it_deactivated(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
+        $domain = DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+        $deactivated = User::factory()->create(['active' => true, 'email' => 'bob@ACME.com']);
+        $team->addMember($deactivated);
+        $elsewhere = User::factory()->create(['active' => true, 'email' => 'eve@other.com']);
+        $team->addMember($elsewhere);
+        $deactivated->deactivate();
+        $elsewhere->deactivate();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/domains', ['domain_id' => $domain->id])
+            ->assertOk();
+
+        $this->assertTrue($deactivated->fresh()->active);
+        $this->assertFalse($elsewhere->fresh()->active, 'Only members on the deleted host are reactivated.');
+        $this->assertTrue($team->refresh()->hasMember($deactivated));
+    }
+
+    /**
+     * A new token unverifies the domain but leaves the members it deactivated
+     * as they were. Deleting it then must still give their accounts back, or
+     * nothing is left that could.
+     */
+    public function test_deleting_a_domain_a_new_token_unverified_reactivates_the_members_it_deactivated(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
+        $domain = DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+        $member = User::factory()->create(['active' => true, 'email' => 'bob@acme.com']);
+        $team->addMember($member);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/leave', ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertJsonPath('message', 'User Deactivated Successfully');
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/domains', ['domain_id' => $domain->id, 'token' => true])
+            ->assertOk();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/domains', ['domain_id' => $domain->id])
+            ->assertOk();
+
+        $this->assertTrue($member->fresh()->active);
+        $this->assertTrue($team->refresh()->hasMember($member));
+    }
+
+    // -----------------------------------------------------------------
+    // Removing a deactivated member another team may answer for
+    // -----------------------------------------------------------------
+
+    /**
+     * Team A verified acme.com and deactivated Bob. Team B holds a pending
+     * claim on the same host and also has Bob as a member. Removing Bob from
+     * team B must not undo team A's deactivation.
+     */
+    public function test_removing_a_deactivated_member_leaves_them_deactivated_when_another_of_their_teams_claims_the_host(): void
+    {
+        $ownerA = User::factory()->create();
+        $teamA = TeamFactory::new()->create(['user_id' => $ownerA->id]);
+        $teamA->addMember($ownerA);
+
+        [$ownerB, $tokenB] = $this->authenticatedUser();
+        $teamB = TeamFactory::new()->create(['user_id' => $ownerB->id]);
+        $teamB->addMember($ownerB);
+
+        DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $teamB->id,
+            'domain' => 'acme.com',
+        ]);
+        DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $teamA->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $bob = User::factory()->create(['active' => true, 'email' => 'bob@acme.com']);
+        $teamA->addMember($bob);
+        $teamB->addMember($bob);
+        $bob->deactivate();
+
+        $this->withHeader('Authorization', 'Bearer ' . $tokenB)
+            ->putJson('/neev/teams/leave', ['team_id' => $teamB->id, 'user_id' => $bob->id])
+            ->assertOk()
+            ->assertJsonPath('message', 'Removed Successfully');
+
+        $this->assertFalse($bob->fresh()->active);
+        $this->assertFalse($teamB->refresh()->hasMember($bob));
+        $this->assertTrue($teamA->refresh()->hasMember($bob));
     }
 }

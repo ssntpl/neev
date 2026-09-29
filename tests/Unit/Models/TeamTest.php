@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Unit\Models;
 use Exception;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
@@ -695,5 +696,22 @@ class TeamTest extends TestCase
         $this->assertFalse($team->holdsDomainFor('carol@other.com'));
         // The suffix is the whole domain, not any tail of it.
         $this->assertFalse($team->holdsDomainFor('dave@notacme.com'));
+    }
+
+    public function test_verified_domains_are_read_from_the_loaded_domains_without_another_query(): void
+    {
+        $team = TeamFactory::new()->create();
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.com']);
+        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.io']);
+
+        $team->load('domains');
+
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+
+        $this->assertTrue($team->hasVerifiedDomainFor('bob@acme.io'));
+        $this->assertFalse($team->hasVerifiedDomainFor('alice@acme.com'), 'A pending claim is not verified.');
+        $this->assertSame([], DB::getQueryLog());
+        $this->assertFalse($team->relationLoaded('customDomains'));
     }
 }

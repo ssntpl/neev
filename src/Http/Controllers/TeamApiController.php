@@ -7,7 +7,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
@@ -552,12 +551,11 @@ class TeamApiController extends Controller
             }
 
             // An unverified domain manages nobody, so the member is removed as
-            // any other would be. One deactivated through a domain the team
-            // still holds — verified until a new token unverified it — gets
-            // their account back as they go: detached and still deactivated,
-            // they would be locked out of the whole application with nothing
-            // left to undo it.
-            $reactivate = !$user->active && $team->holdsDomainFor((string) $user->email);
+            // any other would be. One this team's domain deactivated — verified
+            // until a new token unverified it — gets their account back as they
+            // go: detached and still deactivated, they would be locked out of
+            // the whole application with nothing left to undo it.
+            $reactivate = $team->reactivatesOnRemoval($user);
 
             DB::transaction(function () use ($team, $user, $reactivate) {
                 $team->users()->detach($user);
@@ -766,42 +764,9 @@ class TeamApiController extends Controller
             ],
         ]);
 
-        // Compare the stored spelling, not whatever was typed: `ACME.com.` and
-        // `acme.com` are one host, and the row keeps only the canonical form.
-        $name = Domain::canonicalHost((string) $request->domain);
-        $held = $team->domains()->where('domain', $name)->first();
-
-        if (!$held && Domain::findByHostForOwnerType($name, 'team')) {
-            return response()->json([
-                'message' => 'This domain is already verified by another team.',
-            ], 400);
-        }
-
-        // Re-submitting issues a new token and unverifies the domain. A
-        // platform subdomain is verified by the platform, and its owner cannot
-        // publish a record in the platform's zone, so it could never verify
-        // again.
-        if ($held && Domain::isPlatformSubdomain($name)) {
-            return response()->json([
-                'message' => 'A platform subdomain does not use a verification token.',
-            ], 400);
-        }
-
         try {
-            $token = Str::random(32);
-            /** @var Domain $domain */
-            $domain = $team->domains()->updateOrCreate([
-                'domain' => $name
-            ], [
-                'enforce' => (bool) $request->enforce,
-                'verification_token' => $token,
-                'verified_at' => null,
-                'verification_failed_at' => null,
-                // A domain already held keeps its own flag; `$team->domain` is
-                // that very row when it is the primary, so recomputing it here
-                // would take the primary flag away.
-                'is_primary' => $held ? $held->is_primary : !$team->domain,
-            ]);
+            $domain = $team->federateDomain((string) $request->domain, (bool) $request->enforce);
+            $token = $domain->verification_token;
 
             return response()->json([
                 'message' => 'Domain federated successfully.',
@@ -812,6 +777,10 @@ class TeamApiController extends Controller
                     'value' => $token,
                 ],
             ]);
+        } catch (DomainAlreadyVerifiedException|InvalidArgumentException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 400);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
@@ -860,11 +829,7 @@ class TeamApiController extends Controller
                     ], 400);
                 }
 
-                $token = Str::random(32);
-                $domain->verification_token = $token;
-                $domain->verified_at = null;
-                $domain->verification_failed_at = null;
-                $domain->save();
+                $token = $domain->regenerateVerificationToken();
 
                 return response()->json([
                     'message' => 'Domain verification token has been updated.',
@@ -909,26 +874,7 @@ class TeamApiController extends Controller
             ], 400);
         }
         try {
-            /** @var Team|null $owner */
-            $owner = $domain->owner;
-            $wasPrimary = $domain->is_primary;
-
-            // Deleting the primary leaves the team with none, and whatever
-            // reads the primary stops working. Hand it to a verified domain,
-            // or failing that any remaining one, the oldest first so the
-            // choice does not depend on row order. One transaction, so a
-            // failed promotion does not leave the domain deleted and the team
-            // without a primary.
-            DB::transaction(function () use ($domain, $owner, $wasPrimary) {
-                $domain->rules()->delete();
-                $domain->delete();
-
-                if ($wasPrimary && $owner) {
-                    $next = $owner->domains()->whereNotNull('verified_at')->orderBy('id')->first()
-                        ?? $owner->domains()->orderBy('id')->first();
-                    $next?->markAsPrimary();
-                }
-            });
+            $domain->deleteAndPromote();
 
             return response()->json([
                 'message' => 'Domain has been deleted.',

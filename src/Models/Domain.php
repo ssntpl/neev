@@ -86,7 +86,7 @@ class Domain extends Model
         // Rows hold the canonical spelling, so `Alice@ACME.com` has to be
         // compared as `acme.com` to find the claim on it.
         return static::query()
-            ->where('domain', static::canonicalHost(substr($emailDomain, 1)))
+            ->forHost(substr($emailDomain, 1))
             ->whereNotNull('verified_at')
             ->exists();
     }
@@ -120,6 +120,16 @@ class Domain extends Model
     public static function canonicalHost(string $host): string
     {
         return strtolower(trim($host, " \t\n\r\0\x0B."));
+    }
+
+    /**
+     * Rows on this host, however it is spelled. Rows hold the canonical form,
+     * so every lookup by host goes through here rather than comparing the raw
+     * string a caller was given.
+     */
+    public function scopeForHost($query, string $host)
+    {
+        return $query->where('domain', static::canonicalHost($host));
     }
 
     /**
@@ -193,7 +203,7 @@ class Domain extends Model
      */
     public static function findByHost(string $host): ?self
     {
-        return static::where('domain', $host)
+        return static::forHost($host)
             ->whereNotNull('verified_at')
             ->first();
     }
@@ -203,7 +213,7 @@ class Domain extends Model
      */
     public static function findByHostForOwnerType(string $host, string $ownerType): ?self
     {
-        return static::where('domain', $host)
+        return static::forHost($host)
             ->where('owner_type', $ownerType)
             ->whereNotNull('verified_at')
             ->first();
@@ -214,7 +224,7 @@ class Domain extends Model
      */
     public static function findPrimaryByHost(string $host): ?self
     {
-        return static::where('domain', $host)
+        return static::forHost($host)
             ->whereNotNull('verified_at')
             ->where('is_primary', true)
             ->first();
@@ -225,7 +235,7 @@ class Domain extends Model
      */
     public static function findByHostForOwner(string $host, string $ownerType, int $ownerId): ?self
     {
-        return static::where('domain', $host)
+        return static::forHost($host)
             ->where('owner_type', $ownerType)
             ->where('owner_id', $ownerId)
             ->whereNotNull('verified_at')
@@ -248,15 +258,71 @@ class Domain extends Model
     }
 
     /**
+     * A fresh verification token. The one generator for every path that
+     * issues a token, so the TXT record has one format whichever route set it.
+     */
+    public static function newVerificationToken(): string
+    {
+        return bin2hex(random_bytes(32));
+    }
+
+    /**
      * Generate a verification token for this domain.
      */
     public function generateVerificationToken(): string
     {
-        $token = bin2hex(random_bytes(32));
+        $token = static::newVerificationToken();
         $this->verification_token = $token;
         $this->save();
 
         return $token;
+    }
+
+    /**
+     * Replace the token of a domain already claimed. The claim is unproven
+     * until the new record is published, so it is unverified, and a failure
+     * recorded against the old token no longer applies.
+     */
+    public function regenerateVerificationToken(): string
+    {
+        $this->verified_at = null;
+        $this->verification_failed_at = null;
+
+        return $this->generateVerificationToken();
+    }
+
+    /**
+     * Delete this domain and, when it was the primary, hand the flag on.
+     *
+     * Deleting the primary leaves the owner with none, and whatever reads the
+     * primary stops working, so it goes to a verified domain, or failing that
+     * any remaining one, the oldest first so the choice does not depend on row
+     * order. A team domain also gives back the accounts it deactivated,
+     * whether or not a new token has unverified it since: with the domain
+     * gone nothing manages those members, and nothing would be left to
+     * reactivate them. One transaction, so a failed step does not leave the
+     * domain deleted and the rest undone.
+     */
+    public function deleteAndPromote(): void
+    {
+        /** @var Team|Tenant|null $owner */
+        $owner = $this->owner;
+
+        DB::transaction(function () use ($owner) {
+            if ($owner instanceof Team) {
+                $owner->reactivateMembersOn($this->domain);
+            }
+
+            $this->rules()->delete();
+            $this->delete();
+
+            if ($this->is_primary && $owner) {
+                /** @var Domain|null $next */
+                $next = $owner->domains()->whereNotNull('verified_at')->orderBy('id')->first()
+                    ?? $owner->domains()->orderBy('id')->first();
+                $next?->markAsPrimary();
+            }
+        });
     }
 
     /**

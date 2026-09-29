@@ -730,4 +730,24 @@ class DomainTest extends TestCase
 
         $this->assertSame($expected, Domain::isPlatformSubdomainFor($host, $slug));
     }
+
+    /**
+     * Rows hold the canonical host, so a lookup has to compare the canonical
+     * form of whatever spelling it is handed, or it misses the row.
+     */
+    public function test_host_lookups_match_any_spelling_of_the_host(): void
+    {
+        $team = TeamFactory::new()->create();
+        $domain = DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.com',
+        ]);
+
+        foreach (['acme.com', 'ACME.com', 'acme.com.', ' Acme.COM. '] as $spelling) {
+            $this->assertTrue($domain->is(Domain::findByHost($spelling)), $spelling);
+            $this->assertTrue($domain->is(Domain::findByHostForOwnerType($spelling, 'team')), $spelling);
+            $this->assertTrue($domain->is(Domain::findPrimaryByHost($spelling)), $spelling);
+            $this->assertTrue($domain->is(Domain::findByHostForOwner($spelling, 'team', $team->id)), $spelling);
+            $this->assertTrue(Domain::forHost($spelling)->exists(), $spelling);
+        }
+    }
 }
