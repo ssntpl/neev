@@ -1947,6 +1947,11 @@ Authorization: Bearer {token}
 }
 ```
 
+`reject` with `team_id` declines an invitation not yet accepted. It does not
+remove a joined member — that is [Leave Team](#leave-team) — and answers
+`400 Invitation not found` when the caller has no pending membership in the
+team, or the team does not exist.
+
 Or for email invitations:
 
 ```json
@@ -1976,6 +1981,28 @@ Authorization: Bearer {token}
     "team_id": 1
 }
 ```
+
+Send `user_id` as well to remove another member. A member whose email is on
+one of the team's verified domains is deactivated rather than removed
+(`User Deactivated Successfully`; again, `User Activated Successfully`). An
+unverified domain manages nobody: a member on it is removed
+(`Removed Successfully`), and a deactivated member whose email is on a domain
+the team still holds, such as one a new token has unverified, is reactivated as
+they are removed. If another team the member belongs to also holds a claim on
+that domain, the account is left deactivated: Neev does not record which team
+deactivated it, and it may have been that one.
+
+A membership not yet joined — an invitation the user has not accepted, or a
+join request the team has not answered — is withdrawn (`Removed Successfully`)
+by any member, or by the user it names (send only `team_id`). It is always
+detached, never deactivated.
+
+**Errors:**
+- `403 You cannot perform this action on this team.` — the owner is named; the
+  named user has no membership in the team; or the caller is not a member and
+  is not withdrawing their own pending membership.
+- `403 You cannot leave a team your email domain manages.` — the caller names
+  themselves and their email is on one of the team's verified domains.
 
 ---
 
@@ -2009,8 +2036,8 @@ as is a slug that matches no team.
 
 The request is recorded as a pending membership with
 `action = request_from_user`, and the team owner is emailed. A team whose
-domain federation is enforced or verified does not accept join requests —
-membership there follows from the verified domain.
+primary domain is verified, or with any enforced verified domain, does not
+accept join requests — membership there follows from the verified domain.
 
 ---
 
@@ -2035,6 +2062,11 @@ Authorization: Bearer {token}
     "role": "member"
 }
 ```
+
+`reject` declines a membership not yet joined. It does not remove a joined
+member — that is [Leave Team](#leave-team), which keeps the owner and
+deactivates a member on a verified domain — and answers `400 Request not found`
+for one.
 
 ---
 
@@ -2151,9 +2183,29 @@ Authorization: Bearer {token}
 ```json
 {
     "message": "Domain federated successfully.",
-    "token": "abc123verification..."
+    "token": "abc123verification...",
+    "dns_record": {
+        "type": "TXT",
+        "name": "_neev-verification.company.com",
+        "value": "abc123verification..."
+    }
 }
 ```
+
+`domain` is required and compared in canonical form (lowercase, no trailing
+dot), so re-submitting `Company.com.` updates the team's existing `company.com`
+row. Re-submitting a domain issues a new token and unverifies it until the new
+record is verified; its primary flag is kept.
+
+**Errors:**
+- `422` — `domain` is not a host name: missing, not a string, nothing once
+  canonicalised (`...`), or a URL, path, port, space, single label or IP
+  address.
+- `400 This domain is already verified by another team.`
+- `400 A platform subdomain does not use a verification token.` — the team
+  already holds this platform subdomain; it is verified by the platform and
+  cannot be re-verified through DNS.
+- `400 An unexpected error occurred.` — the domain could not be saved.
 
 ---
 
@@ -2177,6 +2229,16 @@ Authorization: Bearer {token}
 }
 ```
 
+**Errors:**
+- `400 DNS record not found. Please try again later.`
+- `400 This domain is already verified by another team.` — another team
+  verified the domain first; this claim cannot be verified.
+
+To get a new token, send `"token": true` instead of `"verify"`. The response
+carries `token` and `dns_record` as for [Add Domain](#add-domain), and the
+domain is unverified until the new record is verified. A platform subdomain is
+refused with `400 A platform subdomain does not use a verification token.`
+
 ---
 
 ### Delete Domain
@@ -2197,6 +2259,13 @@ Authorization: Bearer {token}
     "domain_id": 1
 }
 ```
+
+Deleting the primary domain makes one of the remaining domains primary,
+preferring a verified one, and among those the oldest. Deleting a domain,
+including one a new token has unverified, reactivates the team's deactivated
+members whose email is on it, since nothing manages them once it is gone. A
+member another team they belong to also holds a claim on that domain for is
+left deactivated, since that team may be the one that deactivated them.
 
 ---
 
@@ -2238,7 +2307,12 @@ Whether the domain needs DNS verification is derived from the host and the
 claiming team, against the `platform_domain` config — the request cannot
 influence it. A team's own subdomain (its slug under a platform domain) is
 verified immediately and the response carries no token; anything else comes back
-with `verification_token` and `dns_record` to publish.
+with `verification_token` and `dns_record` to publish. A `domain` that is
+not a host name (nothing once canonicalised, not a string, a URL, a path, a
+port, a space, a single label, an IP address, or over 255 characters) is
+refused with `422`. The domain is compared
+in canonical form (lowercase, no trailing dot), so `ACME.com.` beside the
+team's `acme.com` is refused with `422` too.
 
 ---
 
@@ -2247,6 +2321,9 @@ with `verification_token` and `dns_record` to publish.
 ```http
 POST /neev/tenant-domains/{id}/verify
 ```
+
+Answers `400 This domain is already verified by another team.` when another
+team verified the domain first.
 
 ---
 

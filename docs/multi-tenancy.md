@@ -289,6 +289,12 @@ curl -X POST https://yourapp.com/neev/tenant-domains/1/verify \
   -H "Authorization: Bearer {token}"
 ```
 
+The first team to verify a domain gets it: once one has, verifying another team's claim answers `400 This domain is already verified by another team.`
+
+`DELETE /neev/tenant-domains/{id}` deletes a domain the same way as the team endpoint: the primary flag moves to a remaining domain, a verified one first, and deleting it reactivates the team's deactivated members whose email is on it, unless another team they belong to also holds a claim on that domain.
+
+`POST /neev/tenant-domains/{id}/regenerate-token` issues a new token and returns it with `dns_record`. The domain goes back to unverified, with any earlier failure cleared, until the new record is verified.
+
 ### Set Primary Domain
 
 ```bash
@@ -894,8 +900,9 @@ Same schema as `team_auth_settings`, but with `tenant_id` instead of `team_id`. 
 ### Domain Verification
 
 - Always verify domain ownership via DNS
+- The first owner to verify a host gets it; a later claim of the same owner type is refused, even with its TXT record in place. When verifying outside the package's endpoints, use `Domain::verify()` or `Domain::markVerified()` rather than writing `verified_at`, so that rule is applied
 - Don't allow unverified domains for auth — `TenantMiddleware` rejects unverified custom domains with a 403
-- Re-verify periodically for long-lived tenants (`VerifyDomainJob` / `VerifyAllDomainsJob` support scheduled re-verification, tracked via `verification_failed_at`)
+- Re-verify periodically for long-lived tenants (`VerifyDomainJob` / `VerifyAllDomainsJob` support scheduled re-verification, tracked via `verification_failed_at`). `VerifyDomainJob` re-checks only a domain that is verified when it runs; verify a pending claim with `Domain::verify()` or `neev:domain:verify`
 
 ### Secret Storage
 

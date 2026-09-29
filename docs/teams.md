@@ -262,7 +262,8 @@ endpoints never confirm which team ids are real.
 | `GET /neev/domains` | any member |
 | `PUT /neev/teams/request` (accept/reject a join request) | any member |
 | `PUT {prefix}/teams/members/request/action` (the Blade form) | the owner |
-| `PUT /neev/teams/leave` (remove a member) | any member; the owner cannot be removed |
+| `PUT /neev/teams/leave` (remove a member) | any member, and only for another member of the same team; the owner cannot be removed |
+| `PUT /neev/teams/leave` (withdraw a pending membership) | any member, or the user it names withdrawing their own invitation or join request |
 | `PUT /neev/teams/leave` (revoke an invitation) | any member (the owner included), or the invitee declining their own |
 | `PUT /neev/teams/inviteUser` | the owner |
 | `DELETE /neev/teams` | the owner, and only when they own another team |
@@ -387,8 +388,11 @@ route (`POST {prefix}/teams/members/request`) accepts the same two, plus an
 `email` (the owner's) and `team` (the team name) pair. It tries `team_id`
 first, then `slug`, then the pair.
 
-A team whose domain federation is enforced or verified does not take join
-requests — membership there follows from the verified domain instead.
+A team does not take join requests when its primary domain is verified, or
+when any of its verified domains is enforced — membership there follows from
+the verified domain instead. `Team::acceptsJoinRequests()` answers the same
+question, and the Blade profile page shows **Request to join** only when it is
+true.
 
 The Blade team profile page is the one team page an outsider can open, so it
 carries the **Request to join** button, and shows **Request pending** once a
@@ -426,6 +430,20 @@ curl -X PUT https://yourapp.com/neev/teams/leave \
   -H "Authorization: Bearer {token}" \
   -d '{"team_id": 1, "user_id": 5}'
 ```
+
+### Members on a Verified Domain
+
+Removing a member whose email is on any of the team's verified domains does not take them out of the team: the domain governs their membership, so their account is **deactivated** instead (`User Deactivated Successfully`). Removing them again reactivates it (`User Activated Successfully`).
+
+An unverified domain manages nobody. Once a new token unverifies it, removing a member on it detaches them like any other member (`Removed Successfully`). A deactivated member whose email is on a domain the team still holds is reactivated as they are removed, so a member deactivated through that domain is not left locked out of the whole application. Neev does not record which team deactivated an account, so when another team the member belongs to also holds a claim on that domain, the account is left deactivated; removing them from a team that is the only one of theirs with a claim on it does reactivate them. A deactivated member on no domain of the team's keeps that state. `Team::reactivatesOnRemoval($user)` answers whether removing a member gives their account back. Members on other addresses are removed as usual.
+
+Only members of the team can be removed, deactivated or reactivated this way. A `user_id` with no membership in the team answers `403 You cannot perform this action on this team.`, even when that user's email is on one of the team's verified domains, since deactivation reaches their whole account.
+
+A pending membership (an invitation not yet accepted, or a join request not yet answered) is simply withdrawn (`Removed Successfully`), never deactivated, whatever the user's domain. Any member can withdraw it, and so can the user it names, by sending only `team_id`. The **Remove** button under pending invitations on the members page and **Revoke** on a sent request on the account teams page both do this.
+
+Rejecting (`PUT /neev/teams/inviteUser` with `team_id` and `"action": "reject"`, or `PUT /neev/teams/request` with `"action": "reject"`) also acts only on a membership not yet joined. A joined member is never removed that way; it answers `400 Invitation not found` / `400 Request not found`, and removing a member goes through `leave` and the rules above.
+
+Such a member cannot remove themselves: deactivation is account-wide, so leaving would lock them out of the whole application. The attempt answers `403 You cannot leave a team your email domain manages.`, and the Blade pages do not offer **Leave** to them. Members on other addresses can leave, and the Blade pages offer them **Leave**, even when the team's primary domain is verified. `Team::hasVerifiedDomainFor($email)` tells whether an address is on one of the team's verified domains, and `Team::holdsDomainFor($email)` whether it is on any domain the team holds, verified or not.
 
 ### Note: Owners Cannot Leave
 
@@ -511,7 +529,11 @@ Automatically associate users with teams based on email domain. Available whenev
 
 A domain belongs to **one team and one tenant** — never to two teams, or two tenants. A tenant and one of its teams may both federate the same company domain; a second team may not take a domain another team holds.
 
-A claim only reserves the domain once it has been **verified**. An unverified row proves nothing and blocks nobody, so several teams may hold pending claims on the same domain and whichever verifies first wins. The same team cannot register the same domain twice — re-submitting it updates the existing row (rotating the verification token) instead of adding another.
+A claim only reserves the domain once it has been **verified**. An unverified row proves nothing and blocks nobody, so several teams may hold pending claims on the same domain and whichever verifies first wins. Once one has, verifying any other team's claim is refused with `400 This domain is already verified by another team.` — even if that team's TXT record is in place. The same team cannot register the same domain twice — re-submitting it updates the existing row instead of adding another. The domain is compared in its canonical form (lowercase, no trailing dot), so `ACME.com.` is the same domain as `acme.com`.
+
+Re-submitting a domain issues a new verification token, and so does asking for one (`"token": true`, or **Get Token** on the domain page). A new token no longer matches the TXT record already published, so the domain goes back to **unverified** until the new record is verified. Its primary flag is kept.
+
+A platform subdomain (a host under `neev.platform_domain`) never gets a new token: it is verified by the platform, and nobody can publish a record in the platform's zone, so it could never verify again. Asking for one, or re-submitting it, answers `400 A platform subdomain does not use a verification token.`
 
 ### Members across several federated domains
 
@@ -534,9 +556,18 @@ curl -X POST https://yourapp.com/neev/domains \
 ```json
 {
   "message": "Domain federated successfully.",
-  "token": "abc123def456..."
+  "token": "abc123def456...",
+  "dns_record": {
+    "type": "TXT",
+    "name": "_neev-verification.company.com",
+    "value": "abc123def456..."
+  }
 }
 ```
+
+`dns_record` says exactly what to publish: a `TXT` record at `name` whose value is the token. The domain page's token dialog shows the same three fields.
+
+A `domain` that is not a host name — missing, not a string, nothing once canonicalised (`...`), a URL, a path, a port, a space, a single label such as `localhost`, or an IP address — is refused with a `422` validation error. Internationalised names are accepted in their punycode form (`xn--mnchen-3ya.de`).
 
 ### Verify Domain
 
@@ -554,18 +585,38 @@ curl -X PUT https://yourapp.com/neev/domains \
   -d '{"domain_id": 1, "verify": true}'
 ```
 
+Verifying again after a new token keeps the domain's rules and their values.
+
+To get a new token (for example when the old one was lost), send `"token": true` instead; the response carries `token` and `dns_record` as above, and the domain is unverified until the new record is verified.
+
+#### Verifying from your own code
+
+`$domain->verify()` checks DNS and records the result. It throws `Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException` when another owner of the same type has already verified the host.
+
+To issue a new token, call `$domain->regenerateVerificationToken()`. It returns the token and unverifies the domain, clearing any earlier failure, as the endpoints do.
+
+To mark a claim verified without DNS (an admin tool, say), call `$domain->markVerified()` rather than setting `verified_at` yourself. It applies the same first-owner rule and throws the same exception, and fires `DomainVerified` when the claim was pending, as a DNS match does. It re-checks the rule with every claim on the host locked, reading whether this claim is pending from its locked row, so two claims verified at the same moment cannot both win. Writing `verified_at` directly skips that check.
+
 ### Domain Enforcement
 
-When `enforce` is true (and the domain is verified):
-- Only users with a matching email domain can be invited
-- Join requests are blocked
-- Members with non-matching email domains are reported as `outside_members` in the domains listing
+When `enforce` is true on any of the team's verified domains:
+- Only users whose email is on one of the team's **verified** domains can be invited — not only the domain that is enforced, and not only the primary
+- Join requests are refused
+- Members whose email matches none of the team's verified domains are reported as `outside_members` in the domains listing, the same count the domain page shows
 
 ```bash
 curl -X PUT https://yourapp.com/neev/domains \
   -H "Authorization: Bearer {token}" \
   -d '{"domain_id": 1, "enforce": true}'
 ```
+
+### Deleting a Domain
+
+Deleting the team's primary domain hands the primary flag to one of the remaining domains, a verified one if there is any and the oldest among them, so the team is not left without a primary.
+
+Deleting a domain also reactivates the team's deactivated members whose email is on it, including after a new token has unverified it: once the domain is gone nothing manages them, and the package would offer no way to reactivate them. A member another team they belong to also holds a claim on that domain for is left deactivated, since Neev does not record which team deactivated an account and that team may be the one that did; once the last claim on the domain is deleted, they are reactivated.
+
+From your own code, `$domain->deleteAndPromote()` does both, with the domain's rules, in one transaction.
 
 ---
 

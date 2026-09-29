@@ -4,17 +4,32 @@ namespace Ssntpl\Neev\Tests\Unit\Models;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Events\DomainVerificationFailed;
+use Ssntpl\Neev\Events\DomainVerified;
+use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\DomainRule;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Tests\Support\FakeDns;
 use Ssntpl\Neev\Tests\TestCase;
+
+// Must load before any test calls Domain::verify(); see the file for why.
+require_once __DIR__ . '/../../Support/FakeDns.php';
 
 class DomainTest extends TestCase
 {
     use RefreshDatabase;
+
+    protected function tearDown(): void
+    {
+        FakeDns::reset();
+
+        parent::tearDown();
+    }
 
     // -----------------------------------------------------------------
     // isVerified()
@@ -284,6 +299,164 @@ class DomainTest extends TestCase
     }
 
     // -----------------------------------------------------------------
+    // verify() — first owner to verify a host gets it
+    // -----------------------------------------------------------------
+
+    public function test_verify_refuses_a_host_another_owner_already_verified(): void
+    {
+        DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        $claim = DomainFactory::new()->create(['domain' => 'acme.com']);
+
+        try {
+            $claim->verify();
+            $this->fail('Expected DomainAlreadyVerifiedException.');
+        } catch (DomainAlreadyVerifiedException $e) {
+            $this->assertSame('This domain is already verified by another team.', $e->getMessage());
+        }
+
+        $claim->refresh();
+        $this->assertNull($claim->verified_at);
+        // Losing to another owner is not a DNS failure.
+        $this->assertNull($claim->verification_failed_at);
+    }
+
+    public function test_verify_refuses_a_host_another_owner_verified_during_the_dns_lookup(): void
+    {
+        $rival = DomainFactory::new()->create(['domain' => 'acme.com']);
+        $claim = DomainFactory::new()->create(['domain' => 'acme.com']);
+        $token = $claim->generateVerificationToken();
+
+        FakeDns::txt('_neev-verification.acme.com', $token);
+        // The rival wins after the check before the lookup has passed.
+        FakeDns::duringLookup(fn () => $rival->update(['verified_at' => now()]));
+
+        try {
+            $claim->verify();
+            $this->fail('Expected DomainAlreadyVerifiedException.');
+        } catch (DomainAlreadyVerifiedException $e) {
+            $this->assertSame('This domain is already verified by another team.', $e->getMessage());
+        }
+
+        $this->assertNull($claim->fresh()->verified_at);
+        $this->assertSame(1, Domain::where('domain', 'acme.com')->whereNotNull('verified_at')->count());
+    }
+
+    public function test_mark_verified_refuses_a_host_another_owner_already_verified(): void
+    {
+        DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        $claim = DomainFactory::new()->create(['domain' => 'acme.com']);
+
+        $this->expectException(DomainAlreadyVerifiedException::class);
+
+        try {
+            $claim->markVerified();
+        } finally {
+            $this->assertNull($claim->fresh()->verified_at);
+        }
+    }
+
+    public function test_mark_verified_re_stamps_a_domain_this_owner_already_verified(): void
+    {
+        DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        $mine = DomainFactory::new()->verified()->create([
+            'domain' => 'acme.com',
+            'verified_at' => now()->subDays(10),
+            'verification_failed_at' => now(),
+        ]);
+
+        $mine->markVerified();
+
+        $mine->refresh();
+        $this->assertTrue($mine->verified_at->isToday());
+        $this->assertNull($mine->verification_failed_at);
+    }
+
+    public function test_mark_verified_fires_domain_verified_for_a_pending_claim(): void
+    {
+        Event::fake([DomainVerified::class]);
+        $claim = DomainFactory::new()->create(['domain' => 'acme.com']);
+
+        $claim->markVerified();
+
+        Event::assertDispatched(DomainVerified::class, fn (DomainVerified $e) => $e->domain->is($claim));
+    }
+
+    public function test_mark_verified_does_not_fire_domain_verified_again_for_a_verified_domain(): void
+    {
+        Event::fake([DomainVerified::class]);
+        $domain = DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+
+        $domain->markVerified();
+
+        Event::assertNotDispatched(DomainVerified::class);
+    }
+
+    /**
+     * A model loaded while verified, whose row a new token then reset, must
+     * not skip the first-owner check because of what it remembers.
+     */
+    public function test_mark_verified_decides_from_the_row_not_a_stale_model(): void
+    {
+        $stale = DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        Domain::whereKey($stale->id)->update(['verified_at' => null]);
+        DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        $this->travel(5)->seconds();
+
+        $this->expectException(DomainAlreadyVerifiedException::class);
+
+        try {
+            $stale->markVerified();
+        } finally {
+            $this->assertNull($stale->fresh()->verified_at);
+            $this->assertSame(1, Domain::where('domain', 'acme.com')->whereNotNull('verified_at')->count());
+        }
+    }
+
+    // -----------------------------------------------------------------
+    // verify() — DNS answers
+    // -----------------------------------------------------------------
+
+    public function test_verify_succeeds_when_the_txt_record_matches(): void
+    {
+        Event::fake();
+        $domain = DomainFactory::new()->create(['domain' => 'acme.com']);
+        $token = $domain->generateVerificationToken();
+
+        FakeDns::txt('_neev-verification.acme.com', 'unrelated', $token);
+
+        $this->assertTrue($domain->verify());
+        $this->assertNotNull($domain->fresh()->verified_at);
+        Event::assertDispatched(DomainVerified::class);
+    }
+
+    public function test_verify_fails_when_the_txt_record_does_not_match(): void
+    {
+        $domain = DomainFactory::new()->create(['domain' => 'acme.com']);
+        $domain->generateVerificationToken();
+
+        FakeDns::txt('_neev-verification.acme.com', 'someone-elses-token');
+
+        $this->assertFalse($domain->verify());
+        $this->assertNull($domain->fresh()->verified_at);
+        $this->assertNotNull($domain->fresh()->verification_failed_at);
+    }
+
+    public function test_a_missing_record_fails_a_verified_domain(): void
+    {
+        Event::fake();
+        $domain = DomainFactory::new()->verified()->create([
+            'domain' => 'acme.com',
+            'verification_token' => 'expected',
+        ]);
+
+        FakeDns::txt('_neev-verification.acme.com');
+
+        $this->assertFalse($domain->verify());
+        $this->assertNotNull($domain->fresh()->verification_failed_at);
+        Event::assertDispatched(DomainVerificationFailed::class);
+    }
+
+    // -----------------------------------------------------------------
     // getDnsRecordName()
     // -----------------------------------------------------------------
 
@@ -479,6 +652,17 @@ class DomainTest extends TestCase
         $this->assertFalse(Domain::isVerifiedForEmail('someone@acme.com'));
     }
 
+    public function test_an_address_in_another_case_matches_the_verified_domain(): void
+    {
+        Domain::create([
+            'owner_type' => 'team', 'owner_id' => 1,
+            'domain' => 'acme.com',
+            'verified_at' => now(),
+        ]);
+
+        $this->assertTrue(Domain::isVerifiedForEmail('Alice@ACME.com'));
+    }
+
     public function test_an_address_without_a_domain_is_not_verified(): void
     {
         $this->assertFalse(Domain::isVerifiedForEmail('not-an-address'));
@@ -545,5 +729,25 @@ class DomainTest extends TestCase
         config(['neev.platform_domain' => $configured]);
 
         $this->assertSame($expected, Domain::isPlatformSubdomainFor($host, $slug));
+    }
+
+    /**
+     * Rows hold the canonical host, so a lookup has to compare the canonical
+     * form of whatever spelling it is handed, or it misses the row.
+     */
+    public function test_host_lookups_match_any_spelling_of_the_host(): void
+    {
+        $team = TeamFactory::new()->create();
+        $domain = DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.com',
+        ]);
+
+        foreach (['acme.com', 'ACME.com', 'acme.com.', ' Acme.COM. '] as $spelling) {
+            $this->assertTrue($domain->is(Domain::findByHost($spelling)), $spelling);
+            $this->assertTrue($domain->is(Domain::findByHostForOwnerType($spelling, 'team')), $spelling);
+            $this->assertTrue($domain->is(Domain::findPrimaryByHost($spelling)), $spelling);
+            $this->assertTrue($domain->is(Domain::findByHostForOwner($spelling, 'team', $team->id)), $spelling);
+            $this->assertTrue(Domain::forHost($spelling)->exists(), $spelling);
+        }
     }
 }

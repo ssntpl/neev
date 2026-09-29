@@ -273,6 +273,9 @@ php artisan neev:domain:verify app.acme.com
 # Force-verify without DNS check (local dev)
 php artisan neev:domain:verify app.acme.com --force
 
+# Pick one claim when several owners have claimed the domain
+php artisan neev:domain:verify acme.com --owner-type=team --owner-id=acme
+
 # Re-verify all previously verified domains (dispatches queued jobs)
 php artisan neev:domain:verify --all
 ```
@@ -280,10 +283,16 @@ php artisan neev:domain:verify --all
 | Argument / Option | Description |
 |-------------------|-------------|
 | `domain` | The domain to verify (optional when using `--all`) |
+| `--owner-type=` | `team` or `tenant`; narrows to that owner's claim |
+| `--owner-id=` | Owner ID or slug (needs `--owner-type`) |
 | `--force` | Mark verified without DNS check |
 | `--all` | Re-verify all previously verified domains |
 
 Performs a `dns_get_record()` lookup on `_neev-verification.{domain}` and matches the TXT value against the stored verification token.
+
+When more than one owner has claimed the domain, the command lists the claims and exits without verifying any; pass `--owner-type` and `--owner-id` to choose one. `--force` skips the DNS check but not the ownership rule: it refuses a claim when another owner of the same type has already verified the domain. It goes through `Domain::markVerified()`, as a DNS match does, so it also clears any earlier verification failure and fires `DomainVerified` for a pending claim.
+
+`--all` queues a `VerifyDomainJob` per verified domain. `VerifyDomainJob` re-checks a domain that is verified when the job runs, and does nothing for any other. A domain unverified by a new token after its job was queued is therefore skipped: it is a new claim waiting for its record, not one to re-check, so it is neither verified nor marked failed. Verify a pending claim with this command without `--all`, or with `Domain::verify()`.
 
 ### `neev:domain:list`
 
@@ -293,12 +302,13 @@ List domains with optional filters.
 php artisan neev:domain:list
 php artisan neev:domain:list --owner-type=tenant --unverified
 php artisan neev:domain:list --owner-type=team --owner-id=1 --json
+php artisan neev:domain:list --owner-type=team --owner-id=acme
 ```
 
 | Option | Description |
 |--------|-------------|
 | `--owner-type=` | Filter by owner type (`team` or `tenant`) |
-| `--owner-id=` | Filter by owner ID |
+| `--owner-id=` | Filter by owner ID, or by slug (a slug needs `--owner-type`) |
 | `--unverified` | Show only unverified domains |
 | `--json` | Output as JSON |
 

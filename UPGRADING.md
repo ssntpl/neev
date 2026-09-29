@@ -133,6 +133,126 @@ The 0.6.7 note promised every outstanding code was discarded; the MFA email
 code, stored on the factor's own row, and magic login links in
 `magic_link_tokens` — mailed to the same old address — now are too.
 
+**`Domain::verify()` can throw (action required if you call it yourself).**
+It throws `Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException` for a
+pending claim on a host another owner of the same type has already verified;
+the message reads `This domain is already verified by another team.` (or
+`tenant`). The package's endpoints, `neev:domain:verify` and `VerifyDomainJob`
+catch it. Code of your own that calls `verify()` should catch it too, or it
+surfaces as an error. Code that marks a domain verified by writing
+`verified_at` itself skips the rule; call `$domain->markVerified()` instead,
+which applies it (and throws the same exception) and fires `DomainVerified` for
+a pending claim.
+
+**Check for hosts already verified by two owners (action recommended).** The
+rule applies to claims verified from now on; it does not touch rows verified
+before the upgrade. If two teams (or two tenants) already hold a verified row
+for the same host, both stay verified, and tenant routing and email federation
+keep choosing between them arbitrarily. Find them with:
+
+```sql
+SELECT domain, owner_type, COUNT(*) AS verified_claims
+FROM domains
+WHERE verified_at IS NOT NULL
+GROUP BY domain, owner_type
+HAVING COUNT(*) > 1;
+```
+
+For each host listed, decide which owner it belongs to, and unverify or delete
+the other rows (`UPDATE domains SET verified_at = NULL WHERE id = ...`). An
+unverified row is then a pending claim like any other and can no longer be
+verified while the rightful owner holds the host. `neev:domain:list` shows the
+rows with their owners; `--owner-type=team --owner-id=<id or slug>` narrows it
+to one owner.
+
+**`neev:domain:verify <host>` needs an owner when several have claimed the host
+(check scripts and cron).** It used to verify whichever claim came back first;
+it now fails, listing the claims, when more than one owner holds a row for the
+host. Pass `--owner-type=team|tenant --owner-id=<id or slug>` to pick one.
+`--force` refuses a host another owner of the same type has already verified.
+`neev:domain:verify --all` is unchanged.
+
+**A new token unverifies the domain (behaviour change).** Asking for a
+verification token, or re-federating a domain the team already holds, now
+clears `verified_at` until the new TXT record is verified — including for a
+domain that was verified. Make sure your UI does not offer "get a new token" as
+a harmless action on a verified domain.
+
+**Enforcement follows every verified domain (behaviour change).** Invitations
+to a team with an enforced verified domain are limited to addresses on any of
+the team's verified domains, such a team no longer accepts join requests, and
+removing a member on any verified domain deactivates the account rather than
+detaching it. All three used to look at the primary domain only. The other
+way round, a team whose only enforced domain is still unverified now accepts
+join requests; it used to refuse them.
+
+**A member on a verified domain cannot leave on their own (behaviour change).**
+`PUT /neev/teams/leave` naming the caller answers
+`403 You cannot leave a team your email domain manages.` when their email is on
+one of the team's verified domains, as does the Blade route. Removing such a
+member deactivates their account, so leaving used to lock them out of the whole
+application. Another member can still deactivate and reactivate them. Once a
+new token unverifies the domain, removing such a member detaches them and
+reactivates their account, unless another team they belong to also holds a
+claim on that domain. Deleting a domain, verified or since unverified by a new
+token, reactivates the team's deactivated members on it, with the same
+exception.
+
+**`VerifyDomainJob` re-checks verified domains only (behaviour change).** The
+job now does nothing for a domain that is not verified when it runs. The
+package only dispatches it from `VerifyAllDomainsJob`, for verified domains, so
+`neev:domain:verify --all` is unchanged. Code of your own that dispatches
+`VerifyDomainJob` for a pending claim, to verify it in the background, should
+call `$domain->verify()` from its own job instead.
+
+**Rejecting reaches pending memberships only (behaviour change, API clients).**
+`PUT /neev/teams/request` with `action: reject`, and `PUT /neev/teams/inviteUser`
+with `team_id` and `action: reject`, used to detach the user even when they had
+joined. They now answer `400 Request not found` / `400 Invitation not found` for
+a joined member. Remove a member with `PUT /neev/teams/leave`, which keeps the
+owner and deactivates a member on a verified domain.
+
+**A platform subdomain is refused a new token (API clients).** `PUT
+/neev/domains` with `token`, and re-submitting a platform subdomain the team
+holds to `POST /neev/domains`, answer
+`400 A platform subdomain does not use a verification token.` A new token would
+unverify the subdomain, and nobody can publish its record in the platform's
+zone.
+
+**The Blade team pages follow every verified domain (re-eject to pick up).**
+`team/members.blade.php`, `account/teams.blade.php` and
+`team/profile.blade.php` decided **Leave**, **Deactivate**/**Remove**,
+**Activate**, the outside-member highlight and **Request to join** from the
+primary domain alone. They now call `Team::hasVerifiedDomainFor()`,
+`Team::enforcesDomain()` and `Team::acceptsJoinRequests()`. An ejected copy
+keeps working but can offer a button the server then refuses; re-eject the
+three views, or switch their conditions to those methods.
+
+**New public methods on `Team` (check a custom team model).** This release adds
+`hasVerifiedDomainFor()`, `holdsDomainFor()`, `enforcesDomain()`,
+`acceptsJoinRequests()`, `hasPendingMember()`, `reactivatesOnRemoval()`,
+`reactivateMembersOn()` and `federateDomain()` to `Ssntpl\Neev\Models\Team`.
+The package's controllers and views call them. If your `team_model` extends
+`Team` and already defines a method with one of these names, rename yours, or
+make sure it keeps the same signature and meaning.
+
+**Team domain tokens are 64 hex characters (API clients).** `POST /neev/domains`
+and `PUT /neev/domains` with `token` issue tokens from the same generator as the
+tenant-domain endpoints, so they are 64 hexadecimal characters rather than 32
+alphanumerics. Tokens already issued, and the TXT records holding them, keep
+working. Only a client that checks the token's length or alphabet needs a change.
+
+**Federating validates `domain` (API clients).** `POST /neev/domains`, the Blade
+federate form and `POST /neev/tenant-domains` answer `422` for a `domain` that
+is not a host name: missing, only dots, not a string, a URL, a path, a port, a
+space, a single label, or an IP address. Internationalised names have to be sent in punycode.
+`POST /neev/domains` answers `400` (not `200`) when it fails to save.
+
+**The Blade token dialog shows the record name (no action required).** Only
+the shipped `team/domain-federation.blade.php` changed. An ejected copy keeps
+working but shows the token value alone; re-eject it, or add a field reading
+`session('dns_record_name')`, to show where the record goes.
+
 ---
 
 ## 0.6.6 → 0.6.7

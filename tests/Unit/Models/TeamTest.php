@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Unit\Models;
 use Exception;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
@@ -682,4 +683,64 @@ class TeamTest extends TestCase
 
         TeamFactory::new()->create(['slug' => 'shared', 'tenant_id' => $two->id]);
     }
+
+    public function test_an_address_on_an_unverified_domain_is_held_but_not_verified(): void
+    {
+        $team = TeamFactory::new()->create();
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.com']);
+        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.io']);
+
+        $this->assertTrue($team->holdsDomainFor('Alice@ACME.com'));
+        $this->assertFalse($team->hasVerifiedDomainFor('Alice@ACME.com'));
+        $this->assertTrue($team->hasVerifiedDomainFor('bob@acme.io'));
+        $this->assertFalse($team->holdsDomainFor('carol@other.com'));
+        // The suffix is the whole domain, not any tail of it.
+        $this->assertFalse($team->holdsDomainFor('dave@notacme.com'));
+    }
+
+    public function test_verified_domains_are_read_from_the_loaded_domains_without_another_query(): void
+    {
+        $team = TeamFactory::new()->create();
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.com']);
+        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.io']);
+
+        $team->load('domains');
+
+        DB::enableQueryLog();
+        DB::flushQueryLog();
+
+        $this->assertTrue($team->hasVerifiedDomainFor('bob@acme.io'));
+        $this->assertFalse($team->hasVerifiedDomainFor('alice@acme.com'), 'A pending claim is not verified.');
+        $this->assertSame([], DB::getQueryLog());
+        $this->assertFalse($team->relationLoaded('customDomains'));
+    }
+
+    /**
+     * Only claims by teams the member belongs to hold their account back; a
+     * claim by a team they are not in has no say over it.
+     */
+    public function test_reactivate_members_on_skips_a_member_another_of_their_teams_claims(): void
+    {
+        $team = TeamFactory::new()->create();
+        $other = TeamFactory::new()->create();
+        $stranger = TeamFactory::new()->create();
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.com']);
+        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $other->id, 'domain' => 'acme.com']);
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $stranger->id, 'domain' => 'acme.com']);
+
+        $shared = User::factory()->create(['active' => true, 'email' => 'bob@acme.com']);
+        $team->addMember($shared);
+        $other->addMember($shared);
+        $shared->deactivate();
+
+        $only = User::factory()->create(['active' => true, 'email' => 'alice@ACME.com']);
+        $team->addMember($only);
+        $only->deactivate();
+
+        $team->reactivateMembersOn('acme.com');
+
+        $this->assertFalse($shared->fresh()->active, 'Another of their teams claims the host.');
+        $this->assertTrue($only->fresh()->active, 'A claim by a team they are not in does not count.');
+    }
+
 }

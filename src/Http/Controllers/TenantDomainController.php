@@ -7,7 +7,9 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
 use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Rules\Hostname;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\TenantResolver;
 
@@ -68,10 +70,22 @@ class TenantDomainController extends Controller
             ], 403);
         }
 
+        // Compare the stored spelling, not whatever was typed: `ACME.com.` and
+        // `acme.com` are one host, and the unique rules below would otherwise
+        // miss the row that holds it.
+        if (is_string($request->domain) && Domain::canonicalHost($request->domain) !== '') {
+            $request->merge(['domain' => Domain::canonicalHost($request->domain)]);
+        }
+
         $request->validate([
             'domain' => [
+                // Stop at the first failure: the unique checks below need not
+                // query for a value already refused.
+                'bail',
                 'required',
                 'string',
+                'max:255',
+                new Hostname(),
                 // This team cannot register the same domain twice.
                 Rule::unique('domains', 'domain')->where(
                     fn ($query) => $query->where('owner_type', 'team')->where('owner_id', $team->id)
@@ -192,16 +206,7 @@ class TenantDomainController extends Controller
         }
 
         try {
-            $wasPrimary = $tenantDomain->is_primary;
-            $tenantDomain->delete();
-
-            // If we deleted the primary domain, set another as primary
-            if ($wasPrimary) {
-                $newPrimary = $owner->domains()->first();
-                if ($newPrimary) {
-                    $newPrimary->markAsPrimary();
-                }
-            }
+            $tenantDomain->deleteAndPromote();
 
             return response()->json([
                 'message' => 'Domain deleted successfully.',
@@ -253,6 +258,10 @@ class TenantDomainController extends Controller
             return response()->json([
                 'message' => 'DNS verification failed. Please check your DNS record.',
             ], 400);
+        } catch (DomainAlreadyVerifiedException $e) {
+            return response()->json([
+                'message' => $e->getMessage(),
+            ], 400);
         } catch (Exception $e) {
             Log::error($e);
             return response()->json([
@@ -290,9 +299,7 @@ class TenantDomainController extends Controller
         }
 
         try {
-            $token = $tenantDomain->generateVerificationToken();
-            $tenantDomain->verified_at = null;
-            $tenantDomain->save();
+            $token = $tenantDomain->regenerateVerificationToken();
 
             return response()->json([
                 'message' => 'Verification token regenerated.',

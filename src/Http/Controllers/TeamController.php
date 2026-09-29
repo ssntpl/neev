@@ -7,12 +7,13 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
+use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
 use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Rules\Hostname;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation as TeamInvitationModel;
@@ -59,19 +60,9 @@ class TeamController extends Controller
         // of them is inside the team's boundary. Counting per domain in
         // isolation flagged those members on every other domain, so the warning
         // fired for people who were never outside.
-        $verified = $domains->filter(fn ($domain) => $domain->verified_at !== null)
-            ->map(fn ($domain) => '@' . strtolower($domain->domain))
-            ->all();
-
-        $outside = $team->users->filter(function ($member) use ($verified) {
-            foreach ($verified as $suffix) {
-                if (str_ends_with(strtolower($member->email), $suffix)) {
-                    return false;
-                }
-            }
-
-            return true;
-        })->count();
+        $outside = $team->users
+            ->reject(fn ($member) => $team->hasVerifiedDomainFor((string) $member->email))
+            ->count();
 
         $outsideMembers = [];
         foreach ($domains as $domain) {
@@ -183,7 +174,10 @@ class TeamController extends Controller
             if ($user->id != $team->user_id) {
                 return back()->withErrors(['message' => 'You cannot invite member in this team.']);
             }
-            if ($team->domain?->enforce && $team->domain?->verified_at && !str_ends_with(strtolower($request->email), '@' . strtolower($team->domain->domain))) {
+            // Enforcement applies to every verified domain the team federates,
+            // not only the primary one. When any of them is enforced, the
+            // invitee must be on one of the team's verified domains.
+            if ($team->enforcesDomain() && !$team->hasVerifiedDomainFor((string) $request->email)) {
                 return back()->withErrors(['message' => 'You cannot invite member in this team.']);
             }
             $member = User::findByEmail($request->email);
@@ -277,13 +271,47 @@ class TeamController extends Controller
                 return back()->with('status', 'Invitation Revoked Successfully');
             }
 
-            // Leaving, or removing someone. The owner holds the team, so they
-            // are not a member who can be taken out of it.
-            if ($user->id == $team->user_id || !$team->hasMember($actor)) {
+            // The owner holds the team, so they are not a member who can be
+            // taken out of it.
+            if ($user->id == $team->user_id) {
                 return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
             }
 
-            if ($team->domain?->verified_at && str_ends_with(strtolower($user->email), '@' . strtolower($team->domain?->domain))) {
+            // A membership not yet joined — an invitation not accepted, a join
+            // request not answered — is withdrawn by a member, or by the user
+            // it names. It is only ever detached: nothing has been joined, so
+            // there is no account for the domain to deactivate.
+            if ($team->hasPendingMember($user)) {
+                if ($user->id !== $actor->id && !$team->hasMember($actor)) {
+                    return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
+                }
+
+                DB::transaction(function () use ($team, $user) {
+                    $team->allUsers()->detach($user);
+                    $user->removeRole($team);
+                });
+
+                return back()->with('status', 'Removed Successfully');
+            }
+
+            // Leaving, or removing a member. The subject must have joined:
+            // deactivation is account-wide, and without this any member could
+            // deactivate every user on the team's verified domains.
+            if (!$team->hasMember($actor) || !$team->hasMember($user)) {
+                return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
+            }
+
+            // A member on any of the team's verified domains is managed by the
+            // domain, not only one on the primary: deactivate them rather than
+            // remove them.
+            $onVerifiedDomain = $team->hasVerifiedDomainFor((string) $user->email);
+
+            if ($onVerifiedDomain) {
+                // Deactivating is account-wide: a member leaving on their own
+                // would lock themselves out of everything, not just this team.
+                if ($user->id === $actor->id) {
+                    return back()->withErrors(['message' => 'You cannot leave a team your email domain manages.']);
+                }
                 if ($user->active) {
                     $user->deactivate();
                     return back()->with('status', 'User Deactivated Successfully');
@@ -293,8 +321,20 @@ class TeamController extends Controller
                 }
             }
 
-            $team->users()->detach($user);
-            $user->removeRole($team);
+            // An unverified domain manages nobody, so the member is removed as
+            // any other would be. One this team's domain deactivated — verified
+            // until a new token unverified it — gets their account back as they
+            // go: detached and still deactivated, they would be locked out of
+            // the whole application with nothing left to undo it.
+            $reactivate = $team->reactivatesOnRemoval($user);
+
+            DB::transaction(function () use ($team, $user, $reactivate) {
+                $team->users()->detach($user);
+                $user->removeRole($team);
+                if ($reactivate) {
+                    $user->activate();
+                }
+            });
         } catch (Exception $e) {
             Log::error($e);
             return back()->withErrors(['message' => 'Failed to leave from team.']);
@@ -355,6 +395,12 @@ class TeamController extends Controller
                 /** @var Team|null $team */
                 $team = Team::model()->find($request->team_id);
                 if ($request->action == 'reject') {
+                    // Only an invitation not yet accepted can be rejected. A
+                    // joined member leaves through leave(), which decides
+                    // whether their domain lets them.
+                    if (!$team || !$team->hasPendingMember($user)) {
+                        return back()->withErrors(['message' => 'Invitation not found.']);
+                    }
                     $team->allUsers()->detach($user);
                     $user->removeRole($team);
                     return back()->with('status', 'Rejected Successfully');
@@ -380,7 +426,7 @@ class TeamController extends Controller
         try {
             $team = $this->requestedTeam($request);
 
-            if ($team && !$team->domain?->enforce && !$team->domain?->verified_at) {
+            if ($team && $team->acceptsJoinRequests()) {
                 $owner = $team->owner;
                 if ($team->users->contains($user)) {
                     return back()->with('status', 'Already Added.');
@@ -447,8 +493,13 @@ class TeamController extends Controller
             }
 
             if ($request->action == 'reject') {
-                // Rejecting also removes an already-joined member, so the
-                // team-scoped role has to go with the membership.
+                // Only a membership not yet joined can be rejected. A joined
+                // member is removed through leave(), which deactivates a
+                // member the team's domain manages.
+                if (!$team->hasPendingMember($member)) {
+                    return back()->withErrors(['message' => 'Join request not found.']);
+                }
+
                 DB::transaction(function () use ($team, $member) {
                     $team->allUsers()->detach($member);
                     $member->removeRole($team);
@@ -508,23 +559,24 @@ class TeamController extends Controller
             return back()->withErrors(['message' => 'You do not have the required permissions to federate domain.']);
         }
 
-        $held = $team->domains()->where('domain', $request->domain)->exists();
-
-        if (!$held && Domain::findByHostForOwnerType($request->domain, 'team')) {
-            return back()->withErrors(['message' => 'This domain is already verified by another team.']);
-        }
+        $request->validate([
+            'domain' => [
+                // Stop at the first failure: a value already refused need not
+                // be judged as a host name too.
+                'bail',
+                'required',
+                'string',
+                'max:255',
+                new Hostname(),
+            ],
+        ]);
 
         try {
-            $token = Str::random(32);
-            $team->domains()->updateOrCreate([
-                'domain' => $request->domain
-            ], [
-                'enforce' => (bool) $request->enforce,
-                'verification_token' => $token,
-                'is_primary' => !$team->domain,
-            ]);
+            $domain = $team->federateDomain((string) $request->domain, (bool) $request->enforce);
 
-            return back()->with('token', $token);
+            return back()->with('token', $domain->verification_token)->with('dns_record_name', $domain->getDnsRecordName());
+        } catch (DomainAlreadyVerifiedException|InvalidArgumentException $e) {
+            return back()->withErrors(['message' => $e->getMessage()]);
         } catch (Exception $e) {
             Log::error($e);
             return back()->withErrors(['message' => 'Failed to federate domain.']);
@@ -543,10 +595,7 @@ class TeamController extends Controller
                 $domain_rules = ["mfa"];
                 if ($domain->verify()) {
                     foreach ($domain_rules as $rule) {
-                        $domain->rules()->create([
-                            'name' => $rule,
-                            'value' => false,
-                        ]);
+                        $domain->rules()->firstOrCreate(['name' => $rule], ['value' => false]);
                     }
                     return back()->with('status', 'Domain verified successfully!');
                 }
@@ -554,15 +603,21 @@ class TeamController extends Controller
             }
 
             if ($request->token) {
-                $token = Str::random(32);
-                $domain->verification_token = $token;
-                $domain->save();
-                return back()->with('token', $token);
+                // A new token unverifies the domain until the record is
+                // published, and nobody can publish one in the platform's zone.
+                if (Domain::isPlatformSubdomain($domain->domain)) {
+                    return back()->withErrors(['message' => 'A platform subdomain does not use a verification token.']);
+                }
+
+                $token = $domain->regenerateVerificationToken();
+                return back()->with('token', $token)->with('dns_record_name', $domain->getDnsRecordName());
             }
 
             $domain->enforce = (bool) $request->enforce;
             $domain->save();
             return back()->with('status', 'domain has been updated.');
+        } catch (DomainAlreadyVerifiedException $e) {
+            return back()->withErrors(['message' => $e->getMessage()]);
         } catch (Exception $e) {
             Log::error($e);
             return back()->withErrors(['message' => 'Failed to update domain.']);
@@ -577,8 +632,8 @@ class TeamController extends Controller
             return back()->withErrors(['message' => 'You do not have the required permissions to delete domain.']);
         }
         try {
-            $domain->rules()->delete();
-            $domain->delete();
+            $domain->deleteAndPromote();
+
             return back()->with('status', 'Domain has been deleted.');
         } catch (Exception $e) {
             Log::error($e);

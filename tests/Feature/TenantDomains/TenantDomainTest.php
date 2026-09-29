@@ -223,6 +223,36 @@ class TenantDomainTest extends TestCase
         $this->assertNull($domain->verified_at);
     }
 
+    public function test_add_domain_that_is_only_dots_is_refused(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains', ['team_id' => $team->id, 'domain' => ' . . '])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['domain' => 'The domain must be a host name.']);
+
+        $this->assertSame(0, Domain::count());
+    }
+
+    public function test_add_domain_refuses_another_spelling_of_one_the_team_holds(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains', ['team_id' => $team->id, 'domain' => 'ACME.com.'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['domain']);
+
+        $this->assertSame(1, Domain::where('domain', 'acme.com')->count());
+    }
+
     public function test_add_domain_rejects_non_owner(): void
     {
         [$user, $token] = $this->authenticatedUser();
@@ -367,6 +397,49 @@ class TenantDomainTest extends TestCase
         $this->assertTrue($secondary->is_primary);
     }
 
+    public function test_delete_primary_domain_prefers_a_verified_domain(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+
+        $primary = DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+        ]);
+        // Created first, so it is what an unordered first() would pick.
+        $pending = DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+        ]);
+        $verified = DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/tenant-domains/' . $primary->id)
+            ->assertOk();
+
+        $this->assertTrue($verified->fresh()->is_primary);
+        $this->assertFalse($pending->fresh()->is_primary);
+    }
+
+    public function test_delete_primary_domain_falls_back_to_an_unverified_domain(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+
+        $primary = DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+        ]);
+        $pending = DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/tenant-domains/' . $primary->id)
+            ->assertOk();
+
+        $this->assertTrue($pending->fresh()->is_primary);
+    }
+
     public function test_delete_domain_rejects_non_owner(): void
     {
         [$user, $token] = $this->authenticatedUser();
@@ -400,6 +473,25 @@ class TenantDomainTest extends TestCase
 
         $response->assertStatus(400)
             ->assertJsonPath('message', 'Only domains with verification tokens can be regenerated.');
+    }
+
+    public function test_regenerate_token_restarts_the_claim(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        $domain = DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'verification_token' => 'old',
+            'verification_failed_at' => now(),
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains/' . $domain->id . '/regenerate-token')
+            ->assertOk();
+
+        $domain->refresh();
+        $this->assertNull($domain->verified_at);
+        $this->assertNull($domain->verification_failed_at);
     }
 
     public function test_regenerate_token_rejects_non_owner(): void
@@ -596,6 +688,24 @@ class TenantDomainTest extends TestCase
             ->assertJsonPath('message', 'Domain is already verified.');
     }
 
+    public function test_verify_refuses_a_domain_another_team_already_verified(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        DomainFactory::new()->verified()->create(['domain' => 'acme.com']);
+        $claim = DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains/' . $claim->id . '/verify')
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'This domain is already verified by another team.');
+
+        $this->assertNull($claim->fresh()->verified_at);
+    }
+
     // -----------------------------------------------------------------
     // DELETE /neev/tenant-domains/{id} — additional edge cases
     // -----------------------------------------------------------------
@@ -681,4 +791,72 @@ class TenantDomainTest extends TestCase
 
         $response->assertStatus(404);
     }
+
+    public function test_adding_a_domain_that_is_not_a_string_is_refused(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/tenant-domains/', ['team_id' => $team->id, 'domain' => ['acme.com']])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors('domain');
+
+        $this->assertSame(0, Domain::count());
+    }
+
+    public function test_adding_something_that_is_not_a_host_name_is_refused(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+
+        foreach (['https://acme.com/x', 'ac me.com', str_repeat('a', 250) . '.com'] as $value) {
+            $this->withHeader('Authorization', 'Bearer ' . $token)
+                ->postJson('/neev/tenant-domains/', ['team_id' => $team->id, 'domain' => $value])
+                ->assertStatus(422)
+                ->assertJsonValidationErrors('domain');
+        }
+
+        $this->assertSame(0, Domain::count());
+    }
+
+    /**
+     * Deleting a tenant domain reactivates the team's members on it, but not
+     * one another team they belong to also claims the host for.
+     */
+    public function test_delete_domain_leaves_a_member_another_of_their_teams_claims_deactivated(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        $other = TeamFactory::new()->create();
+
+        DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+        ]);
+        $domain = DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $other->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $shared = User::factory()->create(['active' => true, 'email' => 'bob@acme.com', 'tenant_id' => $user->tenant_id]);
+        $team->allUsers()->attach($shared, ['joined' => true]);
+        $other->allUsers()->attach($shared, ['joined' => true]);
+        $shared->deactivate();
+
+        $only = User::factory()->create(['active' => true, 'email' => 'alice@acme.com', 'tenant_id' => $user->tenant_id]);
+        $team->allUsers()->attach($only, ['joined' => true]);
+        $only->deactivate();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/tenant-domains/' . $domain->id)
+            ->assertOk();
+
+        $this->assertFalse($shared->fresh()->active);
+        $this->assertTrue($only->fresh()->active);
+    }
+
 }
