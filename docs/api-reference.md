@@ -2263,7 +2263,9 @@ Authorization: Bearer {token}
 Deleting the primary domain makes one of the remaining domains primary,
 preferring a verified one, and among those the oldest. Deleting a domain,
 including one a new token has unverified, reactivates the team's deactivated
-members whose email is on it, since nothing manages them once it is gone.
+members whose email is on it, since nothing manages them once it is gone. A
+member another team they belong to also holds a claim on that domain for is
+left deactivated, since that team may be the one that deactivated them.
 
 ---
 

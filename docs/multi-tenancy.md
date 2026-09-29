@@ -291,7 +291,7 @@ curl -X POST https://yourapp.com/neev/tenant-domains/1/verify \
 
 The first team to verify a domain gets it: once one has, verifying another team's claim answers `400 This domain is already verified by another team.`
 
-`DELETE /neev/tenant-domains/{id}` deletes a domain the same way as the team endpoint: the primary flag moves to a remaining domain, a verified one first, and deleting it reactivates the team's deactivated members whose email is on it.
+`DELETE /neev/tenant-domains/{id}` deletes a domain the same way as the team endpoint: the primary flag moves to a remaining domain, a verified one first, and deleting it reactivates the team's deactivated members whose email is on it, unless another team they belong to also holds a claim on that domain.
 
 `POST /neev/tenant-domains/{id}/regenerate-token` issues a new token and returns it with `dns_record`. The domain goes back to unverified, with any earlier failure cleared, until the new record is verified.
 

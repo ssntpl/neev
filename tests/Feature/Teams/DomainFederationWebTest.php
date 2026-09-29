@@ -563,4 +563,30 @@ class DomainFederationWebTest extends TestCase
             ->assertOk()
             ->assertDontSee('Activate');
     }
+
+    /**
+     * The Blade delete route goes through the same rule as the API: deleting
+     * one team's claim does not undo another team's deactivation.
+     */
+    public function test_deleting_a_domain_leaves_a_member_another_of_their_teams_claims_deactivated(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        [$other] = $this->teamWithOwner();
+        $pending = DomainFactory::new()->forTeam($team)->create(['domain' => 'acme.com']);
+        DomainFactory::new()->verified()->primary()->forTeam($other)->create(['domain' => 'acme.com']);
+
+        $member = User::factory()->create(['active' => true, 'email' => 'bob@acme.com']);
+        $team->addMember($member);
+        $other->addMember($member);
+        $member->deactivate();
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->delete(route('teams.domain', $pending->id))
+            ->assertSessionHasNoErrors();
+
+        $this->assertDatabaseMissing('domains', ['id' => $pending->id]);
+        $this->assertFalse($member->fresh()->active);
+    }
+
 }

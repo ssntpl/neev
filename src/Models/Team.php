@@ -337,30 +337,45 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
         }
 
         $at = strrchr($email, '@');
-        $teams = $user->teams();
 
-        return !Domain::forHost(substr((string) $at, 1))
-            ->where('owner_type', 'team')
-            ->where('owner_id', '!=', $this->getKey())
-            ->whereIn('owner_id', $teams->pluck($teams->getRelated()->getQualifiedKeyName()))
-            ->exists();
+        return !$this->anotherOfTheirTeamsClaims($user, substr((string) $at, 1));
     }
 
     /**
-     * Reactivate the members on a host whose verified domain is going away.
+     * Reactivate the members on a host whose domain is going away.
      *
      * Only a verified team domain deactivates anyone, and it does so without
      * detaching them, so an inactive member on the host was deactivated by it.
      * With the domain gone they would be locked out with nothing to undo it.
+     * A member another of their teams also claims the host for is left as they
+     * are, as reactivatesOnRemoval() does: that team may be the one that
+     * deactivated them, and deleting this claim must not undo what it did.
      */
     public function reactivateMembersOn(string $host): void
     {
         foreach ($this->users()->get() as $member) {
             /** @var User $member */
-            if (!$member->active && static::emailIsOnHost((string) $member->email, $host)) {
+            if (!$member->active
+                && static::emailIsOnHost((string) $member->email, $host)
+                && !$this->anotherOfTheirTeamsClaims($member, $host)) {
                 $member->activate();
             }
         }
+    }
+
+    /**
+     * Whether a team the user belongs to, other than this one, holds a claim
+     * on the host, verified or not.
+     */
+    protected function anotherOfTheirTeamsClaims(User $user, string $host): bool
+    {
+        $teams = $user->teams();
+
+        return Domain::forHost($host)
+            ->where('owner_type', 'team')
+            ->where('owner_id', '!=', $this->getKey())
+            ->whereIn('owner_id', $teams->pluck($teams->getRelated()->getQualifiedKeyName()))
+            ->exists();
     }
 
     /**

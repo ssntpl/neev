@@ -714,4 +714,33 @@ class TeamTest extends TestCase
         $this->assertSame([], DB::getQueryLog());
         $this->assertFalse($team->relationLoaded('customDomains'));
     }
+
+    /**
+     * Only claims by teams the member belongs to hold their account back; a
+     * claim by a team they are not in has no say over it.
+     */
+    public function test_reactivate_members_on_skips_a_member_another_of_their_teams_claims(): void
+    {
+        $team = TeamFactory::new()->create();
+        $other = TeamFactory::new()->create();
+        $stranger = TeamFactory::new()->create();
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.com']);
+        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $other->id, 'domain' => 'acme.com']);
+        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $stranger->id, 'domain' => 'acme.com']);
+
+        $shared = User::factory()->create(['active' => true, 'email' => 'bob@acme.com']);
+        $team->addMember($shared);
+        $other->addMember($shared);
+        $shared->deactivate();
+
+        $only = User::factory()->create(['active' => true, 'email' => 'alice@ACME.com']);
+        $team->addMember($only);
+        $only->deactivate();
+
+        $team->reactivateMembersOn('acme.com');
+
+        $this->assertFalse($shared->fresh()->active, 'Another of their teams claims the host.');
+        $this->assertTrue($only->fresh()->active, 'A claim by a team they are not in does not count.');
+    }
+
 }

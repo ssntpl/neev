@@ -614,7 +614,7 @@ curl -X PUT https://yourapp.com/neev/domains \
 
 Deleting the team's primary domain hands the primary flag to one of the remaining domains, a verified one if there is any and the oldest among them, so the team is not left without a primary.
 
-Deleting a domain also reactivates the team's deactivated members whose email is on it, including after a new token has unverified it: once the domain is gone nothing manages them, and the package would offer no way to reactivate them.
+Deleting a domain also reactivates the team's deactivated members whose email is on it, including after a new token has unverified it: once the domain is gone nothing manages them, and the package would offer no way to reactivate them. A member another team they belong to also holds a claim on that domain for is left deactivated, since Neev does not record which team deactivated an account and that team may be the one that did; once the last claim on the domain is deleted, they are reactivated.
 
 From your own code, `$domain->deleteAndPromote()` does both, with the domain's rules, in one transaction.
 

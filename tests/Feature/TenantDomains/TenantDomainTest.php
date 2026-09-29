@@ -819,4 +819,44 @@ class TenantDomainTest extends TestCase
 
         $this->assertSame(0, Domain::count());
     }
+
+    /**
+     * Deleting a tenant domain reactivates the team's members on it, but not
+     * one another team they belong to also claims the host for.
+     */
+    public function test_delete_domain_leaves_a_member_another_of_their_teams_claims_deactivated(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        $other = TeamFactory::new()->create();
+
+        DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+        ]);
+        $domain = DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+        DomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $other->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $shared = User::factory()->create(['active' => true, 'email' => 'bob@acme.com', 'tenant_id' => $user->tenant_id]);
+        $team->allUsers()->attach($shared, ['joined' => true]);
+        $other->allUsers()->attach($shared, ['joined' => true]);
+        $shared->deactivate();
+
+        $only = User::factory()->create(['active' => true, 'email' => 'alice@acme.com', 'tenant_id' => $user->tenant_id]);
+        $team->allUsers()->attach($only, ['joined' => true]);
+        $only->deactivate();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/tenant-domains/' . $domain->id)
+            ->assertOk();
+
+        $this->assertFalse($shared->fresh()->active);
+        $this->assertTrue($only->fresh()->active);
+    }
+
 }

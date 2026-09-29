@@ -165,6 +165,13 @@ verified while the rightful owner holds the host. `neev:domain:list` shows the
 rows with their owners; `--owner-type=team --owner-id=<id or slug>` narrows it
 to one owner.
 
+**`neev:domain:verify <host>` needs an owner when several have claimed the host
+(check scripts and cron).** It used to verify whichever claim came back first;
+it now fails, listing the claims, when more than one owner holds a row for the
+host. Pass `--owner-type=team|tenant --owner-id=<id or slug>` to pick one.
+`--force` refuses a host another owner of the same type has already verified.
+`neev:domain:verify --all` is unchanged.
+
 **A new token unverifies the domain (behaviour change).** Asking for a
 verification token, or re-federating a domain the team already holds, now
 clears `verified_at` until the new TXT record is verified — including for a
@@ -188,7 +195,8 @@ application. Another member can still deactivate and reactivate them. Once a
 new token unverifies the domain, removing such a member detaches them and
 reactivates their account, unless another team they belong to also holds a
 claim on that domain. Deleting a domain, verified or since unverified by a new
-token, reactivates the team's deactivated members on it.
+token, reactivates the team's deactivated members on it, with the same
+exception.
 
 **`VerifyDomainJob` re-checks verified domains only (behaviour change).** The
 job now does nothing for a domain that is not verified when it runs. The

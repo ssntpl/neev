@@ -1107,4 +1107,46 @@ class DomainFederationTest extends TestCase
         $this->assertFalse($teamB->refresh()->hasMember($bob));
         $this->assertTrue($teamA->refresh()->hasMember($bob));
     }
+
+    /**
+     * Team A verified acme.com and deactivated Bob. Team B, which Bob also
+     * belongs to, deletes its own pending claim on the host. That must not
+     * undo team A's deactivation; team A deleting its domain later does.
+     */
+    public function test_deleting_a_domain_leaves_members_deactivated_when_another_of_their_teams_claims_the_host(): void
+    {
+        [$ownerA, $tokenA] = $this->authenticatedUser();
+        $teamA = TeamFactory::new()->create(['user_id' => $ownerA->id]);
+        $teamA->addMember($ownerA);
+
+        [$ownerB, $tokenB] = $this->authenticatedUser();
+        $teamB = TeamFactory::new()->create(['user_id' => $ownerB->id]);
+        $teamB->addMember($ownerB);
+
+        $pending = DomainFactory::new()->create([
+            'owner_type' => 'team', 'owner_id' => $teamB->id,
+            'domain' => 'acme.com',
+        ]);
+        $verified = DomainFactory::new()->verified()->primary()->create([
+            'owner_type' => 'team', 'owner_id' => $teamA->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $bob = User::factory()->create(['active' => true, 'email' => 'bob@acme.com']);
+        $teamA->addMember($bob);
+        $teamB->addMember($bob);
+        $bob->deactivate();
+
+        $this->withHeader('Authorization', 'Bearer ' . $tokenB)
+            ->deleteJson('/neev/domains', ['domain_id' => $pending->id])
+            ->assertOk();
+
+        $this->assertFalse($bob->fresh()->active, 'Team B deleting its claim must not undo team A.');
+
+        $this->withHeader('Authorization', 'Bearer ' . $tokenA)
+            ->deleteJson('/neev/domains', ['domain_id' => $verified->id])
+            ->assertOk();
+
+        $this->assertTrue($bob->fresh()->active, 'With no other claim left, team A deleting its domain reactivates Bob.');
+    }
 }
