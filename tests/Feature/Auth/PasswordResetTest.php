@@ -459,20 +459,59 @@ class PasswordResetTest extends TestCase
         ])->assertOk();
     }
 
-    public function test_wrong_codes_count_against_the_account_across_codes(): void
+    public function test_wrong_codes_lock_the_account_until_the_window_passes(): void
     {
         // More requests than the per-IP route limit allows; the per-account
         // limits under test are separate from it.
         $this->withoutMiddleware(ThrottleRequests::class);
 
-        // A new email brings a new code with a new allowance of 5; without an
-        // account-wide count, asking again and again gave unlimited guesses.
+        // The code itself dies after 5 wrong guesses; the account-wide count
+        // keeps going against the codeless account, and past the limit no
+        // code is checked at all.
         $user = User::factory()->create(['password' => 'original-password']);
 
+        $otp = $this->requestResetCode($user);
+        $this->wrongGuesses($user, AuthService::PASSWORD_RESET_GUESS_LIMIT);
+        $this->assertDatabaseMissing('otp', ['owner_id' => $user->id, 'purpose' => 'password_reset']);
+
+        $reset = [
+            'email' => $user->email,
+            'otp' => $otp,
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ];
+        $this->postJson('/neev/resetPassword', $reset)
+            ->assertStatus(429)
+            ->assertHeader('Retry-After')
+            ->assertJsonStructure(['message', 'retry_after']);
+
+        // Once the window passes codes are checked again — and this one is
+        // gone, spent by its own 5 wrong guesses before the lock engaged.
+        $this->travel(AuthService::PASSWORD_RESET_GUESS_WINDOW + 1)->seconds();
+        $this->postJson('/neev/resetPassword', $reset)->assertStatus(403);
+
+        $this->assertTrue(Hash::check('original-password', $user->fresh()->getRawOriginal('password')));
+    }
+
+    public function test_a_new_email_lifts_a_lock_anyone_could_have_caused(): void
+    {
+        // More requests than the per-IP route limit allows; the per-account
+        // limits under test are separate from it.
+        $this->withoutMiddleware(ThrottleRequests::class);
+
+        // Wrong codes need no sign-in, so a stranger naming the address can
+        // run the account up to its limit. The owner's way back is another
+        // email, which only the owner receives.
+        $user = User::factory()->create();
+
         $this->requestResetCode($user);
-        $this->wrongGuesses($user, 5);
-        $this->requestResetCode($user);
-        $this->wrongGuesses($user, AuthService::PASSWORD_RESET_GUESS_LIMIT - 5);
+        $this->wrongGuesses($user, AuthService::PASSWORD_RESET_GUESS_LIMIT);
+        $this->postJson('/neev/resetPassword', [
+            'email' => $user->email,
+            'otp' => '000000',
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertStatus(429);
 
         $otp = $this->requestResetCode($user);
 
@@ -481,9 +520,34 @@ class PasswordResetTest extends TestCase
             'otp' => $otp,
             'password' => 'newpassword123',
             'password_confirmation' => 'newpassword123',
-        ])->assertStatus(429)->assertHeader('Retry-After');
+        ])->assertOk();
 
-        $this->assertTrue(Hash::check('original-password', $user->fresh()->getRawOriginal('password')));
+        $this->assertTrue(Hash::check('newpassword123', $user->fresh()->getRawOriginal('password')));
+    }
+
+    public function test_a_refused_email_does_not_lift_the_lock(): void
+    {
+        $this->withoutMiddleware(ThrottleRequests::class);
+
+        // The send limit is the bound on what a stranger can try: once it is
+        // reached, nothing is sent and nothing is cleared.
+        $user = User::factory()->create();
+
+        for ($i = 0; $i < AuthService::PASSWORD_RESET_SEND_LIMIT; $i++) {
+            $otp = $this->requestResetCode($user);
+        }
+        $this->wrongGuesses($user, AuthService::PASSWORD_RESET_GUESS_LIMIT);
+
+        Mail::fake();
+        $this->postJson('/neev/forgotPassword', ['email' => $user->email])->assertStatus(429);
+        Mail::assertNothingSent();
+
+        $this->postJson('/neev/resetPassword', [
+            'email' => $user->email,
+            'otp' => $otp,
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertStatus(429);
     }
 
     public function test_the_link_still_works_once_codes_are_locked_out(): void
@@ -494,9 +558,7 @@ class PasswordResetTest extends TestCase
 
         $user = User::factory()->create();
         $this->requestResetCode($user);
-        $this->wrongGuesses($user, 5);
-        $this->requestResetCode($user);
-        $this->wrongGuesses($user, AuthService::PASSWORD_RESET_GUESS_LIMIT - 5);
+        $this->wrongGuesses($user, AuthService::PASSWORD_RESET_GUESS_LIMIT);
 
         $this->postJson('/neev/resetPassword?' . $this->resetQuery($user), [
             'password' => 'newpassword123',
@@ -586,5 +648,101 @@ class PasswordResetTest extends TestCase
             'password' => 'newpassword123',
             'password_confirmation' => 'newpassword123',
         ])->assertForbidden();
+    }
+
+    public function test_a_code_issued_before_a_password_change_is_refused_even_if_it_survived(): void
+    {
+        // changePassword() discards the code, but a change that fails after
+        // saving the password — the discard runs last — must not leave it
+        // usable. The row's own timestamp against password_changed_at refuses
+        // it, the way the link's is refused, without relying on the discard.
+        $user = User::factory()->create();
+        $otp = $this->requestResetCode($user);
+
+        $this->travel(1)->seconds();
+        $user->forceFill(['password_changed_at' => now()])->save();
+
+        $this->postJson('/neev/resetPassword', [
+            'email' => $user->email,
+            'otp' => $otp,
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertForbidden()->assertJson(['message' => 'Invalid or expired code.']);
+
+        $this->assertDatabaseMissing('otp', ['owner_id' => $user->id, 'purpose' => 'password_reset']);
+    }
+
+    public function test_a_wrong_guess_after_a_password_change_does_not_revive_the_code(): void
+    {
+        // Every guess bumps the row's updated_at, so the rule must read the
+        // issue time, not the row's timestamp.
+        $user = User::factory()->create();
+        $otp = $this->requestResetCode($user);
+
+        $this->travel(1)->seconds();
+        $user->forceFill(['password_changed_at' => now()])->save();
+        $this->travel(1)->seconds();
+        $this->wrongGuesses($user, 1);
+
+        $this->postJson('/neev/resetPassword', [
+            'email' => $user->email,
+            'otp' => $otp,
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertForbidden();
+    }
+
+    public function test_a_code_issued_in_the_same_second_as_a_password_change_works(): void
+    {
+        // Registration stamps password_changed_at, so an account created and
+        // sent its first reset in one request gets a code issued in that
+        // second; it must not arrive dead.
+        $user = User::factory()->create();
+        $this->assertNotNull($user->password_changed_at);
+        $otp = $this->requestResetCode($user);
+
+        $this->postJson('/neev/resetPassword', [
+            'email' => $user->email,
+            'otp' => $otp,
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertOk();
+    }
+
+    public function test_a_new_code_works_when_a_password_change_left_the_old_row_behind(): void
+    {
+        // A change that failed at the discard leaves the old row in place.
+        // The next email must not reuse it, or the code it carries would be
+        // refused as issued before the change.
+        $user = User::factory()->create();
+        $this->requestResetCode($user);
+
+        $this->travel(5)->minutes();
+        $user->forceFill(['password_changed_at' => now()])->save();
+        $this->travel(1)->minutes();
+        $otp = $this->requestResetCode($user);
+
+        $this->postJson('/neev/resetPassword', [
+            'email' => $user->email,
+            'otp' => $otp,
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertOk();
+    }
+
+    public function test_a_code_issued_after_a_password_change_works(): void
+    {
+        $user = User::factory()->create();
+        app(AuthService::class)->changePassword($user, 'changed-elsewhere');
+
+        $this->travel(1)->seconds();
+        $otp = $this->requestResetCode($user);
+
+        $this->postJson('/neev/resetPassword', [
+            'email' => $user->email,
+            'otp' => $otp,
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertOk();
     }
 }

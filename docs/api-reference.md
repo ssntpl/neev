@@ -464,14 +464,19 @@ and is used up when a reset succeeds. Requesting it replaces only an earlier
 reset code; a verification or confirmation code the user holds keeps working,
 and neither of those resets the password. Whichever of the two proofs resets
 the password first, the code is gone afterwards. Any other password change
-retires the code as well, and an email change discards every code the user
-holds, since each was mailed to the old address.
+retires the code as well — a code issued before `password_changed_at` is
+refused as expired, however it survived — and an email change discards every
+code the user holds, since each was mailed to the old address.
 
 One account can be sent 3 reset emails per 15 minutes, whoever asks; a fourth
 request returns `429` with `retry_after` and a `Retry-After` header, sends
 nothing, and leaves the code already out working. The count is per account,
 not per caller, because each email brings a fresh code with a fresh allowance
-of guesses. A successful reset restores the allowance.
+of guesses. Wrong codes are counted the same way: 10 in an hour, whoever
+tried them, and the code field is refused after that. Since anyone naming
+the address can run that count up, requesting a new email clears it — the
+owner is the one who receives the email, so a fresh code always works — and
+the link is never refused for it. A successful reset restores both allowances.
 
 Both proofs are always sent; your app decides which to surface, as with email
 verification. The email template is app-owned
@@ -538,7 +543,7 @@ attempt. A successful code reset also marks an unverified address verified.
 | Status | Meaning |
 |--------|---------|
 | 403 | `Invalid or expired reset link.` (also once the password has changed since the link was sent) / `Invalid or expired code.` (also returned for an unknown email) |
-| 429 | `Too many incorrect codes. Use the link in the email, or try again later.` — the account has had 10 wrong codes tried in the last hour; no code is checked until the window passes, and the link still works. Carries `retry_after` and a `Retry-After` header |
+| 429 | `Too many incorrect codes. Use the link in the email, or try again later.` — the account has had 10 wrong codes tried in the last hour, whoever tried them; no code is checked until the window passes or a new reset email is requested, and the link still works. Carries `retry_after` and a `Retry-After` header |
 | 422 | Validation error — no `signature`, and `email` or `otp` missing; or the new password fails the password rules |
 
 Resetting the password revokes the account's other login tokens and, on the
@@ -826,8 +831,9 @@ reason:
 
 An email factor is only as trustworthy as the inbox it is sent to, so an
 unverified address cannot be enrolled. `Email already Configured.` comes back
-the same way when the factor already exists. A `400` still means the method
-name itself is not one neev supports.
+the same way when the factor already exists. A `400` (`Auth was not added.`)
+means the method is not one neev supports, or is one the app has turned off in
+`neev.multi_factor_auth`.
 
 **Response (email):**
 
@@ -870,13 +876,20 @@ Authorization: Bearer {token}
 }
 ```
 
-**Response (wrong code or no pending setup, 400):**
+**Response (wrong code, 400):**
 
 ```json
 {
     "message": "Code verification failed."
 }
 ```
+
+Two other `400`s are not a wrong code. `Auth was not added.` means the app
+turned the method off in `neev.multi_factor_auth` since the setup started, so
+no code can finish it — the same refusal [Add MFA Method](#add-mfa-method)
+gives. `No setup is in progress for this method. Start it again.` means the
+pending setup was discarded (enrolling another factor drops every pending one);
+the user has to start over.
 
 ---
 

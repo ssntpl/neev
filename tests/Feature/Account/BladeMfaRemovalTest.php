@@ -86,6 +86,19 @@ class BladeMfaRemovalTest extends TestCase
             ->assertSee(route('account.confirmation'), false);
     }
 
+    public function test_a_disabled_method_cannot_be_enrolled(): void
+    {
+        $this->enableMFA(['email']);
+        $user = User::factory()->create(['email_verified_at' => now()]);
+        $attempt = $user->loginAttempts()->create(['method' => LoginAttempt::Password, 'is_success' => true]);
+
+        $this->actingAs($user)->withSession(['attempt_id' => $attempt->id])
+            ->post(route('multi.auth'), ['auth_method' => 'authenticator'])
+            ->assertSessionHasErrors(['message' => 'Auth was not added.']);
+
+        $this->assertNull($user->fresh()->multiFactorAuth('authenticator'));
+    }
+
     public function test_removal_goes_through_with_the_password(): void
     {
         $user = $this->userWithAuthenticator(['password' => self::PASSWORD]);
@@ -292,6 +305,36 @@ class BladeMfaRemovalTest extends TestCase
         $this->signedIn($user)
             ->post(route('multi.auth'), ['auth_method' => 'authenticator', 'password' => self::PASSWORD])
             ->assertSessionHasNoErrors();
+    }
+
+    /**
+     * An email factor cannot be enrolled twice, so Edit on it asked for the
+     * password only to answer "Email already Configured." It is not offered.
+     */
+    public function test_an_active_email_factor_offers_no_edit(): void
+    {
+        $user = User::factory()->create(['password' => self::PASSWORD, 'email_verified_at' => now()]);
+        MultiFactorAuthFactory::new()->create([
+            'user_id' => $user->id,
+            'method' => 'email',
+            'preferred' => true,
+        ]);
+
+        $this->signedIn($user)
+            ->get(route('account.security'))
+            ->assertOk()
+            ->assertDontSee('showEdit = true', false)
+            ->assertDontSee('x-ref="editForm"', false)
+            ->assertSee('x-ref="removeForm"', false);
+
+        // The authenticator row beside it keeps its Edit.
+        MultiFactorAuthFactory::new()->create(['user_id' => $user->id, 'method' => 'authenticator']);
+
+        $this->signedIn($user->fresh())
+            ->get(route('account.security'))
+            ->assertOk()
+            ->assertSee('showEdit = true', false)
+            ->assertSee('x-ref="editForm"', false);
     }
 
     /** An account with no password confirms enrolment with a mailed code. */

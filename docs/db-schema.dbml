@@ -13,7 +13,7 @@ Table tenants {
 
 Table users {
   id bigint [pk, increment]
-  tenant_id bigint [null, ref: > tenants.id]
+  tenant_id bigint [null, note: 'no FK constraint; references tenants.id, which is created after users']
   name varchar
   username varchar [null]
   email varchar [null]
@@ -124,9 +124,9 @@ Table access_tokens {
   id bigint [pk, increment]
   user_id bigint [ref: > users.id]
   tenant_id bigint [null, ref: > tenants.id]
-  attempt_id bigint [null, ref: > login_attempts.id]
+  attempt_id bigint [null, note: 'no FK constraint; references login_attempts.id']
   name varchar
-  token varchar [unique, note: 'SHA-256 hashed']
+  token varchar [unique, note: 'bcrypt hashed (Laravel hashed cast)']
   token_type varchar [default: 'login']
   permissions json [null]
   last_used_at timestamp [null]

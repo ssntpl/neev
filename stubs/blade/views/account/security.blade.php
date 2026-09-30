@@ -6,7 +6,11 @@
     <x-neev-component::validation-status class="mb-4" />
     <div class="flex flex-col gap-4">
         {{-- Change Password --}}
-        <x-neev-component::card x-data="{changePasswordOpen: false}">
+        {{-- Opens by itself while a reset code is out, with the code form up;
+             Back switches to the current-password form and back again. Only
+             one of the two forms shows at a time. --}}
+        @php($codePending = $password_reset_code_pending ?? false)
+        <x-neev-component::card x-data="{changePasswordOpen: {{ $codePending ? 'true' : 'false' }}, useCode: {{ $codePending ? 'true' : 'false' }}}">
             {{-- title --}}
             <x-slot name="title">
                 {{ $user->password ? __('Change Password') : __('Set Password') }}
@@ -35,21 +39,26 @@
                      no current password to prove ownership with, so the only way to
                      set one is the link mailed to the address on the account. --}}
                 @if (!$user->password)
-                    <div x-show="changePasswordOpen" x-transition class="flex flex-col gap-3">
+                    <div x-show="changePasswordOpen && !useCode" x-transition class="flex flex-col gap-3">
                         <p class="text-sm text-gray-600 dark:text-gray-400">
                             {{ __('Your account has no password yet. We will email a link to') }}
                             <strong>{{ $user->email }}</strong>
                             {{ __('so you can set one.') }}
                         </p>
-                        <form method="POST" action="{{ route('password.reset.link') }}" class="flex justify-end">
+                        <form method="POST" action="{{ route('password.reset.link') }}" class="flex justify-end gap-2">
                             @csrf
+                            @if ($codePending)
+                            <x-neev-component::secondary-button type="button" x-on:click="useCode = true">
+                                {{ __('Enter the code') }}
+                            </x-neev-component::secondary-button>
+                            @endif
                             <x-neev-component::button>
                                 {{ __('Email me a link to set a password') }}
                             </x-neev-component::button>
                         </form>
                     </div>
                 @else
-                <form method="POST" x-show="changePasswordOpen" x-transition action="{{ route('password.change') }}" class="flex flex-col gap-2">
+                <form method="POST" x-show="changePasswordOpen && !useCode" x-transition action="{{ route('password.change') }}" class="flex flex-col gap-2">
                     @csrf
 
                     <div class="flex gap-4 justify-between items-center w-2/3">
@@ -74,15 +83,76 @@
                     </div>
                 </form>
 
-                {{-- Forgotten the current password? The link goes to the address on
-                     the account, so it works without knowing the old one. --}}
-                <form method="POST" x-show="changePasswordOpen" x-transition action="{{ route('password.reset.link') }}" class="mt-3 flex items-center gap-2">
+                {{-- Forgotten the current password? A code already out is
+                     entered on the other form; otherwise the email goes to the
+                     address on the account, so it works without the old one. --}}
+                @if ($codePending)
+                <div x-show="changePasswordOpen && !useCode" x-transition class="mt-3 flex items-center gap-2">
+                    <span class="text-sm text-gray-600 dark:text-gray-400">
+                        {{ __("Don't remember your current password?") }}
+                    </span>
+                    <button type="button" x-on:click="useCode = true" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                        {{ __('Enter the code we emailed you') }}
+                    </button>
+                </div>
+                @else
+                <form method="POST" x-show="changePasswordOpen && !useCode" x-transition action="{{ route('password.reset.link') }}" class="mt-3 flex items-center gap-2">
                     @csrf
                     <span class="text-sm text-gray-600 dark:text-gray-400">
                         {{ __("Don't remember your current password?") }}
                     </span>
                     <button type="submit" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
                         {{ __('Email me a reset link') }}
+                    </button>
+                </form>
+                @endif
+                @endif
+
+                {{-- A reset code is out for this account (mailed from here or
+                     the forgot-password page) and can still be used: it can be
+                     entered here. Goes when the code is spent, expires, runs
+                     out of guesses, or the password changes. --}}
+                @if ($codePending)
+                <form method="POST" x-show="changePasswordOpen && useCode" x-transition action="{{ route('user-password.update') }}" class="flex flex-col gap-2">
+                    @csrf
+                    <input type="hidden" name="email" value="{{ $user->email }}" />
+
+                    <p class="text-sm text-gray-600 dark:text-gray-400">
+                        {{ __('Enter the code sent to :email and choose a new password.', ['email' => $user->email]) }}
+                    </p>
+
+                    <div class="flex gap-4 justify-between items-center w-2/3">
+                        <x-neev-component::label for="reset-otp" value="{{ __('Code') }}" class="w-1/3" />
+                        <x-neev-component::input id="reset-otp" class="block w-5/6" type="text" name="otp" inputmode="numeric" autocomplete="one-time-code" required />
+                    </div>
+
+                    <div class="flex gap-4 justify-between items-center w-2/3">
+                        <x-neev-component::label for="reset-password" value="{{ __('New Password') }}" class="w-1/3" />
+                        <x-neev-component::input id="reset-password" class="block w-5/6" type="password" name="password" required autocomplete="new-password" />
+                    </div>
+
+                    <div class="flex gap-4 justify-between items-center w-2/3">
+                        <x-neev-component::label for="reset-password_confirmation" value="{{ __('New Confirm Password') }}" class="w-1/3" />
+                        <x-neev-component::input id="reset-password_confirmation" class="block w-5/6" type="password" name="password_confirmation" required autocomplete="new-password" />
+                    </div>
+
+                    <div class="relative flex items-center justify-end gap-2">
+                        <x-neev-component::secondary-button type="button" x-on:click="useCode = false">
+                            {{ __('Back') }}
+                        </x-neev-component::secondary-button>
+                        <x-neev-component::button>
+                            {{ __('Reset Password') }}
+                        </x-neev-component::button>
+                    </div>
+                </form>
+
+                <form method="POST" x-show="changePasswordOpen && useCode" x-transition action="{{ route('password.reset.link') }}" class="mt-3 flex items-center gap-2">
+                    @csrf
+                    <span class="text-sm text-gray-600 dark:text-gray-400">
+                        {{ __("Didn't get the code?") }}
+                    </span>
+                    <button type="submit" class="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                        {{ __('Send again') }}
                     </button>
                 </form>
                 @endif
@@ -140,6 +210,7 @@
                                             <input type="hidden" name="action" x-ref="action">
                                             @php($hasThisMethod = (bool) $user->multiFactorAuth($method))
                                             @php($confirmsEnrolment = count($user->activeMultiFactorAuths) > 0)
+                                            @php($canEdit = $hasThisMethod && !$user->multiFactorAuthEnrolmentError($method))
 
                                             @if ($hasThisMethod)
                                                 {{-- Re-issuing a setup hands back the secret, and removal
@@ -148,9 +219,9 @@
                                                      password or code has to be typed somewhere. Only an
                                                      account whose sole factor is this pending setup edits
                                                      without confirming — it has nothing active to protect. --}}
-                                                @if ($confirmsEnrolment)
+                                                @if ($canEdit && $confirmsEnrolment)
                                                     <x-neev-component::secondary-button type="button" class="cursor-pointer" @click="showEdit = true">{{ __('Edit') }}</x-neev-component::secondary-button>
-                                                @else
+                                                @elseif ($canEdit)
                                                     <x-neev-component::secondary-button type="submit">{{ __('Edit') }}</x-neev-component::secondary-button>
                                                 @endif
 
@@ -164,7 +235,7 @@
                                             @endif
                                         </form>
 
-                                        @if ($hasThisMethod && $confirmsEnrolment)
+                                        @if ($canEdit && $confirmsEnrolment)
                                             <x-neev-component::dialog-modal show="showEdit">
                                                 <x-slot name="title">
                                                     {{ __('Set up') }} {{ $method }}

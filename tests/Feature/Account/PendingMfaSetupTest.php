@@ -127,6 +127,43 @@ class PendingMfaSetupTest extends TestCase
         });
     }
 
+    public function test_setup_cannot_be_completed_after_the_method_is_turned_off(): void
+    {
+        Event::fake([MfaMethodAdded::class]);
+
+        $user = User::factory()->create();
+        $setup = $user->addMultiFactorAuth('authenticator');
+        $otp = TOTP::create($setup['secret'])->now();
+
+        config(['neev.multi_factor_auth' => ['email']]);
+
+        $this->assertFalse($user->verifyMfaSetup('authenticator', $otp));
+        $auth = $user->multiFactorAuths()->where('method', 'authenticator')->first();
+        $this->assertSame(MultiFactorAuth::STATUS_PENDING, $auth->status);
+        $this->assertCount(0, $user->fresh()->activeMultiFactorAuths()->get());
+        Event::assertNotDispatched(MfaMethodAdded::class);
+    }
+
+    public function test_setup_verify_endpoint_refuses_a_method_turned_off_since_the_setup_started(): void
+    {
+        $data = $this->createAuthenticatedUser();
+        $setup = $data['user']->addMultiFactorAuth('authenticator');
+        $otp = TOTP::create($setup['secret'])->now();
+
+        config(['neev.multi_factor_auth' => ['email']]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $data['plainTextToken'])
+            ->postJson('/neev/mfa/setup/verify', [
+                'auth_method' => 'authenticator',
+                'otp' => $otp,
+            ])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Auth was not added.');
+
+        $auth = $data['user']->multiFactorAuths()->where('method', 'authenticator')->first();
+        $this->assertSame(MultiFactorAuth::STATUS_PENDING, $auth->status);
+    }
+
     public function test_setup_verify_endpoint_rejects_wrong_otp(): void
     {
         $data = $this->createAuthenticatedUser();

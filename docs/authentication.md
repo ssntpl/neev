@@ -169,23 +169,35 @@ would ordinarily ask for one has to decide what to do instead.
 | Action | Account with a password | Account without one |
 |--------|-------------------------|---------------------|
 | Change password | Current password required | Refused — offered an emailed link instead |
-| Set a password | — | `POST /account/password/reset-link` mails a signed link |
+| Set a password | — | `POST /account/password/reset-link` mails a signed link and a code |
 | Change email address | Current password required | Refused until a password is set |
 | Delete account | Current password required | One-time code required (`otp`) |
 | Log out all sessions | Current password required | One-time code required (`otp`) |
 
 **Setting the first password.** There is nothing to prove ownership with except
-the address on the account, so the only route is the link:
+the address on the account, so the only route is the mailbox:
 
 ```http
 POST /account/password/reset-link
 ```
 
-It mails the same signed link the forgot-password flow sends, is rate limited to
-5 requests per minute, and lands on the ordinary reset form. Following it while
-still signed in returns to `/account/security` with the password set. The
-security page offers the same button to anyone who has simply forgotten their
-current password, so a reset never means signing out first.
+It sends the same email the forgot-password flow sends — the signed link and,
+beside it, a one-time code — under the same per-account limits: 3 emails per
+15 minutes (a fourth flashes the refusal on `message`), and each email lifts
+the wrong-code lock described in [web-routes](./web-routes.md#password-reset).
+The route is also throttled to 5 requests per minute. The link lands on the
+ordinary reset form; following it while still signed in returns to
+`/account/security` with the password set. The code is entered on the security
+page itself: after a send it shows a code and new-password form, in place of
+the current-password form, that posts to `user-password.update`; **Back**
+switches to the current-password form and the *Don't remember your current
+password?* line switches back. A signed-in owner who resets that way is
+returned to `/account/security` too. The form shows while a usable code is out — it
+survives a refresh, a wrong code and a rejected password — and goes once the
+code is spent, expires, runs out of guesses, or the password changes another
+way (`AuthService::hasPasswordResetOtp()`). The security page offers the same
+button to anyone who has simply forgotten their current password, so a reset
+never means signing out first.
 
 The Blade security page reads `$user->password` and shows **Set Password** with
 the emailed-link button, or **Change Password** with the current-password form

@@ -157,6 +157,23 @@ class MFAManagementTest extends TestCase
         $response->assertStatus(400);
     }
 
+    public function test_a_disabled_mfa_method_cannot_be_enrolled(): void
+    {
+        Mail::fake();
+        $this->enableMFA(['email']);
+
+        [$user, $token] = $this->authenticatedUser();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'authenticator'])
+            ->assertStatus(400);
+        $this->assertNull($user->fresh()->multiFactorAuth('authenticator'));
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/mfa/add', ['auth_method' => 'email'])
+            ->assertOk();
+    }
+
     // -----------------------------------------------------------------
     // DELETE /neev/mfa/delete — delete MFA method
     // -----------------------------------------------------------------

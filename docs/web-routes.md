@@ -78,18 +78,22 @@ redirects to the MFA challenge (`otp.mfa.create`) rather than to `neev.home`.
 | GET | `/forgot-password` | `password.request` | Show forgot password form |
 | POST | `/forgot-password` | `password.email` | Send password reset link and code |
 | GET | `/update-password/{id}/{hash}` | `reset.request` | Show reset password form (from the link) |
-| POST | `/update-password` | `user-password.update` | Reset the password with the link's `reset_token`, or with `email` + `otp` |
+| POST | `/update-password` | `user-password.update` | Reset the password with the link's `reset_token`, or with `email` + `otp`; a signed-in owner returns to `/account/security`, anyone else to `/login` |
 
 One email carries both proofs, and either resets the password. After sending,
 the forgot-password page shows a code field and a new-password form, which
-posts to `user-password.update` like the link's form does. The code expires
+posts to `user-password.update` like the link's form does (the security page
+shows the same form after `password.reset.link`; see
+[Profile Updates](#profile-updates)). The code expires
 after `otp_expiry_time` minutes, allows 5 wrong guesses, and is used up by
 whichever proof resets the password first. Either way the proof is checked
 before the password rules run, and spent only once the new password passes.
 
 The same per-account limits as the API apply: 3 reset emails per 15 minutes
-(a fourth shows an error on `email`), and 10 wrong codes per hour, after which
-the code field is refused (an error on `otp`) while the link still works. A
+(a fourth shows an error on `email`), and 10 wrong codes per hour, whoever
+tried them, after which the code field is refused (an error on `otp`) while
+the link still works. Requesting a new email lifts that refusal, since only
+the owner receives the code it carries. A
 link works once — it is refused once the password has changed since it was
 sent, both when it is opened and when its form is submitted, so a form left
 open is retired by the owner resetting the password another way.
@@ -211,7 +215,7 @@ All prefixed with `/account`.
 |--------|-------|------|-------------|
 | PUT | `/account/profileUpdate` | `profile.update` | Update profile |
 | POST | `/account/change-password` | `password.change` | Change password (current password first; 5 wrong answers/min per account) |
-| POST | `/account/password/reset-link` | `password.reset.link` | Email a link to set or reset the password |
+| POST | `/account/password/reset-link` | `password.reset.link` | Email a link and code to set or reset the password (same email and per-account limits as `password.email`; a refused send flashes the error on `message`; also throttled 5/min). The security page then shows a code form posting to `user-password.update` for as long as the code can still be used (`AuthService::hasPasswordResetOtp()`, passed to the view as `$password_reset_code_pending`) |
 | POST | `/account/confirmation/otp` | `account.confirmation` | Email a one-time code (throttled 5/min) |
 | DELETE | `/account/accountDelete` | `account.delete` | Delete account (confirmed; 5 wrong answers/min per account) |
 
@@ -403,6 +407,7 @@ php artisan neev:ui blade
 | `auth/verify-email.blade.php` | Verification pending |
 | `auth/change-email.blade.php` | Change email form |
 | `auth/otp-mfa.blade.php` | MFA verification |
+| `account/security.blade.php` | Password, MFA, passkeys and sessions; shows the emailed-code form while a reset code is pending |
 
 ---
 

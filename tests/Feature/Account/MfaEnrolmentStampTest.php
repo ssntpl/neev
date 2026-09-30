@@ -106,6 +106,24 @@ class MfaEnrolmentStampTest extends TestCase
         $this->assertAuthenticated();
     }
 
+    public function test_verifying_the_setup_is_refused_once_the_method_is_turned_off(): void
+    {
+        [$user, $attempt] = $this->sessionWithoutAFactor();
+        $this->post(route('multi.auth'), ['auth_method' => 'authenticator']);
+
+        config(['neev.multi_factor_auth' => ['email']]);
+
+        $this->post(route('otp.mfa.store'), [
+            'action' => 'verify',
+            'email' => $user->email,
+            'auth_method' => 'authenticator',
+            'otp' => $this->totpFor($user),
+        ])->assertSessionHasErrors(['message' => 'Auth was not added.']);
+
+        $this->assertNull($attempt->fresh()->multi_factor_method);
+        $this->assertCount(0, $user->fresh()->activeMultiFactorAuths()->get());
+    }
+
     public function test_enrolling_email_stamps_the_session_because_it_is_active_at_once(): void
     {
         [$user, $attempt] = $this->sessionWithoutAFactor();

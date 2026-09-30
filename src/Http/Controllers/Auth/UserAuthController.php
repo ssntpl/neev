@@ -458,6 +458,12 @@ class UserAuthController extends Controller
 
         event(new PasswordReset($user));
 
+        // A signed-in owner used the security page's code form; the link's
+        // form (resetPasswordWithLink) returns them the same way.
+        if ($request->user()?->id === $user->id) {
+            return redirect(route('account.security'))->with('status', __('Password has been successfully updated.'));
+        }
+
         return redirect(route('login'))->with('status', __('Password has been successfully updated.'));
     }
 
@@ -769,6 +775,12 @@ class UserAuthController extends Controller
                 return back()->withErrors(['message' => 'Credentials are wrong.']);
             }
 
+            // A method turned off since the setup started, or a setup that
+            // was discarded, is a different answer from a wrong code.
+            if ($error = $user->multiFactorAuthSetupError($request->auth_method)) {
+                return back()->withErrors(['message' => __($error)]);
+            }
+
             if ($user->verifyMfaSetup($request->auth_method, (string) $request->otp)) {
                 // The factor is active now and this session just proved it,
                 // so it keeps its place behind the gate the factor raises.
@@ -778,13 +790,6 @@ class UserAuthController extends Controller
             }
             if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
                 return back()->with('status', 'Code verified.');
-            }
-
-            // Enrolling another factor drops every pending setup, so a code
-            // for a method the account no longer holds is not "invalid" —
-            // the setup is gone, and starting again now needs confirming.
-            if (!$user->multiFactorAuth($request->auth_method)) {
-                return back()->withErrors(['message' => __('No setup is in progress for this method. Start it again.')]);
             }
 
             return back()->withErrors(['message' => 'Code is invalid']);

@@ -472,6 +472,39 @@ class AuthServiceTest extends TestCase
     }
 
     /**
+     * Discarding the reset code reads `otp.purpose`, which an install that
+     * skipped the 0.6.7 migration does not have. That failure used to come
+     * before the revocations, so the password changed and every old session
+     * and login token stayed signed in.
+     *
+     * Dropping the column is not enough here: SQLite reads an unknown
+     * double-quoted identifier as a string literal and matches nothing, where
+     * MySQL and PostgreSQL throw. Dropping the table fails the same way on all.
+     */
+    public function test_a_failed_reset_code_discard_still_revokes_sessions_and_login_tokens(): void
+    {
+        config(['session.driver' => 'database']);
+        $this->createSessionsTable();
+
+        Schema::drop('otp');
+
+        $user = User::factory()->create(['password' => 'old-password']);
+        $user->createLoginToken(60);
+        $this->seedSession('stale-session', $user->id);
+
+        try {
+            app(AuthService::class)->changePassword($user, 'a-brand-new-password');
+            $this->fail('Discarding the reset code should fail on an out-of-date otp table.');
+        } catch (\Illuminate\Database\QueryException) {
+            // Expected: the schema is out of date. What matters is what ran first.
+        }
+
+        $this->assertTrue(Hash::check('a-brand-new-password', $user->fresh()->password));
+        $this->assertDatabaseMissing('sessions', ['id' => 'stale-session']);
+        $this->assertSame(0, $user->loginTokens()->count());
+    }
+
+    /**
      * The service works on its own locked copy inside the transaction. The
      * instance the caller passed — usually the guard's — must come out of the
      * call carrying the new hash, or AuthenticateSession stores the stale one
