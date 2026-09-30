@@ -171,11 +171,19 @@ trait HasMultiAuth
      * On success the method becomes active, is made preferred when no
      * other active method holds the flag, and MfaMethodAdded fires.
      *
-     * @return bool False if there is no pending setup for the method or
-     *              the code is wrong.
+     * @return bool False if there is no pending setup for the method, the
+     *              method has since been turned off in
+     *              `neev.multi_factor_auth`, or the code is wrong.
      */
     public function verifyMfaSetup(string $method, string $otp): bool
     {
+        // A setup started while the method was enabled must not complete
+        // after the app turns it off: the gate on enrolment would otherwise
+        // be walked around by finishing what was begun before it closed.
+        if (!$this->supportsMultiFactorAuth($method)) {
+            return false;
+        }
+
         $auth = $this->multiFactorAuth($method);
         if (!$auth || $auth->isActive()) {
             return false;

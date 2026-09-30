@@ -769,6 +769,12 @@ class UserAuthController extends Controller
                 return back()->withErrors(['message' => 'Credentials are wrong.']);
             }
 
+            // The app turned the method off since the setup started, so no
+            // code can complete it: the same refusal the add route gives.
+            if (!$user->supportsMultiFactorAuth($request->auth_method)) {
+                return back()->withErrors(['message' => 'Auth was not added.']);
+            }
+
             if ($user->verifyMfaSetup($request->auth_method, (string) $request->otp)) {
                 // The factor is active now and this session just proved it,
                 // so it keeps its place behind the gate the factor raises.
