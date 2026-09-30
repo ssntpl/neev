@@ -4,8 +4,7 @@ namespace Ssntpl\Neev\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
-use Illuminate\Support\Facades\Mail;
-use Ssntpl\Neev\Mail\VerifyUserEmail;
+use Ssntpl\Neev\Exceptions\PasswordResetThrottledException;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\LaravelAcl\Models\Permission;
@@ -172,10 +171,14 @@ class UserController extends Controller
             return redirect(app(EmailLinks::class)->loginUrl());
         }
 
-        $expiryMinutes = config('neev.url_expiry_time', 60);
-        $url = app(EmailLinks::class)->passwordResetUrl($user, now()->addMinutes($expiryMinutes));
-
-        Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Reset Password', $expiryMinutes));
+        // The same email, limits and lock-lifting as the forgot-password
+        // routes: a signed-in owner locked out by a stranger's guesses gets a
+        // code that works, not a link-only mail.
+        try {
+            app(AuthService::class)->sendPasswordReset($user);
+        } catch (PasswordResetThrottledException $e) {
+            return back()->withErrors(['message' => __($e->getMessage())]);
+        }
 
         return back()->with('status', __('A password reset link has been sent to your email address.'));
     }

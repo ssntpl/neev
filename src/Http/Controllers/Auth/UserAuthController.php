@@ -769,10 +769,10 @@ class UserAuthController extends Controller
                 return back()->withErrors(['message' => 'Credentials are wrong.']);
             }
 
-            // The app turned the method off since the setup started, so no
-            // code can complete it: the same refusal the add route gives.
-            if (!$user->supportsMultiFactorAuth($request->auth_method)) {
-                return back()->withErrors(['message' => 'Auth was not added.']);
+            // A method turned off since the setup started, or a setup that
+            // was discarded, is a different answer from a wrong code.
+            if ($error = $user->multiFactorAuthSetupError($request->auth_method)) {
+                return back()->withErrors(['message' => __($error)]);
             }
 
             if ($user->verifyMfaSetup($request->auth_method, (string) $request->otp)) {
@@ -784,13 +784,6 @@ class UserAuthController extends Controller
             }
             if ($user->verifyMFAOTP($request->auth_method, $request->otp)) {
                 return back()->with('status', 'Code verified.');
-            }
-
-            // Enrolling another factor drops every pending setup, so a code
-            // for a method the account no longer holds is not "invalid" —
-            // the setup is gone, and starting again now needs confirming.
-            if (!$user->multiFactorAuth($request->auth_method)) {
-                return back()->withErrors(['message' => __('No setup is in progress for this method. Start it again.')]);
             }
 
             return back()->withErrors(['message' => 'Code is invalid']);

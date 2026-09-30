@@ -280,20 +280,35 @@ class WebPasswordResetCodeTest extends TestCase
 
         $user = User::factory()->create(['password' => 'original-password']);
 
-        $this->requestResetCode($user);
-        for ($i = 0; $i < 5; $i++) {
-            $this->resetWithCode($user, 'wrong-' . $i);
-        }
-        $this->requestResetCode($user);
-        for ($i = 5; $i < AuthService::PASSWORD_RESET_GUESS_LIMIT; $i++) {
-            $this->resetWithCode($user, 'wrong-' . $i);
-        }
         $otp = $this->requestResetCode($user);
+        for ($i = 0; $i < AuthService::PASSWORD_RESET_GUESS_LIMIT; $i++) {
+            $this->resetWithCode($user, 'wrong-' . $i);
+        }
 
         $this->resetWithCode($user, $otp)
             ->assertSessionHasErrors(['otp' => 'Too many incorrect codes. Use the link in the email, or try again later.']);
 
         $this->assertTrue(Hash::check('original-password', $user->fresh()->getRawOriginal('password')));
+    }
+
+    public function test_a_new_email_lifts_the_lock(): void
+    {
+        $this->withoutMiddleware(ThrottleRequests::class);
+
+        // Anyone naming the address can lock the code form; the owner, who
+        // alone receives the next email, gets a code that works.
+        $user = User::factory()->create();
+
+        $this->requestResetCode($user);
+        for ($i = 0; $i < AuthService::PASSWORD_RESET_GUESS_LIMIT; $i++) {
+            $this->resetWithCode($user, 'wrong-' . $i);
+        }
+        $this->resetWithCode($user, '000000')->assertSessionHasErrors('otp');
+
+        $otp = $this->requestResetCode($user);
+
+        $this->resetWithCode($user, $otp)->assertSessionHasNoErrors();
+        $this->assertTrue(Hash::check('newpassword123', $user->fresh()->getRawOriginal('password')));
     }
 
     private function openResetLink(User $user): string

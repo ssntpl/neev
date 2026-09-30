@@ -102,20 +102,11 @@ class UserApiController extends Controller
 
         $user = User::model()->find($request->user()?->id);
 
-        // The app turned the method off since the setup started, so no code
-        // can complete it: the same refusal the add endpoint gives.
-        if ($user && !$user->supportsMultiFactorAuth($request->auth_method)) {
+        // A method turned off since the setup started, or a setup that was
+        // discarded, is a different answer from a wrong code.
+        if ($error = $user?->multiFactorAuthSetupError($request->auth_method)) {
             return response()->json([
-                'message' => 'Auth was not added.',
-            ], 400);
-        }
-
-        // A setup that was discarded — enrolling another factor drops every
-        // pending one — is a different answer from a wrong code: the user
-        // has to start again, and this time confirm.
-        if ($user && !$user->multiFactorAuth($request->auth_method)) {
-            return response()->json([
-                'message' => 'No setup is in progress for this method. Start it again.',
+                'message' => $error,
             ], 400);
         }
 

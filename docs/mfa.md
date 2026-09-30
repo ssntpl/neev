@@ -160,7 +160,7 @@ curl -X POST https://yourapp.com/neev/mfa/setup/verify \
 }
 ```
 
-A wrong code — or no pending setup for the method — returns a `400`:
+A wrong code returns a `400`:
 
 ```json
 {
@@ -168,7 +168,15 @@ A wrong code — or no pending setup for the method — returns a `400`:
 }
 ```
 
-In the web (Blade) flow, the Verify form on the security page (posts to `otp.mfa.store` with `action=verify`) activates the pending method. Until then, the method list shows a "Pending verification" badge.
+Two other `400`s are not a wrong code, and are answered before the code is
+checked. `Auth was not added.` means the method has been turned off in
+`neev.multi_factor_auth` since the setup started, so no code can finish it.
+`No setup is in progress for this method. Start it again.` means the pending
+setup was discarded — enrolling another factor drops every pending one — and
+the user has to start over. `HasMultiAuth::multiFactorAuthSetupError($method)`
+returns whichever applies, or null when a code could complete the setup.
+
+In the web (Blade) flow, the Verify form on the security page (posts to `otp.mfa.store` with `action=verify`) activates the pending method and flashes the same two messages on `message` when it cannot; a wrong code flashes `Code is invalid`. Until then, the method list shows a "Pending verification" badge.
 
 ### Verify OTP During Login
 
@@ -567,7 +575,13 @@ $user->preferredMultiFactorAuth();
 // Add MFA method (authenticator starts pending; returns QR code)
 $user->addMultiFactorAuth('authenticator');
 
-// Verify a pending setup — activates the method
+// Why no code could complete the pending setup ('Auth was not added.' when
+// the method is turned off, 'No setup is in progress…' when it was
+// discarded), or null when one could
+$user->multiFactorAuthSetupError('authenticator');
+
+// Verify a pending setup — activates the method; false for a wrong code or
+// whenever multiFactorAuthSetupError() is non-null
 $user->verifyMfaSetup('authenticator', '123456');
 
 // Programmatic activation escape hatch: skips the OTP proof (caller's

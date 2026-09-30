@@ -167,25 +167,49 @@ trait HasMultiAuth
     }
 
     /**
+     * Why no code could complete a setup for $method, or null if one might.
+     * The one place those rules live: `verifyMfaSetup()` applies them, and
+     * the controllers ask here first to tell the user which it was, since
+     * neither is a wrong code.
+     */
+    public function multiFactorAuthSetupError($method): ?string
+    {
+        // A setup started while the method was enabled must not complete
+        // after the app turns it off: the gate on enrolment would otherwise
+        // be walked around by finishing what was begun before it closed.
+        if (!$this->supportsMultiFactorAuth($method)) {
+            return 'Auth was not added.';
+        }
+
+        // Enrolling another factor drops every pending setup, so a code for
+        // a method the account no longer holds is not "invalid" — the setup
+        // is gone, and starting again now needs confirming.
+        if (!$this->multiFactorAuth($method)) {
+            return 'No setup is in progress for this method. Start it again.';
+        }
+
+        return null;
+    }
+
+    /**
      * Complete a pending MFA setup by verifying an OTP against it.
      * On success the method becomes active, is made preferred when no
      * other active method holds the flag, and MfaMethodAdded fires.
      *
      * @return bool False if there is no pending setup for the method, the
      *              method has since been turned off in
-     *              `neev.multi_factor_auth`, or the code is wrong.
+     *              `neev.multi_factor_auth` (the two cases
+     *              multiFactorAuthSetupError() names), the factor is already
+     *              active, or the code is wrong.
      */
     public function verifyMfaSetup(string $method, string $otp): bool
     {
-        // A setup started while the method was enabled must not complete
-        // after the app turns it off: the gate on enrolment would otherwise
-        // be walked around by finishing what was begun before it closed.
-        if (!$this->supportsMultiFactorAuth($method)) {
+        if ($this->multiFactorAuthSetupError($method) !== null) {
             return false;
         }
 
         $auth = $this->multiFactorAuth($method);
-        if (!$auth || $auth->isActive()) {
+        if ($auth->isActive()) {
             return false;
         }
 
@@ -217,11 +241,7 @@ trait HasMultiAuth
      */
     protected function enrolEmailFactor(): void
     {
-        if (!in_array('email', (array) config('neev.multi_factor_auth', []), true)) {
-            return;
-        }
-
-        if ($this->multiFactorAuth('email')) {
+        if (!$this->supportsMultiFactorAuth('email') || $this->multiFactorAuth('email')) {
             return;
         }
 

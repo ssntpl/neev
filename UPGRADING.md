@@ -11,6 +11,43 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
+## 0.6.8 → Unreleased
+
+**A new reset email lifts the wrong-code lock (action required if your reset
+screen tells a locked-out user to wait).**
+The 10-wrong-codes-per-hour limit is counted per account, and wrong codes need
+no sign-in, so anyone naming an address could have that account's own code
+refused for an hour. Requesting another reset email now clears the count, and
+the code it carries works at once; only the owner receives that email. The
+`429` response (`Too many incorrect codes.`) and its `Retry-After` header are
+unchanged, and the link is still never refused for it.
+
+- **If your reset screen answers that `429` with "try again in an hour"**,
+  offer "send me a new code" instead — the wait is no longer the way back.
+- Nothing else changes: the 3-emails-per-15-minutes cap still applies, and a
+  request it refuses clears nothing.
+- **The Blade `POST /account/password/reset-link` now sends the same email**
+  as `POST /forgot-password`: link and code, counted against the same
+  3-emails-per-15-minutes cap (a refused request flashes the error on
+  `message`). Your `email-verify.blade.php` template receives `$otp` on this
+  route too, so a signed-in user setting a first password now sees the code
+  if the template shows one.
+
+**A method turned off in `neev.multi_factor_auth` can no longer be enrolled
+(action required if you remove a method users have already set up).**
+`POST /neev/mfa/add`, `POST /neev/mfa/setup/verify` and the Blade `multi.auth`
+route now refuse a method the config does not list. Factors already active are
+untouched: they still challenge at login, but the Blade account-security page
+lists only the configured methods, so a user whose factor belongs to a removed
+method cannot see or remove it there. `DELETE /neev/mfa/delete` still removes
+it.
+
+- **Before removing a method from the config**, remove or migrate the active
+  factors that use it, or those users are challenged at every sign-in for a
+  method the app no longer offers and cannot turn it off themselves.
+
+---
+
 ## 0.6.7 → 0.6.8
 
 **The password rules compare only against a proven account (action required

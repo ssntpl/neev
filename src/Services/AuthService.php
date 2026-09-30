@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Services;
 
+use Closure;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -37,9 +38,11 @@ class AuthService
 
     /**
      * Wrong reset codes one account may have tried against it inside
-     * PASSWORD_RESET_GUESS_WINDOW seconds, across every code it is sent.
+     * PASSWORD_RESET_GUESS_WINDOW seconds since its last reset email.
      * OTP::MAX_ATTEMPTS bounds one code; this bounds the account, since a new
-     * reset email brings a new code and a new allowance.
+     * reset email brings a new code and a new allowance. Anyone can guess at
+     * an account, so a fresh email — which only the owner receives — lifts
+     * the lock rather than leaving the owner out for the window.
      */
     public const PASSWORD_RESET_GUESS_LIMIT = 10;
 
@@ -389,8 +392,8 @@ class AuthService
 
     /**
      * Issue (or replace) the user's emailed code for one purpose. Stored
-     * hashed; resending resets the attempt counter. Codes for other
-     * purposes are left alone.
+     * hashed; resending resets the attempt counter and the issue time. Codes
+     * for other purposes are left alone.
      */
     protected function issueEmailOtp(User $user, OtpPurpose $purpose): string
     {
@@ -402,6 +405,9 @@ class AuthService
             [
                 'otp' => $otp,
                 'attempts' => 0,
+                // The issue time, which a reused row would otherwise keep from
+                // its first issue; passwordResetOtpIsCurrent() reads it.
+                'created_at' => now(),
                 'expires_at' => now()->addMinutes(config('neev.otp_expiry_time', 15)),
             ],
         );
@@ -427,12 +433,16 @@ class AuthService
      * in place for consumeEmailOtp(). For a caller with more to validate once the code
      * is proven — and that must not spend the code on a failure that is not
      * the code's. Only the code issued for $purpose is compared.
+     *
+     * $current, given the row, may declare it expired on grounds beyond
+     * `expires_at`; an expired row is removed as long as it is still the row
+     * judged, so a fresh code issued into it meanwhile is left alone.
      */
-    public function checkEmailOtp(User $user, string $otp, OtpPurpose $purpose): ?OTP
+    public function checkEmailOtp(User $user, string $otp, OtpPurpose $purpose, ?Closure $current = null): ?OTP
     {
         $record = OTP::query()->forPurpose($user, $purpose)->first();
 
-        if (!$record || $record->expires_at->isPast()) {
+        if (!$record || $record->expires_at->isPast() || ($current && !$current($record))) {
             $record?->delete();
             return null;
         }
@@ -510,9 +520,14 @@ class AuthService
      * Both proofs are always sent; the app-owned template decides which to
      * show. Issuing a code replaces only an earlier reset code.
      *
+     * A new email also lifts the wrong-code lock: anyone can run up the
+     * account's guesses, but only the owner receives the email that follows,
+     * so the fresh code must be usable. What a stranger can still exhaust is
+     * bounded by PASSWORD_RESET_SEND_LIMIT and OTP::MAX_ATTEMPTS together.
+     *
      * @throws PasswordResetThrottledException when the account has been sent
-     *         PASSWORD_RESET_SEND_LIMIT resets already; nothing is sent and
-     *         the code already out keeps working.
+     *         PASSWORD_RESET_SEND_LIMIT resets already; nothing is sent, the
+     *         code already out keeps working and the lock stays.
      */
     public function sendPasswordReset(User $user): void
     {
@@ -527,13 +542,21 @@ class AuthService
         $otp = $this->issueEmailOtp($user, OtpPurpose::PasswordReset);
 
         Mail::to($user->email)->send(new VerifyUserEmail($url, $user->name, 'Reset Password', $expiryMinutes, config('neev.otp_expiry_time', 15), $otp));
+
+        // Only once the email is on its way: a send that failed lifts nothing.
+        RateLimiter::clear($this->passwordResetKey('guess', $user));
     }
 
     /**
      * checkEmailOtp() for a password reset, which anyone can attempt without
      * signing in: wrong codes also count against the account, and once
      * PASSWORD_RESET_GUESS_LIMIT is reached no code is checked at all until
-     * the window passes — the link still works.
+     * the window passes or a new reset email is sent — the link still works.
+     *
+     * A code sent before the password last changed is expired, whatever its
+     * row says: changePassword() discards it, but a change that failed after
+     * saving the password must not leave the code it was sent to replace
+     * able to overwrite the new one.
      *
      * @throws PasswordResetThrottledException
      */
@@ -544,7 +567,12 @@ class AuthService
             throw PasswordResetThrottledException::guessing(RateLimiter::availableIn($key));
         }
 
-        $record = $this->checkEmailOtp($user, $otp, OtpPurpose::PasswordReset);
+        $record = $this->checkEmailOtp(
+            $user,
+            $otp,
+            OtpPurpose::PasswordReset,
+            fn (OTP $record) => $this->passwordResetOtpIsCurrent($user, $record),
+        );
         if (!$record) {
             RateLimiter::hit($key, self::PASSWORD_RESET_GUESS_WINDOW);
         }
@@ -581,6 +609,25 @@ class AuthService
 
         return $user->password_changed_at === null
             || $user->password_changed_at->getTimestamp() < $sentAt;
+    }
+
+    /**
+     * Whether a reset code was issued after the password last changed, the
+     * rule passwordResetLinkIsCurrent() applies to the link. The issue time
+     * is the row's `created_at`, which issueEmailOtp() sets on every issue:
+     * `updated_at` is not that time — every guess bumps it, so a guess landing
+     * after the change would revive the code — and deriving it from
+     * `expires_at` would let a later change to `otp_expiry_time` move the
+     * issue time of every code already out. Unlike the link, a code issued
+     * in the same second as the change stays current: registration stamps
+     * password_changed_at, and an account created and sent its first reset
+     * in one request (an invite, an admin-made account) must get a working
+     * code.
+     */
+    protected function passwordResetOtpIsCurrent(User $user, OTP $record): bool
+    {
+        return $user->password_changed_at === null
+            || $user->password_changed_at->getTimestamp() <= $record->created_at->getTimestamp();
     }
 
     protected function passwordResetKey(string $kind, User $user): string
@@ -699,15 +746,18 @@ class AuthService
         );
         $this->revokeLoginTokens($user, $request->attributes->get('token_id'));
 
+        // The password has changed and its sessions are gone: say so before
+        // the tidy-up below, which can fail on an install that skipped the
+        // `otp` purpose migration and must not silence the listeners.
+        event(new PasswordChanged($user));
+
         // A password change retires the reset link (passwordResetLinkIsCurrent)
         // and must retire the code sent beside it too: a user who changes their
         // password on seeing a reset email they never asked for would otherwise
-        // leave that code able to overwrite the new one. It runs after the
-        // revocations, so a failure here — an install that skipped the `otp`
-        // purpose migration — cannot leave the old sessions signed in.
+        // leave that code able to overwrite the new one. The saved
+        // password_changed_at already refuses it (passwordResetOtpIsCurrent),
+        // so a failure here leaves the code unusable all the same.
         $this->discardEmailOtp($user, OtpPurpose::PasswordReset);
-
-        event(new PasswordChanged($user));
     }
 
     /**
