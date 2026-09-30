@@ -31,7 +31,14 @@ unchanged, and the link is still never refused for it.
   3-emails-per-15-minutes cap (a refused request flashes the error on
   `message`). Your `email-verify.blade.php` template receives `$otp` on this
   route too, so a signed-in user setting a first password now sees the code
-  if the template shows one.
+  if the template shows one. The shipped `account/security.blade.php` shows a
+  code form while a usable code is out (the view receives
+  `$password_reset_code_pending` from `AuthService::hasPasswordResetOtp()`),
+  posting `email`, `otp`, `password` and `password_confirmation` to
+  `user-password.update`; re-eject the view or add the same form, or the code
+  the email shows has nowhere to be entered — the forgot-password page sends a
+  signed-in user home. A signed-in owner resetting with the code now lands on
+  `/account/security`, not `/login`.
 
 **A method turned off in `neev.multi_factor_auth` can no longer be enrolled
 (action required if you remove a method users have already set up).**

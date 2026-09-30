@@ -458,6 +458,12 @@ class UserAuthController extends Controller
 
         event(new PasswordReset($user));
 
+        // A signed-in owner used the security page's code form; the link's
+        // form (resetPasswordWithLink) returns them the same way.
+        if ($request->user()?->id === $user->id) {
+            return redirect(route('account.security'))->with('status', __('Password has been successfully updated.'));
+        }
+
         return redirect(route('login'))->with('status', __('Password has been successfully updated.'));
     }
 

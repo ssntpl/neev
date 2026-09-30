@@ -28,7 +28,11 @@ class UserController extends Controller
         }
         $user->loadMissing('multiFactorAuths', 'passkeys');
 
-        return view('neev::account.security', ['user' => $user, 'delete_account' => true]);
+        return view('neev::account.security', [
+            'user' => $user,
+            'delete_account' => true,
+            'password_reset_code_pending' => app(AuthService::class)->hasPasswordResetOtp($user),
+        ]);
     }
 
     public function tokens(Request $request)
@@ -180,7 +184,9 @@ class UserController extends Controller
             return back()->withErrors(['message' => __($e->getMessage())]);
         }
 
-        return back()->with('status', __('A password reset link has been sent to your email address.'));
+        // The security page shows its code form while the code is pending
+        // (hasPasswordResetOtp()), so nothing is kept in the session.
+        return back()->with('status', __('We have emailed you a reset link and a code. Open the link, or enter the code below.'));
     }
 
     /**

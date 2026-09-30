@@ -623,6 +623,22 @@ class AuthService
      * in one request (an invite, an admin-made account) must get a working
      * code.
      */
+    /**
+     * Whether the user holds a reset code that can still reset the password:
+     * issued, not expired, not exhausted by wrong guesses, and sent after the
+     * password last changed. The Blade security page shows its code form on
+     * this, so the form outlives a refresh and goes when the code does.
+     */
+    public function hasPasswordResetOtp(User $user): bool
+    {
+        $record = OTP::query()->forPurpose($user, OtpPurpose::PasswordReset)->first();
+
+        return $record !== null
+            && !$record->expires_at->isPast()
+            && $record->attempts < OTP::MAX_ATTEMPTS
+            && $this->passwordResetOtpIsCurrent($user, $record);
+    }
+
     protected function passwordResetOtpIsCurrent(User $user, OTP $record): bool
     {
         return $user->password_changed_at === null

@@ -187,7 +187,15 @@ beside it, a one-time code — under the same per-account limits: 3 emails per
 the wrong-code lock described in [web-routes](./web-routes.md#password-reset).
 The route is also throttled to 5 requests per minute. The link lands on the
 ordinary reset form; following it while still signed in returns to
-`/account/security` with the password set. The security page offers the same
+`/account/security` with the password set. The code is entered on the security
+page itself: after a send it shows a code and new-password form, in place of
+the current-password form, that posts to `user-password.update`; **Back**
+switches to the current-password form and the *Don't remember your current
+password?* line switches back. A signed-in owner who resets that way is
+returned to `/account/security` too. The form shows while a usable code is out — it
+survives a refresh, a wrong code and a rejected password — and goes once the
+code is spent, expires, runs out of guesses, or the password changes another
+way (`AuthService::hasPasswordResetOtp()`). The security page offers the same
 button to anyone who has simply forgotten their current password, so a reset
 never means signing out first.
 

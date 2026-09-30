@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
 use Ssntpl\Neev\Mail\VerifyUserEmail;
+use Ssntpl\Neev\Models\OTP;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
 
@@ -48,6 +49,225 @@ class PasswordResetLinkTest extends TestCase
                 && $mail->purpose === 'Reset Password'
                 && str_contains($mail->url, '/update-password/' . $user->id . '/');
         });
+    }
+
+    public function test_signed_in_user_resets_with_the_mailed_code_from_the_security_page(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create(['password' => 'password']);
+
+        $this->actingAs($user)
+            ->from(route('account.security'))
+            ->post(route('password.reset.link'))
+            ->assertRedirect(route('account.security'));
+
+        $otp = null;
+        Mail::assertSent(VerifyUserEmail::class, function (VerifyUserEmail $mail) use (&$otp) {
+            $otp = $mail->otp;
+
+            return $mail->purpose === 'Reset Password';
+        });
+        $this->assertNotNull($otp);
+
+        $this->actingAs($user)
+            ->from(route('account.security'))
+            ->post(route('user-password.update'), [
+                'email' => $user->email,
+                'otp' => (string) $otp,
+                'password' => 'newpassword123',
+                'password_confirmation' => 'newpassword123',
+            ])
+            ->assertRedirect(route('account.security'))
+            ->assertSessionHas('status');
+
+        $this->assertTrue(Hash::check('newpassword123', $user->fresh()->password));
+        $this->assertAuthenticatedAs($user);
+
+        // The success page does not offer the form again.
+        $this->actingAs($user)->get(route('account.security'))
+            ->assertOk()
+            ->assertDontSee('Enter the code sent to');
+    }
+
+    public function test_the_code_form_shows_while_a_code_is_pending(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create(['password' => 'password']);
+
+        $this->actingAs($user)->get(route('account.security'))
+            ->assertOk()
+            ->assertDontSee('Enter the code sent to');
+
+        $this->actingAs($user)
+            ->from(route('account.security'))
+            ->post(route('password.reset.link'))
+            ->assertRedirect(route('account.security'));
+
+        // Shown after the send, and still there on a refresh; the code form
+        // offers Back and a resend, and the change form a switch to the code.
+        $this->actingAs($user)->get(route('account.security'))
+            ->assertSee('Enter the code sent to ' . $user->email)
+            ->assertSee('Send again')
+            ->assertSee('Enter the code we emailed you')
+            ->assertDontSee('Email me a reset link');
+        $this->actingAs($user)->get(route('account.security'))
+            ->assertSee('Enter the code sent to ' . $user->email);
+
+        $this->actingAs($user)
+            ->from(route('account.security'))
+            ->post(route('user-password.update'), [
+                'email' => $user->email,
+                'otp' => '000000',
+                'password' => 'newpassword123',
+                'password_confirmation' => 'newpassword123',
+            ])
+            ->assertRedirect(route('account.security'))
+            ->assertSessionHasErrors('otp');
+
+        $this->actingAs($user)->get(route('account.security'))
+            ->assertSee('Enter the code sent to');
+    }
+
+    public function test_the_code_form_goes_when_the_code_expires(): void
+    {
+        Mail::fake();
+
+        config(['neev.otp_expiry_time' => 10]);
+
+        $user = User::factory()->create(['password' => 'password']);
+
+        $this->actingAs($user)->post(route('password.reset.link'));
+
+        $this->actingAs($user)->get(route('account.security'))
+            ->assertSee('Enter the code sent to');
+
+        $this->travel(11)->minutes();
+
+        $this->actingAs($user)->get(route('account.security'))
+            ->assertDontSee('Enter the code sent to');
+    }
+
+    public function test_the_code_form_goes_when_the_code_runs_out_of_guesses(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create(['password' => 'password']);
+
+        $this->actingAs($user)->post(route('password.reset.link'));
+
+        for ($i = 0; $i < OTP::MAX_ATTEMPTS; $i++) {
+            $this->actingAs($user)->from(route('account.security'))->post(route('user-password.update'), [
+                'email' => $user->email,
+                'otp' => '000000',
+                'password' => 'newpassword123',
+                'password_confirmation' => 'newpassword123',
+            ])->assertSessionHasErrors('otp');
+        }
+
+        $this->actingAs($user)->get(route('account.security'))
+            ->assertDontSee('Enter the code sent to');
+    }
+
+    public function test_the_code_form_goes_when_the_password_changes_another_way(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create(['password' => 'password']);
+
+        $this->actingAs($user)->post(route('password.reset.link'));
+
+        $this->actingAs($user)->get(route('account.security'))
+            ->assertSee('Enter the code sent to');
+
+        $this->actingAs($user)->from(route('account.security'))->post(route('password.change'), [
+            'current_password' => 'password',
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertRedirect(route('account.security'));
+
+        $this->actingAs($user)->get(route('account.security'))
+            ->assertDontSee('Enter the code sent to');
+    }
+
+    public function test_a_code_sent_from_the_forgot_password_page_shows_the_form_too(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create(['password' => 'password']);
+
+        $this->post(route('password.email'), ['email' => $user->email]);
+
+        $this->actingAs($user)->get(route('account.security'))
+            ->assertSee('Enter the code sent to ' . $user->email);
+    }
+
+    public function test_a_rejected_password_keeps_the_code_form_and_the_code(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create(['password' => 'password']);
+
+        $this->actingAs($user)->post(route('password.reset.link'));
+
+        $otp = null;
+        Mail::assertSent(VerifyUserEmail::class, function (VerifyUserEmail $mail) use (&$otp) {
+            $otp = $mail->otp;
+
+            return true;
+        });
+
+        $this->actingAs($user)
+            ->from(route('account.security'))
+            ->post(route('user-password.update'), [
+                'email' => $user->email,
+                'otp' => (string) $otp,
+                'password' => 'newpassword123',
+                'password_confirmation' => 'different',
+            ])
+            ->assertRedirect(route('account.security'))
+            ->assertSessionHasErrors('password');
+
+        $this->actingAs($user)->get(route('account.security'))
+            ->assertSee('Enter the code sent to');
+
+        $this->actingAs($user)
+            ->from(route('account.security'))
+            ->post(route('user-password.update'), [
+                'email' => $user->email,
+                'otp' => (string) $otp,
+                'password' => 'newpassword123',
+                'password_confirmation' => 'newpassword123',
+            ])
+            ->assertRedirect(route('account.security'));
+
+        $this->assertTrue(Hash::check('newpassword123', $user->fresh()->password));
+    }
+
+    public function test_a_stranger_resetting_with_a_code_is_sent_to_login(): void
+    {
+        Mail::fake();
+
+        $user = User::factory()->create(['password' => 'password']);
+
+        $this->post(route('password.email'), ['email' => $user->email]);
+
+        $otp = null;
+        Mail::assertSent(VerifyUserEmail::class, function (VerifyUserEmail $mail) use (&$otp) {
+            $otp = $mail->otp;
+
+            return true;
+        });
+
+        $this->from(route('password.request'))
+            ->post(route('user-password.update'), [
+                'email' => $user->email,
+                'otp' => (string) $otp,
+                'password' => 'newpassword123',
+                'password_confirmation' => 'newpassword123',
+            ])
+            ->assertRedirect(route('login'));
     }
 
     public function test_an_account_without_a_password_is_mailed_the_same_link(): void
