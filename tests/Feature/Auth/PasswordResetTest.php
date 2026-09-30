@@ -709,6 +709,27 @@ class PasswordResetTest extends TestCase
         ])->assertOk();
     }
 
+    public function test_a_new_code_works_when_a_password_change_left_the_old_row_behind(): void
+    {
+        // A change that failed at the discard leaves the old row in place.
+        // The next email must not reuse it, or the code it carries would be
+        // refused as issued before the change.
+        $user = User::factory()->create();
+        $this->requestResetCode($user);
+
+        $this->travel(5)->minutes();
+        $user->forceFill(['password_changed_at' => now()])->save();
+        $this->travel(1)->minutes();
+        $otp = $this->requestResetCode($user);
+
+        $this->postJson('/neev/resetPassword', [
+            'email' => $user->email,
+            'otp' => $otp,
+            'password' => 'newpassword123',
+            'password_confirmation' => 'newpassword123',
+        ])->assertOk();
+    }
+
     public function test_a_code_issued_after_a_password_change_works(): void
     {
         $user = User::factory()->create();

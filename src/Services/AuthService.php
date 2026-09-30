@@ -392,7 +392,8 @@ class AuthService
 
     /**
      * Issue (or replace) the user's emailed code for one purpose. Stored
-     * hashed; resending resets the attempt counter and the issue time. Codes
+     * hashed; resending replaces the row, so the attempt counter and the
+     * issue time that passwordResetOtpIsCurrent() reads start afresh. Codes
      * for other purposes are left alone.
      */
     protected function issueEmailOtp(User $user, OtpPurpose $purpose): string
@@ -400,17 +401,15 @@ class AuthService
         $length = (int) config('neev.otp_length', 6);
         $otp = (string) random_int(10 ** ($length - 1), (10 ** $length) - 1);
 
-        OTP::updateOrCreate(
-            ['owner_id' => $user->id, 'owner_type' => $user->getMorphClass(), 'purpose' => $purpose],
-            [
-                'otp' => $otp,
-                'attempts' => 0,
-                // The issue time, which a reused row would otherwise keep from
-                // its first issue; passwordResetOtpIsCurrent() reads it.
-                'created_at' => now(),
-                'expires_at' => now()->addMinutes(config('neev.otp_expiry_time', 15)),
-            ],
-        );
+        $this->discardEmailOtp($user, $purpose);
+        OTP::create([
+            'owner_id' => $user->id,
+            'owner_type' => $user->getMorphClass(),
+            'purpose' => $purpose,
+            'otp' => $otp,
+            'attempts' => 0,
+            'expires_at' => now()->addMinutes(config('neev.otp_expiry_time', 15)),
+        ]);
 
         return $otp;
     }
