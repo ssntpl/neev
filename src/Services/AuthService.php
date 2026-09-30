@@ -674,12 +674,6 @@ class AuthService
             $user->save();
         });
 
-        // A password change retires the reset link (passwordResetLinkIsCurrent)
-        // and must retire the code sent beside it too: a user who changes their
-        // password on seeing a reset email they never asked for would otherwise
-        // leave that code able to overwrite the new one.
-        $this->discardEmailOtp($user, OtpPurpose::PasswordReset);
-
         // The transaction worked on its own locked copy. Bring the caller's
         // instance up to date so whatever holds it — the auth guard, and through
         // it AuthenticateSession's stored password hash — sees the new password
@@ -704,6 +698,14 @@ class AuthService
             $request->hasSession() ? $request->session()->getId() : null,
         );
         $this->revokeLoginTokens($user, $request->attributes->get('token_id'));
+
+        // A password change retires the reset link (passwordResetLinkIsCurrent)
+        // and must retire the code sent beside it too: a user who changes their
+        // password on seeing a reset email they never asked for would otherwise
+        // leave that code able to overwrite the new one. It runs after the
+        // revocations, so a failure here — an install that skipped the `otp`
+        // purpose migration — cannot leave the old sessions signed in.
+        $this->discardEmailOtp($user, OtpPurpose::PasswordReset);
 
         event(new PasswordChanged($user));
     }

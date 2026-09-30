@@ -46,11 +46,15 @@ trait HasMultiAuth
     }
 
     /**
-     * Whether `addMultiFactorAuth()` knows how to enrol this method at all.
+     * Whether this method can be enrolled: `addMultiFactorAuth()` knows how,
+     * and `neev.multi_factor_auth` enables it. The enrolment endpoints ask
+     * here, so a method the app has turned off cannot be added by posting
+     * its name directly.
      */
     public function supportsMultiFactorAuth($method): bool
     {
-        return in_array($method, ['authenticator', 'email'], true);
+        return in_array($method, ['authenticator', 'email'], true)
+            && in_array($method, (array) config('neev.multi_factor_auth', []), true);
     }
 
     /**

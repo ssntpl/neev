@@ -140,6 +140,7 @@
                                             <input type="hidden" name="action" x-ref="action">
                                             @php($hasThisMethod = (bool) $user->multiFactorAuth($method))
                                             @php($confirmsEnrolment = count($user->activeMultiFactorAuths) > 0)
+                                            @php($canEdit = $hasThisMethod && !$user->multiFactorAuthEnrolmentError($method))
 
                                             @if ($hasThisMethod)
                                                 {{-- Re-issuing a setup hands back the secret, and removal
@@ -148,9 +149,9 @@
                                                      password or code has to be typed somewhere. Only an
                                                      account whose sole factor is this pending setup edits
                                                      without confirming — it has nothing active to protect. --}}
-                                                @if ($confirmsEnrolment)
+                                                @if ($canEdit && $confirmsEnrolment)
                                                     <x-neev-component::secondary-button type="button" class="cursor-pointer" @click="showEdit = true">{{ __('Edit') }}</x-neev-component::secondary-button>
-                                                @else
+                                                @elseif ($canEdit)
                                                     <x-neev-component::secondary-button type="submit">{{ __('Edit') }}</x-neev-component::secondary-button>
                                                 @endif
 
@@ -164,7 +165,7 @@
                                             @endif
                                         </form>
 
-                                        @if ($hasThisMethod && $confirmsEnrolment)
+                                        @if ($canEdit && $confirmsEnrolment)
                                             <x-neev-component::dialog-modal show="showEdit">
                                                 <x-slot name="title">
                                                     {{ __('Set up') }} {{ $method }}

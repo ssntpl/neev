@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **A method turned off in `neev.multi_factor_auth` could still be enrolled** — `POST /neev/mfa/add` and the Blade `multi.auth` route accepted `authenticator` or `email` whatever the config listed, so a direct POST added a factor the app had disabled. `supportsMultiFactorAuth()` now also requires the method to be enabled, and both endpoints refuse it before asking for confirmation (`400 Auth was not added.` on the API; the same error flashed on the Blade route). Factors already enrolled are untouched
+- **A password change revokes sessions before it discards the reset code** — `AuthService::changePassword()` discarded the outstanding password-reset code first, and that query reads `otp.purpose`. On an install that skipped the 0.6.7 `otp` migration it threw after the new password was saved, so every other session and login token stayed signed in and `PasswordChanged` never fired. Sessions and login tokens are now revoked first; the discard follows, then the event. Run the migration in [UPGRADING](./UPGRADING.md) if you have not, or the request still fails at the discard
+- **The Blade kit offered Edit on an active email factor that could not work** — the account-security page rendered **Edit** on every configured factor, but email cannot be enrolled twice, so the button asked for the password only to answer `Email already Configured.` Edit now appears only where enrolling the method again would be accepted (`multiFactorAuthEnrolmentError()` returns null), which keeps it on the authenticator and drops it from email. Apps that ejected `account/security.blade.php` keep the old button until they re-publish or apply the same condition
+- **`docs/db-schema.dbml` described three columns wrongly** — `access_tokens.token` is bcrypt-hashed (Laravel's `hashed` cast), not SHA-256; `users.tenant_id` and `access_tokens.attempt_id` were drawn as foreign keys, but the migrations create them as plain indexed columns with no constraint
+
+## [0.6.8] - 2026-09-29
+
 ### Added
 
 - **`neev:clean-access-tokens`** — deletes expired access tokens across every tenant. An expired token was only deleted when presented, so one its holder never sent again stayed in `access_tokens` forever. Tokens with no expiry are kept. Schedule it daily beside the other maintenance commands; see [docs/cli-commands.md](./docs/cli-commands.md#neevclean-access-tokens)
@@ -592,7 +601,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive Blade views and email templates
 - Artisan commands for installation, GeoIP download, and cleanup
 
-[Unreleased]: https://github.com/ssntpl/neev/compare/v0.6.7...HEAD
+[Unreleased]: https://github.com/ssntpl/neev/compare/v0.6.8...HEAD
+[0.6.8]: https://github.com/ssntpl/neev/compare/v0.6.7...v0.6.8
 [0.6.7]: https://github.com/ssntpl/neev/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/ssntpl/neev/compare/v0.6.5...v0.6.6
 [0.6.5]: https://github.com/ssntpl/neev/compare/v0.6.4...v0.6.5

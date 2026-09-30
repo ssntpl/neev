@@ -11,7 +11,7 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## 0.6.7 → Unreleased
+## 0.6.7 → 0.6.8
 
 **The password rules compare only against a proven account (action required
 if you validate a password on someone else's behalf).**
