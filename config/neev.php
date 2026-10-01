@@ -345,6 +345,10 @@ return [
         'min_length' => 2,
         'max_length' => 63,
 
+        // Days a renamed owner's old subdomain keeps serving. The old slug
+        // itself is never issued to anyone else, however long this is.
+        'retired_host_days' => 90,
+
         // Slugs no team or tenant may hold. A slug is also the host handed out
         // under `platform_domain`, so this list is what keeps your own
         // operational names out of tenants' hands — reserving 'app' is what

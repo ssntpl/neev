@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`hostnames` and `email_domains` tables** ([RFC 006](./docs/rfcs/006-hostnames-vs-email-domains.md)) — a host a team or tenant is served at and an email domain whose users join it are now two tables, because they need opposite rules: a host is unique across every owner (`hostnames.host`), while several owners may verify one email domain (`email_domains` is unique per owner only). Models `Hostname` and `EmailDomain`; the owner is polymorphic and may be any model, including the app's own. `primary_hostname_id` on `teams` and `tenants` points at the canonical host. The migrations create the tables empty — copy your `domains` rows as described in [UPGRADING](./UPGRADING.md). Neev still reads `domains` until the switch to the new tables lands
+- **Slugs are never reused** — renaming a team or tenant records the old slug in `retired_slugs` and fires `SlugChanged`, and no other owner of the same kind can take it again, because a platform subdomain is derived from the slug and links, IdP redirect URIs and password managers still trust the old host. The owner may take its own old slug back. `SlugHelper` skips retired slugs when generating one, and `neev:tenant:create --slug` refuses one. `neev.slug.retired_host_days` (default 90) sets how long the old host keeps serving; the reservation never ends. The `RetiresSlugs` trait works on any model with a slug: `getSlugColumn()`, `slugPeers()`, `narrowRetiredSlugs()` and `generateSlug()` adapt it
+- **`CanonicalisesHost` trait** — the one spelling of a host (`ACME.com.` is stored as `acme.com`) shared by `Domain`, `Hostname` and `EmailDomain`, with the `forHost()` scope
+
+### Changed
+
+- **BREAKING: a team slug is unique per tenant in isolated mode** — the column-wide unique on `teams.slug` is replaced by `unique(tenant_id, slug)`, so two tenants may each have an `engineering` team and the `-1` suffix no longer tells one tenant that another holds the name. In shared mode slugs stay unique across the installation, enforced by the model's save under a per-slug cache lock. A console command given a team slug held in several tenants asks for the team ID instead
+- **BREAKING: a duplicate team or tenant slug throws `SlugUnavailableException`** — saving a slug another owner holds or has retired throws `Ssntpl\Neev\Exceptions\SlugUnavailableException` (an `InvalidArgumentException`) instead of a database `QueryException`
+- **BREAKING: one owner may have two teams of the same name** — the `(tenant_id, name, user_id)` unique on `teams` is removed; a team is identified by its slug
+- **A team or tenant created without a slug gets one from its name** — tenants did not before. The slug is chosen before it is locked and chosen again if another save takes it first
+
 ### Fixed
 
 - **Anyone could lock an account's reset code for an hour** — the 10-wrong-codes-per-hour limit is keyed by account, so a stranger posting 10 wrong codes with someone else's email had that account's own code refused with `429` (`Too many incorrect codes.`) until the window passed; only a completed reset cleared it, and the link was the one way in. `sendPasswordReset()` now clears the wrong-code count, so requesting a new email — which only the owner receives — brings a code that works. The 3-emails-per-15-minutes cap and the 5 guesses per code still bound what a stranger can try

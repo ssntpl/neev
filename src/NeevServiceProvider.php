@@ -134,6 +134,9 @@ class NeevServiceProvider extends ServiceProvider
             __DIR__.'/../database/migrations/2025_01_01_000012_create_tenant_auth_settings_table.php' => database_path('migrations/2025_01_01_000012_create_tenant_auth_settings_table.php'),
 
             __DIR__.'/../database/migrations/2025_01_01_000013_create_magic_link_tokens_table.php' => database_path('migrations/2025_01_01_000013_create_magic_link_tokens_table.php'),
+
+            __DIR__.'/../database/migrations/2026_09_30_000001_create_hostnames_and_email_domains_tables.php' => database_path('migrations/2026_09_30_000001_create_hostnames_and_email_domains_tables.php'),
+            __DIR__.'/../database/migrations/2026_09_30_000002_create_retired_slugs_table.php' => database_path('migrations/2026_09_30_000002_create_retired_slugs_table.php'),
         ], 'neev-migrations');
 
         // Blade starter kit: ejected into the app (app-owned from then on).

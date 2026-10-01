@@ -3,13 +3,13 @@
 namespace Ssntpl\Neev\Tests\Unit\Models;
 
 use Exception;
-use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
+use Ssntpl\Neev\Exceptions\SlugUnavailableException;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
@@ -625,10 +625,10 @@ class TeamTest extends TestCase
     // -----------------------------------------------------------------
 
     /**
-     * One owner cannot hold two teams of the same name inside one tenant —
-     * the pair is how the older join-request form names a team.
+     * A team is identified by its slug, not its name, so one owner may hold
+     * two teams of the same name, in one tenant or across tenants.
      */
-    public function test_an_owner_cannot_repeat_a_team_name_within_a_tenant(): void
+    public function test_an_owner_may_repeat_a_team_name(): void
     {
         $owner = User::factory()->create();
         $tenant = TenantFactory::new()->create();
@@ -636,50 +636,26 @@ class TeamTest extends TestCase
         TeamFactory::new()->create([
             'user_id' => $owner->id, 'name' => 'Acme', 'tenant_id' => $tenant->id,
         ]);
-
-        $this->expectException(QueryException::class);
-
         TeamFactory::new()->create([
             'user_id' => $owner->id, 'name' => 'Acme', 'tenant_id' => $tenant->id,
         ]);
-    }
-
-    /**
-     * The constraint is scoped to the tenant, so the same owner may hold the
-     * same team name in two tenants — names only have to be distinct inside
-     * the tenant that sees them.
-     */
-    public function test_the_same_owner_may_repeat_a_team_name_in_another_tenant(): void
-    {
-        $owner = User::factory()->create();
-        $one = TenantFactory::new()->create();
-        $two = TenantFactory::new()->create();
-
-        TeamFactory::new()->create([
-            'user_id' => $owner->id, 'name' => 'Acme', 'tenant_id' => $one->id,
-        ]);
-        $second = TeamFactory::new()->create([
-            'user_id' => $owner->id, 'name' => 'Acme', 'tenant_id' => $two->id,
-        ]);
 
         $this->assertDatabaseCount('teams', 2);
-        $this->assertSame($two->id, $second->tenant_id);
     }
 
     /**
-     * The per-tenant slug index was dropped as redundant: the `slug` column
-     * is unique on its own, which is stricter. That global uniqueness is what
-     * lets `resolveBySlug()` and the slug endpoints look a team up without a
-     * tenant filter and still land on exactly one team.
+     * In shared mode a team is host-resolvable, so its slug is unique across
+     * the installation (RFC 006 §6 Q5). The index is per tenant, so this is
+     * the save that refuses it, not the database.
      */
-    public function test_a_slug_is_unique_across_every_tenant(): void
+    public function test_a_slug_is_unique_across_every_tenant_in_shared_mode(): void
     {
         $one = TenantFactory::new()->create();
         $two = TenantFactory::new()->create();
 
         TeamFactory::new()->create(['slug' => 'shared', 'tenant_id' => $one->id]);
 
-        $this->expectException(QueryException::class);
+        $this->expectException(SlugUnavailableException::class);
 
         TeamFactory::new()->create(['slug' => 'shared', 'tenant_id' => $two->id]);
     }

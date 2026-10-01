@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Unit\Commands;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Tests\TestCase;
 
@@ -61,6 +62,18 @@ class ListDomainsCommandTest extends TestCase
     {
         $this->artisan('neev:domain:list', ['--owner-type' => 'team', '--owner-id' => 'no-such-team'])
             ->expectsOutputToContain('Team not found: no-such-team')
+            ->assertFailed();
+    }
+
+    public function test_a_team_slug_held_in_several_tenants_needs_the_id(): void
+    {
+        config(['neev.tenant' => true]);
+        foreach ([TenantFactory::new()->create(), TenantFactory::new()->create()] as $tenant) {
+            TeamFactory::new()->create(['slug' => 'engineering', 'tenant_id' => $tenant->id]);
+        }
+
+        $this->artisan('neev:domain:list', ['--owner-type' => 'team', '--owner-id' => 'engineering'])
+            ->expectsOutputToContain('Team slug engineering is used in more than one tenant; pass the team ID instead.')
             ->assertFailed();
     }
 }

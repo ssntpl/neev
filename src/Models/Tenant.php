@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Models;
 
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -18,6 +19,8 @@ use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Events\TenantCreated;
 use Ssntpl\Neev\Scopes\TeamTenantScope;
+use Ssntpl\Neev\Support\SlugHelper;
+use Ssntpl\Neev\Traits\RetiresSlugs;
 
 /**
  * @property int $id
@@ -34,6 +37,7 @@ use Ssntpl\Neev\Scopes\TeamTenantScope;
 class Tenant extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
     use HasFactory;
+    use RetiresSlugs;
 
     protected $fillable = [
         'name',
@@ -66,6 +70,29 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
     public static function getClass(): string
     {
         return config('neev.tenant_model', Tenant::class);
+    }
+
+    // -----------------------------------------------------------------
+    // Slugs (RetiresSlugs)
+    // -----------------------------------------------------------------
+
+    /**
+     * A tenant saved without a slug gets one from its name. It is chosen in
+     * save(), before the slug is locked.
+     */
+    protected function generateSlug(): ?string
+    {
+        return SlugHelper::generateForTenant($this->name);
+    }
+
+    /**
+     * A tenant slug is unique across the installation. The unique index holds
+     * that too; checking here as well gives a held slug the same
+     * SlugUnavailableException as a retired one.
+     */
+    protected function slugPeers(): ?Builder
+    {
+        return static::query();
     }
 
     // -----------------------------------------------------------------

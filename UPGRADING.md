@@ -13,6 +13,76 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.8 → Unreleased
 
+**Domains are split into `hostnames` and `email_domains`, and your app copies
+the old rows (action required if you use domains).**
+The `domains` table held two different things: hosts a team or tenant is
+served at, and email domains whose users join it. Holding both in one row is
+why verifying `app.acme.com` as a custom host also federated every
+`@app.acme.com` sign-up ([RFC 006](docs/rfcs/006-hostnames-vs-email-domains.md)).
+The new migrations create `hostnames`, `email_domains` and `retired_slugs`,
+and add `primary_hostname_id` to `teams` and `tenants`. They copy nothing:
+only your app knows what each of its domains is for. From this release Neev
+resolves hosts and federates sign-ups from the new tables, so fill them after
+`php artisan migrate` and before the release serves traffic.
+
+For each `domains` row with an owner:
+
+- **Under `neev.platform_domain`** (`acme.otper.com`): don't copy it. Neev now
+  derives that host from the owner's slug.
+- **An email domain** (users at it should join the owner): create an
+  `EmailDomain` with the owner, `domain`, `enforce`, `verification_token`,
+  `verified_at`, `verification_failed_at`, and a `status` of `verified`,
+  `failed` or `pending`.
+- **A host the app is served at**: create a `Hostname` with the owner, `host`,
+  the same verification columns and `status`. A host is unique across every
+  owner; where two owners verified one, give it to the owner that serves it.
+- **Both**: create both. Don't make a host an email domain only because it is
+  verified; that is the bug this change removes.
+- **`is_primary`**, on a row that became a hostname: set the owner's
+  `primary_hostname_id` to that hostname.
+
+The models store the canonical spelling (`ACME.com.` becomes `acme.com`), so
+create rows through them rather than inserting raw values. `domains` stays in
+place, read-only, for this release.
+
+**Team slugs are unique per tenant, and team names may repeat (action
+required on an existing install).**
+A fresh install's `teams` table now has `unique(tenant_id, slug)` in place of
+the unique on `slug` and of `unique(tenant_id, name, user_id)`. Laravel does
+not re-run a migration an install has already run, so an upgraded install
+keeps the old indexes: two tenants still cannot both have an `engineering`
+team, and one owner still cannot repeat a team name. To match, add a migration
+of your own:
+
+```php
+Schema::table('teams', function (Blueprint $table) {
+    $table->dropUnique(['slug']);
+    $table->dropUnique(['tenant_id', 'name', 'user_id']);
+    $table->unique(['tenant_id', 'slug']);
+});
+```
+
+Keep `unique(tenant_id, name, user_id)` if your app relies on team names being
+distinct; Neev no longer does. In shared mode `tenant_id` is null and the new
+index cannot stop two equal slugs; the team's save enforces that instead.
+
+**A duplicate slug throws `SlugUnavailableException` (action required if you
+catch the database error).**
+Saving a team or tenant with a slug another one holds, or has retired, throws
+`Ssntpl\Neev\Exceptions\SlugUnavailableException` (an
+`InvalidArgumentException`) before the query runs. Code that caught
+`Illuminate\Database\QueryException` for a duplicate slug must catch the new
+exception.
+
+**A renamed slug is never issued to anyone else.**
+Renaming a team or tenant records the old slug in `retired_slugs`. Only that
+owner can take it back; every other owner of the same kind is refused it for
+good, and `SlugHelper` skips it when generating one. If your app recycles
+slugs, for example by renaming one team to free a name for another, that now
+fails. The old host keeps serving for `neev.slug.retired_host_days` (default
+90). Only model saves are guarded: a query-builder update of `slug` records no
+retirement.
+
 **A new reset email lifts the wrong-code lock (action required if your reset
 screen tells a locked-out user to wait).**
 The 10-wrong-codes-per-hour limit is counted per account, and wrong codes need
