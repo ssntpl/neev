@@ -26,9 +26,19 @@ trait ResolvesTenantContext
 
         // Console commands run outside a resolved tenant, so they look teams
         // up across every tenant.
-        $team = ctype_digit($identifier)
-            ? $class::withoutTenantScope()->find((int) $identifier)
-            : $class::withoutTenantScope()->where('slug', $identifier)->first();
+        if (ctype_digit($identifier)) {
+            $team = $class::withoutTenantScope()->find((int) $identifier);
+        } else {
+            // Under isolation a team slug is unique per tenant only, so the
+            // same slug can name a team in each of several tenants.
+            $matches = $class::withoutTenantScope()->where('slug', $identifier)->limit(2)->get();
+
+            if ($matches->count() > 1) {
+                $this->fail("Team slug {$identifier} is used in more than one tenant; pass the team ID instead.");
+            }
+
+            $team = $matches->first();
+        }
 
         if (! $team) {
             $this->fail("Team not found: {$identifier}");

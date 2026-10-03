@@ -4,6 +4,7 @@ namespace Ssntpl\Neev\Models;
 
 use Carbon\Carbon;
 use Exception;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -28,6 +29,7 @@ use Ssntpl\Neev\Scopes\TenantScope;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Support\SlugHelper;
 use Ssntpl\Neev\Traits\HasTenantAuth;
+use Ssntpl\Neev\Traits\RetiresSlugs;
 
 /**
  * @property int $id
@@ -52,17 +54,11 @@ use Ssntpl\Neev\Traits\HasTenantAuth;
 class Team extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
     use HasTenantAuth;
+    use RetiresSlugs;
 
     protected static function booted()
     {
         static::addGlobalScope(new TeamTenantScope());
-
-        // Auto-generate slug if not provided
-        static::creating(function (Team $team) {
-            if (empty($team->slug)) {
-                $team->slug = SlugHelper::generate($team->name);
-            }
-        });
 
         // Team does not use the BelongsToTenant trait: its creating hook would
         // stamp the resolved context's id blindly, and in shared mode that
@@ -528,6 +524,52 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
         if ($role) {
             $user->assignRole($role, $this);
         }
+    }
+
+    // -----------------------------------------------------------------
+    // Slugs (RetiresSlugs)
+    // -----------------------------------------------------------------
+
+    /**
+     * A team saved without a slug gets one from its name. It is chosen in
+     * save(), before the slug is locked (RetiresSlugs).
+     */
+    protected function generateSlug(): ?string
+    {
+        return SlugHelper::generate($this->name);
+    }
+
+    /**
+     * A team slug is unique per tenant in isolated mode, where the index on
+     * (tenant_id, slug) covers it, and installation-wide in shared mode, where
+     * tenant_id is null and the index cannot stop two nulls (RFC 006 §6 Q5).
+     */
+    protected function slugPeers(): ?Builder
+    {
+        return config('neev.tenant', false) ? $this->teamsInSameTenant() : static::withoutGlobalScopes();
+    }
+
+    /**
+     * In isolated mode a team slug retires within its tenant only. Shared mode
+     * keeps every retirement, including those of teams since deleted.
+     *
+     * @param  Builder<RetiredSlug>  $retired
+     * @return Builder<RetiredSlug>
+     */
+    protected function narrowRetiredSlugs(Builder $retired): Builder
+    {
+        return config('neev.tenant', false) ? $retired->amongOwners($this->teamsInSameTenant()) : $retired;
+    }
+
+    /**
+     * Every team in this team's tenant, or every platform team when it has none.
+     */
+    protected function teamsInSameTenant(): Builder
+    {
+        $tenantId = $this->tenant_id;
+
+        return static::withoutGlobalScopes()
+            ->when($tenantId === null, fn (Builder $q) => $q->whereNull('tenant_id'), fn (Builder $q) => $q->where('tenant_id', $tenantId));
     }
 
     // -----------------------------------------------------------------

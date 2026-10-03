@@ -6,6 +6,7 @@ use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\PromptsForMissingInput;
 use Ssntpl\Neev\Commands\Concerns\ResolvesTenantContext;
 use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\RetiredSlug;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Models\User;
@@ -113,6 +114,11 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
      */
     protected function slugTaken(string $slug): bool
     {
+        // A slug another owner has retired is never issued again.
+        if (RetiredSlug::heldAgainst($this->isIsolated() ? 'tenant' : 'team', $slug)->exists()) {
+            return true;
+        }
+
         if ($this->isIsolated()) {
             return Tenant::getClass()::where('slug', $slug)->exists();
         }

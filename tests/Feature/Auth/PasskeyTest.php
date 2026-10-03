@@ -460,8 +460,7 @@ class PasskeyTest extends TestCase
             'neev.allowed_origins' => ['https://example.com'],
         ]);
 
-        $team = TeamFactory::new()->create();
-        $this->verifiedDomain($team, 'acme.example.com', primary: true);
+        $team = TeamFactory::new()->create(['slug' => 'acme']);
         $this->verifiedDomain($team, 'acme.com');
 
         [$user, $token] = $this->authenticatedUser();
@@ -512,10 +511,8 @@ class PasskeyTest extends TestCase
             'neev.allowed_origins' => ['https://example.com'],
         ]);
 
-        $victimTeam = TeamFactory::new()->create();
-        $this->verifiedDomain($victimTeam, 'victim.example.com', primary: true);
-        $evilTeam = TeamFactory::new()->create();
-        $this->verifiedDomain($evilTeam, 'evil.example.com', primary: true);
+        TeamFactory::new()->create(['slug' => 'victim']);
+        TeamFactory::new()->create(['slug' => 'evil']);
 
         [$user] = $this->authenticatedUser();
 
@@ -543,8 +540,7 @@ class PasskeyTest extends TestCase
             'neev.allowed_origins' => ['https://example.com'],
         ]);
 
-        $team = TeamFactory::new()->create();
-        $this->verifiedDomain($team, 'acme.example.com', primary: true);
+        TeamFactory::new()->create(['slug' => 'acme']);
 
         [$user] = $this->authenticatedUser();
         $this->createPasskey($user, ['rp_id' => null]);

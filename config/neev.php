@@ -33,10 +33,12 @@ return [
     |     'platform_domain' => 'otper.com',
     |
     | A tenant's subdomain is its slug, so team `acme` is issued
-    | 'acme.otper.com' and nothing else. The bare 'otper.com' never qualifies —
-    | the apex is this installation's own name, not a tenant's. Leave it empty
-    | and nothing auto-verifies: every domain goes through DNS, which is the safe
-    | default for an installation that hands out no subdomains.
+    | 'acme.otper.com' and nothing else. A request on that host resolves to the
+    | slug's owner with no domain row (a tenant in isolated mode, a team in
+    | shared mode). The bare 'otper.com' never qualifies — the apex is this
+    | installation's own name, not a tenant's. Leave it empty and nothing
+    | auto-verifies: every domain goes through DNS, which is the safe default
+    | for an installation that hands out no subdomains.
     |
     */
     'platform_domain' => env('NEEV_PLATFORM_DOMAIN'),
@@ -344,6 +346,10 @@ return [
     'slug' => [
         'min_length' => 2,
         'max_length' => 63,
+
+        // Days a renamed owner's old subdomain keeps serving. The old slug
+        // itself is never issued to anyone else, however long this is.
+        'retired_host_days' => 90,
 
         // Slugs no team or tenant may hold. A slug is also the host handed out
         // under `platform_domain`, so this list is what keeps your own

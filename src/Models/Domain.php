@@ -11,6 +11,7 @@ use Ssntpl\Neev\Events\DomainReverified;
 use Ssntpl\Neev\Events\DomainVerificationFailed;
 use Ssntpl\Neev\Events\DomainVerified;
 use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
+use Ssntpl\Neev\Traits\CanonicalisesHost;
 
 /**
  * @property int $id
@@ -27,6 +28,8 @@ use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
  */
 class Domain extends Model
 {
+    use CanonicalisesHost;
+
     protected static function booted(): void
     {
         static::saved(function (Domain $domain) {
@@ -107,37 +110,14 @@ class Domain extends Model
         return static::canonicalHost($configured) ?: null;
     }
 
-    /**
-     * One canonical spelling of a host, so that the verification decision, the
-     * uniqueness reservation and the resolution lookup all compare the same
-     * value.
-     *
-     * `acme.otper.com.` is the fully qualified form of `acme.otper.com` and
-     * `ACME.otper.com` is the same name again; stored as written they are three
-     * distinct strings, so a second team could claim an alias of a host another
-     * team already holds and the reservation would not notice.
-     */
-    public static function canonicalHost(string $host): string
+    protected function hostColumn(): string
     {
-        return strtolower(trim($host, " \t\n\r\0\x0B."));
+        return 'domain';
     }
 
-    /**
-     * Rows on this host, however it is spelled. Rows hold the canonical form,
-     * so every lookup by host goes through here rather than comparing the raw
-     * string a caller was given.
-     */
-    public function scopeForHost($query, string $host)
-    {
-        return $query->where('domain', static::canonicalHost($host));
-    }
-
-    /**
-     * Canonicalise on the way in, whichever code path writes the row.
-     */
     public function setDomainAttribute(?string $value): void
     {
-        $this->attributes['domain'] = $value === null ? null : static::canonicalHost($value);
+        $this->canonicaliseHostAttribute($value);
     }
 
     /**

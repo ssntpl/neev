@@ -81,7 +81,7 @@ class TenantTest extends TestCase
     {
         TenantFactory::new()->create(['slug' => 'unique-slug']);
 
-        $this->expectException(\Illuminate\Database\QueryException::class);
+        $this->expectException(\Ssntpl\Neev\Exceptions\SlugUnavailableException::class);
 
         TenantFactory::new()->create(['slug' => 'unique-slug']);
     }

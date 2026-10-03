@@ -50,6 +50,8 @@ class TenantSSOTest extends TestCase
         $resolver->shouldReceive('currentDomain')->andReturn(null);
         $resolver->shouldReceive('resolve')->andReturn($tenant);
         $resolver->shouldReceive('isResolvedDomainVerified')->andReturn($tenant !== null);
+        $resolver->shouldReceive('resolvedVia')->andReturn('header');
+        $resolver->shouldReceive('headerSlugRetired')->andReturn(false);
         $resolver->shouldReceive('hasTenant')->andReturn($tenant !== null);
         $resolver->shouldReceive('currentId')->andReturn($tenant?->id);
         $resolver->shouldReceive('isEnabled')->andReturn(false);

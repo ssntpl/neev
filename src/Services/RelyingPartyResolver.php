@@ -8,10 +8,11 @@ use Ssntpl\Neev\Models\Domain;
 /**
  * Resolves the WebAuthn relying party for the current request's context.
  *
- * The verified domain equal to the request's origin — the row the request
- * resolved through, or one the resolved context owns — whether that host sits
- * under the platform's own zone or not. With no context, no origin, or no
- * such domain, the configured value stands.
+ * The host equal to the request's origin that the resolved context is served
+ * at: its platform subdomain, derived from its slug (RFC 006 §4.3), or a
+ * verified domain — the row the request resolved through, or one the context
+ * owns. With no context, no origin, or no such host, the configured value
+ * stands.
  *
  * Every host gets its own relying party, including a platform subdomain.
  * Sharing one across a zone means sharing credentials across it: a tenant able
@@ -24,6 +25,9 @@ use Ssntpl\Neev\Models\Domain;
 class RelyingPartyResolver
 {
     /** Resolved once per request (the resolver is request-scoped). */
+    protected ?string $host = null;
+
+    /** The verified row a custom host came from; its owner is read lazily. */
     protected ?Domain $domain = null;
 
     protected bool $settled = false;
@@ -37,11 +41,7 @@ class RelyingPartyResolver
      */
     public function rpId(): string
     {
-        $domain = $this->domain();
-
-        return $domain !== null
-            ? Domain::canonicalHost($domain->domain)
-            : $this->configured();
+        return $this->host() ?? $this->configured();
     }
 
     /**
@@ -50,7 +50,8 @@ class RelyingPartyResolver
      * Every origin is named exactly; nothing is matched by suffix. The
      * configured list is kept on every path (it carries native-app facets,
      * which apply to all tenants) plus the one host this relying party was
-     * taken from. Built from the domain records, never from the request.
+     * taken from. Built from the slug and the domain records, never from the
+     * request.
      *
      * One host, because the relying party is that host: a sibling under the
      * same zone now answers to its own, so there is nothing for it to be
@@ -60,9 +61,9 @@ class RelyingPartyResolver
      */
     public function allowedOrigins(): array
     {
-        $domain = $this->domain();
+        $host = $this->host();
 
-        $own = $domain !== null ? [Domain::canonicalHost($domain->domain)] : [];
+        $own = $host !== null ? [$host] : [];
 
         return array_values(array_unique(array_merge(
             (array) config('neev.allowed_origins', []),
@@ -76,12 +77,10 @@ class RelyingPartyResolver
      */
     public function rpName(): string
     {
-        $domain = $this->domain();
-
         // The domain may belong to a team that routes through the resolved
         // tenant, and the name to show is the one that owns the host.
-        $context = $domain !== null
-            ? ($domain->owner ?? $this->tenants->resolvedContext())
+        $context = $this->host() !== null
+            ? ($this->domain->owner ?? $this->tenants->resolvedContext())
             : null;
 
         // The context interfaces declare no name; Team and Tenant carry one as
@@ -120,15 +119,15 @@ class RelyingPartyResolver
         return $rpId !== '' && ($host === $rpId || str_ends_with($host, '.' . $rpId));
     }
 
-    /** The domain this request's context offers, if any. */
-    protected function domain(): ?Domain
+    /** The host this request's context offers, if any. */
+    protected function host(): ?string
     {
         if (! $this->settled) {
             $this->settle();
             $this->settled = true;
         }
 
-        return $this->domain;
+        return $this->host;
     }
 
     /**
@@ -140,12 +139,17 @@ class RelyingPartyResolver
      * is also the federation registry, so `acme.com` may sit there only so
      * `@acme.com` staff auto-join, never served.
      *
-     * A row inside the platform's own zone is treated exactly like any other:
-     * `acme.platform.com` is its own relying party. The platform keeps
-     * `configured()` for the hosts it serves itself, which resolve no context.
+     * A platform subdomain is taken from the slug, not a row: the context's
+     * current one. A retired one is never a relying party, so a ceremony on
+     * it runs under `configured()` and the browser refuses it. The host
+     * string is the same one a row used to hold, so passkeys enrolled against
+     * it keep working. `acme.platform.com` is its own relying party; the
+     * platform keeps `configured()` for the hosts it serves itself, which
+     * resolve no context.
      */
     protected function settle(): void
     {
+        $this->host = null;
         $this->domain = null;
 
         $context = $this->tenants->resolvedContext();
@@ -163,6 +167,12 @@ class RelyingPartyResolver
             return;
         }
 
+        if ($origin === $this->tenants->platformHost($context)) {
+            $this->host = $origin;
+
+            return;
+        }
+
         // The row the request resolved through, which is not always among the
         // context's own: in tenant mode a team-owned host routes through that
         // team's tenant, so the tenant holds no row naming it. It is still the
@@ -172,6 +182,7 @@ class RelyingPartyResolver
         if ($resolved !== null
             && $resolved->verified_at !== null
             && Domain::canonicalHost($resolved->domain) === $origin) {
+            $this->host = $origin;
             $this->domain = $resolved;
 
             return;
@@ -184,6 +195,8 @@ class RelyingPartyResolver
             ->orderBy('id')
             ->get()
             ->first(fn (Domain $row) => Domain::canonicalHost($row->domain) === $origin);
+
+        $this->host = $this->domain !== null ? $origin : null;
     }
 
     /**

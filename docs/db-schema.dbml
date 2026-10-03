@@ -5,6 +5,7 @@ Table tenants {
   id bigint [pk, increment]
   name varchar
   slug varchar [unique]
+  primary_hostname_id bigint [null, ref: > hostnames.id, note: 'canonical custom host; null when served only at the platform subdomain']
   activated_at timestamp [null]
   inactive_reason varchar [null]
   created_at timestamp
@@ -146,7 +147,8 @@ Table teams {
   tenant_id bigint [null, ref: > tenants.id]
   user_id bigint [ref: > users.id, note: 'owner']
   name varchar
-  slug varchar [unique, null]
+  slug varchar [null]
+  primary_hostname_id bigint [null, ref: > hostnames.id, note: 'canonical custom host; null when served only at the platform subdomain']
   is_public boolean [default: true]
   activated_at timestamp [null]
   inactive_reason varchar [null]
@@ -154,7 +156,7 @@ Table teams {
   updated_at timestamp
 
   indexes {
-    (tenant_id, name, user_id) [unique, note: 'one owner cannot repeat a team name within a tenant; NULL tenant_id rows are not covered, per SQL NULL semantics']
+    (tenant_id, slug) [unique, note: 'unique per tenant in isolated mode; NULL tenant_id rows (shared mode) are checked by Team\'s save, per SQL NULL semantics']
     slug
   }
 }
@@ -211,7 +213,7 @@ Table domains {
     (domain, verified_at)
   }
 
-  Note: 'Polymorphic owner: Team or Tenant'
+  Note: 'Polymorphic owner: Team or Tenant. Being replaced by hostnames and email_domains (RFC 006)'
 }
 
 Table domain_rules {
@@ -225,6 +227,65 @@ Table domain_rules {
   indexes {
     (name, domain_id) [unique]
   }
+}
+
+Table hostnames {
+  id bigint [pk, increment]
+  owner_type varchar [note: 'any model: team, tenant, or the app\'s own']
+  owner_id bigint
+  host varchar [unique, note: 'canonical: lowercase, no trailing dot']
+  status varchar [default: 'pending', note: 'pending | verified | failed']
+  verification_token varchar [null]
+  verified_at timestamp [null]
+  verification_failed_at timestamp [null]
+  verification_expires_at timestamp [null]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (owner_type, owner_id)
+  }
+
+  Note: 'RFC 006: a custom host an owner is served at. Platform subdomains are derived from the slug and never stored'
+}
+
+Table email_domains {
+  id bigint [pk, increment]
+  owner_type varchar [note: 'any model: team, tenant, or the app\'s own']
+  owner_id bigint
+  domain varchar [note: 'canonical: lowercase, no trailing dot']
+  status varchar [default: 'pending', note: 'pending | verified | failed']
+  verification_strategy varchar [default: 'dns']
+  verification_token varchar [null]
+  verified_at timestamp [null]
+  verification_failed_at timestamp [null]
+  enforce boolean [default: false]
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (owner_type, owner_id)
+    (owner_type, owner_id, domain) [unique, note: 'unique per owner only: several owners may verify one domain']
+    (domain, verified_at)
+  }
+
+  Note: 'RFC 006: an email domain whose users belong to the owner'
+}
+
+Table retired_slugs {
+  id bigint [pk, increment]
+  owner_type varchar [note: 'morph class of the model that retired it']
+  owner_id bigint
+  slug varchar
+  created_at timestamp [note: 'when it was retired; the old host serves for neev.slug.retired_host_days after this']
+  updated_at timestamp
+
+  indexes {
+    (owner_type, owner_id)
+    (owner_type, slug)
+  }
+
+  Note: 'RFC 006: a slug its owner renamed away from. Never issued to another owner of the same kind; the owner may take it back, which deletes the row'
 }
 
 Table team_auth_settings {

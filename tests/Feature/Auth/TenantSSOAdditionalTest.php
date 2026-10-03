@@ -36,6 +36,8 @@ class TenantSSOAdditionalTest extends TestCase
         $resolver->shouldReceive('resolvedContext')->andReturn($tenant);
         $resolver->shouldReceive('resolve')->andReturn($tenant);
         $resolver->shouldReceive('isResolvedDomainVerified')->andReturn(true);
+        $resolver->shouldReceive('resolvedVia')->andReturn('header');
+        $resolver->shouldReceive('headerSlugRetired')->andReturn(false);
         $this->app->instance(TenantResolver::class, $resolver);
     }
 
