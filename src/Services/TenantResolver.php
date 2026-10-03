@@ -10,9 +10,12 @@ use Ssntpl\Neev\Contracts\ContextContainerInterface;
 use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Contracts\ResolvableContextInterface;
+use Illuminate\Database\Eloquent\Model;
 use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\RetiredSlug;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Tenant;
+use Ssntpl\Neev\Support\PlatformHost;
 
 class TenantResolver
 {
@@ -32,7 +35,7 @@ class TenantResolver
     protected ?ContextContainerInterface $resolvedContext = null;
 
     /**
-     * How the tenant was resolved ('header', 'subdomain', 'custom').
+     * How the tenant was resolved ('header', 'subdomain', 'retired', 'custom').
      */
     protected ?string $resolvedVia = null;
 
@@ -40,6 +43,11 @@ class TenantResolver
      * The domain or value used to resolve the tenant.
      */
     protected ?string $resolvedDomain = null;
+
+    /**
+     * Whether the X-Tenant header named a slug its owner has since given up.
+     */
+    protected bool $headerSlugRetired = false;
 
     /**
      * The custom domain model (only set for custom domain resolution).
@@ -68,7 +76,10 @@ class TenantResolver
         if ($headerValue !== null) {
             $result = $this->resolveFromHeader($headerValue);
             if ($result) {
-                return $this->setResolved($result['context'], $result['via'], $result['domain'], $result['customDomain'] ?? null);
+                $context = $this->setResolved($result['context'], $result['via'], $result['domain'], $result['customDomain'] ?? null);
+                $this->headerSlugRetired = $result['retiredSlug'] ?? false;
+
+                return $context;
             }
         }
 
@@ -110,6 +121,12 @@ class TenantResolver
             return ['context' => $context, 'via' => 'header', 'domain' => $headerValue];
         }
 
+        // Then by one its owner gave up within the window
+        $context = $this->retiredSlugOwner($headerValue);
+        if ($context) {
+            return ['context' => $context, 'via' => 'header', 'domain' => $headerValue, 'retiredSlug' => true];
+        }
+
         // Try by domain (subdomain or custom domain)
         return $this->resolveFromHost($headerValue);
     }
@@ -119,8 +136,16 @@ class TenantResolver
      */
     protected function resolveFromHost(string $host): ?array
     {
-        $model = $this->getResolvableModel();
-        // Check domain via domains table (cached for 5 minutes)
+        // A platform host names its owner's slug, so it needs no row. Not
+        // cached: it is one indexed lookup, and a rename takes effect at once.
+        // Neither slug answering, the domain rows are still checked below.
+        $slug = PlatformHost::slugOf($host);
+        $platform = $slug !== null ? $this->platformContext($slug) : null;
+
+        if ($platform !== null) {
+            return $platform;
+        }
+
         $isIsolated = $this->isIsolated();
 
         /** @var array{context_type: string, context_id: int}|null $cachedContext */
@@ -168,6 +193,81 @@ class TenantResolver
         }
 
         return null;
+    }
+
+    /**
+     * The owner the platform host for a slug names (RFC 006 §4.3): the one
+     * holding its slug now, else the one that gave it up within
+     * `neev.slug.retired_host_days`. Shaped like resolveFromHost()'s result.
+     *
+     * Only the owner kind this mode routes on has a platform host: tenants in
+     * isolated mode, where team slugs are unique per tenant only, and teams in
+     * shared mode.
+     *
+     * @return array{context: ContextContainerInterface, via: string, domain: string}|null
+     */
+    protected function platformContext(string $slug): ?array
+    {
+        $host = PlatformHost::for($slug);
+        $model = $this->getResolvableModel();
+
+        $owner = $model::resolveBySlug($slug);
+
+        if ($owner instanceof ContextContainerInterface) {
+            return ['context' => $owner, 'via' => 'subdomain', 'domain' => $host];
+        }
+
+        $owner = $this->retiredSlugOwner($slug);
+
+        return $owner !== null
+            ? ['context' => $owner, 'via' => 'retired', 'domain' => $host]
+            : null;
+    }
+
+    /**
+     * The owner that gave up a slug within `neev.slug.retired_host_days`, of
+     * the kind this mode routes on. A retired slug is never reissued, so this
+     * can only be its last holder; past the window it is nobody.
+     */
+    protected function retiredSlugOwner(string $slug): ?ContextContainerInterface
+    {
+        $type = $this->isIsolated() ? 'tenant' : 'team';
+        $days = (int) config('neev.slug.retired_host_days', 0);
+
+        if ($days <= 0) {
+            return null;
+        }
+
+        $retired = RetiredSlug::heldAgainst($type, $slug)
+            ->where('created_at', '>=', now()->subDays($days))
+            ->latest('id')
+            ->first();
+
+        if ($retired === null) {
+            return null;
+        }
+
+        return $type === 'team'
+            ? Team::getClass()::withoutTenantScope()->find($retired->owner_id)
+            : Tenant::getClass()::find($retired->owner_id);
+    }
+
+    /**
+     * The host the platform serves a context at now: its slug under
+     * `neev.platform_domain`. Null for a context of a kind this mode does not
+     * route on — in isolated mode a team's slug is unique only within its
+     * tenant, so it names no host.
+     */
+    public function platformHost(?ContextContainerInterface $context = null): ?string
+    {
+        $context ??= $this->resolvedContext;
+
+        if (! $context instanceof Model
+            || $context->getContextType() !== ($this->isIsolated() ? 'tenant' : 'team')) {
+            return null;
+        }
+
+        return PlatformHost::for($context->getAttribute('slug'));
     }
 
     /**
@@ -224,6 +324,7 @@ class TenantResolver
         $this->resolvedVia = $via;
         $this->resolvedDomain = $domain;
         $this->resolvedCustomDomain = $customDomain;
+        $this->headerSlugRetired = false;
 
         // Backward compat: keep currentTenant as Team
         match ($context->getContextType()) { // @phpstan-ignore match.unhandled
@@ -241,12 +342,13 @@ class TenantResolver
 
     /**
      * Check if the resolved domain is verified.
-     * Subdomains and header-resolved tenants are always verified.
+     * Platform subdomains (current or retired) and header-resolved tenants are
+     * always verified.
      * Custom domains require explicit verification.
      */
     public function isResolvedDomainVerified(): bool
     {
-        if ($this->resolvedVia === 'subdomain' || $this->resolvedVia === 'header') {
+        if (in_array($this->resolvedVia, ['subdomain', 'retired', 'header'], true)) {
             return true;
         }
 
@@ -289,11 +391,22 @@ class TenantResolver
     }
 
     /**
-     * How the tenant was resolved ('header', 'subdomain', 'custom').
+     * How the tenant was resolved ('header', 'subdomain', 'retired', 'custom').
+     * 'retired' is a platform host whose slug its owner has since given up.
      */
     public function resolvedVia(): ?string
     {
         return $this->resolvedVia;
+    }
+
+    /**
+     * Whether the X-Tenant header named a retired slug: the request was served
+     * within `neev.slug.retired_host_days`, and the client should switch to
+     * the context's current slug.
+     */
+    public function headerSlugRetired(): bool
+    {
+        return $this->headerSlugRetired;
     }
 
     /**
@@ -344,6 +457,7 @@ class TenantResolver
         $this->resolvedVia = null;
         $this->resolvedDomain = null;
         $this->resolvedCustomDomain = null;
+        $this->headerSlugRetired = false;
 
         if (app()->bound(ContextManager::class)) {
             app(ContextManager::class)->clear();
@@ -403,6 +517,7 @@ class TenantResolver
             'via' => $this->resolvedVia,
             'domain' => $this->resolvedDomain,
             'customDomain' => $this->resolvedCustomDomain,
+            'headerSlugRetired' => $this->headerSlugRetired,
         ];
 
         try {
@@ -423,6 +538,7 @@ class TenantResolver
             $this->resolvedVia = $previous['via'];
             $this->resolvedDomain = $previous['domain'];
             $this->resolvedCustomDomain = $previous['customDomain'];
+            $this->headerSlugRetired = $previous['headerSlugRetired'];
 
             if (app()->bound(ContextManager::class)) {
                 $manager = app(ContextManager::class);

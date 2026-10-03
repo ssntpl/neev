@@ -83,6 +83,33 @@ fails. The old host keeps serving for `neev.slug.retired_host_days` (default
 90). Only model saves are guarded: a query-builder update of `slug` records no
 retirement.
 
+**Every slug now has a platform subdomain (action required if you set
+`neev.platform_domain` and gate who gets one).**
+A host one label under `neev.platform_domain` resolves to the owner holding
+that slug, with no `domains` row: a tenant in isolated mode, a team in shared
+mode. Before, only a host with a verified row resolved. If your app gave a
+subdomain only to some owners by creating rows for them, every owner now has
+one; refuse the others in your own routing until Neev ships a per-owner
+switch. A platform host no slug answers for still falls back to `domains`.
+
+**A renamed owner's old host redirects or tells the client (action required
+for API clients and cross-origin frontends).**
+For `neev.slug.retired_host_days` after a rename, the old host and old slug
+keep resolving to the owner, and `TenantMiddleware` (in every Neev route
+group) answers them:
+
+- **A browser navigation** (a GET or HEAD on the old host that does not want
+  JSON) gets a `301` to the same path on the current host.
+- **Anything else** — an API call, a JSON request, a POST, or an `X-Tenant`
+  header naming the old slug or host — is served in place with
+  `X-Tenant-Slug: <current slug>`. Read that header and switch to the new
+  slug; after the window the old one stops resolving. A frontend on another
+  origin must list `X-Tenant-Slug` in `exposed_headers` in `config/cors.php`,
+  or the browser hides it from your code.
+- **Signed links** (magic links, email verification) made for the old host
+  fail as invalid after a rename, because the host is inside the signature.
+  They expire within `url_expiry_time` anyway.
+
 **A new reset email lifts the wrong-code lock (action required if your reset
 screen tells a locked-out user to wait).**
 The 10-wrong-codes-per-hour limit is counted per account, and wrong codes need
