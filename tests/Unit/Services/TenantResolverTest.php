@@ -4,7 +4,7 @@ namespace Ssntpl\Neev\Tests\Unit\Services;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
-use Ssntpl\Neev\Database\Factories\DomainFactory;
+use Ssntpl\Neev\Database\Factories\HostnameFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use LogicException;
@@ -47,9 +47,9 @@ class TenantResolverTest extends TestCase
         config(['neev.tenant' => false, 'neev.team' => false]);
 
         $team = TeamFactory::new()->create(['slug' => 'acme']);
-        DomainFactory::new()->verified()->create([
+        HostnameFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
-            'domain' => 'acme.test.com',
+            'host' => 'acme.test.com',
         ]);
 
         $this->assertNull($this->resolver->resolve(Request::create('http://acme.test.com/dashboard')));
@@ -65,9 +65,9 @@ class TenantResolverTest extends TestCase
         config(['neev.tenant' => false, 'neev.team' => true]);
 
         $team = TeamFactory::new()->create(['slug' => 'acme']);
-        DomainFactory::new()->verified()->create([
+        HostnameFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
-            'domain' => 'acme.test.com',
+            'host' => 'acme.test.com',
         ]);
 
         $context = $this->resolver->resolve(Request::create('http://acme.test.com/neev/sso/redirect'));
@@ -82,9 +82,9 @@ class TenantResolverTest extends TestCase
         config(['neev.tenant' => false, 'neev.team' => true]);
 
         $team = TeamFactory::new()->create(['slug' => 'acme']);
-        DomainFactory::new()->create([
+        HostnameFactory::new()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
-            'domain' => 'unverified.test.com',
+            'host' => 'unverified.test.com',
         ]);
 
         $this->assertNull($this->resolver->resolve(Request::create('http://unverified.test.com/')));
@@ -147,8 +147,8 @@ class TenantResolverTest extends TestCase
     }
 
     // ---------------------------------------------------------------
-    // resolve() -- domain lookup (all host resolution goes through
-    //              domain table)
+    // resolve() -- hostname lookup (with no platform domain configured,
+    //              all host resolution goes through the hostnames table)
     // ---------------------------------------------------------------
 
     public function test_resolve_from_host_with_verified_domain(): void
@@ -156,9 +156,9 @@ class TenantResolverTest extends TestCase
         $this->enableTenantIsolation();
 
         $tenant = TenantFactory::new()->create(['slug' => 'myteam']);
-        DomainFactory::new()->verified()->create([
+        HostnameFactory::new()->verified()->create([
             'owner_type' => 'tenant', 'owner_id' => $tenant->id,
-            'domain' => 'myteam.test.com',
+            'host' => 'myteam.test.com',
         ]);
 
         $request = Request::create('http://myteam.test.com/dashboard');
@@ -186,7 +186,7 @@ class TenantResolverTest extends TestCase
 
         TenantFactory::new()->create(['slug' => 'myteam']);
 
-        // Host is not registered in domains table
+        // Host is not registered in the hostnames table
         $request = Request::create('http://myteam.other.com/dashboard');
 
         $this->assertNull($this->resolver->resolve($request));
@@ -201,9 +201,9 @@ class TenantResolverTest extends TestCase
         $this->enableTenantIsolation();
 
         $tenant = TenantFactory::new()->create();
-        DomainFactory::new()->verified()->create([
+        HostnameFactory::new()->verified()->create([
             'owner_type' => 'tenant', 'owner_id' => $tenant->id,
-            'domain' => 'custom.example.org',
+            'host' => 'custom.example.org',
         ]);
 
         $request = Request::create('http://custom.example.org/dashboard');
@@ -214,6 +214,7 @@ class TenantResolverTest extends TestCase
         $this->assertEquals($tenant->id, $resolved->getContextId());
         $this->assertSame('custom', $this->resolver->resolvedVia());
         $this->assertSame('custom.example.org', $this->resolver->resolvedDomain());
+        $this->assertSame('custom.example.org', $this->resolver->currentHostname()?->host);
     }
 
     public function test_resolve_does_not_match_unverified_custom_domain(): void
@@ -221,10 +222,10 @@ class TenantResolverTest extends TestCase
         $this->enableTenantIsolation();
 
         $tenant = TenantFactory::new()->create();
-        // Domain without verified_at (unverified)
-        DomainFactory::new()->create([
+        // Hostname without verified_at (unverified)
+        HostnameFactory::new()->create([
             'owner_type' => 'tenant', 'owner_id' => $tenant->id,
-            'domain' => 'unverified.example.org',
+            'host' => 'unverified.example.org',
         ]);
 
         $request = Request::create('http://unverified.example.org/dashboard');
@@ -243,9 +244,9 @@ class TenantResolverTest extends TestCase
         $tenantA = TenantFactory::new()->create(['slug' => 'tenant-a']);
         $tenantB = TenantFactory::new()->create(['slug' => 'tenant-b']);
 
-        DomainFactory::new()->verified()->create([
+        HostnameFactory::new()->verified()->create([
             'owner_type' => 'tenant', 'owner_id' => $tenantB->id,
-            'domain' => 'tenant-b.test.com',
+            'host' => 'tenant-b.test.com',
         ]);
 
         // Request has domain for tenant-b but header for tenant-a
@@ -282,9 +283,9 @@ class TenantResolverTest extends TestCase
         $this->enableTenantIsolation();
 
         $tenant = TenantFactory::new()->create(['slug' => 'acme']);
-        DomainFactory::new()->verified()->create([
+        HostnameFactory::new()->verified()->create([
             'owner_type' => 'tenant', 'owner_id' => $tenant->id,
-            'domain' => 'acme.test.com',
+            'host' => 'acme.test.com',
         ]);
 
         $request = Request::create('http://acme.test.com/dashboard');
@@ -298,9 +299,9 @@ class TenantResolverTest extends TestCase
         $this->enableTenantIsolation();
 
         $tenant = TenantFactory::new()->create();
-        DomainFactory::new()->verified()->create([
+        HostnameFactory::new()->verified()->create([
             'owner_type' => 'tenant', 'owner_id' => $tenant->id,
-            'domain' => 'verified.example.org',
+            'host' => 'verified.example.org',
         ]);
 
         $request = Request::create('http://verified.example.org/dashboard');

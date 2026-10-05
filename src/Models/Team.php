@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
@@ -23,11 +24,13 @@ use Ssntpl\Neev\Events\MemberAdded;
 use Ssntpl\Neev\Events\MemberRemoved;
 use Ssntpl\Neev\Events\TeamCreated;
 use Ssntpl\Neev\Events\TeamDeleted;
-use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
+use Ssntpl\Neev\Exceptions\EmailDomainEnforcedException;
 use Ssntpl\Neev\Scopes\TeamTenantScope;
 use Ssntpl\Neev\Scopes\TenantScope;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Support\SlugHelper;
+use Ssntpl\Neev\Traits\HasEmailDomains;
+use Ssntpl\Neev\Traits\HasHostnames;
 use Ssntpl\Neev\Traits\HasTenantAuth;
 use Ssntpl\Neev\Traits\RetiresSlugs;
 
@@ -41,6 +44,7 @@ use Ssntpl\Neev\Traits\RetiresSlugs;
  * @property Carbon|null $activated_at
  * @property string|null $inactive_reason
  * @property Carbon|null $created_at
+ * @property int|null $primary_hostname_id
  * @property Carbon|null $updated_at
  * @property-read User|null $owner
  * @property-read Domain|null $primaryDomain
@@ -49,10 +53,15 @@ use Ssntpl\Neev\Traits\RetiresSlugs;
  * @property-read Tenant|null $tenant
  * @property-read string|null $webDomain
  * @property-read Collection<int, Domain> $domains
+ * @property-read Collection<int, EmailDomain> $emailDomains
+ * @property-read Collection<int, Hostname> $hostnames
+ * @property-read Hostname|null $primaryHostname
  * @property-read Collection<int, TeamInvitation> $invitations
  */
 class Team extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
+    use HasEmailDomains;
+    use HasHostnames;
     use HasTenantAuth;
     use RetiresSlugs;
 
@@ -138,17 +147,14 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     }
 
     /**
-     * Get the web domain for this team.
-     * Returns primary verified domain if available.
+     * The team's verified primary hostname, if it has one. canonicalHost()
+     * answers where the team is served, platform subdomain included.
      */
     public function getWebDomainAttribute(): ?string
     {
-        $primary = $this->primaryDomain;
-        if ($primary && $primary->verified_at) {
-            return $primary->domain;
-        }
+        $primary = $this->primaryHostname;
 
-        return null;
+        return $primary !== null && $primary->isVerified() ? $primary->host : null;
     }
 
     public function owner(): BelongsTo
@@ -208,7 +214,9 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     }
 
     /**
-     * Get all domains claimed by this team.
+     * Rows of the `domains` table, read-only for this release.
+     *
+     * @deprecated Use emailDomains() or hostnames() (RFC 006).
      *
      * @return MorphMany<Domain, $this>
      */
@@ -218,8 +226,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     }
 
     /**
-     * Get the primary domain for this team (used for email federation).
-     * @deprecated Use primaryDomain() instead
+     * @deprecated Use emailDomains() or primaryHostname() (RFC 006).
      */
     public function domain(): MorphOne
     {
@@ -227,7 +234,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     }
 
     /**
-     * Get the primary domain for this team.
+     * @deprecated Use primaryHostname() (RFC 006).
      */
     public function primaryDomain(): MorphOne
     {
@@ -235,8 +242,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     }
 
     /**
-     * Get custom domains for this team (web-serving domains).
-     * These are verified domains that can be used for tenant routing.
+     * @deprecated Use hostnames()->verified() (RFC 006).
      *
      * @return MorphMany<Domain, $this>
      */
@@ -246,174 +252,144 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     }
 
     /**
-     * Whether any of the team's verified domains is enforced, not only the
-     * primary one.
+     * Whether any of the team's verified email domains is enforced. This and
+     * the checks below read the loaded `emailDomains`, so a page asking them
+     * for every member queries once.
      */
     public function enforcesDomain(): bool
     {
-        return $this->customDomains->contains('enforce', true);
+        return $this->emailDomains->contains(fn (EmailDomain $d) => $d->enforce && $d->isVerified());
     }
 
     /**
-     * Whether the email is on one of the team's verified domains, which then
-     * manages that member: removing them deactivates their account.
+     * Whether the email is on one of the team's verified email domains, which
+     * then manages that member: removing them deactivates their account.
      */
     public function hasVerifiedDomainFor(string $email): bool
     {
-        // A caller that already has every domain loaded holds the verified
-        // ones too; filtering them saves a second query for the same rows.
-        $verified = $this->relationLoaded('domains')
-            ? $this->domains->whereNotNull('verified_at')
-            : $this->customDomains;
+        $domain = EmailDomain::domainOfEmail($email);
 
-        return static::emailIsOnAnyOf($email, $verified);
+        return $this->emailDomains->contains(fn (EmailDomain $d) => $d->isVerified() && $d->domain === $domain);
     }
 
     /**
-     * Claim a host for email federation, or re-issue the token of one already
-     * held. The claim is pending until its TXT record is published; the token
-     * is on the returned row.
-     *
-     * @throws DomainAlreadyVerifiedException when another team has verified
-     *         the host and this team does not hold it.
-     * @throws InvalidArgumentException for a platform subdomain already held.
+     * Whether the email is on any email domain the team holds, verified or
+     * not. An unverified one manages nobody; this only tells whether a
+     * deactivated member removed from the team gets their account back.
      */
-    public function federateDomain(string $host, bool $enforce): Domain
+    public function holdsDomainFor(string $email): bool
     {
-        // Compare the stored spelling, not whatever was typed: `ACME.com.` and
-        // `acme.com` are one host, and the row keeps only the canonical form.
-        $host = Domain::canonicalHost($host);
-        $held = $this->domains()->forHost($host)->first();
-
-        if (!$held && Domain::findByHostForOwnerType($host, 'team')) {
-            throw new DomainAlreadyVerifiedException('team');
-        }
-
-        // Re-submitting issues a new token and unverifies the domain. A
-        // platform subdomain is verified by the platform, and its owner cannot
-        // publish a record in the platform's zone, so it could never verify
-        // again.
-        if ($held && Domain::isPlatformSubdomain($host)) {
-            throw new InvalidArgumentException('A platform subdomain does not use a verification token.');
-        }
-
-        /** @var Domain */
-        return $this->domains()->updateOrCreate([
-            'domain' => $host,
-        ], [
-            'enforce' => $enforce,
-            'verification_token' => Domain::newVerificationToken(),
-            'verified_at' => null,
-            'verification_failed_at' => null,
-            // A domain already held keeps its own flag; `$this->domain` is
-            // that very row when it is the primary, so recomputing it here
-            // would take the primary flag away.
-            'is_primary' => $held ? $held->is_primary : !$this->domain,
-        ]);
+        return $this->emailDomains->contains('domain', EmailDomain::domainOfEmail($email));
     }
 
     /**
-     * Whether removing this deactivated member should give their account back,
-     * because it was this team's domain that deactivated them.
+     * Whether users may ask to join. A verified email domain closes the team
+     * to requests: its members are the people at that domain.
+     */
+    public function acceptsJoinRequests(): bool
+    {
+        return ! $this->emailDomains->contains(fn (EmailDomain $d) => $d->isVerified());
+    }
+
+    /**
+     * How many members are on none of the team's verified email domains, while
+     * one is enforced; 0 when none is. A member on any verified domain is
+     * inside the team's boundary, so this is one count for the team, not one
+     * per domain.
+     */
+    public function membersOutsideEmailDomains(): int
+    {
+        if (! $this->enforcesDomain()) {
+            return 0;
+        }
+
+        return $this->users->reject(fn ($member) => $this->hasVerifiedDomainFor((string) $member->getAttribute('email')))->count();
+    }
+
+    /**
+     * Claim an email domain, or re-issue the token of one already held. It is
+     * pending until its TXT record is published; the token is on the returned
+     * row. Other teams may hold the same domain (RFC 006 §2.1), but only one
+     * may enforce it.
      *
-     * Only a team with a verified claim on the member's host deactivates them,
-     * and it keeps them as a member when it does. A new token may since have
-     * unverified that claim, so any claim this team holds counts. But another
-     * team the member belongs to may hold a claim on the host too: the member
-     * may be that team's to answer for, and removing them here must not undo
-     * what it did. Then the account is left as it is; that team, once it is
-     * the only one, reactivates them in turn.
+     * @throws InvalidArgumentException when the team's row is disabled
+     * @throws EmailDomainEnforcedException when asked to enforce a domain
+     *         another owner enforces
+     */
+    public function federateDomain(string $host, bool $enforce): EmailDomain
+    {
+        try {
+            return $this->federateDomainOnce($host, $enforce);
+        } catch (UniqueConstraintViolationException) {
+            // A request for the same domain, a double submit, created the row
+            // between our lookup and insert: re-issue the token on that row,
+            // as a second request after it would.
+            return $this->federateDomainOnce($host, $enforce);
+        }
+    }
+
+    protected function federateDomainOnce(string $host, bool $enforce): EmailDomain
+    {
+        /** @var EmailDomain $domain */
+        $domain = $this->emailDomains()->firstOrNew(['domain' => EmailDomain::canonicalHost($host)]);
+
+        if ($domain->status === EmailDomain::STATUS_DISABLED) {
+            throw new InvalidArgumentException('This domain is disabled.');
+        }
+
+        $domain->enforce = $enforce;
+        $domain->generateVerificationToken();
+        $this->unsetRelation('emailDomains');
+
+        return $domain;
+    }
+
+    /**
+     * Whether removing this deactivated member gives their account back: this
+     * team's email domain deactivated them, and no other team of theirs holds
+     * that domain and may be the one that did.
      */
     public function reactivatesOnRemoval(User $user): bool
     {
         $email = (string) $user->email;
 
-        if ($user->active || !$this->holdsDomainFor($email)) {
-            return false;
-        }
-
-        $at = strrchr($email, '@');
-
-        return !$this->anotherOfTheirTeamsClaims($user, substr((string) $at, 1));
+        return ! $user->active
+            && $this->holdsDomainFor($email)
+            && ! $this->anotherOfTheirTeamsClaims($user, (string) EmailDomain::domainOfEmail($email));
     }
 
     /**
-     * Reactivate the members on a host whose domain is going away.
-     *
-     * Only a verified team domain deactivates anyone, and it does so without
-     * detaching them, so an inactive member on the host was deactivated by it.
-     * With the domain gone they would be locked out with nothing to undo it.
-     * A member another of their teams also claims the host for is left as they
-     * are, as reactivatesOnRemoval() does: that team may be the one that
-     * deactivated them, and deleting this claim must not undo what it did.
+     * Reactivate the inactive members on a domain that is going away, since
+     * nothing would be left to reactivate them. A member another team of
+     * theirs also holds the domain for is left as they are.
      */
-    public function reactivateMembersOn(string $host): void
+    public function reactivateMembersOn(string $domain): void
     {
-        foreach ($this->users()->get() as $member) {
+        $domain = EmailDomain::canonicalHost($domain);
+
+        // Members are read unscoped, as hasMember() does: this also runs from
+        // VerifyDomainJob, with no tenant resolved for TenantScope to match.
+        foreach ($this->users()->withoutGlobalScope(TenantScope::class)->get() as $member) {
             /** @var User $member */
-            if (!$member->active
-                && static::emailIsOnHost((string) $member->email, $host)
-                && !$this->anotherOfTheirTeamsClaims($member, $host)) {
+            if (! $member->active
+                && EmailDomain::domainOfEmail((string) $member->email) === $domain
+                && ! $this->anotherOfTheirTeamsClaims($member, $domain)) {
                 $member->activate();
             }
         }
     }
 
     /**
-     * Whether a team the user belongs to, other than this one, holds a claim
-     * on the host, verified or not.
+     * Whether a team the user belongs to, other than this one, holds the
+     * email domain, verified or not.
      */
-    protected function anotherOfTheirTeamsClaims(User $user, string $host): bool
+    protected function anotherOfTheirTeamsClaims(User $user, string $domain): bool
     {
-        $teams = $user->teams();
-
-        return Domain::forHost($host)
-            ->where('owner_type', 'team')
+        return EmailDomain::forHost($domain)
+            ->where('owner_type', $this->getMorphClass())
             ->where('owner_id', '!=', $this->getKey())
-            ->whereIn('owner_id', $teams->pluck($teams->getRelated()->getQualifiedKeyName()))
+            ->whereIn('owner_id', $user->teams()->withoutGlobalScope(TeamTenantScope::class)->pluck($this->getQualifiedKeyName()))
             ->exists();
-    }
-
-    /**
-     * Whether the email is on any domain the team holds, verified or not. An
-     * unverified domain manages nobody; this only tells whether a deactivated
-     * member removed from the team gets their account back.
-     */
-    public function holdsDomainFor(string $email): bool
-    {
-        return static::emailIsOnAnyOf($email, $this->domains);
-    }
-
-    /**
-     * The one place an address is matched against domains, so the controllers
-     * and the Blade views cannot drift apart on it.
-     *
-     * @param  iterable<Domain>  $domains
-     */
-    protected static function emailIsOnAnyOf(string $email, iterable $domains): bool
-    {
-        foreach ($domains as $domain) {
-            if (static::emailIsOnHost($email, $domain->domain)) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    protected static function emailIsOnHost(string $email, string $host): bool
-    {
-        return str_ends_with(strtolower($email), '@' . strtolower($host));
-    }
-
-    /**
-     * Whether users may ask to join. A verified primary domain closes the team
-     * to requests, as does enforcement on any verified domain. An unverified
-     * domain proves nothing, so its enforce flag closes nothing either.
-     */
-    public function acceptsJoinRequests(): bool
-    {
-        return !$this->domain?->verified_at && !$this->enforcesDomain();
     }
 
     /**
@@ -583,9 +559,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
 
     public static function resolveByDomain(string $domain): ?static
     {
-        $domainRecord = Domain::findByHostForOwnerType($domain, 'team');
-
         /** @var static|null */
-        return $domainRecord?->owner;
+        return Hostname::ownerOf($domain, 'team');
     }
 }

@@ -2,9 +2,12 @@
 
 namespace Ssntpl\Neev\Tests;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Blade;
 use Orchestra\Testbench\TestCase as BaseTestCase;
 use Ssntpl\LaravelAcl\AclServiceProvider;
+use Ssntpl\Neev\Models\EmailDomain;
+use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\NeevServiceProvider;
 
 abstract class TestCase extends BaseTestCase
@@ -49,5 +52,39 @@ abstract class TestCase extends BaseTestCase
     protected function defineDatabaseMigrations(): void
     {
         $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
+    }
+
+    /**
+     * A host proven for an owner, as a test fixture: claimed, then marked
+     * verified as the CLI's --skip-verification does.
+     */
+    protected function verifiedHost(Model $owner, string $host, bool $primary = false): Hostname
+    {
+        $hostname = $this->proven($owner->claimHost($host));
+
+        if ($primary) {
+            $owner->makePrimaryHostname($hostname);
+        }
+
+        return $hostname;
+    }
+
+    /**
+     * A row marked verified without DNS, as a test fixture.
+     *
+     * @template T of EmailDomain|Hostname
+     *
+     * @param  T  $row
+     * @return T
+     */
+    protected function proven(EmailDomain|Hostname $row): EmailDomain|Hostname
+    {
+        $row->forceFill([
+            'verified_at' => now(),
+            'verification_failed_at' => null,
+            'status' => $row::STATUS_VERIFIED,
+        ])->save();
+
+        return $row;
     }
 }

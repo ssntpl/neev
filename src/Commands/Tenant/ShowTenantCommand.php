@@ -5,7 +5,7 @@ namespace Ssntpl\Neev\Commands\Tenant;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\PromptsForMissingInput;
 use Ssntpl\Neev\Commands\Concerns\ResolvesTenantContext;
-use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Tenant;
 
@@ -42,7 +42,7 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
         }
 
         if ($this->option('json')) {
-            $this->line($tenant->load(['teams', 'domains', 'authSettings'])->toJson(JSON_PRETTY_PRINT));
+            $this->line($tenant->load(['teams', 'hostnames', 'emailDomains', 'authSettings'])->toJson(JSON_PRETTY_PRINT));
 
             return self::SUCCESS;
         }
@@ -55,16 +55,7 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
         $this->line("  <info>Teams:</info>  {$tenant->teams()->count()}");
         $this->line("  <info>Created:</info> {$tenant->created_at->format('Y-m-d H:i')}");
 
-        $domains = $tenant->domains;
-        if ($domains->isNotEmpty()) {
-            $this->newLine();
-            $this->line('  <info>Domains:</info>');
-            foreach ($domains as $domain) {
-                $status = $domain->isVerified() ? '<fg=green>verified</>' : '<fg=yellow>unverified</>';
-                $primary = $domain->is_primary ? ' (primary)' : '';
-                $this->line("    - {$domain->domain} [{$status}]{$primary}");
-            }
-        }
+        $this->showDomains($tenant);
 
         if ($tenant->authSettings) {
             $this->newLine();
@@ -90,7 +81,7 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
         }
 
         if ($this->option('json')) {
-            $this->line($team->load(['owner', 'domains', 'authSettings'])->toJson(JSON_PRETTY_PRINT));
+            $this->line($team->load(['owner', 'hostnames', 'emailDomains', 'authSettings'])->toJson(JSON_PRETTY_PRINT));
 
             return self::SUCCESS;
         }
@@ -112,16 +103,7 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
         $this->line("  <info>Members:</info> {$team->users()->count()}");
         $this->line("  <info>Created:</info> {$team->created_at->format('Y-m-d H:i')}");
 
-        $domains = $team->domains;
-        if ($domains->isNotEmpty()) {
-            $this->newLine();
-            $this->line('  <info>Domains:</info>');
-            foreach ($domains as $domain) {
-                $status = $domain->isVerified() ? '<fg=green>verified</>' : '<fg=yellow>unverified</>';
-                $primary = $domain->is_primary ? ' (primary)' : '';
-                $this->line("    - {$domain->domain} [{$status}]{$primary}");
-            }
-        }
+        $this->showDomains($team);
 
         if ($team->authSettings) {
             $this->newLine();
@@ -136,6 +118,34 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
         return self::SUCCESS;
     }
 
+    /**
+     * The owner's hosts, primary marked, and its email domains.
+     */
+    protected function showDomains(Team|Tenant $owner): void
+    {
+        $status = fn ($row) => $row->isVerified() ? '<fg=green>verified</>' : '<fg=yellow>unverified</>';
+
+        $hostnames = $owner->hostnames;
+        if ($hostnames->isNotEmpty()) {
+            $this->newLine();
+            $this->line('  <info>Hostnames:</info>');
+            foreach ($hostnames as $hostname) {
+                $primary = (int) $owner->primary_hostname_id === $hostname->id ? ' (primary)' : '';
+                $this->line("    - {$hostname->host} [{$status($hostname)}]{$primary}");
+            }
+        }
+
+        $emailDomains = $owner->emailDomains;
+        if ($emailDomains->isNotEmpty()) {
+            $this->newLine();
+            $this->line('  <info>Email domains:</info>');
+            foreach ($emailDomains as $domain) {
+                $enforce = $domain->enforce ? ' (enforced)' : '';
+                $this->line("    - {$domain->domain} [{$status($domain)}]{$enforce}");
+            }
+        }
+    }
+
     protected function findTenant(string $identifier): ?Tenant
     {
         if (ctype_digit($identifier)) {
@@ -147,11 +157,11 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
             return $tenant;
         }
 
-        // Try domain resolution
-        $domain = Domain::where('domain', $identifier)->where('owner_type', 'tenant')->first();
+        // Try the hosts it is served at
+        $hostname = Hostname::forHost($identifier)->where('owner_type', 'tenant')->first();
 
         /** @var Tenant|null */
-        return $domain?->owner;
+        return $hostname?->owner;
     }
 
     protected function findTeam(string $identifier): ?Team
@@ -165,11 +175,11 @@ class ShowTenantCommand extends Command implements PromptsForMissingInput
             return $team;
         }
 
-        // Try domain resolution
-        $domain = Domain::where('domain', $identifier)->where('owner_type', 'team')->first();
+        // Try the hosts it is served at
+        $hostname = Hostname::forHost($identifier)->where('owner_type', 'team')->first();
 
         /** @var Team|null */
-        return $domain?->owner;
+        return $hostname?->owner;
     }
 
     protected function promptForMissingArgumentsUsing(): array

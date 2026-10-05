@@ -20,6 +20,8 @@ use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Events\TenantCreated;
 use Ssntpl\Neev\Scopes\TeamTenantScope;
 use Ssntpl\Neev\Support\SlugHelper;
+use Ssntpl\Neev\Traits\HasEmailDomains;
+use Ssntpl\Neev\Traits\HasHostnames;
 use Ssntpl\Neev\Traits\RetiresSlugs;
 
 /**
@@ -29,14 +31,20 @@ use Ssntpl\Neev\Traits\RetiresSlugs;
  * @property Carbon|null $activated_at
  * @property string|null $inactive_reason
  * @property Carbon|null $created_at
+ * @property int|null $primary_hostname_id
  * @property Carbon|null $updated_at
  * @property-read TenantAuthSettings|null $authSettings
  * @property-read Collection<int, Team> $teams
  * @property-read Collection<int, Domain> $domains
+ * @property-read Collection<int, EmailDomain> $emailDomains
+ * @property-read Collection<int, Hostname> $hostnames
+ * @property-read Hostname|null $primaryHostname
  */
 class Tenant extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
+    use HasEmailDomains;
     use HasFactory;
+    use HasHostnames;
     use RetiresSlugs;
 
     protected $fillable = [
@@ -129,6 +137,11 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
         return (new TenantAuthSettings())->newFromBuilder($attributes);
     }
 
+    /**
+     * Rows of the `domains` table, read-only for this release.
+     *
+     * @deprecated Use emailDomains() or hostnames() (RFC 006).
+     */
     public function domains(): MorphMany
     {
         return $this->morphMany(Domain::class, 'owner');
@@ -265,9 +278,7 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
 
     public static function resolveByDomain(string $domain): ?static
     {
-        $domainRecord = Domain::findByHostForOwnerType($domain, 'tenant');
-
         /** @var static|null */
-        return $domainRecord?->owner;
+        return Hostname::ownerOf($domain, 'tenant');
     }
 }

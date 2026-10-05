@@ -3,15 +3,15 @@
 namespace Ssntpl\Neev\Services;
 
 use Illuminate\Database\Eloquent\Model;
-use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Hostname;
 
 /**
  * Resolves the WebAuthn relying party for the current request's context.
  *
  * The host equal to the request's origin that the resolved context is served
  * at: its platform subdomain, derived from its slug (RFC 006 §4.3), or a
- * verified domain — the row the request resolved through, or one the context
- * owns. With no context, no origin, or no such host, the configured value
+ * verified hostname — the row the request resolved through, or one the
+ * context owns. With no context, no origin, or no such host, the configured value
  * stands.
  *
  * Every host gets its own relying party, including a platform subdomain.
@@ -28,7 +28,7 @@ class RelyingPartyResolver
     protected ?string $host = null;
 
     /** The verified row a custom host came from; its owner is read lazily. */
-    protected ?Domain $domain = null;
+    protected ?Hostname $domain = null;
 
     protected bool $settled = false;
 
@@ -50,7 +50,7 @@ class RelyingPartyResolver
      * Every origin is named exactly; nothing is matched by suffix. The
      * configured list is kept on every path (it carries native-app facets,
      * which apply to all tenants) plus the one host this relying party was
-     * taken from. Built from the slug and the domain records, never from the
+     * taken from. Built from the slug and the hostname records, never from the
      * request.
      *
      * One host, because the relying party is that host: a sibling under the
@@ -107,7 +107,7 @@ class RelyingPartyResolver
     /** The application-wide relying party ID. */
     public function configured(): string
     {
-        return Domain::canonicalHost((string) config('neev.relying_party_id'));
+        return Hostname::canonicalHost((string) config('neev.relying_party_id'));
     }
 
     /**
@@ -131,13 +131,11 @@ class RelyingPartyResolver
     }
 
     /**
-     * The relying party: the verified domain equal to the request's origin,
+     * The relying party: the verified hostname equal to the request's origin,
      * else `configured()`. The row the request resolved through is taken
      * first, because it need not belong to the resolved context — in tenant
      * mode a team-owned host routes through that team's tenant. The match is
-     * exact — a row covers the host it names and no other — because `domains`
-     * is also the federation registry, so `acme.com` may sit there only so
-     * `@acme.com` staff auto-join, never served.
+     * exact: a row covers the host it names and no other.
      *
      * A platform subdomain is taken from the slug, not a row: the context's
      * current one. A retired one is never a relying party, so a ceremony on
@@ -177,24 +175,20 @@ class RelyingPartyResolver
         // context's own: in tenant mode a team-owned host routes through that
         // team's tenant, so the tenant holds no row naming it. It is still the
         // host the browser is on, so it is still the relying party.
-        $resolved = $this->tenants->currentDomain();
+        $resolved = $this->tenants->currentHostname();
 
-        if ($resolved !== null
-            && $resolved->verified_at !== null
-            && Domain::canonicalHost($resolved->domain) === $origin) {
+        if ($resolved !== null && $resolved->isVerified() && $resolved->host === $origin) {
             $this->host = $origin;
             $this->domain = $resolved;
 
             return;
         }
 
-        $this->domain = Domain::where('owner_type', $context->getContextType())
+        $this->domain = Hostname::forHost($origin)
+            ->verified()
+            ->where('owner_type', $context->getContextType())
             ->where('owner_id', $context->getContextId())
-            ->whereNotNull('verified_at')
-            ->orderByDesc('is_primary')
-            ->orderBy('id')
-            ->get()
-            ->first(fn (Domain $row) => Domain::canonicalHost($row->domain) === $origin);
+            ->first();
 
         $this->host = $this->domain !== null ? $origin : null;
     }
@@ -216,6 +210,6 @@ class RelyingPartyResolver
             return '';
         }
 
-        return Domain::canonicalHost((string) (parse_url($origin, PHP_URL_HOST) ?: ''));
+        return Hostname::canonicalHost((string) (parse_url($origin, PHP_URL_HOST) ?: ''));
     }
 }

@@ -24,7 +24,6 @@ return new class () extends Migration {
             $table->string('verification_token')->nullable();
             $table->timestamp('verified_at')->nullable();
             $table->timestamp('verification_failed_at')->nullable();
-            $table->timestamp('verification_expires_at')->nullable();
             $table->timestamps();
         });
 

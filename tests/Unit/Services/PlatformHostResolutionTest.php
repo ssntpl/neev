@@ -5,7 +5,7 @@ namespace Ssntpl\Neev\Tests\Unit\Services;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use Ssntpl\Neev\Database\Factories\DomainFactory;
+use Ssntpl\Neev\Database\Factories\HostnameFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Http\Middleware\TenantMiddleware;
@@ -127,18 +127,22 @@ class PlatformHostResolutionTest extends TestCase
         $this->assertTrue($this->resolve('acme-corp.otper.com')->resolvedContext()->is($team));
     }
 
-    public function test_a_platform_host_no_slug_answers_falls_back_to_a_domain_row(): void
+    /**
+     * A host under the zone cannot be claimed now, but one copied from
+     * `domains` may still be held by a verified row, and it keeps routing.
+     */
+    /**
+     * A row under the platform zone, copied from `domains`, does not route:
+     * a host there resolves by slug only, so a stale `oldslug` host stops
+     * (RFC 006 §3 (c)).
+     */
+    public function test_a_hostname_row_under_the_platform_zone_does_not_route(): void
     {
         $this->enableTeams();
         $team = TeamFactory::new()->create(['slug' => 'acme']);
-        DomainFactory::new()->verified()->create([
-            'owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'legacy.otper.com',
-        ]);
+        HostnameFactory::new()->forOwner($team)->verified()->create(['host' => 'legacy.otper.com']);
 
-        $resolver = $this->resolve('legacy.otper.com');
-
-        $this->assertTrue($resolver->resolvedContext()->is($team));
-        $this->assertSame('custom', $resolver->resolvedVia());
+        $this->assertNull($this->resolve('legacy.otper.com')->resolvedContext());
     }
 
     // ---------------------------------------------------------------

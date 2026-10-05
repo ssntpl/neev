@@ -19,29 +19,53 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Platform domains
+    | Platform domain
     |--------------------------------------------------------------------------
     |
-    | The DNS zones this installation itself owns — the ones tenant and team
-    | subdomains are handed out under. A host inside one of these is issued by
-    | you, so it needs no ownership proof and is verified on the spot. Every
-    | other host is somebody else's property and must prove control of it with
-    | the DNS TXT record, whatever the client submitting it claims.
-    |
-    | One zone, as a string:
+    | The DNS zone this installation itself owns, the one tenant and team
+    | subdomains are served under:
     |
     |     'platform_domain' => 'otper.com',
     |
-    | A tenant's subdomain is its slug, so team `acme` is issued
+    | A subdomain is its owner's slug, so team `acme` is served at
     | 'acme.otper.com' and nothing else. A request on that host resolves to the
-    | slug's owner with no domain row (a tenant in isolated mode, a team in
-    | shared mode). The bare 'otper.com' never qualifies — the apex is this
-    | installation's own name, not a tenant's. Leave it empty and nothing
-    | auto-verifies: every domain goes through DNS, which is the safe default
-    | for an installation that hands out no subdomains.
+    | slug's owner with no hostname row (a tenant in isolated mode, a team in
+    | shared mode). Nothing under this zone can be claimed as a custom host,
+    | and the bare 'otper.com' names no owner. Leave it empty if the
+    | installation hands out no subdomains.
     |
     */
     'platform_domain' => env('NEEV_PLATFORM_DOMAIN'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | DNS re-verification
+    |--------------------------------------------------------------------------
+    |
+    | A custom host is proven with a TXT record at `_neev-host.<host>` and is
+    | unique across every owner; an email domain with one at
+    | `_neev-email.<domain>`. VerifyAllDomainsJob re-checks both; schedule it
+    | daily.
+    |
+    | A row whose record has been missing this many days in a row is
+    | unverified (DomainUnverified): a host stops serving, an email domain
+    | stops federating, enforcing and deactivating, so a lapsed registration
+    | does not hand that power to whoever registers the name next. Publishing
+    | the record again restores it. Still missing at twice this, the row is
+    | deleted (DomainRemoved), freeing the host for another owner. 0 never
+    | unverifies or deletes.
+    |
+    | `legacy_record` lets a row copied from `domains` also pass on the record
+    | published for it there, `_neev-verification.<name>`. That one record
+    | proves both a host and an email domain, so it is for this release only
+    | and is removed with `domains`. Set it to false once the new records are
+    | published.
+    |
+    */
+    'dns_verification' => [
+        'unverify_after_failed_days' => 7,
+        'legacy_record' => env('NEEV_DNS_LEGACY_RECORD', true),
+    ],
 
     /*
     |--------------------------------------------------------------------------

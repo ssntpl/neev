@@ -8,8 +8,11 @@ use Illuminate\Support\Facades\Route;
 use Laravel\Socialite\Two\User as SocialiteUser;
 use Mockery;
 use ParagonIE\ConstantTime\Base32;
+use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
+use Ssntpl\Neev\Database\Factories\HostnameFactory;
 use Ssntpl\Neev\Database\Factories\TeamAuthSettingsFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Services\TenantSSOManager;
@@ -55,6 +58,7 @@ class TenantSSOTest extends TestCase
         $resolver->shouldReceive('hasTenant')->andReturn($tenant !== null);
         $resolver->shouldReceive('currentId')->andReturn($tenant?->id);
         $resolver->shouldReceive('isEnabled')->andReturn(false);
+        $resolver->shouldReceive('platformHost')->andReturn(null);
         $this->app->instance(TenantResolver::class, $resolver);
     }
 
@@ -378,7 +382,11 @@ class TenantSSOTest extends TestCase
         $this->assertStringContainsString('login.microsoftonline.com', $response->headers->get('Location'));
     }
 
-    public function test_redirect_stores_redirect_uri_in_session(): void
+    /**
+     * A team set up for SSO and resolved as the current context, with the
+     * provider redirect stubbed out.
+     */
+    private function ssoTeam(): object
     {
         $team = TeamFactory::new()->create();
         TeamAuthSettingsFactory::new()
@@ -387,13 +395,6 @@ class TenantSSOTest extends TestCase
                 'team_id' => $team->id,
                 'auth_method' => 'sso',
             ]);
-
-        // Add a verified domain for the team to validate redirect_uri
-        $team->domains()->create([
-            'domain' => 'app.example.com',
-            'verified_at' => now(),
-            'is_primary' => true,
-        ]);
 
         $this->setCurrentTenant($team);
 
@@ -405,10 +406,81 @@ class TenantSSOTest extends TestCase
         $manager->shouldReceive('buildSocialiteDriver')->andReturn($driver);
         $this->app->instance(TenantSSOManager::class, $manager);
 
+        return $team;
+    }
+
+    public function test_redirect_stores_redirect_uri_in_session(): void
+    {
+        $team = $this->ssoTeam();
+
+        // A verified hostname of the team validates the redirect_uri
+        HostnameFactory::new()->forOwner($team)->verified()->create(['host' => 'app.example.com']);
+
         $response = $this->get('/neev/sso/redirect?redirect_uri=' . urlencode('https://app.example.com/dashboard'));
 
         $response->assertRedirect();
         $this->assertEquals('https://app.example.com/dashboard', session('sso_redirect_uri'));
+    }
+
+    /**
+     * The TXT record proves control of the host itself, not of the names
+     * under it, so a subdomain of a verified hostname is no redirect target.
+     */
+    public function test_redirect_ignores_a_subdomain_of_a_verified_hostname(): void
+    {
+        $team = $this->ssoTeam();
+        HostnameFactory::new()->forOwner($team)->verified()->create(['host' => 'example.com']);
+
+        $this->get('/neev/sso/redirect?redirect_uri=' . urlencode('https://app.example.com/dashboard'))
+            ->assertRedirect();
+
+        $this->assertNull(session('sso_redirect_uri'));
+    }
+
+    /**
+     * A host failing its re-check still serves for a while, but its owner may
+     * have lost it, so it is no redirect target.
+     */
+    public function test_redirect_ignores_a_hostname_failing_its_recheck(): void
+    {
+        $team = $this->ssoTeam();
+        HostnameFactory::new()->forOwner($team)->verified()->create([
+            'host' => 'app.example.com',
+            'status' => Hostname::STATUS_FAILED,
+            'verification_failed_at' => now()->subDay(),
+        ]);
+
+        $this->get('/neev/sso/redirect?redirect_uri=' . urlencode('https://app.example.com/dashboard'))
+            ->assertRedirect();
+
+        $this->assertNull(session('sso_redirect_uri'));
+    }
+
+    /** A pending claim proves nothing about where the team is served. */
+    public function test_redirect_ignores_an_unverified_hostname(): void
+    {
+        $team = $this->ssoTeam();
+        HostnameFactory::new()->forOwner($team)->create(['host' => 'app.example.com']);
+
+        $this->get('/neev/sso/redirect?redirect_uri=' . urlencode('https://app.example.com/dashboard'))
+            ->assertRedirect();
+
+        $this->assertNull(session('sso_redirect_uri'));
+    }
+
+    /**
+     * An email domain says who belongs to the team, not where it is served,
+     * so a verified one does not make its host a redirect target.
+     */
+    public function test_redirect_ignores_a_verified_email_domain(): void
+    {
+        $team = $this->ssoTeam();
+        EmailDomainFactory::new()->forOwner($team)->verified()->create(['domain' => 'example.com']);
+
+        $this->get('/neev/sso/redirect?redirect_uri=' . urlencode('https://example.com/dashboard'))
+            ->assertRedirect();
+
+        $this->assertNull(session('sso_redirect_uri'));
     }
 
     public function test_redirect_handles_socialite_exception(): void

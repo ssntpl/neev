@@ -10,7 +10,7 @@ use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Events\MagicLinkConsumed;
 use Ssntpl\Neev\Events\MagicLinkGenerated;
 use Ssntpl\Neev\Events\MagicLinkRejected;
-use Ssntpl\Neev\Database\Factories\DomainFactory;
+use Ssntpl\Neev\Database\Factories\HostnameFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
@@ -897,7 +897,7 @@ class MagicLinkTest extends TestCase
     // -----------------------------------------------------------------
 
     /**
-     * A tenant reached only through a team-owned domain owns no domain record
+     * A tenant reached only through a team-owned hostname holds no hostname
      * of its own. The token is scoped to the tenant, so a link mailed to the
      * platform host could never find it: on that host no tenant resolves and
      * the scope narrows the lookup to `tenant_id IS NULL`.
@@ -909,7 +909,7 @@ class MagicLinkTest extends TestCase
         $owner = User::factory()->create();
         $tenant = TenantFactory::new()->create(['slug' => 'globex']);
         $team = TeamFactory::new()->create(['user_id' => $owner->id, 'tenant_id' => $tenant->id]);
-        DomainFactory::new()->forTeam($team)->verified()->create(['domain' => 'portal.acme.test']);
+        HostnameFactory::new()->forOwner($team)->verified()->create(['host' => 'portal.acme.test']);
 
         $resolver = app(TenantResolver::class);
         $this->assertNotNull($resolver->resolve(Request::create('https://portal.acme.test/login')));
@@ -924,8 +924,8 @@ class MagicLinkTest extends TestCase
 
     /**
      * The branch the fix exists for: no host resolved the request (X-Tenant
-     * header, or CLI/queued generation) and the tenant owns no domain record,
-     * so a verified domain of one of its teams is the only host that can
+     * header, or CLI/queued generation) and the tenant has no canonical host,
+     * so a verified hostname of one of its teams is the only host that can
      * redeem the tenant-scoped token.
      */
     public function test_a_tenant_named_by_header_gets_links_on_one_of_its_teams_hosts(): void
@@ -935,17 +935,17 @@ class MagicLinkTest extends TestCase
         $owner = User::factory()->create();
         $tenant = TenantFactory::new()->create(['slug' => 'globex']);
         $team = TeamFactory::new()->create(['user_id' => $owner->id, 'tenant_id' => $tenant->id]);
-        DomainFactory::new()->forTeam($team)->verified()->create(['domain' => 'portal.acme.test']);
+        HostnameFactory::new()->forOwner($team)->verified()->create(['host' => 'portal.acme.test']);
 
-        // Another tenant's team holds a verified domain too; it must never be chosen.
+        // Another tenant's team holds a verified hostname too; it must never be chosen.
         $otherOwner = User::factory()->create();
         $otherTenant = TenantFactory::new()->create(['slug' => 'initech']);
         $otherTeam = TeamFactory::new()->create(['user_id' => $otherOwner->id, 'tenant_id' => $otherTenant->id]);
-        DomainFactory::new()->forTeam($otherTeam)->verified()->create(['domain' => 'portal.initech.test']);
+        HostnameFactory::new()->forOwner($otherTeam)->verified()->create(['host' => 'portal.initech.test']);
 
         $resolver = app(TenantResolver::class);
         $resolver->resolve(Request::create('http://localhost/api', 'GET', [], [], [], ['HTTP_X_TENANT' => 'globex']));
-        $this->assertNull($resolver->currentDomain(), 'A header-resolved tenant has no current domain.');
+        $this->assertNull($resolver->currentHostname(), 'A header-resolved tenant has no current hostname.');
 
         $link = app(MagicLinkManager::class)->generate($owner);
 
@@ -971,20 +971,16 @@ class MagicLinkTest extends TestCase
         $this->assertStringStartsWith(app(EmailLinks::class)->base() . '/', $link['url']);
     }
 
-    /** The host the request came in on wins over the tenant's other domains. */
+    /** The host the request came in on wins over the tenant's primary hostname. */
     public function test_the_link_prefers_the_host_the_request_resolved_through(): void
     {
         $this->enableTenantIsolation();
 
         $owner = User::factory()->create();
         $tenant = TenantFactory::new()->create(['slug' => 'globex']);
-        DomainFactory::new()->verified()->primary()->create([
-            'owner_type' => 'tenant',
-            'owner_id' => $tenant->id,
-            'domain' => 'globex.test',
-        ]);
+        $this->verifiedHost($tenant, 'globex.test', primary: true);
         $team = TeamFactory::new()->create(['user_id' => $owner->id, 'tenant_id' => $tenant->id]);
-        DomainFactory::new()->forTeam($team)->verified()->create(['domain' => 'portal.acme.test']);
+        HostnameFactory::new()->forOwner($team)->verified()->create(['host' => 'portal.acme.test']);
 
         app(TenantResolver::class)->resolve(Request::create('https://portal.acme.test/login'));
 
@@ -992,6 +988,61 @@ class MagicLinkTest extends TestCase
 
         // Scheme follows the configured app URL; the host is what matters here.
         $this->assertStringContainsString('://portal.acme.test/login-link', $link['url']);
+    }
+
+    /** A tenant reached on its platform subdomain gets links on its verified custom host. */
+    public function test_a_tenant_on_its_platform_subdomain_gets_links_on_its_custom_host(): void
+    {
+        $this->enableTenantIsolation();
+        config(['neev.platform_domain' => 'platform.test']);
+
+        $owner = User::factory()->create();
+        $tenant = TenantFactory::new()->create(['slug' => 'globex']);
+        $this->verifiedHost($tenant, 'globex.test', primary: true);
+
+        app(TenantResolver::class)->resolve(Request::create('https://globex.platform.test/login'));
+
+        $link = app(MagicLinkManager::class)->generate($owner);
+
+        $this->assertStringContainsString('://globex.test/login-link', $link['url']);
+    }
+
+    /** Without a verified custom host, a tenant on its platform subdomain gets links there. */
+    public function test_a_tenant_on_its_platform_subdomain_without_a_custom_host_gets_links_there(): void
+    {
+        $this->enableTenantIsolation();
+        config(['neev.platform_domain' => 'platform.test']);
+
+        $owner = User::factory()->create();
+        $tenant = TenantFactory::new()->create(['slug' => 'globex']);
+        $tenant->claimHost('globex.test');
+
+        app(TenantResolver::class)->resolve(Request::create('https://globex.platform.test/login'));
+
+        $link = app(MagicLinkManager::class)->generate($owner);
+
+        $this->assertStringContainsString('://globex.platform.test/login-link', $link['url']);
+    }
+
+    /**
+     * Named by header, the tenant is reached at its canonical host: its
+     * verified primary ahead of its teams' hostnames.
+     */
+    public function test_a_tenant_named_by_header_gets_links_on_its_canonical_host(): void
+    {
+        $this->enableTenantIsolation();
+
+        $owner = User::factory()->create();
+        $tenant = TenantFactory::new()->create(['slug' => 'globex']);
+        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'tenant_id' => $tenant->id]);
+        HostnameFactory::new()->forOwner($team)->verified()->create(['host' => 'portal.acme.test']);
+        $this->verifiedHost($tenant, 'globex.test', primary: true);
+
+        app(TenantResolver::class)->resolve(Request::create('http://localhost/api', 'GET', [], [], [], ['HTTP_X_TENANT' => 'globex']));
+
+        $link = app(MagicLinkManager::class)->generate($owner);
+
+        $this->assertStringContainsString('://globex.test/login-link', $link['url']);
     }
 
     // -----------------------------------------------------------------

@@ -38,6 +38,7 @@ class TenantSSOAdditionalTest extends TestCase
         $resolver->shouldReceive('isResolvedDomainVerified')->andReturn(true);
         $resolver->shouldReceive('resolvedVia')->andReturn('header');
         $resolver->shouldReceive('headerSlugRetired')->andReturn(false);
+        $resolver->shouldReceive('platformHost')->andReturn(null);
         $this->app->instance(TenantResolver::class, $resolver);
     }
 

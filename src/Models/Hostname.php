@@ -5,7 +5,9 @@ namespace Ssntpl\Neev\Models;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
-use Ssntpl\Neev\Traits\CanonicalisesHost;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Ssntpl\Neev\Traits\VerifiesWithDns;
 
 /**
  * A host an owner is served at (RFC 006): transport, not membership. The
@@ -23,12 +25,11 @@ use Ssntpl\Neev\Traits\CanonicalisesHost;
  * @property string|null $verification_token
  * @property Carbon|null $verified_at
  * @property Carbon|null $verification_failed_at
- * @property Carbon|null $verification_expires_at
  * @property-read Model $owner
  */
 class Hostname extends Model
 {
-    use CanonicalisesHost;
+    use VerifiesWithDns;
 
     protected $fillable = [
         'owner_type',
@@ -38,7 +39,6 @@ class Hostname extends Model
         'verification_token',
         'verified_at',
         'verification_failed_at',
-        'verification_expires_at',
     ];
 
     protected $hidden = [
@@ -48,8 +48,29 @@ class Hostname extends Model
     protected $casts = [
         'verified_at' => 'datetime',
         'verification_failed_at' => 'datetime',
-        'verification_expires_at' => 'datetime',
     ];
+
+    protected static function booted(): void
+    {
+        // TenantResolver caches which owner a host resolves to. A changed host
+        // leaves its old name cached too.
+        static::saved(function (Hostname $hostname) {
+            Cache::forget(static::cacheKey($hostname->host));
+
+            if ($hostname->wasChanged('host') && $hostname->getOriginal('host')) {
+                Cache::forget(static::cacheKey($hostname->getOriginal('host')));
+            }
+        });
+        static::deleted(fn (Hostname $hostname) => Cache::forget(static::cacheKey($hostname->host)));
+    }
+
+    /**
+     * The cache key TenantResolver keeps a host's resolution under.
+     */
+    public static function cacheKey(string $host): string
+    {
+        return 'neev:hostname:' . static::canonicalHost($host);
+    }
 
     public function owner(): MorphTo
     {
@@ -61,8 +82,47 @@ class Hostname extends Model
         return 'host';
     }
 
+    protected function dnsRecordPrefix(): string
+    {
+        return '_neev-host';
+    }
+
     public function setHostAttribute(?string $value): void
     {
         $this->canonicaliseHostAttribute($value);
+    }
+
+    /**
+     * Whether this row is held by the owner it names.
+     */
+    public function isOwnedBy(Model $owner): bool
+    {
+        return $this->owner_type === $owner->getMorphClass()
+            && (int) $this->owner_id === (int) $owner->getKey();
+    }
+
+    /**
+     * The owner of a kind (morph type) a verified host serves, if any.
+     */
+    public static function ownerOf(string $host, string $ownerType): ?Model
+    {
+        return static::forHost($host)->verified()->where('owner_type', $ownerType)->first()?->owner;
+    }
+
+    /**
+     * Delete this row, unpointing its owner's primary from it first so the
+     * owner falls back to its next host rather than a missing one.
+     */
+    public function release(): void
+    {
+        DB::transaction(function () {
+            $owner = $this->owner()->withoutGlobalScopes()->first();
+
+            if ($owner !== null && (int) $owner->getAttribute('primary_hostname_id') === (int) $this->getKey()) {
+                $owner->forceFill(['primary_hostname_id' => null])->save();
+            }
+
+            $this->delete();
+        });
     }
 }

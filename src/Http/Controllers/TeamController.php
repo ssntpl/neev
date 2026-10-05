@@ -11,9 +11,7 @@ use InvalidArgumentException;
 use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
-use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
-use Ssntpl\Neev\Models\Domain;
-use Ssntpl\Neev\Rules\Hostname;
+use Ssntpl\Neev\Support\OwnerRules;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation as TeamInvitationModel;
@@ -43,39 +41,6 @@ class TeamController extends Controller
             'team' => $team,
             'teamRoles' => Role::where('resource_type', Team::class)->get(),
             'memberRoles' => TeamRoles::forSubjects($team, $team->users->concat($team->invitedUsers)),
-        ]);
-    }
-
-    public function domain(Request $request, Team $team)
-    {
-        /** @var User|null $user */
-        $user = User::model()->find($request->user()?->id);
-        if (!$user || !$team->hasMember($user)) {
-            return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
-        }
-
-        $domains = $team->domains;
-
-        // A team can federate several domains, and a member on any verified one
-        // of them is inside the team's boundary. Counting per domain in
-        // isolation flagged those members on every other domain, so the warning
-        // fired for people who were never outside.
-        $outside = $team->users
-            ->reject(fn ($member) => $team->hasVerifiedDomainFor((string) $member->email))
-            ->count();
-
-        $outsideMembers = [];
-        foreach ($domains as $domain) {
-            $outsideMembers[$domain->id] = $domain->enforce && $domain->verified_at
-                ? $outside
-                : 0;
-        }
-
-        return view('neev::team.domain-federation', [
-            'user' => $user,
-            'team' => $team,
-            'domains' => $domains,
-            'outsideMembers' => $outsideMembers,
         ]);
     }
 
@@ -551,136 +516,29 @@ class TeamController extends Controller
         return back()->withErrors(['message' => 'You cannot change owner.']);
     }
 
-    public function federateDomain(Request $request, Team $team)
+    /**
+     * Set the team's rules (OwnerRules) from the form: an unticked box is a
+     * rule turned off.
+     */
+    public function updateRules(Request $request, Team $team)
     {
         /** @var User|null $user */
         $user = User::model()->find($request->user()?->id);
         if (!$user || $team->user_id !== $user->id) {
-            return back()->withErrors(['message' => 'You do not have the required permissions to federate domain.']);
-        }
-
-        $request->validate([
-            'domain' => [
-                // Stop at the first failure: a value already refused need not
-                // be judged as a host name too.
-                'bail',
-                'required',
-                'string',
-                'max:255',
-                new Hostname(),
-            ],
-        ]);
-
-        try {
-            $domain = $team->federateDomain((string) $request->domain, (bool) $request->enforce);
-
-            return back()->with('token', $domain->verification_token)->with('dns_record_name', $domain->getDnsRecordName());
-        } catch (DomainAlreadyVerifiedException|InvalidArgumentException $e) {
-            return back()->withErrors(['message' => $e->getMessage()]);
-        } catch (Exception $e) {
-            Log::error($e);
-            return back()->withErrors(['message' => 'Failed to federate domain.']);
-        }
-    }
-
-    public function updateDomain(Request $request, Domain $domain)
-    {
-        /** @var User|null $user */
-        $user = User::model()->find($request->user()?->id);
-        if (!$user || $domain->owner?->user_id !== $user->id) {
             return back()->withErrors(['message' => 'You do not have the required permissions to update domain.']);
         }
         try {
-            if ($request->verify) {
-                $domain_rules = ["mfa"];
-                if ($domain->verify()) {
-                    foreach ($domain_rules as $rule) {
-                        $domain->rules()->firstOrCreate(['name' => $rule], ['value' => false]);
-                    }
-                    return back()->with('status', 'Domain verified successfully!');
-                }
-                return back()->withErrors(['message' => 'DNS record not found. Please try again later.']);
+            $values = [];
+            foreach (OwnerRules::COLUMNS as $name => $column) {
+                $values[$column] = $request->boolean($name);
             }
 
-            if ($request->token) {
-                // A new token unverifies the domain until the record is
-                // published, and nobody can publish one in the platform's zone.
-                if (Domain::isPlatformSubdomain($domain->domain)) {
-                    return back()->withErrors(['message' => 'A platform subdomain does not use a verification token.']);
-                }
-
-                $token = $domain->regenerateVerificationToken();
-                return back()->with('token', $token)->with('dns_record_name', $domain->getDnsRecordName());
-            }
-
-            $domain->enforce = (bool) $request->enforce;
-            $domain->save();
-            return back()->with('status', 'domain has been updated.');
-        } catch (DomainAlreadyVerifiedException $e) {
-            return back()->withErrors(['message' => $e->getMessage()]);
-        } catch (Exception $e) {
-            Log::error($e);
-            return back()->withErrors(['message' => 'Failed to update domain.']);
-        }
-    }
-
-    public function deleteDomain(Request $request, Domain $domain)
-    {
-        /** @var User|null $user */
-        $user = User::model()->find($request->user()?->id);
-        if (!$user || $domain->owner?->user_id !== $user->id) {
-            return back()->withErrors(['message' => 'You do not have the required permissions to delete domain.']);
-        }
-        try {
-            $domain->deleteAndPromote();
-
-            return back()->with('status', 'Domain has been deleted.');
-        } catch (Exception $e) {
-            Log::error($e);
-            return back()->withErrors(['message' => 'Failed to delete domain.']);
-        }
-    }
-
-    public function updateDomainRule(Request $request, Domain $domain)
-    {
-        /** @var User|null $user */
-        $user = User::model()->find($request->user()?->id);
-        if (!$user || $domain->owner?->user_id !== $user->id) {
-            return back()->withErrors(['message' => 'You do not have the required permissions to update domain.']);
-        }
-        try {
-            foreach ($domain->rules as $rule) {
-                $rule->value = (bool) $request->{$rule->name};
-                $rule->save();
-            }
+            $team->authSettings()->updateOrCreate([], $values);
 
             return back()->with('status', 'Domain Rules have been updated.');
         } catch (Exception $e) {
             Log::error($e);
             return back()->withErrors(['message' => 'Failed to update domain rules.']);
         }
-    }
-
-    public function primaryDomain(Request $request)
-    {
-        /** @var User|null $user */
-        $user = User::model()->find($request->user()?->id);
-        $domain = Domain::find($request->domain_id);
-        if (!$user || !$domain || !$domain->verified_at || !$domain->owner?->users->contains($user)) {
-            return back()->withErrors(['message' => 'Primary domain was not changed.']);
-        }
-
-        $pdomain = $domain->owner?->domain;
-        if ($pdomain) {
-            if ($pdomain->id == $domain->id) {
-                return back()->with('status', 'Primary domain was already changed.');
-            }
-            $pdomain->is_primary = false;
-            $pdomain->save();
-        }
-        $domain->is_primary = true;
-        $domain->save();
-
-        return back()->with('status', 'Primary domain has been changed.');
     }
 }

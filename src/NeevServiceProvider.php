@@ -5,6 +5,7 @@ namespace Ssntpl\Neev;
 use Illuminate\Cookie\Middleware\EncryptCookies;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Routing\Middleware\SubstituteBindings;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Support\ServiceProvider;
 use Ssntpl\Neev\Commands\Auth\ConfigureAuthCommand;
@@ -13,9 +14,13 @@ use Ssntpl\Neev\Commands\CleanExpiredAccessTokens;
 use Ssntpl\Neev\Commands\CleanExpiredMagicLinks;
 use Ssntpl\Neev\Commands\CleanOldLoginAttempts;
 use Ssntpl\Neev\Commands\CleanPendingMfaSetups;
-use Ssntpl\Neev\Commands\Domain\AddDomainCommand;
-use Ssntpl\Neev\Commands\Domain\ListDomainsCommand;
-use Ssntpl\Neev\Commands\Domain\VerifyDomainCommand;
+use Ssntpl\Neev\Commands\EmailDomain\AddEmailDomainCommand;
+use Ssntpl\Neev\Commands\EmailDomain\ListEmailDomainsCommand;
+use Ssntpl\Neev\Commands\EmailDomain\VerifyEmailDomainCommand;
+use Ssntpl\Neev\Commands\Hostname\AddHostnameCommand;
+use Ssntpl\Neev\Commands\Hostname\ListHostnamesCommand;
+use Ssntpl\Neev\Commands\Hostname\PrimaryHostnameCommand;
+use Ssntpl\Neev\Commands\Hostname\VerifyHostnameCommand;
 use Ssntpl\Neev\Commands\DownloadGeoLiteDb;
 use Ssntpl\Neev\Commands\InstallNeev;
 use Ssntpl\Neev\Commands\InstallUi;
@@ -77,12 +82,16 @@ class NeevServiceProvider extends ServiceProvider
             BindContextMiddleware::class,
         ]);
 
+        // SubstituteBindings after the tenant is resolved, so a route's {team}
+        // or {hostname} is looked up within its scope; BindContextMiddleware
+        // stays last.
         Route::middlewareGroup('neev:api', [
             TenantMiddleware::class,
             ResolveTeamMiddleware::class,
             EnsureSpaRequestsAreStateful::class,
             NeevAPIMiddleware::class,
             EnsureTenantMembership::class,
+            SubstituteBindings::class,
             BindContextMiddleware::class,
         ]);
 
@@ -207,9 +216,13 @@ class NeevServiceProvider extends ServiceProvider
             ListTenantsCommand::class,
             ShowTenantCommand::class,
 
-            AddDomainCommand::class,
-            VerifyDomainCommand::class,
-            ListDomainsCommand::class,
+            AddHostnameCommand::class,
+            ListHostnamesCommand::class,
+            VerifyHostnameCommand::class,
+            PrimaryHostnameCommand::class,
+            AddEmailDomainCommand::class,
+            ListEmailDomainsCommand::class,
+            VerifyEmailDomainCommand::class,
 
             AddMemberCommand::class,
             RemoveMemberCommand::class,

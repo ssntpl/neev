@@ -11,7 +11,7 @@ use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Illuminate\Database\Eloquent\Model;
-use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\Models\RetiredSlug;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Tenant;
@@ -50,9 +50,9 @@ class TenantResolver
     protected bool $headerSlugRetired = false;
 
     /**
-     * The custom domain model (only set for custom domain resolution).
+     * The custom hostname (only set for custom host resolution).
      */
-    protected ?Domain $resolvedCustomDomain = null;
+    protected ?Hostname $resolvedCustomDomain = null;
 
     /**
      * Resolve the tenant from the request.
@@ -138,18 +138,19 @@ class TenantResolver
     {
         // A platform host names its owner's slug, so it needs no row. Not
         // cached: it is one indexed lookup, and a rename takes effect at once.
-        // Neither slug answering, the domain rows are still checked below.
-        $slug = PlatformHost::slugOf($host);
-        $platform = $slug !== null ? $this->platformContext($slug) : null;
+        // A host under the zone resolves by slug only: a row for one, copied
+        // from `domains`, would keep a stale `oldslug` host routing
+        // (RFC 006 §3 (c)), so it is ignored.
+        if (PlatformHost::covers($host)) {
+            $slug = PlatformHost::slugOf($host);
 
-        if ($platform !== null) {
-            return $platform;
+            return $slug !== null ? $this->platformContext($slug) : null;
         }
 
         $isIsolated = $this->isIsolated();
 
         /** @var array{context_type: string, context_id: int}|null $cachedContext */
-        $cachedContext = Cache::remember("neev:domain:{$host}", 300, function () use ($host, $isIsolated): ?array {
+        $cachedContext = Cache::remember(Hostname::cacheKey($host), 300, function () use ($host, $isIsolated): ?array {
             $domain = $this->domainForMode($host, $isIsolated);
             $owner = $domain ? $this->domainOwner($domain) : null;
 
@@ -185,7 +186,7 @@ class TenantResolver
             }
 
             if ($context) {
-                // Fetch the domain record for the customDomain reference
+                // Fetch the hostname for the customDomain reference
                 $domain = $this->domainForMode($host, $isIsolated);
 
                 return ['context' => $context, 'via' => 'custom', 'domain' => $host, 'customDomain' => $domain];
@@ -271,28 +272,26 @@ class TenantResolver
     }
 
     /**
-     * The verified domain row this host resolves through, chosen by the owner
-     * kind the active mode routes on rather than by row order: shared mode
-     * only ever routes a team, and isolated mode takes a tenant's own claim
-     * ahead of a team's, which it has to route through that team's tenant.
+     * The verified hostname this host resolves through, if its owner is a
+     * kind the active mode routes on: shared mode routes a team, and isolated
+     * mode a tenant, or a team through that team's tenant. A host is unique,
+     * so there is at most one.
      */
-    protected function domainForMode(string $host, bool $isIsolated): ?Domain
+    protected function domainForMode(string $host, bool $isIsolated): ?Hostname
     {
-        if (! $isIsolated) {
-            return Domain::findByHostForOwnerType($host, 'team');
-        }
-
-        return Domain::findByHostForOwnerType($host, 'tenant')
-            ?? Domain::findByHostForOwnerType($host, 'team');
+        return Hostname::forHost($host)
+            ->verified()
+            ->whereIn('owner_type', $isIsolated ? ['tenant', 'team'] : ['team'])
+            ->first();
     }
 
     /**
-     * The model owning a domain.
+     * The model owning a hostname.
      *
      * A team owner is read without the team tenant scope: this runs while
      * resolving the tenant, so there is no resolved tenant yet to match.
      */
-    protected function domainOwner(Domain $domain)
+    protected function domainOwner(Hostname $domain)
     {
         if ($domain->owner_type === 'team') {
             return Team::getClass()::withoutTenantScope()->find($domain->owner_id);
@@ -318,7 +317,7 @@ class TenantResolver
     /**
      * Set the resolved context and metadata.
      */
-    protected function setResolved(ContextContainerInterface $context, string $via, string $domain, ?Domain $customDomain = null): ContextContainerInterface
+    protected function setResolved(ContextContainerInterface $context, string $via, string $domain, ?Hostname $customDomain = null): ContextContainerInterface
     {
         $this->resolvedContext = $context;
         $this->resolvedVia = $via;
@@ -418,9 +417,10 @@ class TenantResolver
     }
 
     /**
-     * Get the resolved custom Domain model (only set for custom domain resolution).
+     * The custom hostname the request resolved through (only set for custom
+     * host resolution).
      */
-    public function currentDomain(): ?Domain
+    public function currentHostname(): ?Hostname
     {
         return $this->resolvedCustomDomain;
     }

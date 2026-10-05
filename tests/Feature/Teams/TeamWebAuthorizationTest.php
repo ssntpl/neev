@@ -85,7 +85,7 @@ class TeamWebAuthorizationTest extends TestCase
 
     public function test_the_domain_federation_page_is_member_only(): void
     {
-        $this->assertPageIsMemberOnly('teams.domain');
+        $this->assertPageIsMemberOnly('teams.email-domains');
     }
 
     // -----------------------------------------------------------------
@@ -563,8 +563,9 @@ class TeamWebAuthorizationTest extends TestCase
         [$team, $owner] = $this->teamWithOwner();
         $member = User::factory()->create(['email' => 'someone@federated.test']);
         $team->addMember($member);
-        $team->domains()->create([
+        $team->emailDomains()->create([
             'domain' => 'federated.test',
+            'status' => 'verified',
             'verified_at' => now(),
             'verification_token' => 'probe-token',
         ]);

@@ -351,10 +351,10 @@ class OAuthTest extends TestCase
             'is_public' => false,
         ]);
 
-        $team->domains()->create([
+        $team->emailDomains()->create([
             'domain' => 'verified-corp.com',
+            'status' => 'verified',
             'verified_at' => now(),
-            'is_primary' => true,
         ]);
 
         $this->mockSocialiteUser('newuser@verified-corp.com', 'Corp User');

@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
 use Ssntpl\Neev\Http\Controllers\Controller;
+use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\Models\LoginAttempt;
 use Ssntpl\Neev\Services\AuthService;
 use Ssntpl\Neev\Services\EmailLinks;
@@ -122,9 +123,14 @@ class TenantSSOController extends Controller
     }
 
     /**
-     * Validate that the redirect_uri belongs to the tenant's domains.
-     */
-    /**
+     * Validate that the redirect_uri is exactly a host the tenant is served
+     * at: its platform subdomain or a verified hostname whose record is not
+     * failing. A subdomain of one does not count: the TXT record at
+     * `_neev-host.app.acme.com` proves control of that name, not of
+     * `x.app.acme.com`. Neither does a host failing its re-check, whose owner
+     * may have lost it. An email domain is not among them; it says who
+     * belongs to the tenant, not where it is served.
+     *
      * @param ContextContainerInterface&IdentityProviderOwnerInterface $tenant
      */
     protected function isValidRedirectUri($tenant, string $redirectUri): bool
@@ -134,15 +140,16 @@ class TenantSSOController extends Controller
             return false;
         }
 
-        $host = $parsedUrl['host'];
+        $host = Hostname::canonicalHost($parsedUrl['host']);
 
-        // Check against tenant domains (both Team and Tenant models have domains())
-        if (method_exists($tenant, 'domains')) {
-            foreach ($tenant->domains()->get() as $domain) {
-                if ($domain->domain === $host || str_ends_with($host, '.' . $domain->domain)) {
-                    return true;
-                }
-            }
+        $served = [];
+        if (method_exists($tenant, 'hostnames') && method_exists($tenant, 'platformHost')) {
+            $served = $tenant->hostnames()->verified()->whereNull('verification_failed_at')->pluck('host')->all();
+            $served[] = $tenant->platformHost();
+        }
+
+        if (in_array($host, array_filter($served), true)) {
+            return true;
         }
 
         // Allow same origin as current request

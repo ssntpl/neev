@@ -4,10 +4,10 @@ namespace Ssntpl\Neev\Rules;
 
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
-use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Hostname as HostnameModel;
 
 /**
- * A host name as a domain row stores it: `acme.com`, `app.acme.com`.
+ * A host name as a hostname or email domain row stores it: `acme.com`, `app.acme.com`.
  *
  * The value is judged in canonical form (lowercase, no surrounding dots), the
  * form the row keeps. Anything else — a URL, a path, a port, a space, a single
@@ -23,7 +23,7 @@ class Hostname implements ValidationRule
 {
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
-        $host = is_string($value) ? Domain::canonicalHost($value) : '';
+        $host = is_string($value) ? HostnameModel::canonicalHost($value) : '';
 
         if ($host === ''
             || strlen($host) > 253

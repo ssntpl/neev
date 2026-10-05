@@ -60,4 +60,17 @@ class PlatformHost
 
         return $label !== '' && ! str_contains($label, '.') ? $label : null;
     }
+
+    /**
+     * Whether a host is the zone or anything under it. None of these is a
+     * custom host: the zone is the installation's own, and its subdomains
+     * follow slugs. The leading dot keeps `evil-otper.com` outside `otper.com`.
+     */
+    public static function covers(string $host): bool
+    {
+        $zone = static::zone();
+        $host = Hostname::canonicalHost($host);
+
+        return $zone !== null && $host !== '' && ($host === $zone || str_ends_with($host, '.' . $zone));
+    }
 }

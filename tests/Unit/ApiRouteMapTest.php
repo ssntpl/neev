@@ -100,14 +100,28 @@ class ApiRouteMapTest extends TestCase
             'POST neev/teams/request',
             'PUT neev/teams/request',
 
-            // domains
-            'GET neev/domains',
-            'POST neev/domains',
-            'PUT neev/domains',
-            'DELETE neev/domains',
-            'PUT neev/domains/rules',
-            'GET neev/domains/rules',
-            'PUT neev/domains/primary',
+            // team rules
+            'GET neev/teams/{team}/rules',
+            'PUT neev/teams/{team}/rules',
+
+            // hostnames
+            'GET neev/teams/{team}/hostnames',
+            'POST neev/teams/{team}/hostnames',
+            'GET neev/hostnames/{hostname}',
+            'DELETE neev/hostnames/{hostname}',
+            'POST neev/hostnames/{hostname}/verify',
+            'POST neev/hostnames/{hostname}/token',
+            'POST neev/hostnames/{hostname}/primary',
+            'GET neev/hostnames/current',
+
+            // email domains
+            'GET neev/teams/{team}/email-domains',
+            'POST neev/teams/{team}/email-domains',
+            'GET neev/email-domains/{emailDomain}',
+            'PATCH neev/email-domains/{emailDomain}',
+            'DELETE neev/email-domains/{emailDomain}',
+            'POST neev/email-domains/{emailDomain}/verify',
+            'POST neev/email-domains/{emailDomain}/token',
 
             // left outside the team group on purpose
             'POST neev/changeTeamOwner',

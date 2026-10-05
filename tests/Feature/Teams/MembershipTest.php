@@ -4,7 +4,7 @@ namespace Ssntpl\Neev\Tests\Feature\Teams;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
-use Ssntpl\Neev\Database\Factories\DomainFactory;
+use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
@@ -841,10 +841,9 @@ class MembershipTest extends TestCase
         $team->addMember($owner);
 
         // Create a verified domain for the team
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
-            'is_primary' => true,
         ]);
 
         // Create a member with an email matching the domain
@@ -865,7 +864,7 @@ class MembershipTest extends TestCase
         $this->assertFalse($member->active);
     }
 
-    public function test_leave_deactivates_user_on_a_non_primary_verified_domain(): void
+    public function test_leave_deactivates_user_on_a_second_verified_domain(): void
     {
         $this->enableDomainFederation();
 
@@ -873,15 +872,13 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $team->addMember($owner);
 
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
-            'is_primary' => true,
         ]);
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.io',
-            'is_primary' => false,
         ]);
 
         $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.io']);
@@ -906,15 +903,13 @@ class MembershipTest extends TestCase
         $owner = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
-        DomainFactory::new()->create([
+        EmailDomainFactory::new()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
-            'is_primary' => true,
         ]);
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.io',
-            'is_primary' => false,
         ]);
 
         [$member, $token] = $this->authenticatedUser();
@@ -941,10 +936,9 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $team->addMember($owner);
 
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
-            'is_primary' => true,
         ]);
 
         // On the team's verified domain, but never joined this team.
@@ -969,10 +963,9 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $team->addMember($owner);
 
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
-            'is_primary' => true,
         ]);
 
         // Invited, not yet joined, on the team's verified domain.
@@ -1028,7 +1021,7 @@ class MembershipTest extends TestCase
         $this->assertTrue($team->allUsers()->whereKey($requester->id)->exists());
     }
 
-    public function test_join_request_is_refused_when_a_non_primary_verified_domain_is_enforced(): void
+    public function test_join_request_is_refused_when_a_second_verified_domain_is_enforced(): void
     {
         Mail::fake();
         $this->enableDomainFederation();
@@ -1037,15 +1030,13 @@ class MembershipTest extends TestCase
         $owner = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $owner->id, 'is_public' => true]);
 
-        DomainFactory::new()->create([
+        EmailDomainFactory::new()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
-            'is_primary' => true,
         ]);
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.io',
-            'is_primary' => false,
             'enforce' => true,
         ]);
 
@@ -1065,12 +1056,11 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $team->addMember($owner);
 
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
-            'is_primary' => true,
         ]);
-        DomainFactory::new()->create([
+        EmailDomainFactory::new()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.io',
         ]);
@@ -1098,10 +1088,9 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $team->addMember($owner);
 
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
-            'is_primary' => true,
         ]);
 
         // Create an inactive member with matching domain email
@@ -1132,11 +1121,10 @@ class MembershipTest extends TestCase
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'company.com',
             'enforce' => true,
-            'is_primary' => true,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -1149,24 +1137,22 @@ class MembershipTest extends TestCase
             ->assertJsonPath('message', 'You cannot invite member in this team.');
     }
 
-    public function test_invite_rejects_email_outside_an_enforced_non_primary_domain(): void
+    public function test_invite_rejects_email_outside_an_enforced_second_domain(): void
     {
         $this->enableDomainFederation();
 
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'company.com',
             'enforce' => false,
-            'is_primary' => true,
         ]);
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'company.io',
             'enforce' => true,
-            'is_primary' => false,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -1187,17 +1173,15 @@ class MembershipTest extends TestCase
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'company.com',
             'enforce' => true,
-            'is_primary' => true,
         ]);
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'company.io',
             'enforce' => false,
-            'is_primary' => false,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -1223,11 +1207,10 @@ class MembershipTest extends TestCase
         $owner = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
-        DomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'enforced.com',
             'enforce' => true,
-            'is_primary' => true,
         ]);
 
         $response = $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -1249,11 +1232,10 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
         // An unverified claim proves nothing, so its enforce flag closes nothing.
-        DomainFactory::new()->create([
+        EmailDomainFactory::new()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'enforced.com',
             'enforce' => true,
-            'is_primary' => true,
         ]);
 
         $this->withHeader('Authorization', 'Bearer ' . $token)
@@ -1308,7 +1290,7 @@ class MembershipTest extends TestCase
         [$owner] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $team->addMember($owner);
-        DomainFactory::new()->verified()->primary()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
         ]);
@@ -1346,7 +1328,7 @@ class MembershipTest extends TestCase
         [$owner] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $team->addMember($owner);
-        DomainFactory::new()->verified()->primary()->create([
+        EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
         ]);
@@ -1383,7 +1365,7 @@ class MembershipTest extends TestCase
         [$owner, $ownerToken] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $team->addMember($owner);
-        $domain = DomainFactory::new()->verified()->primary()->create([
+        $domain = EmailDomainFactory::new()->verified()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
         ]);
@@ -1395,7 +1377,7 @@ class MembershipTest extends TestCase
             ->assertJsonPath('message', 'User Deactivated Successfully');
 
         $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
-            ->putJson('/neev/domains', ['domain_id' => $domain->id, 'token' => true])
+            ->postJson("/neev/email-domains/{$domain->id}/token")
             ->assertOk();
 
         $this->withHeader('Authorization', 'Bearer ' . $ownerToken)

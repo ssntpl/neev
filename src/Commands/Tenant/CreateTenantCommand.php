@@ -5,11 +5,12 @@ namespace Ssntpl\Neev\Commands\Tenant;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\PromptsForMissingInput;
 use Ssntpl\Neev\Commands\Concerns\ResolvesTenantContext;
-use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\Models\RetiredSlug;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Support\PlatformHost;
 use Ssntpl\Neev\Support\SlugHelper;
 
 use function Laravel\Prompts\text;
@@ -26,7 +27,7 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
     protected $signature = 'neev:tenant:create {name : The name of the tenant or team}
                             {--slug= : Custom slug (auto-generated from name if omitted)}
                             {--owner= : Owner user ID or email}
-                            {--domain= : Domain to attach}
+                            {--domain= : Custom host to serve it at, proven by DNS}
                             {--activate : Activate the team immediately}';
 
     protected $description = 'Create a new tenant (isolated mode) or team (shared mode)';
@@ -88,12 +89,13 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
         }
 
         if ($domain = $this->option('domain')) {
-            // This command attaches the domain to whatever it creates, so the
-            // clash to look for is another owner of that same kind.
-            $ownerType = $this->isIsolated() ? 'tenant' : 'team';
+            // A host is unique across every owner, so any holder clashes.
+            $held = Hostname::forHost($domain)->first();
 
-            if (Domain::findByHostForOwnerType($domain, $ownerType)) {
-                $errors[] = "Domain already verified by another {$ownerType}: {$domain}";
+            if (PlatformHost::covers($domain)) {
+                $errors[] = "A host under the platform domain follows the slug: {$domain}";
+            } elseif ($held !== null) {
+                $errors[] = "Host already claimed: {$domain}";
             }
         }
 
@@ -200,23 +202,22 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
         return self::SUCCESS;
     }
 
+    /**
+     * Claim the host for what was just created. It is pending until its TXT
+     * record is checked, and only then can it be made the primary.
+     */
     protected function attachDomain(string $domain, ?object $team, ?object $tenant): void
     {
-        $domainRecord = Domain::create([
-            'domain' => $domain,
-            'owner_type' => $tenant ? 'tenant' : 'team',
-            'owner_id' => $tenant !== null ? $tenant->id : $team?->id,
-            'is_primary' => true,
-        ]);
+        /** @var Team|Tenant $owner */
+        $owner = $tenant ?? $team;
+        $hostname = $owner->claimHost($domain);
 
-        {
-            $token = $domainRecord->generateVerificationToken();
-            $this->info("Domain attached: {$domain}");
-            $this->warn("Verify via DNS TXT record:");
-            $this->line("  Name:  {$domainRecord->getDnsRecordName()}");
-            $this->line("  Value: {$token}");
-            $this->line("Then run: php artisan neev:domain:verify {$domain}");
-        }
+        $this->info("Domain attached: {$hostname->host}");
+        $this->warn("Verify via DNS TXT record:");
+        $this->line("  Name:  {$hostname->getDnsRecordName()}");
+        $this->line("  Value: {$hostname->verification_token}");
+        $this->line("Then run: php artisan neev:hostname:verify {$hostname->host}");
+        $this->line("and, to make it the primary: php artisan neev:hostname:primary {$hostname->host}");
     }
 
     protected function promptForMissingArgumentsUsing(): array
