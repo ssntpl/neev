@@ -228,8 +228,6 @@ if (config('neev.ui') === 'blade') {
                         ->name('teams.email-domains.update');
                     Route::delete('/email-domains/{domain}', [TeamEmailDomainController::class, 'destroy'])
                         ->name('teams.email-domains.destroy');
-                    Route::put('/{team}/rules', [TeamController::class, 'updateRules'])
-                        ->name('teams.rules');
                     Route::get('/{team}/hostnames', [TeamHostnameController::class, 'index'])
                         ->name('teams.hostnames');
                     Route::post('/{team}/hostnames', [TeamHostnameController::class, 'store'])
@@ -346,9 +344,6 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
             });
 
             Route::post('/changeTeamOwner', [TeamApiController::class, 'changeTeamOwner']);
-
-            Route::get('/teams/{team}/rules', [TeamApiController::class, 'rules']);
-            Route::put('/teams/{team}/rules', [TeamApiController::class, 'updateRules']);
 
             Route::get('/teams/{team}/hostnames', [HostnameApiController::class, 'index']);
             // Adding, verifying and re-issuing look up or publish DNS records,

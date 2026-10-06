@@ -30,7 +30,7 @@ class Hostname implements ValidationRule
             || !str_contains($host, '.')
             || preg_match('/\.\d+$/', $host)
             || filter_var($host, FILTER_VALIDATE_DOMAIN, FILTER_FLAG_HOSTNAME) === false) {
-            $fail('The domain must be a host name.');
+            $fail('The :attribute must be a host name.');
         }
     }
 }

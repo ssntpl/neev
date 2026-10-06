@@ -3,8 +3,10 @@
 namespace Ssntpl\Neev\Tests\Feature\Teams;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Event;
 use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Events\EmailDomainEnforceDropped;
 use Ssntpl\Neev\Models\EmailDomain;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
@@ -320,7 +322,7 @@ class DomainFederationTest extends TestCase
         $this->assertSame($response->json('dns_record.value'), $domain->fresh()->verification_token);
     }
 
-    public function test_regenerating_the_token_unverifies_the_domain(): void
+    public function test_regenerating_the_token_keeps_the_domain_verified(): void
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
@@ -333,8 +335,24 @@ class DomainFederationTest extends TestCase
             ->assertOk();
 
         $domain->refresh();
-        $this->assertNull($domain->verified_at);
-        $this->assertNull($domain->verification_failed_at);
+        $this->assertNotNull($domain->verified_at);
+        $this->assertNotNull($domain->verification_failed_at);
+    }
+
+    public function test_verifying_a_disabled_domain_says_it_is_disabled(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $domain = EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com', 'verification_token' => 'published']);
+        $domain->disable();
+        FakeDns::txt('_neev-email.acme.com', 'published');
+
+        $this->bearer($token)
+            ->postJson("/neev/email-domains/{$domain->id}/verify")
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'This domain is disabled.');
+
+        $this->assertSame(EmailDomain::STATUS_DISABLED, $domain->fresh()->status);
     }
 
     public function test_a_disabled_domain_gets_no_new_token(): void
@@ -368,7 +386,7 @@ class DomainFederationTest extends TestCase
         $this->assertNotNull($domain->fresh()->verified_at);
     }
 
-    public function test_refederating_a_verified_domain_unverifies_it(): void
+    public function test_refederating_a_verified_domain_keeps_it_verified(): void
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
@@ -378,7 +396,7 @@ class DomainFederationTest extends TestCase
             ->postJson("/neev/teams/{$team->id}/email-domains", ['domain' => 'acme.com'])
             ->assertOk();
 
-        $this->assertNull($domain->fresh()->verified_at);
+        $this->assertNotNull($domain->fresh()->verified_at);
     }
 
     public function test_a_disabled_domain_cannot_be_added_again(): void
@@ -425,6 +443,7 @@ class DomainFederationTest extends TestCase
 
     public function test_a_pending_claim_that_enforces_stops_enforcing_if_another_owner_enforces_when_it_verifies(): void
     {
+        Event::fake([EmailDomainEnforceDropped::class]);
         $team = TeamFactory::new()->create();
         $pending = $team->federateDomain('acme.com', true);
         EmailDomainFactory::new()->verified()->create(['domain' => 'acme.com', 'enforce' => true]);
@@ -432,9 +451,49 @@ class DomainFederationTest extends TestCase
 
         $this->assertTrue($pending->verify());
 
+        $this->assertTrue($pending->enforceWasDropped());
         $this->assertTrue($pending->fresh()->isVerified());
         $this->assertFalse($pending->fresh()->enforce);
         $this->assertSame(1, EmailDomain::forHost('acme.com')->verified()->where('enforce', true)->count());
+        Event::assertDispatched(EmailDomainEnforceDropped::class, fn ($e) => $e->domain->is($pending));
+    }
+
+    /**
+     * Verifying still succeeds when another owner enforces first, but the
+     * answer says enforce was turned off rather than hiding it in `data`.
+     */
+    public function test_verify_warns_when_another_owner_already_enforces(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $pending = $team->federateDomain('acme.com', true);
+        EmailDomainFactory::new()->verified()->create(['domain' => 'acme.com', 'enforce' => true]);
+        FakeDns::txt('_neev-email.acme.com', $pending->verification_token);
+
+        $this->bearer($token)
+            ->postJson("/neev/email-domains/{$pending->id}/verify")
+            ->assertOk()
+            ->assertJsonPath('message', 'Email domain verified. Another owner already enforces this domain, so enforce was turned off.')
+            ->assertJsonPath('enforce_dropped', true)
+            ->assertJsonPath('data.enforce', false);
+    }
+
+    public function test_verify_reports_no_drop_when_nobody_else_enforces(): void
+    {
+        Event::fake([EmailDomainEnforceDropped::class]);
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $pending = $team->federateDomain('acme.com', true);
+        FakeDns::txt('_neev-email.acme.com', $pending->verification_token);
+
+        $this->bearer($token)
+            ->postJson("/neev/email-domains/{$pending->id}/verify")
+            ->assertOk()
+            ->assertJsonPath('message', 'Email domain verified.')
+            ->assertJsonPath('enforce_dropped', false)
+            ->assertJsonPath('data.enforce', true);
+
+        Event::assertNotDispatched(EmailDomainEnforceDropped::class);
     }
 
     // -----------------------------------------------------------------
@@ -484,114 +543,6 @@ class DomainFederationTest extends TestCase
             ->assertForbidden();
 
         $this->assertDatabaseHas('email_domains', ['id' => $domain->id]);
-    }
-
-    // -----------------------------------------------------------------
-    // PUT /neev/teams/{team}/rules — the team's rules, on its auth settings
-    // -----------------------------------------------------------------
-
-    public function test_owner_can_update_the_team_rules(): void
-    {
-        [$owner, $token] = $this->authenticatedUser();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-
-        $this->bearer($token)
-            ->putJson("/neev/teams/{$team->id}/rules", ['mfa' => true])
-            ->assertOk()
-            ->assertJsonPath('message', 'Domain Rules have been updated.')
-            ->assertJsonPath('data', [['name' => 'mfa', 'value' => true]]);
-
-        $this->assertTrue($team->authSettings()->sole()->require_mfa);
-    }
-
-    public function test_a_rule_left_out_of_the_request_keeps_its_value(): void
-    {
-        [$owner, $token] = $this->authenticatedUser();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $team->authSettings()->create(['require_mfa' => true]);
-
-        $this->bearer($token)
-            ->putJson("/neev/teams/{$team->id}/rules", [])
-            ->assertOk()
-            ->assertJsonPath('data', [['name' => 'mfa', 'value' => true]]);
-
-        $this->assertTrue($team->authSettings()->sole()->require_mfa);
-    }
-
-    public function test_non_owner_cannot_update_the_team_rules(): void
-    {
-        [$member, $token] = $this->authenticatedUser();
-
-        $owner = User::factory()->create();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $team->addMember($member);
-
-        $this->bearer($token)
-            ->putJson("/neev/teams/{$team->id}/rules", ['mfa' => true])
-            ->assertForbidden()
-            ->assertJsonPath('message', 'You do not have the required permissions to update domain rules.');
-
-        $this->assertNull($team->authSettings()->first());
-    }
-
-    public function test_updating_the_rules_of_a_missing_team_is_not_found(): void
-    {
-        [, $token] = $this->authenticatedUser();
-
-        $this->bearer($token)
-            ->putJson('/neev/teams/99999/rules', ['mfa' => true])
-            ->assertNotFound();
-    }
-
-    // -----------------------------------------------------------------
-    // GET /neev/teams/{team}/rules — get the team's rules
-    // -----------------------------------------------------------------
-
-    public function test_member_can_get_the_team_rules(): void
-    {
-        [$owner, $token] = $this->authenticatedUser();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $team->allUsers()->attach($owner, ['joined' => true]);
-        $team->authSettings()->create(['require_mfa' => true]);
-
-        $this->bearer($token)
-            ->getJson("/neev/teams/{$team->id}/rules")
-            ->assertOk()
-            ->assertJsonPath('data', [['name' => 'mfa', 'value' => true]]);
-    }
-
-    public function test_a_team_without_settings_has_every_rule_off(): void
-    {
-        [$owner, $token] = $this->authenticatedUser();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-        $team->allUsers()->attach($owner, ['joined' => true]);
-
-        $this->bearer($token)
-            ->getJson("/neev/teams/{$team->id}/rules")
-            ->assertOk()
-            ->assertJsonPath('data', [['name' => 'mfa', 'value' => false]]);
-    }
-
-    public function test_non_member_cannot_get_the_team_rules(): void
-    {
-        [, $token] = $this->authenticatedUser();
-
-        $owner = User::factory()->create();
-        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
-
-        $this->bearer($token)
-            ->getJson("/neev/teams/{$team->id}/rules")
-            ->assertForbidden()
-            ->assertJsonPath('message', 'You do not have the required permissions to get domain rules.');
-    }
-
-    public function test_getting_the_rules_of_a_missing_team_is_not_found(): void
-    {
-        [, $token] = $this->authenticatedUser();
-
-        $this->bearer($token)
-            ->getJson('/neev/teams/99999/rules')
-            ->assertNotFound();
     }
 
     // -----------------------------------------------------------------
@@ -793,8 +744,8 @@ class DomainFederationTest extends TestCase
     }
 
     /**
-     * A new token unverifies the domain; publishing it under the email record
-     * name verifies it again.
+     * A new token leaves the domain verified; publishing it under the email
+     * record name is what verifies it from then on.
      */
     public function test_verifying_again_after_a_new_token_reads_the_new_record(): void
     {
@@ -807,7 +758,7 @@ class DomainFederationTest extends TestCase
             ->assertOk()
             ->json('dns_record.value');
 
-        $this->assertNull($domain->fresh()->verified_at);
+        $this->assertNotNull($domain->fresh()->verified_at);
 
         FakeDns::txt('_neev-email.acme.com', $newToken);
 
@@ -932,16 +883,16 @@ class DomainFederationTest extends TestCase
     }
 
     /**
-     * A new token unverifies the domain but leaves the members it deactivated
-     * as they were. Deleting it then must still give their accounts back, or
-     * nothing is left that could.
+     * Unverifying the domain leaves the members it deactivated as they were.
+     * Deleting it then must still give their accounts back, or nothing is
+     * left that could.
      */
-    public function test_deleting_a_domain_a_new_token_unverified_reactivates_the_members_it_deactivated(): void
+    public function test_deleting_an_unverified_domain_reactivates_the_members_it_deactivated(): void
     {
         [$owner, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $team->addMember($owner);
-        $domain = EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.com']);
+        $domain = EmailDomainFactory::new()->verified()->enforced()->forOwner($team)->create(['domain' => 'acme.com']);
         $member = User::factory()->create(['active' => true, 'email' => 'bob@acme.com']);
         $team->addMember($member);
 
@@ -949,9 +900,7 @@ class DomainFederationTest extends TestCase
             ->putJson('/neev/teams/leave', ['team_id' => $team->id, 'user_id' => $member->id])
             ->assertJsonPath('message', 'User Deactivated Successfully');
 
-        $this->bearer($token)
-            ->postJson("/neev/email-domains/{$domain->id}/token")
-            ->assertOk();
+        $domain->unverifyFailed();
 
         $this->bearer($token)
             ->deleteJson('/neev/email-domains/' . $domain->id)

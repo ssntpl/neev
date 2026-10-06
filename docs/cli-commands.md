@@ -270,9 +270,9 @@ php artisan neev:hostname:verify --all
 | `host` | The host to verify (optional when using `--all`) |
 | `--all` | Re-check every verified or failing host |
 
-Looks up `_neev-host.{host}` and matches the TXT value against the stored token. A host has no `--force`: it serves real traffic, so only its record proves it. A match fires `DomainVerified` for a pending host, or `DomainReverified` for one whose record had gone missing.
+Looks up `_neev-host.{host}` and matches the TXT value against the stored token. A disabled host is refused (`Host is disabled: {host}`) without a lookup. A host has no `--force`: it serves real traffic, so only its record proves it. A match fires `DomainVerified` for a pending host, or `DomainReverified` for one whose record had gone missing.
 
-`--all` queues a `VerifyDomainJob` per verified host and per host already unverified for a missing record. The job skips a host that a new token turned back into a pending claim; verify that one without `--all`.
+`--all` queues a `VerifyDomainJob` per verified host and per host already unverified for a missing record. The job skips a pending host; verify that one without `--all`.
 
 ### `neev:hostname:primary`
 
@@ -367,7 +367,7 @@ Looks up `_neev-email.{domain}` and matches the TXT value against the stored tok
 
 When more than one owner has claimed the domain, the command lists the claims and exits without verifying any; pass `--owner-type` and `--owner-id` to choose one.
 
-`--force` here and `--skip-verification` on `neev:email-domain:add` exist only for email domains. They record the row with `verification_strategy = manual`, clear any earlier failure, and fire `DomainVerified` (or `DomainReverified` for a row that had failed). The daily re-check skips a `manual` row, since it has no record to check. Issuing a new token makes it `dns` again.
+`--force` here and `--skip-verification` on `neev:email-domain:add` exist only for email domains. They record the row with `verification_strategy = manual`, clear any earlier failure, and fire `DomainVerified` (or `DomainReverified` for a row that had failed). The daily re-check skips a `manual` row, since it has no record to check. Issuing a new token makes it `dns` again. A disabled domain is refused, with or without `--force` (`Domain is disabled: {domain}`): neither DNS nor an operator revives it.
 
 `--all` queues a `VerifyDomainJob` per verified email domain and per one already unverified for a missing record. The job skips a pending claim and a `manual` row.
 

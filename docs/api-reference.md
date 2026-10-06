@@ -1706,8 +1706,8 @@ Authorization: Bearer {token}
 
 ## Team Management
 
-> These endpoints, and the [Team Rules](#team-rules), [Hostnames](#hostnames)
-> and [Email Domains](#email-domains) ones, are registered only when
+> These endpoints, and the [Hostnames](#hostnames) and
+> [Email Domains](#email-domains) ones, are registered only when
 > `'team' => true` in `config/neev.php`. With teams off they answer 404.
 > [Get Current Context](#get-current-context) is registered either way.
 
@@ -1997,12 +1997,13 @@ Authorization: Bearer {token}
 ```
 
 Send `user_id` as well to remove another member. A member whose email is on
-one of the team's verified domains is deactivated rather than removed
-(`User Deactivated Successfully`; again, `User Activated Successfully`). An
-unverified domain manages nobody: a member on it is removed
-(`Removed Successfully`), and a deactivated member whose email is on a domain
-the team still holds, such as one a new token has unverified, is reactivated as
-they are removed. If another team the member belongs to also holds a claim on
+one of the team's verified and enforced domains is deactivated rather than
+removed (`User Deactivated Successfully`; again, `User Activated Successfully`),
+and cannot leave on their own. A domain that is not enforced, or not verified,
+manages nobody: a member on it is removed (`Removed Successfully`) and may
+leave, and a deactivated member whose email is on a domain the team still
+holds, such as one whose enforcement was turned off or one the re-check has
+unverified, is reactivated as they are removed. If another team the member belongs to also holds a claim on
 that domain, the account is left deactivated: Neev does not record which team
 deactivated it, and it may have been that one.
 
@@ -2016,7 +2017,7 @@ detached, never deactivated.
   named user has no membership in the team; or the caller is not a member and
   is not withdrawing their own pending membership.
 - `403 You cannot leave a team your email domain manages.` — the caller names
-  themselves and their email is on one of the team's verified domains.
+  themselves and their email is on one of the team's enforced, verified domains.
 
 ---
 
@@ -2079,7 +2080,7 @@ Authorization: Bearer {token}
 
 `reject` declines a membership not yet joined. It does not remove a joined
 member — that is [Leave Team](#leave-team), which keeps the owner and
-deactivates a member on a verified domain — and answers `400 Request not found`
+deactivates a member on an enforced domain — and answers `400 Request not found`
 for one.
 
 ---
@@ -2153,88 +2154,6 @@ to is answered exactly like one that does not exist.
 > attached to the team but has `joined = false`. Their role may still be
 > changed — `addMember()` grants roles to pending rows too, so the role is
 > live before they accept. See [Roles & Permissions](./roles-permissions.md).
-
----
-
-## Team Rules
-
-### Get Team Rules
-
-```http
-GET /neev/teams/{team}/rules
-```
-
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
-
-Any joined member may read the rules.
-
-**Response:**
-
-```json
-{
-    "data": [
-        { "name": "mfa", "value": false }
-    ]
-}
-```
-
-`data` lists every rule by `name`. A team that has never set one reads as all
-off. `mfa` is stored as `require_mfa` on `team_auth_settings`.
-
-> **Not enforced yet.** `mfa` is stored and returned, but login does not
-> require MFA for the team's members yet.
-
-**Errors:**
-
-| Status | Message |
-|--------|---------|
-| 403 | `You do not have the required permissions to get domain rules.` — the caller is not a member |
-| 404 | No team with that id |
-
----
-
-### Update Team Rules
-
-```http
-PUT /neev/teams/{team}/rules
-```
-
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
-
-**Request Body:**
-
-```json
-{
-    "mfa": true
-}
-```
-
-Only the team owner may change the rules. Only the rules named in the body
-change; an empty body changes nothing. Each value is read as a boolean.
-
-**Response:**
-
-```json
-{
-    "message": "Domain Rules have been updated.",
-    "data": [
-        { "name": "mfa", "value": true }
-    ]
-}
-```
-
-**Errors:**
-
-| Status | Message |
-|--------|---------|
-| 403 | `You do not have the required permissions to update domain rules.` — the caller is not the owner |
-| 404 | No team with that id |
 
 ---
 
@@ -2350,7 +2269,7 @@ Publish `dns_record`, then call [Verify Hostname](#verify-hostname).
 | Status | Message |
 |--------|---------|
 | 403 | `You do not have permission to do this.` — the caller is not the owner |
-| 422 | `The domain must be a host name.` — `host` is missing, not a string, over 255 characters, or not a host name once canonicalised (a URL, path, port, space, single label, IP address, or a numeric last label) |
+| 422 | `The host must be a host name.` — `host` is missing, not a string, over 255 characters, or not a host name once canonicalised (a URL, path, port, space, single label, IP address, or a numeric last label) |
 | 422 | `A host under the platform domain follows the slug and cannot be added.` |
 | 422 | `This team has already added this host.` |
 | 422 | `This host cannot be added.` — another owner holds the host, verified or not. The message does not say so, since that owner may be in another tenant |
@@ -2432,7 +2351,8 @@ Team owner only. Rate limited (`neev-dns`). Looks up the TXT record at
 
 | Status | Message |
 |--------|---------|
-| 400 | `DNS verification failed. Please check your DNS record.` — no matching record, or the hostname is disabled |
+| 400 | `DNS verification failed. Please check your DNS record.` — no matching record |
+| 400 | `This host is disabled.` — the app disabled the host; DNS does not bring it back |
 | 403 | `You do not have permission to do this.` — the caller is not the owner |
 | 404 | No hostname with that id |
 | 429 | Rate limit reached |
@@ -2445,8 +2365,9 @@ Team owner only. Rate limited (`neev-dns`). Looks up the TXT record at
 POST /neev/hostnames/{hostname}/token
 ```
 
-Team owner only. Rate limited (`neev-dns`). Issues a new token and sets the row
-back to `pending`: the host stops serving until the new record is verified.
+Team owner only. Rate limited (`neev-dns`). Issues a new token and changes
+nothing else: a verified host keeps serving, and the daily re-check holds it to
+the new record, so publish it before then.
 
 **Response:**
 
@@ -2637,9 +2558,9 @@ Team owner only. Rate limited (`neev-dns`).
 
 A domain the team does not hold yet is created `pending` with a new token
 (`201`, `Email domain added.`). One it already holds gets a new token instead
-(`200`, `Verification token issued.`): it goes back to `pending` and stops
-counting until the new record is verified, and its `enforce` is set to the
-value sent, `false` when omitted.
+(`200`, `Verification token issued.`): it keeps its status, the daily re-check
+holds it to the new record, and its `enforce` is set to the value sent, `false`
+when omitted.
 
 **Response (`201`):**
 
@@ -2767,23 +2688,31 @@ POST /neev/email-domains/{emailDomain}/verify
 
 Team owner only. Rate limited (`neev-dns`). Looks up the TXT record at
 `_neev-email.<domain>` and, if it carries the token, marks the row `verified`.
-If the row asks to enforce but another owner's verified row already enforces
-the domain, it is verified with `enforce` turned off.
+Only the first owner to verify and enforce a domain keeps enforcing it: if the
+row asks to enforce but another owner's verified row already enforces the
+domain, it is still verified, with `enforce` turned off. The response then says
+so (`enforce_dropped: true`) and `EmailDomainEnforceDropped` fires.
 
 **Response:**
 
 ```json
 {
     "message": "Email domain verified.",
-    "data": { "id": 3, "domain": "acme.com", "status": "verified", "...": "..." }
+    "data": { "id": 3, "domain": "acme.com", "enforce": true, "status": "verified", "...": "..." },
+    "enforce_dropped": false
 }
 ```
+
+When `enforce` was turned off, `message` is `Email domain verified. Another
+owner already enforces this domain, so enforce was turned off.`,
+`data.enforce` is `false` and `enforce_dropped` is `true`.
 
 **Errors:**
 
 | Status | Message |
 |--------|---------|
-| 400 | `DNS verification failed. Please check your DNS record.` — no matching record, or the domain is disabled |
+| 400 | `DNS verification failed. Please check your DNS record.` — no matching record |
+| 400 | `This domain is disabled.` — the app disabled the domain; DNS does not bring it back |
 | 403 | `You do not have permission to do this.` — the caller is not the owner |
 | 404 | No email domain with that id |
 | 429 | Rate limit reached |
@@ -2796,9 +2725,9 @@ the domain, it is verified with `enforce` turned off.
 POST /neev/email-domains/{emailDomain}/token
 ```
 
-Team owner only. Rate limited (`neev-dns`). Issues a new token and sets the row
-back to `pending`: the domain stops counting until the new record is verified.
-`enforce` is kept.
+Team owner only. Rate limited (`neev-dns`). Issues a new token and changes
+nothing else: a verified domain keeps counting, and the daily re-check holds it
+to the new record, so publish it before then. `enforce` is kept.
 
 **Response:**
 

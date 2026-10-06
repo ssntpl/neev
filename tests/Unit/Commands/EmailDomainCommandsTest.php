@@ -327,6 +327,47 @@ class EmailDomainCommandsTest extends TestCase
         Event::assertNotDispatched(DomainVerified::class);
     }
 
+    public function test_verify_refuses_a_disabled_domain_even_with_force(): void
+    {
+        Event::fake([DomainVerified::class, DomainReverified::class]);
+        $domain = EmailDomainFactory::new()->create(['domain' => 'acme.com', 'verification_token' => 'published']);
+        $domain->disable();
+        FakeDns::txt('_neev-email.acme.com', 'published');
+
+        foreach ([[], ['--force' => true]] as $options) {
+            $this->artisan('neev:email-domain:verify', ['domain' => 'acme.com'] + $options)
+                ->expectsOutputToContain('Domain is disabled: acme.com')
+                ->assertFailed();
+        }
+
+        $domain->refresh();
+        $this->assertSame(EmailDomain::STATUS_DISABLED, $domain->status);
+        $this->assertFalse($domain->isVerified());
+        $this->assertSame(EmailDomain::STRATEGY_DNS, $domain->verification_strategy);
+        Event::assertNotDispatched(DomainVerified::class);
+        Event::assertNotDispatched(DomainReverified::class);
+    }
+
+    public function test_verify_warns_when_another_owner_already_enforces(): void
+    {
+        $team = TeamFactory::new()->create();
+        $pending = $team->federateDomain('acme.com', true);
+        EmailDomainFactory::new()->verified()->create(['domain' => 'acme.com', 'enforce' => true]);
+
+        $this->artisan('neev:email-domain:verify', [
+            'domain' => 'acme.com',
+            '--owner-type' => 'team',
+            '--owner-id' => $team->id,
+            '--force' => true,
+        ])
+            ->expectsOutputToContain('Domain force-verified: acme.com')
+            ->expectsOutputToContain('Another owner already enforces this domain, so enforce was turned off.')
+            ->assertSuccessful();
+
+        $this->assertTrue($pending->fresh()->isVerified());
+        $this->assertFalse($pending->fresh()->enforce);
+    }
+
     public function test_add_refuses_to_enforce_a_domain_another_owner_enforces(): void
     {
         EmailDomainFactory::new()->verified()->create(['domain' => 'acme.com', 'enforce' => true]);

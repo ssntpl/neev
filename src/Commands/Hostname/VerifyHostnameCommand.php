@@ -39,6 +39,13 @@ class VerifyHostnameCommand extends Command
             return self::FAILURE;
         }
 
+        // The app disabled it: DNS does not bring it back.
+        if ($hostname->status === Hostname::STATUS_DISABLED) {
+            $this->error("Host is disabled: {$host}");
+
+            return self::FAILURE;
+        }
+
         $this->line("Checking DNS TXT record: {$hostname->getDnsRecordName()}");
 
         if ($hostname->verify()) {

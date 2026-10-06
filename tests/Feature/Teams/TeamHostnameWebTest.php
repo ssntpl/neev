@@ -218,7 +218,7 @@ class TeamHostnameWebTest extends TestCase
         $this->assertNull($team->fresh()->primary_hostname_id);
     }
 
-    public function test_the_owner_gets_a_new_token_that_unverifies_the_host(): void
+    public function test_the_owner_gets_a_new_token_and_the_host_keeps_serving(): void
     {
         [$team, $owner] = $this->teamWithOwner();
         $hostname = $this->verifiedHost($team, 'app.acme.com');
@@ -233,7 +233,21 @@ class TeamHostnameWebTest extends TestCase
         $hostname->refresh();
         $this->assertNotSame($oldToken, $hostname->verification_token);
         $this->assertSame(session('token'), $hostname->verification_token);
-        $this->assertFalse($hostname->isVerified());
+        $this->assertTrue($hostname->isVerified());
+    }
+
+    public function test_verifying_a_disabled_host_says_it_is_disabled(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $hostname = $team->claimHost('app.acme.com');
+        $hostname->disable();
+
+        $this->actingAs($owner)
+            ->from(route('teams.hostnames', $team->id))
+            ->put(route('teams.hostnames.update', $hostname->id), ['verify' => 'verify'])
+            ->assertSessionHasErrors(['message' => 'This host is disabled.']);
+
+        $this->assertSame(Hostname::STATUS_DISABLED, $hostname->fresh()->status);
     }
 
     public function test_a_new_token_for_a_disabled_host_is_refused(): void

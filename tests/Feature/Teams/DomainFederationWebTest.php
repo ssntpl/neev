@@ -68,39 +68,6 @@ class DomainFederationWebTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // PUT /teams/{team}/rules — the team's rules
-    // -----------------------------------------------------------------
-
-    public function test_the_owner_sets_the_teams_rules_and_an_unticked_box_clears_one(): void
-    {
-        [$team, $owner] = $this->teamWithOwner();
-
-        $this->actingAs($owner)
-            ->from(config('neev.home'))
-            ->put(route('teams.rules', $team->id), ['mfa' => 'on'])
-            ->assertSessionHas('status', 'Domain Rules have been updated.');
-        $this->assertTrue($team->authSettings()->sole()->require_mfa);
-
-        $this->actingAs($owner)
-            ->from(config('neev.home'))
-            ->put(route('teams.rules', $team->id), []);
-        $this->assertFalse($team->authSettings()->sole()->require_mfa);
-    }
-
-    public function test_a_member_cannot_set_the_teams_rules(): void
-    {
-        [$team] = $this->teamWithOwner();
-        $member = User::factory()->create();
-        $team->addMember($member);
-
-        $this->actingAs($member)
-            ->from(config('neev.home'))
-            ->put(route('teams.rules', $team->id), ['mfa' => 'on'])
-            ->assertSessionHasErrors('message');
-        $this->assertNull($team->authSettings()->first());
-    }
-
-    // -----------------------------------------------------------------
     // POST /teams/{team}/email-domains — federate
     // -----------------------------------------------------------------
 
@@ -156,7 +123,7 @@ class DomainFederationWebTest extends TestCase
         $this->assertSame(0, EmailDomain::count());
     }
 
-    public function test_refederating_a_verified_domain_unverifies_it(): void
+    public function test_refederating_a_verified_domain_keeps_it_verified(): void
     {
         [$team, $owner] = $this->teamWithOwner();
         $domain = EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.com']);
@@ -166,7 +133,7 @@ class DomainFederationWebTest extends TestCase
             ->post(route('teams.email-domains.store', $team->id), ['domain' => 'acme.com'])
             ->assertSessionHasNoErrors();
 
-        $this->assertNull($domain->fresh()->verified_at);
+        $this->assertNotNull($domain->fresh()->verified_at);
     }
 
     public function test_a_member_cannot_federate_a_domain(): void
@@ -201,6 +168,22 @@ class DomainFederationWebTest extends TestCase
         $this->assertSame($token, $domain->fresh()->verification_token);
     }
 
+    public function test_verify_warns_when_another_owner_already_enforces(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $pending = $team->federateDomain('acme.com', true);
+        EmailDomainFactory::new()->verified()->create(['domain' => 'acme.com', 'enforce' => true]);
+        FakeDns::txt('_neev-email.acme.com', $pending->verification_token);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->put(route('teams.email-domains.update', $pending->id), ['verify' => 'verify'])
+            ->assertSessionHas('status', 'Domain verified. Another owner already enforces this domain, so enforce was turned off.');
+
+        $this->assertTrue($pending->fresh()->isVerified());
+        $this->assertFalse($pending->fresh()->enforce);
+    }
+
     public function test_federating_with_enforce_a_domain_another_owner_enforces_is_refused(): void
     {
         [$team, $owner] = $this->teamWithOwner();
@@ -233,7 +216,7 @@ class DomainFederationWebTest extends TestCase
     // PUT /teams/email-domains/{domain} — token and verify
     // -----------------------------------------------------------------
 
-    public function test_a_new_token_unverifies_the_domain_and_flashes_the_record_name(): void
+    public function test_a_new_token_keeps_the_domain_verified_and_flashes_the_record_name(): void
     {
         [$team, $owner] = $this->teamWithOwner();
         $domain = EmailDomainFactory::new()->verified()->forOwner($team)->create([
@@ -248,8 +231,8 @@ class DomainFederationWebTest extends TestCase
             ->assertSessionHas('token');
 
         $domain->refresh();
-        $this->assertNull($domain->verified_at);
-        $this->assertNull($domain->verification_failed_at);
+        $this->assertNotNull($domain->verified_at);
+        $this->assertNotNull($domain->verification_failed_at);
     }
 
     /**
@@ -306,6 +289,22 @@ class DomainFederationWebTest extends TestCase
             ->assertSessionHasErrors(['message' => 'DNS record not found. Please try again later.']);
 
         $this->assertNull($domain->fresh()->verified_at);
+    }
+
+    public function test_verifying_a_disabled_domain_says_it_is_disabled(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $domain = EmailDomainFactory::new()->forOwner($team)->create([
+            'domain' => 'acme.com',
+            'status' => EmailDomain::STATUS_DISABLED,
+        ]);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->put(route('teams.email-domains.update', $domain->id), ['verify' => 'verify'])
+            ->assertSessionHasErrors(['message' => 'This domain is disabled.']);
+
+        $this->assertSame(EmailDomain::STATUS_DISABLED, $domain->fresh()->status);
     }
 
     public function test_a_new_token_for_a_disabled_domain_is_refused(): void
@@ -462,11 +461,11 @@ class DomainFederationWebTest extends TestCase
             ->assertSessionHas('status', 'Invite link sent successfully.');
     }
 
-    public function test_leave_deactivates_a_member_on_a_second_verified_domain(): void
+    public function test_leave_deactivates_a_member_on_a_second_enforced_domain(): void
     {
         [$team, $owner] = $this->teamWithOwner();
         EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.com']);
-        EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.io']);
+        EmailDomainFactory::new()->verified()->enforced()->forOwner($team)->create(['domain' => 'acme.io']);
         $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.io']);
         $team->addMember($member);
 
@@ -479,11 +478,11 @@ class DomainFederationWebTest extends TestCase
         $this->assertTrue($team->refresh()->hasMember($member));
     }
 
-    public function test_a_member_on_a_verified_domain_cannot_leave_and_deactivate_themselves(): void
+    public function test_a_member_on_an_enforced_domain_cannot_leave_and_deactivate_themselves(): void
     {
         [$team] = $this->teamWithOwner();
         EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com']);
-        EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.io']);
+        EmailDomainFactory::new()->verified()->enforced()->forOwner($team)->create(['domain' => 'acme.io']);
         $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.io']);
         $team->addMember($member);
 
@@ -494,6 +493,38 @@ class DomainFederationWebTest extends TestCase
 
         $this->assertTrue($member->fresh()->active);
         $this->assertTrue($team->refresh()->hasMember($member));
+    }
+
+    public function test_leave_removes_a_member_on_a_verified_domain_that_is_not_enforced(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.com']);
+        $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.com']);
+        $team->addMember($member);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue($member->fresh()->active);
+        $this->assertFalse($team->refresh()->hasMember($member));
+    }
+
+    public function test_a_member_on_a_verified_domain_that_is_not_enforced_may_leave(): void
+    {
+        [$team] = $this->teamWithOwner();
+        EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.com']);
+        $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.com']);
+        $team->addMember($member);
+
+        $this->actingAs($member)
+            ->from(config('neev.home'))
+            ->delete(route('teams.leave'), ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue($member->fresh()->active);
+        $this->assertFalse($team->refresh()->hasMember($member));
     }
 
     public function test_leave_refuses_to_deactivate_a_user_who_is_not_a_member(): void
@@ -574,11 +605,11 @@ class DomainFederationWebTest extends TestCase
             ->assertSee('Are you sure you want to leave the team?');
     }
 
-    public function test_account_teams_page_does_not_offer_leave_to_a_member_on_a_verified_domain(): void
+    public function test_account_teams_page_does_not_offer_leave_to_a_member_on_an_enforced_domain(): void
     {
         [$team] = $this->teamWithOwner();
         EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com']);
-        EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.io']);
+        EmailDomainFactory::new()->verified()->enforced()->forOwner($team)->create(['domain' => 'acme.io']);
         $member = User::factory()->create(['email' => 'employee@acme.io']);
         $team->addMember($member);
 
@@ -588,11 +619,24 @@ class DomainFederationWebTest extends TestCase
             ->assertDontSee('Are you sure you want to leave the team?');
     }
 
-    public function test_members_page_offers_deactivate_for_a_member_on_a_second_verified_domain(): void
+    public function test_account_teams_page_offers_leave_on_a_verified_domain_that_is_not_enforced(): void
+    {
+        [$team] = $this->teamWithOwner();
+        EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.io']);
+        $member = User::factory()->create(['email' => 'employee@acme.io']);
+        $team->addMember($member);
+
+        $this->actingAs($member)
+            ->get(route('account.teams'))
+            ->assertOk()
+            ->assertSee('Are you sure you want to leave the team?');
+    }
+
+    public function test_members_page_offers_deactivate_for_a_member_on_a_second_enforced_domain(): void
     {
         [$team, $owner] = $this->teamWithOwner();
         EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com']);
-        EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.io']);
+        EmailDomainFactory::new()->verified()->enforced()->forOwner($team)->create(['domain' => 'acme.io']);
         $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.io']);
         $team->addMember($member);
 
@@ -601,6 +645,20 @@ class DomainFederationWebTest extends TestCase
             ->assertOk()
             ->assertSee('Deactivate')
             ->assertDontSee('Remove');
+    }
+
+    public function test_members_page_offers_remove_for_a_member_on_a_verified_domain_that_is_not_enforced(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.io']);
+        $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.io']);
+        $team->addMember($member);
+
+        $this->actingAs($owner)
+            ->get(route('teams.members', $team->id))
+            ->assertOk()
+            ->assertSee('Remove')
+            ->assertDontSee('Deactivate');
     }
 
     public function test_join_request_is_refused_when_a_second_verified_domain_is_enforced(): void

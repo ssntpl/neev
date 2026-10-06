@@ -262,14 +262,28 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
     }
 
     /**
-     * Whether the email is on one of the team's verified email domains, which
-     * then manages that member: removing them deactivates their account.
+     * Whether the email is on one of the team's verified email domains. Such a
+     * member may be invited while a domain is enforced; their account is managed
+     * only when the domain is enforced (managesAccountOf()).
      */
     public function hasVerifiedDomainFor(string $email): bool
     {
         $domain = EmailDomain::domainOfEmail($email);
 
         return $this->emailDomains->contains(fn (EmailDomain $d) => $d->isVerified() && $d->domain === $domain);
+    }
+
+    /**
+     * Whether the team manages the account of a user at this email: one of its
+     * verified email domains for it is enforced. Deactivating is account-wide
+     * and verifying is not exclusive, so only enforcing, which one owner at a
+     * time may do, lets a team deactivate or reactivate the account.
+     */
+    public function managesAccountOf(string $email): bool
+    {
+        $domain = EmailDomain::domainOfEmail($email);
+
+        return $this->emailDomains->contains(fn (EmailDomain $d) => $d->enforce && $d->isVerified() && $d->domain === $domain);
     }
 
     /**

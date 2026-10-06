@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Ssntpl\Neev\Events\EmailDomainEnforceDropped;
 use Ssntpl\Neev\Exceptions\EmailDomainEnforcedException;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Traits\VerifiesWithDns;
@@ -22,7 +23,8 @@ use Ssntpl\Neev\Traits\VerifiesWithDns;
  * Enforcing is exclusive: only one owner's verified row may enforce a domain.
  * Asking to enforce one another owner enforces throws
  * EmailDomainEnforcedException; a row that enforces when it becomes verified
- * while another owner already enforces stops enforcing instead.
+ * while another owner already enforces stops enforcing instead, and
+ * EmailDomainEnforceDropped fires: the first to verify and enforce keeps it.
  *
  * `verification_strategy` says how it was proven: `dns`, or `manual` when an
  * operator vouched for it from the CLI. A manual row has no record to re-check,
@@ -60,6 +62,10 @@ class EmailDomain extends Model
         'enforce',
     ];
 
+    protected $attributes = [
+        'status' => self::STATUS_PENDING,
+    ];
+
     protected $hidden = [
         'verification_token',
     ];
@@ -70,11 +76,19 @@ class EmailDomain extends Model
         'verification_failed_at' => 'datetime',
     ];
 
+    /**
+     * Whether the last save turned `enforce` off because another owner
+     * already enforces the domain.
+     */
+    protected bool $enforceDropped = false;
+
     protected static function booted(): void
     {
         // A new token is proven by its record, whoever vouched for the old one,
         // unless the same save sets the strategy itself.
         static::saving(function (EmailDomain $domain) {
+            $domain->enforceDropped = false;
+
             if ($domain->isDirty('verification_token') && ! $domain->isDirty('verification_strategy')) {
                 $domain->verification_strategy = self::STRATEGY_DNS;
             }
@@ -84,9 +98,28 @@ class EmailDomain extends Model
                     throw new EmailDomainEnforcedException();
                 }
 
+                // Becoming verified: the first owner to verify and enforce
+                // keeps enforcing; this one is verified without it.
                 $domain->enforce = false;
+                $domain->enforceDropped = true;
             }
         });
+
+        static::saved(function (EmailDomain $domain) {
+            if ($domain->enforceDropped) {
+                event(new EmailDomainEnforceDropped($domain));
+            }
+        });
+    }
+
+    /**
+     * Whether the last save turned `enforce` off because another owner's
+     * verified row already enforces the domain. Verifying still succeeds, so
+     * callers check this to warn the owner.
+     */
+    public function enforceWasDropped(): bool
+    {
+        return $this->enforceDropped;
     }
 
     /**
@@ -185,7 +218,7 @@ class EmailDomain extends Model
 
     /**
      * Delete this claim. A team's claim gives back the accounts it
-     * deactivated first, whether or not a new token has unverified it since:
+     * deactivated first, whether or not it has been unverified since:
      * with the claim gone nothing manages those members, and nothing would be
      * left to reactivate them. One transaction, so a failed step does not
      * leave the claim deleted and the rest undone.

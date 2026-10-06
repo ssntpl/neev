@@ -66,6 +66,10 @@ class TeamHostnameController extends Controller
         }
 
         if ($request->verify) {
+            if ($hostname->status === Hostname::STATUS_DISABLED) {
+                return back()->withErrors(['message' => 'This host is disabled.']);
+            }
+
             return $hostname->verify()
                 ? back()->with('status', 'Host verified successfully!')
                 : back()->withErrors(['message' => 'DNS record not found. Please try again later.']);

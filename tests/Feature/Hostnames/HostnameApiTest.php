@@ -265,7 +265,7 @@ class HostnameApiTest extends TestCase
         $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson('/neev/teams/' . $team->id . '/hostnames', ['host' => ' . . '])
             ->assertStatus(422)
-            ->assertJsonValidationErrors(['host' => 'The domain must be a host name.']);
+            ->assertJsonValidationErrors(['host' => 'The host must be a host name.']);
 
         $this->assertSame(0, Hostname::count());
     }
@@ -578,7 +578,7 @@ class HostnameApiTest extends TestCase
 
     /**
      * A host copied from `domains` with no token is issued one like any other;
-     * it goes back to pending until the new record is checked.
+     * it keeps serving, and the re-check holds it to the new record.
      */
     public function test_token_is_issued_for_a_host_with_no_token(): void
     {
@@ -596,11 +596,11 @@ class HostnameApiTest extends TestCase
 
         $hostname->refresh();
         $this->assertNotNull($hostname->verification_token);
-        $this->assertNull($hostname->verified_at);
+        $this->assertTrue($hostname->isVerified());
         $response->assertJsonPath('dns_record.value', $hostname->verification_token);
     }
 
-    public function test_token_restarts_the_claim(): void
+    public function test_token_changes_only_the_token(): void
     {
         [$user, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $user->id]);
@@ -615,9 +615,9 @@ class HostnameApiTest extends TestCase
             ->assertOk();
 
         $hostname->refresh();
-        $this->assertNull($hostname->verified_at);
-        $this->assertNull($hostname->verification_failed_at);
-        $this->assertSame(Hostname::STATUS_PENDING, $hostname->status);
+        $this->assertNotNull($hostname->verified_at);
+        $this->assertNotNull($hostname->verification_failed_at);
+        $this->assertSame(Hostname::STATUS_VERIFIED, $hostname->status);
         $this->assertNotSame('old', $hostname->verification_token);
         $response->assertJsonPath('data.id', $hostname->id)
             ->assertJsonPath('dns_record', [
@@ -686,6 +686,22 @@ class HostnameApiTest extends TestCase
             ->assertJsonPath('message', 'Only a verified host can be primary.');
 
         $this->assertNull($team->fresh()->primary_hostname_id);
+    }
+
+    public function test_verifying_a_disabled_host_says_it_is_disabled(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        $hostname = $team->claimHost('app.example.com');
+        $hostname->disable();
+        FakeDns::txt('_neev-host.app.example.com', $hostname->verification_token);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/hostnames/' . $hostname->id . '/verify')
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'This host is disabled.');
+
+        $this->assertSame(Hostname::STATUS_DISABLED, $hostname->fresh()->status);
     }
 
     public function test_a_disabled_host_gets_no_new_token(): void

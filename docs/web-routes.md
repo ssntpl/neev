@@ -339,7 +339,6 @@ counterpart (`PUT /neev/teams/request`) allows any member — see
 | POST | `/teams/{team}/email-domains` | `teams.email-domains.store` | Add a domain (`domain`, `enforce`), or re-issue its token |
 | PUT | `/teams/email-domains/{domain}` | `teams.email-domains.update` | `verify` checks the record, `token` issues a new one; otherwise sets `enforce` |
 | DELETE | `/teams/email-domains/{domain}` | `teams.email-domains.destroy` | Delete, reactivating the members it deactivated |
-| PUT | `/teams/{team}/rules` | `teams.rules` | Set the team's rules (`mfa`) |
 
 Members may open `teams.email-domains`; every change is the owner's. The
 left-section **Email Domains** link is shown to the owner only. Adding a domain
@@ -348,11 +347,6 @@ the page shows the TXT record to publish at `_neev-email.{domain}`. Enforcing a
 domain another owner enforces is refused with
 `Another owner already enforces this email domain.` See
 [teams.md](./teams.md#email-domains).
-
-`teams.rules` sets every rule from the form, so an unchecked box turns its rule
-off. `require_mfa` is stored but not enforced at login yet. The rules card on
-the shipped `email-domains` page is commented out, so the route has no form
-until you restore it.
 
 ---
 

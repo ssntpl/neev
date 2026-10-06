@@ -676,15 +676,6 @@ public function handle($request, $next)
 }
 ```
 
-### Domain-Based MFA Requirement
-
-When domain federation is enabled, you can require MFA for specific domains:
-
-```php
-// Domain rules include MFA enforcement
-$domain->rules()->where('name', 'mfa')->first();
-```
-
 ---
 
 ## Troubleshooting

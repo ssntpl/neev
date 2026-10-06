@@ -41,40 +41,16 @@ For each `domains` row with an owner:
 - **`is_primary`**, on a row that became a hostname: set the owner's
   `primary_hostname_id` to that hostname.
 
-- **A `domain_rules` row named `mfa`**: set `require_mfa` on the owner's
-  `team_auth_settings` or `tenant_auth_settings` row (see below for adding the
-  column). A rule is the owner's, not one domain's, so set it if any of the
-  owner's domains had it on.
-
 The models store the canonical spelling (`ACME.com.` becomes `acme.com`), so
 create rows through them rather than inserting raw values. `domains` stays in
 place, read-only, for this release, and is dropped in the next one. A fresh
-install no longer creates `domain_rules`; on an upgraded install, drop it once
-the rules are copied:
+install no longer creates `domain_rules`, and its `mfa` rule is removed without
+a replacement (Neev wrote it and never enforced it). On an upgraded install,
+drop the table:
 
 ```php
 Schema::dropIfExists('domain_rules');
 ```
-
-**Owner rules move to `require_mfa` on the auth settings (action required on an
-existing install).**
-The `mfa` rule was a `domain_rules` row per domain, which Neev wrote and never
-read. It is now one column per owner, `require_mfa`, on
-`team_auth_settings` and `tenant_auth_settings`. The column is added to the
-original create migrations, which an upgraded install has already run, so add
-it with a migration of your own:
-
-```php
-foreach (['team_auth_settings', 'tenant_auth_settings'] as $table) {
-    Schema::table($table, function (Blueprint $table) {
-        $table->boolean('require_mfa')->default(false);
-    });
-}
-```
-
-`require_mfa` is stored and returned by the rules endpoints, but Neev does not
-enforce it at sign-in yet. If you need it enforced now, check it in your own
-middleware.
 
 **The domain endpoints are replaced (action required for API clients).**
 `{prefix}/domains` and `{prefix}/tenant-domains` are gone. Hosts and email
@@ -90,7 +66,7 @@ domains have their own resources, addressed by ID in the path instead of a
 | `PUT /domains` with `token` | `POST /email-domains/{id}/token` or `POST /hostnames/{id}/token` |
 | `DELETE /domains` (`domain_id`) | `DELETE /email-domains/{id}` or `DELETE /hostnames/{id}` |
 | `PUT /domains/primary` | `POST /hostnames/{id}/primary` (verified hosts only) |
-| `GET` / `PUT /domains/rules` (`domain_id`) | `GET` / `PUT /teams/{team}/rules`, one set per team |
+| `GET` / `PUT /domains/rules` (`domain_id`) | none: the `mfa` rule is removed |
 | `GET /tenant-domains/current` | `GET /hostnames/current` |
 | the rest of `/tenant-domains` | none: manage a tenant's hosts with `neev:hostname:*` or `$tenant->claimHost()` |
 
@@ -100,7 +76,6 @@ domains have their own resources, addressed by ID in the path instead of a
 - **The hostnames index** also returns `platform_host`, the subdomain the
   team's slug gives it, and `primary_hostname_id`. The platform host is not a
   row and has no ID.
-- **Rules** are `[{name: "mfa", value: bool}]`, and `PUT` takes `mfa: bool`.
 - **New refusals:** adding a host another owner holds, or any host under
   `neev.platform_domain`, is a `422` on `host`; enforcing an email domain
   another owner already enforces is a `422` on `enforce`.
@@ -109,7 +84,7 @@ domains have their own resources, addressed by ID in the path instead of a
 `team/federation.blade.php` is now `team/email-domains.blade.php`, beside a new
 `team/hostnames.blade.php`, and the team menu links both. The routes are
 `teams.email-domains`, `teams.email-domains.store|update|destroy`,
-`teams.hostnames`, `teams.hostnames.store|update|destroy` and `teams.rules`.
+`teams.hostnames` and `teams.hostnames.store|update|destroy`.
 The `GET|POST /teams/{team}/domain`, `PUT|DELETE /teams/{domain}/domain`,
 `domain.rules` and `domain.primary` routes are removed. An ejected view that
 links to them throws `RouteNotFoundException` until it is re-ejected or edited.
@@ -151,6 +126,11 @@ of them each night stops.
 - **Rows have a `status`**: `pending`, `verified`, `failed` or `disabled`.
   `disable()` stops a row: neither DNS nor a new token revives it, and
   `markUnverified()` sends one back to `pending` until its record is checked.
+- **A new token no longer unverifies (behaviour change from 0.6.8).** Asking
+  for a token, or re-submitting a domain the team holds, changes only the
+  token. A verified host keeps serving and a verified email domain keeps
+  federating; the next re-check looks for the new token's record, so publish
+  it first, or the row fails and is unverified after the window above.
 - **The domain events** (`DomainVerified`, `DomainReverified`,
   `DomainVerificationFailed`, `DomainUnverified`, `DomainRemoved`) carry an
   `EmailDomain` or a `Hostname` in `$domain`. A listener that reads
@@ -300,6 +280,30 @@ it.
 - **Before removing a method from the config**, remove or migrate the active
   factors that use it, or those users are challenged at every sign-in for a
   method the app no longer offers and cannot turn it off themselves.
+
+**Only an enforced email domain deactivates a member (behaviour change).**
+Removing a member through `PUT /neev/teams/leave` or the Blade `teams.leave`
+route deactivated their account whenever their email was on one of the team's
+verified email domains. Several owners may verify one domain, so any of them
+could deactivate an account application-wide. Now only the team that enforces
+the member's domain (verified and `enforce` on) deactivates and reactivates
+them, and only that team stops them leaving on their own.
+
+- **A team whose domain is verified but not enforced** now removes the member
+  (`Removed Successfully`) instead of answering `User Deactivated Successfully`,
+  and the member may leave. A member it deactivated before this release is
+  reactivated as they are removed, unless another team they belong to holds a
+  claim on that domain. To keep deactivating its members, turn `enforce` on
+  (`PATCH /neev/email-domains/{id}`); it fails with `422` when another owner
+  already enforces the domain.
+- **Code of your own that decides deactivation**, a policy or a view, should
+  call `Team::managesAccountOf($email)` instead of
+  `Team::hasVerifiedDomainFor($email)`. The latter still answers whether an
+  address is on a verified domain, which is what limits invitations under
+  enforcement.
+- **Re-eject `team/members.blade.php` and `account/teams.blade.php`.** An
+  ejected copy offers **Deactivate** and hides **Leave** on a domain that is only
+  verified, and the server then removes the member instead.
 
 ---
 

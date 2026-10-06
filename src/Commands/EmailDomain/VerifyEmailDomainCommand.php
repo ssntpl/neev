@@ -66,9 +66,17 @@ class VerifyEmailDomainCommand extends Command
         /** @var EmailDomain $row */
         $row = $claims->first();
 
+        // The app disabled it: neither DNS nor an operator brings it back.
+        if ($row->status === EmailDomain::STATUS_DISABLED) {
+            $this->error("Domain is disabled: {$domain}");
+
+            return self::FAILURE;
+        }
+
         if ($this->option('force')) {
             $this->markVerified($row);
             $this->info("Domain force-verified: {$domain}");
+            $this->warnIfEnforceDropped($row);
 
             return self::SUCCESS;
         }
@@ -77,6 +85,7 @@ class VerifyEmailDomainCommand extends Command
 
         if ($row->verify()) {
             $this->info("Domain verified successfully: {$domain}");
+            $this->warnIfEnforceDropped($row);
 
             return self::SUCCESS;
         }
@@ -85,5 +94,15 @@ class VerifyEmailDomainCommand extends Command
         $this->line('Use --force to skip DNS verification (e.g., for local development).');
 
         return self::FAILURE;
+    }
+
+    /**
+     * Only the first owner to verify and enforce a domain keeps enforcing.
+     */
+    protected function warnIfEnforceDropped(EmailDomain $row): void
+    {
+        if ($row->enforceWasDropped()) {
+            $this->warn('Another owner already enforces this domain, so enforce was turned off.');
+        }
     }
 }

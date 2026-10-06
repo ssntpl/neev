@@ -347,15 +347,6 @@ Email domains whose users join a team, proven by a TXT record at `_neev-email.<d
 | POST | `/neev/email-domains/{id}/verify` | Check the DNS record | Yes |
 | POST | `/neev/email-domains/{id}/token` | Issue a new verification token | Yes |
 
-### Team Rules Endpoints
-
-| Method | Endpoint | Description | Auth |
-|--------|----------|-------------|------|
-| GET | `/neev/teams/{team}/rules` | Get the team's rules (`mfa`) | Yes |
-| PUT | `/neev/teams/{team}/rules` | Update the team's rules | Yes |
-
-The `mfa` rule is stored as `require_mfa` on `team_auth_settings`. It is not yet enforced at login.
-
 ---
 
 ## Web Routes

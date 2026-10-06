@@ -38,7 +38,6 @@ class TeamRoutesToggleTest extends TestCase
         'teams.hostnames.store',
         'teams.hostnames.update',
         'teams.hostnames.destroy',
-        'teams.rules',
     ];
 
     protected array $apiPaths = [
@@ -48,7 +47,6 @@ class TeamRoutesToggleTest extends TestCase
         ['post', '/neev/changeTeamOwner'],
         ['get', '/neev/teams/1/email-domains'],
         ['get', '/neev/teams/1/hostnames'],
-        ['get', '/neev/teams/1/rules'],
         ['get', '/neev/email-domains/1'],
         ['get', '/neev/hostnames/1'],
     ];

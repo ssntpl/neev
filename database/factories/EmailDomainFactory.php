@@ -26,6 +26,11 @@ class EmailDomainFactory extends Factory
         return $this->state(['status' => EmailDomain::STATUS_VERIFIED, 'verified_at' => now()]);
     }
 
+    public function enforced(): static
+    {
+        return $this->state(['enforce' => true]);
+    }
+
     public function forOwner(Model $owner): static
     {
         return $this->state([

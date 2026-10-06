@@ -49,9 +49,9 @@ class VerifyDomainJob implements ShouldQueue
     public function handle(): void
     {
         // This job re-checks a verified row, or one it unverified earlier. A
-        // new token issued after it was queued turned the row back into a
-        // pending claim, waiting for a record its owner may not have published
-        // yet; checking it now would only mark that fresh claim failed.
+        // row sent back to pending (markUnverified()) after it was queued is
+        // a claim waiting for its record; checking it now would only mark
+        // that claim failed.
         if (! $this->domain->isVerified() && ! $this->domain->isUnverifiedByFailure()) {
             return;
         }

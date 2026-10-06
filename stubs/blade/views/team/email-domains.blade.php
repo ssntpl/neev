@@ -114,40 +114,6 @@
                 </x-slot>
             </x-neev-component::card>
 
-            {{-- Domain Rules --}}
-            {{-- <x-neev-component::card>
-                <x-slot name="title">
-                    {{__('Domain Rules')}}
-                </x-slot>
-                
-                <x-slot name="action">
-                    <x-neev-component::button form="updateDomainRulesForm">{{__('Save')}}</x-neev-component::button>
-                </x-slot>
-
-                <x-slot name="content">
-                    <form id="updateDomainRulesForm" method="POST" action="{{route('teams.rules', $team->id)}}">
-                        @csrf
-                        @method('PUT')
-                        <x-neev-component::table>
-                            <x-slot name="body">
-                                @foreach (\Ssntpl\Neev\Support\OwnerRules::of($team->authSettings) as $rule)
-                                    <x-neev-component::table-body-tr class="odd:bg-white even:bg-gray-50">
-                                        <td class="px-4 py-2 w-1/2 text-start">
-                                            {{ $rule['name'] }}
-                                        </td>
-                                        <td class="px-4 py-2 text-start">
-                                            <label for="{{$rule['name']}}">
-                                                <x-neev-component::checkbox id="{{$rule['name']}}" name="{{$rule['name']}}" x-bind:checked="{{$rule['value'] ? 'true' : 'false'}}"/>
-                                            </label>
-                                        </td>
-                                    </x-neev-component::table-body-tr>
-                                @endforeach
-                            </x-slot>
-                        </x-neev-component::table>
-                    </form>
-                </x-slot>
-            </x-neev-component::card> --}}
-
             <x-neev-component::dialog-modal>
                 <x-slot name="title">
                     {{ __('DNS Token') }}

@@ -116,15 +116,30 @@ class EmailDomainApiController extends Controller
             return $this->forbidden();
         }
 
+        // verify() leaves a disabled row alone; say why rather than blame DNS.
+        if ($emailDomain->status === EmailDomain::STATUS_DISABLED) {
+            return response()->json(['message' => 'This domain is disabled.'], 400);
+        }
+
         if (!$emailDomain->verify()) {
             return response()->json(['message' => 'DNS verification failed. Please check your DNS record.'], 400);
         }
 
-        return response()->json(['message' => 'Email domain verified.', 'data' => $emailDomain]);
+        // Only the first owner to verify and enforce a domain keeps enforcing.
+        $dropped = $emailDomain->enforceWasDropped();
+
+        return response()->json([
+            'message' => $dropped
+                ? 'Email domain verified. Another owner already enforces this domain, so enforce was turned off.'
+                : 'Email domain verified.',
+            'data' => $emailDomain,
+            'enforce_dropped' => $dropped,
+        ]);
     }
 
     /**
-     * A new token. The domain stops counting until its new record is checked.
+     * A new token. A verified domain keeps counting; the daily re-check holds
+     * it to the new record.
      */
     public function token(Request $request, EmailDomain $emailDomain): JsonResponse
     {

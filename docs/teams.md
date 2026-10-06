@@ -270,7 +270,7 @@ endpoints never confirm which team ids are real.
 | Endpoint | Who may call it |
 |----------|-----------------|
 | `PUT /neev/teams` (update) | any member |
-| `GET /neev/teams/{team}/email-domains`, `/hostnames`, `/rules` | any member |
+| `GET /neev/teams/{team}/email-domains`, `/hostnames` | any member |
 | `PUT /neev/teams/request` (accept/reject a join request) | any member |
 | `PUT {prefix}/teams/members/request/action` (the Blade form) | the owner |
 | `PUT /neev/teams/leave` (remove a member) | any member, and only for another member of the same team; the owner cannot be removed |
@@ -282,12 +282,10 @@ endpoints never confirm which team ids are real.
 | `PUT /neev/role/change` | a member, and only for another user attached to the same team — joined or still pending |
 | email domain add / enforce / verify / token / delete | the owner |
 | hostname add / verify / token / primary / delete | the owner |
-| `PUT /neev/teams/{team}/rules` | the owner |
 
-The email-domain, hostname and rules endpoints take the team in the path, so a
-team id that does not exist answers `404` there, and a refusal answers
-`403 You do not have permission to do this.` (the rules endpoints keep their
-own `403` messages).
+The email-domain and hostname endpoints take the team in the path, so a team id
+that does not exist answers `404` there, and a refusal answers
+`403 You do not have permission to do this.`
 
 > **Known asymmetry:** acting on a join request is owner-only on the Blade
 > route and open to any member on the API route. Accepting a request admits
@@ -448,19 +446,21 @@ curl -X PUT https://yourapp.com/neev/teams/leave \
   -d '{"team_id": 1, "user_id": 5}'
 ```
 
-### Members on a Verified Email Domain
+### Members on an Enforced Email Domain
 
-Removing a member whose email is on any of the team's verified email domains does not take them out of the team: the domain governs their membership, so their account is **deactivated** instead (`User Deactivated Successfully`). Removing them again reactivates it (`User Activated Successfully`).
+Removing a member whose email is on one of the team's email domains that is both verified and **enforced** does not take them out of the team: the domain governs their membership, so their account is **deactivated** instead (`User Deactivated Successfully`). Removing them again reactivates it (`User Activated Successfully`). `Team::managesAccountOf($email)` answers whether the team manages an address this way.
 
-An unverified domain manages nobody. Once a new token unverifies it, removing a member on it detaches them like any other member (`Removed Successfully`). A deactivated member whose email is on a domain the team still holds is reactivated as they are removed, so a member deactivated through that domain is not left locked out of the whole application. Neev does not record which team deactivated an account, so when another team the member belongs to also holds a claim on that domain, the account is left deactivated; removing them from a team that is the only one of theirs with a claim on it does reactivate them. A deactivated member on no domain of the team's keeps that state. `Team::reactivatesOnRemoval($user)` answers whether removing a member gives their account back. Members on other addresses are removed as usual.
+Deactivation reaches the whole account, so only enforcing grants it. Verifying a domain is not exclusive: several teams may verify `acme.com`, but only one may enforce it, so only that team can deactivate an `acme.com` account.
 
-Only members of the team can be removed, deactivated or reactivated this way. A `user_id` with no membership in the team answers `403 You cannot perform this action on this team.`, even when that user's email is on one of the team's verified email domains, since deactivation reaches their whole account.
+A domain that is not enforced, or not verified, manages nobody. Removing a member on it detaches them like any other member (`Removed Successfully`), and they may leave on their own. That includes a domain whose enforcement was turned off, or one the re-check has unverified. A deactivated member whose email is on a domain the team still holds is reactivated as they are removed, so a member deactivated through that domain is not left locked out of the whole application. Neev does not record which team deactivated an account, so when another team the member belongs to also holds a claim on that domain, the account is left deactivated; removing them from a team that is the only one of theirs with a claim on it does reactivate them. A deactivated member on no domain of the team's keeps that state. `Team::reactivatesOnRemoval($user)` answers whether removing a member gives their account back. Members on other addresses are removed as usual.
+
+Only members of the team can be removed, deactivated or reactivated this way. A `user_id` with no membership in the team answers `403 You cannot perform this action on this team.`, even when that user's email is on one of the team's enforced email domains, since deactivation reaches their whole account.
 
 A pending membership (an invitation not yet accepted, or a join request not yet answered) is simply withdrawn (`Removed Successfully`), never deactivated, whatever the user's domain. Any member can withdraw it, and so can the user it names, by sending only `team_id`. The **Remove** button under pending invitations on the members page and **Revoke** on a sent request on the account teams page both do this.
 
 Rejecting (`PUT /neev/teams/inviteUser` with `team_id` and `"action": "reject"`, or `PUT /neev/teams/request` with `"action": "reject"`) also acts only on a membership not yet joined. A joined member is never removed that way; it answers `400 Invitation not found` / `400 Request not found`, and removing a member goes through `leave` and the rules above.
 
-Such a member cannot remove themselves: deactivation is account-wide, so leaving would lock them out of the whole application. The attempt answers `403 You cannot leave a team your email domain manages.`, and the Blade pages do not offer **Leave** to them. Members on other addresses can leave, and the Blade pages offer them **Leave**, even when the team has a verified email domain. `Team::hasVerifiedDomainFor($email)` tells whether an address is on one of the team's verified email domains, and `Team::holdsDomainFor($email)` whether it is on any email domain the team holds, verified or not.
+A member on an enforced domain cannot remove themselves: deactivation is account-wide, so leaving would lock them out of the whole application. The attempt answers `403 You cannot leave a team your email domain manages.`, and the Blade pages do not offer **Leave** to them. Members on other addresses, including a domain the team verifies but does not enforce, can leave, and the Blade pages offer them **Leave**. `Team::managesAccountOf($email)` tells whether an address is on one of the team's enforced, verified email domains; `Team::hasVerifiedDomainFor($email)` whether it is on one of its verified email domains, enforced or not; and `Team::holdsDomainFor($email)` whether it is on any email domain the team holds, verified or not.
 
 ### Note: Owners Cannot Leave
 
@@ -559,13 +559,21 @@ form (lowercase, no trailing dot), so `ACME.com.` is the same domain as `acme.co
 Asking to enforce a domain another owner already enforces throws
 `Ssntpl\Neev\Exceptions\EmailDomainEnforcedException`
 (`Another owner already enforces this email domain.`); the API answers `422`
-with that message on `enforce`. A row that already enforces and becomes verified
-while another owner enforces stops enforcing instead of throwing.
+with that message on `enforce`. A pending row may ask to enforce, so the first
+owner to verify and enforce keeps it: a row that becomes verified while another
+owner already enforces is still verified, with `enforce` turned off. Neev warns
+rather than hiding it: the API answers `enforce_dropped: true` with a message
+saying so, the Blade page flashes it, `neev:email-domain:verify` prints a
+warning, and `EmailDomainEnforceDropped` fires, including when the daily
+re-check restores the row.
 
 A claim does nothing until it is **verified**. Re-submitting a domain issues a
 new verification token, and so does asking for one (`POST .../token`, or
-**Get Token** on the page). A new token no longer matches the TXT record already
-published, so the domain goes back to `pending` until the new record is verified.
+**Get Token** on the page). Only the token changes: a verified domain stays
+verified, and the daily re-check holds it to the new token's record. Publish the
+new record before that runs, or the domain fails and, after
+`neev.dns_verification.unverify_after_failed_days`, is unverified like any
+domain whose record went missing.
 
 A row has a `status`: `pending`, `verified`, `failed` (proven, but the record
 has been missing since `verification_failed_at`) or `disabled` (disabled by the
@@ -637,11 +645,12 @@ curl -X POST https://yourapp.com/neev/email-domains/1/verify \
   -H "Authorization: Bearer {token}"
 ```
 
-A record that is not there answers `400 DNS verification failed. Please check your DNS record.`
+A record that is not there answers `400 DNS verification failed. Please check your DNS record.`; a disabled domain answers `400 This domain is disabled.`
 
 To get a new token (for example when the old one was lost), call
 `POST /neev/email-domains/{id}/token`; the response carries `dns_record` as
-above, and the domain is `pending` until the new record is verified.
+above. The domain keeps its status; publish the new record before the next
+re-check.
 
 A domain copied from the old `domains` table also passes on the record
 published for it there, `_neev-verification.{domain}`, while
@@ -652,8 +661,8 @@ only; publish `_neev-email` records and turn it off.
 
 `$emailDomain->verify()` checks DNS and records the result, firing
 `DomainVerified` when a pending row is proven. `$emailDomain->generateVerificationToken()`
-issues a new token and sets the row back to `pending`; it returns `null` for a
-disabled row.
+issues a new token and changes nothing else; it returns `null` for a disabled
+row.
 
 To mark a domain verified without DNS, use the CLI:
 `php artisan neev:email-domain:add {domain} --skip-verification` or
@@ -664,6 +673,7 @@ To mark a domain verified without DNS, use the CLI:
 When `enforce` is true on any of the team's verified email domains:
 - Only users whose email is on one of the team's **verified** email domains can be invited — not only the domain that is enforced
 - Members whose email matches none of the team's verified email domains are reported as `outside_members` on each enforced, verified domain in the listing, the same count the Blade page shows
+- Removing a member whose email is on the enforced domain deactivates their account instead, and they cannot leave on their own (see [Members on an Enforced Email Domain](#members-on-an-enforced-email-domain)). Without `enforce`, a verified domain only federates sign-ups and closes the team to join requests; its members are removed and may leave like any other
 
 ```bash
 curl -X PATCH https://yourapp.com/neev/email-domains/1 \
@@ -677,7 +687,7 @@ Join requests are refused by any verified email domain, enforced or not (see
 ### Deleting an Email Domain
 
 Deleting a domain reactivates the team's deactivated members whose email is on
-it, including after a new token has unverified it: once the domain is gone
+it, including after it has been unverified: once the domain is gone
 nothing manages them, and the package would offer no way to reactivate them. A
 member another team they belong to also holds that domain for is left
 deactivated, since Neev does not record which team deactivated an account and
@@ -729,7 +739,8 @@ curl -X POST https://yourapp.com/neev/teams/1/hostnames \
 The `201` response carries `data` and `dns_record`
 (`{"type": "TXT", "name": "_neev-host.app.company.com", "value": "..."}`).
 Publish it, then `POST /neev/hostnames/{id}/verify`. `POST /neev/hostnames/{id}/token`
-issues a new token, and the host stops serving until its new record is verified.
+issues a new token; a verified host keeps serving, and the daily re-check holds
+it to the new record.
 
 In code: `$team->claimHost($host)` returns the team's row (pending, with its
 token), `$hostname->verify()` checks DNS, and `$team->releaseHost($host)` or
@@ -778,45 +789,6 @@ with a `301` for page navigations, for `neev.slug.retired_host_days` (90 by
 default); the slug itself stays retired after that.
 
 Only model saves are guarded. A query-builder update bypasses all of this.
-
----
-
-## Team Rules
-
-Rules are policies the team sets for its members. They are stored on
-`team_auth_settings`, one set per team (they used to be per domain).
-
-| Rule | Column | Description |
-|------|--------|-------------|
-| `mfa` | `require_mfa` | Require MFA for team members |
-
-> **Not enforced yet.** `require_mfa` is stored and returned, but login does not
-> check it yet. Setting it has no effect on who can sign in.
-
-### Get Rules
-
-```bash
-curl -X GET https://yourapp.com/neev/teams/1/rules \
-  -H "Authorization: Bearer {token}"
-```
-
-```json
-{"data": [{"name": "mfa", "value": false}]}
-```
-
-Any member may read them. A team with no settings row has every rule off.
-
-### Update Rules
-
-```bash
-curl -X PUT https://yourapp.com/neev/teams/1/rules \
-  -H "Authorization: Bearer {token}" \
-  -d '{"mfa": true}'
-```
-
-Owner only. Only the rules named in the request change. The Blade route
-`PUT /teams/{team}/rules` (`teams.rules`) sets every rule from the form, so an
-unchecked box turns its rule off.
 
 ---
 
@@ -907,13 +879,6 @@ php artisan neev:team:activate {team}
 | GET | `/neev/hostnames/current` | The context this request resolved to (always registered) |
 
 Adding, verifying and re-issuing a token share one limit, 10 a minute per user (`neev-dns`).
-
-### Rules Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/neev/teams/{team}/rules` | Get the team's rules |
-| PUT | `/neev/teams/{team}/rules` | Update the team's rules |
 
 ---
 

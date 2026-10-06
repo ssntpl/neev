@@ -15,7 +15,8 @@ use Ssntpl\Neev\Events\DomainVerified;
  * `verified_at` is what grants: a row serves or federates while it is set.
  * `status` says why: `pending` (not proven), `verified`, `failed` (proven, but
  * the record has been missing since `verification_failed_at`) or `disabled`
- * (disabled by the app; neither DNS nor a new token brings it back).
+ * (disabled by the app; neither DNS nor a new token brings it back). A new
+ * token changes only the token: the re-check holds a verified row to it.
  *
  * A failed row still grants for `neev.dns_verification.unverify_after_failed_days`,
  * then VerifyDomainJob unverifies it (unverifyFailed()): it stays `failed`, so
@@ -76,9 +77,11 @@ trait VerifiesWithDns
     }
 
     /**
-     * Issue a new token and save. The row is unproven until the record for
-     * this token is published, so it goes back to pending. A disabled row
-     * gets no token: it is left as it is, and null is returned.
+     * Issue a new token and save. Only the token changes: a verified row keeps
+     * granting, and the daily re-check holds it to the new token's record,
+     * so a record left unpublished fails and, in time, unverifies it as any
+     * missing record would. A disabled row gets no token: it is left as it
+     * is, and null is returned.
      */
     public function generateVerificationToken(): ?string
     {
@@ -87,9 +90,6 @@ trait VerifiesWithDns
         }
 
         $this->verification_token = bin2hex(random_bytes(32));
-        $this->verified_at = null;
-        $this->verification_failed_at = null;
-        $this->status = self::STATUS_PENDING;
         $this->save();
 
         return $this->verification_token;

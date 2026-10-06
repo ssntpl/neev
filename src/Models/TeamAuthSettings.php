@@ -18,7 +18,6 @@ use Illuminate\Support\Facades\Cache;
  * @property array<string, mixed>|null $sso_extra_config
  * @property bool $auto_provision
  * @property string|null $auto_provision_role
- * @property bool $require_mfa
  * @property Carbon|null $created_at
  * @property Carbon|null $updated_at
  * @property-read Team|null $team
@@ -46,14 +45,12 @@ class TeamAuthSettings extends Model
         'sso_extra_config',
         'auto_provision',
         'auto_provision_role',
-        'require_mfa',
     ];
 
     protected $casts = [
         'sso_client_secret' => 'encrypted',
         'sso_extra_config' => 'array',
         'auto_provision' => 'boolean',
-        'require_mfa' => 'boolean',
     ];
 
     protected $hidden = [

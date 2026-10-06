@@ -285,7 +285,6 @@ Table team_auth_settings {
   sso_extra_config json [null]
   auto_provision boolean [default: false]
   auto_provision_role varchar [null]
-  require_mfa boolean [default: false, note: 'RFC 006: the owner\'s mfa rule, served by GET|PUT teams/{team}/rules. Stored, not yet enforced at login']
   created_at timestamp
   updated_at timestamp
 }
@@ -301,7 +300,6 @@ Table tenant_auth_settings {
   sso_extra_config json [null]
   auto_provision boolean [default: false]
   auto_provision_role varchar [null]
-  require_mfa boolean [default: false, note: 'RFC 006: the owner\'s mfa rule, served by GET|PUT teams/{team}/rules. Stored, not yet enforced at login']
   created_at timestamp
   updated_at timestamp
 }

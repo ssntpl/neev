@@ -11,7 +11,6 @@ use InvalidArgumentException;
 use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
-use Ssntpl\Neev\Support\OwnerRules;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation as TeamInvitationModel;
@@ -261,17 +260,17 @@ class TeamController extends Controller
 
             // Leaving, or removing a member. The subject must have joined:
             // deactivation is account-wide, and without this any member could
-            // deactivate every user on the team's verified domains.
+            // deactivate every user on the team's enforced domains.
             if (!$team->hasMember($actor) || !$team->hasMember($user)) {
                 return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
             }
 
-            // A member on any of the team's verified domains is managed by the
-            // domain, not only one on the primary: deactivate them rather than
-            // remove them.
-            $onVerifiedDomain = $team->hasVerifiedDomainFor((string) $user->email);
-
-            if ($onVerifiedDomain) {
+            // A member on a domain the team enforces is managed by it:
+            // deactivate or reactivate them rather than remove them. Verifying
+            // is not exclusive, so a domain verified but not enforced manages
+            // nobody's account, and the member leaves or is removed as any
+            // other would be.
+            if ($team->managesAccountOf((string) $user->email)) {
                 // Deactivating is account-wide: a member leaving on their own
                 // would lock themselves out of everything, not just this team.
                 if ($user->id === $actor->id) {
@@ -286,11 +285,12 @@ class TeamController extends Controller
                 }
             }
 
-            // An unverified domain manages nobody, so the member is removed as
-            // any other would be. One this team's domain deactivated — verified
-            // until a new token unverified it — gets their account back as they
-            // go: detached and still deactivated, they would be locked out of
-            // the whole application with nothing left to undo it.
+            // A domain not enforced manages nobody, so the member is removed as
+            // any other would be. One this team's domain deactivated — enforced
+            // until it stopped, or verified until its record lapsed — gets
+            // their account back as they go: detached and still deactivated,
+            // they would be locked out of the whole application with nothing
+            // left to undo it.
             $reactivate = $team->reactivatesOnRemoval($user);
 
             DB::transaction(function () use ($team, $user, $reactivate) {
@@ -514,31 +514,5 @@ class TeamController extends Controller
         }
 
         return back()->withErrors(['message' => 'You cannot change owner.']);
-    }
-
-    /**
-     * Set the team's rules (OwnerRules) from the form: an unticked box is a
-     * rule turned off.
-     */
-    public function updateRules(Request $request, Team $team)
-    {
-        /** @var User|null $user */
-        $user = User::model()->find($request->user()?->id);
-        if (!$user || $team->user_id !== $user->id) {
-            return back()->withErrors(['message' => 'You do not have the required permissions to update domain.']);
-        }
-        try {
-            $values = [];
-            foreach (OwnerRules::COLUMNS as $name => $column) {
-                $values[$column] = $request->boolean($name);
-            }
-
-            $team->authSettings()->updateOrCreate([], $values);
-
-            return back()->with('status', 'Domain Rules have been updated.');
-        } catch (Exception $e) {
-            Log::error($e);
-            return back()->withErrors(['message' => 'Failed to update domain rules.']);
-        }
     }
 }

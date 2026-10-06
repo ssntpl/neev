@@ -100,10 +100,6 @@ class ApiRouteMapTest extends TestCase
             'POST neev/teams/request',
             'PUT neev/teams/request',
 
-            // team rules
-            'GET neev/teams/{team}/rules',
-            'PUT neev/teams/{team}/rules',
-
             // hostnames
             'GET neev/teams/{team}/hostnames',
             'POST neev/teams/{team}/hostnames',

@@ -832,7 +832,7 @@ class MembershipTest extends TestCase
     // PUT /neev/teams/leave — domain-based deactivation
     // -----------------------------------------------------------------
 
-    public function test_leave_deactivates_user_when_email_matches_verified_domain(): void
+    public function test_leave_deactivates_user_when_email_matches_enforced_domain(): void
     {
         $this->enableDomainFederation();
 
@@ -841,7 +841,7 @@ class MembershipTest extends TestCase
         $team->addMember($owner);
 
         // Create a verified domain for the team
-        EmailDomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->enforced()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
         ]);
@@ -864,7 +864,94 @@ class MembershipTest extends TestCase
         $this->assertFalse($member->active);
     }
 
-    public function test_leave_deactivates_user_on_a_second_verified_domain(): void
+    /**
+     * Verifying a domain is not exclusive, so it manages nobody's account: a
+     * member on a domain verified but not enforced is removed, not deactivated.
+     */
+    public function test_leave_removes_a_member_on_a_verified_domain_that_is_not_enforced(): void
+    {
+        $this->enableDomainFederation();
+
+        [$owner, $ownerToken] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $team->addMember($owner);
+        EmailDomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+        $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.com']);
+        $team->addMember($member);
+
+        $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
+            ->putJson('/neev/teams/leave', ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertOk()
+            ->assertJsonPath('message', 'Removed Successfully');
+
+        $this->assertTrue($member->fresh()->active);
+        $this->assertFalse($team->refresh()->hasMember($member));
+    }
+
+    public function test_member_on_a_verified_domain_that_is_not_enforced_may_leave(): void
+    {
+        $this->enableDomainFederation();
+
+        $owner = User::factory()->create();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        EmailDomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'domain' => 'acme.com',
+        ]);
+        [$member, $token] = $this->authenticatedUser();
+        $member->update(['active' => true, 'email' => 'employee@acme.com']);
+        $team->addMember($member);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/leave', ['team_id' => $team->id, 'user_id' => $member->id])
+            ->assertOk()
+            ->assertJsonPath('message', 'Removed Successfully');
+
+        $this->assertTrue($member->fresh()->active);
+        $this->assertFalse($team->refresh()->hasMember($member));
+    }
+
+    /**
+     * Two teams verify acme.com and only team A enforces it. Team B removing
+     * a member must not reach the account team A manages.
+     */
+    public function test_a_team_that_only_verifies_a_domain_another_enforces_cannot_deactivate(): void
+    {
+        $this->enableDomainFederation();
+
+        $ownerA = User::factory()->create();
+        $teamA = TeamFactory::new()->create(['user_id' => $ownerA->id]);
+        EmailDomainFactory::new()->verified()->enforced()->create([
+            'owner_type' => 'team', 'owner_id' => $teamA->id,
+            'domain' => 'acme.com',
+        ]);
+
+        [$ownerB, $tokenB] = $this->authenticatedUser();
+        $teamB = TeamFactory::new()->create(['user_id' => $ownerB->id]);
+        $teamB->addMember($ownerB);
+        EmailDomainFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $teamB->id,
+            'domain' => 'acme.com',
+        ]);
+
+        $member = User::factory()->create(['active' => true, 'email' => 'employee@acme.com']);
+        $teamA->addMember($member);
+        $teamB->addMember($member);
+
+        $this->withHeader('Authorization', 'Bearer ' . $tokenB)
+            ->putJson('/neev/teams/leave', ['team_id' => $teamB->id, 'user_id' => $member->id])
+            ->assertOk()
+            ->assertJsonPath('message', 'Removed Successfully');
+
+        $this->assertTrue($member->fresh()->active);
+        $this->assertFalse($teamB->refresh()->hasMember($member));
+        $this->assertTrue($teamA->refresh()->hasMember($member));
+    }
+
+    public function test_leave_deactivates_user_on_a_second_enforced_domain(): void
     {
         $this->enableDomainFederation();
 
@@ -876,7 +963,7 @@ class MembershipTest extends TestCase
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
         ]);
-        EmailDomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->enforced()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.io',
         ]);
@@ -896,7 +983,7 @@ class MembershipTest extends TestCase
         $this->assertTrue($team->allUsers()->whereKey($member->id)->exists());
     }
 
-    public function test_member_on_a_verified_domain_cannot_leave_and_deactivate_themselves(): void
+    public function test_member_on_an_enforced_domain_cannot_leave_and_deactivate_themselves(): void
     {
         $this->enableDomainFederation();
 
@@ -907,7 +994,7 @@ class MembershipTest extends TestCase
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
         ]);
-        EmailDomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->enforced()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.io',
         ]);
@@ -1080,7 +1167,7 @@ class MembershipTest extends TestCase
         $this->assertFalse($team->allUsers()->whereKey($member->id)->exists());
     }
 
-    public function test_leave_activates_inactive_user_when_email_matches_verified_domain(): void
+    public function test_leave_activates_inactive_user_when_email_matches_enforced_domain(): void
     {
         $this->enableDomainFederation();
 
@@ -1088,7 +1175,7 @@ class MembershipTest extends TestCase
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $team->addMember($owner);
 
-        EmailDomainFactory::new()->verified()->create([
+        EmailDomainFactory::new()->verified()->enforced()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
         ]);
@@ -1354,18 +1441,18 @@ class MembershipTest extends TestCase
     }
 
     /**
-     * Once a new token unverifies the domain it manages nobody, so removing a
+     * Once the re-check unverifies the domain it manages nobody, so removing a
      * member deactivated through it removes them like anyone else — and gives
      * their account back, rather than leaving it locked application-wide.
      */
-    public function test_removing_a_member_after_a_new_token_unverifies_the_domain_detaches_and_reactivates_them(): void
+    public function test_removing_a_member_after_the_domain_is_unverified_detaches_and_reactivates_them(): void
     {
         $this->enableDomainFederation();
 
         [$owner, $ownerToken] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
         $team->addMember($owner);
-        $domain = EmailDomainFactory::new()->verified()->create([
+        $domain = EmailDomainFactory::new()->verified()->enforced()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
             'domain' => 'acme.com',
         ]);
@@ -1376,9 +1463,7 @@ class MembershipTest extends TestCase
             ->putJson('/neev/teams/leave', ['team_id' => $team->id, 'user_id' => $member->id])
             ->assertJsonPath('message', 'User Deactivated Successfully');
 
-        $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
-            ->postJson("/neev/email-domains/{$domain->id}/token")
-            ->assertOk();
+        $domain->unverifyFailed();
 
         $this->withHeader('Authorization', 'Bearer ' . $ownerToken)
             ->putJson('/neev/teams/leave', ['team_id' => $team->id, 'user_id' => $member->id])

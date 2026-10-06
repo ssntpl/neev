@@ -24,7 +24,7 @@ class TeamRoutesEnabledTest extends TestCase
 
     public function test_team_web_routes_are_registered_when_teams_are_enabled(): void
     {
-        foreach (['account.teams', 'teams.profile', 'teams.switch', 'teams.create', 'teams.store', 'teams.invite', 'teams.rules', 'teams.email-domains', 'teams.email-domains.store', 'teams.email-domains.update', 'teams.email-domains.destroy', 'teams.hostnames', 'teams.hostnames.store', 'teams.hostnames.update', 'teams.hostnames.destroy'] as $name) {
+        foreach (['account.teams', 'teams.profile', 'teams.switch', 'teams.create', 'teams.store', 'teams.invite', 'teams.email-domains', 'teams.email-domains.store', 'teams.email-domains.update', 'teams.email-domains.destroy', 'teams.hostnames', 'teams.hostnames.store', 'teams.hostnames.update', 'teams.hostnames.destroy'] as $name) {
             $this->assertTrue(Route::has($name), "Route [{$name}] should be registered.");
         }
     }
@@ -36,7 +36,6 @@ class TeamRoutesEnabledTest extends TestCase
 
         // Unauthenticated, so 401 rather than 404 — the route exists.
         $this->getJson('/neev/teams')->assertUnauthorized();
-        $this->getJson("/neev/teams/{$team->id}/rules")->assertUnauthorized();
         $this->getJson("/neev/teams/{$team->id}/hostnames")->assertUnauthorized();
         $this->getJson('/neev/hostnames/1')->assertUnauthorized();
         $this->getJson("/neev/teams/{$team->id}/email-domains")->assertUnauthorized();

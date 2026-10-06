@@ -323,7 +323,7 @@ $tenant->releaseHost('app.acme.com');             // deletes the row; false when
 
 - `claimHost()` returns the owner's existing row for the host as it is. It throws `HostnameTakenException` when another owner holds the host, and `InvalidArgumentException` for a host under `platform_domain`.
 - `releaseHost()` unpoints `primary_hostname_id` first, so the owner falls back to its next host. The platform subdomain is not a row and cannot be released.
-- `generateVerificationToken()` issues a new token and puts the row back to `pending` until the new record is verified.
+- `generateVerificationToken()` issues a new token and changes nothing else. A verified row keeps granting; the daily re-check holds it to the new record, so one left unpublished fails and is unverified in time.
 - `Team::$webDomain` returns the team's verified primary hostname, or `null`. `canonicalHost()` answers where an owner is served, platform subdomain included.
 
 From the CLI:
@@ -368,7 +368,7 @@ A row your app copied from the old `domains` table, with the same owner and toke
 
 | Status | Meaning |
 |--------|---------|
-| `pending` | Claimed, not yet proven (or given a new token) |
+| `pending` | Claimed, not yet proven |
 | `verified` | Record found |
 | `failed` | Proven before, but the record has been missing since `verification_failed_at` |
 | `disabled` | Disabled by the application with `disable()`; neither DNS nor a new token brings it back |
@@ -995,7 +995,6 @@ Kept for this release so your app can copy its rows into `hostnames` and `email_
 | sso_extra_config | json | Additional provider config (base URL, domain restrictions, etc.) |
 | auto_provision | boolean | Auto-create users |
 | auto_provision_role | string | Role for auto-provisioned users |
-| require_mfa | boolean | Require MFA for members. Stored, but not yet enforced at login |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 

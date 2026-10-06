@@ -25,9 +25,6 @@ return new class () extends Migration {
             $table->boolean('auto_provision')->default(false);
             $table->string('auto_provision_role')->nullable(); // Role to assign auto-provisioned users
 
-            // RFC 006 §3 (e): the owner's mfa rule, once a domain_rules row
-            $table->boolean('require_mfa')->default(false);
-
             $table->timestamps();
         });
     }

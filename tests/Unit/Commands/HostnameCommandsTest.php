@@ -260,6 +260,20 @@ class HostnameCommandsTest extends TestCase
         $this->assertFalse($hostname->fresh()->isVerified());
     }
 
+    public function test_verify_says_a_disabled_host_is_disabled(): void
+    {
+        $hostname = TeamFactory::new()->create()->claimHost('app.acme.com');
+        $hostname->disable();
+        FakeDns::txt('_neev-host.app.acme.com', $hostname->verification_token);
+
+        $this->artisan('neev:hostname:verify', ['host' => 'app.acme.com'])
+            ->expectsOutputToContain('Host is disabled: app.acme.com')
+            ->doesntExpectOutputToContain('DNS verification failed.')
+            ->assertFailed();
+
+        $this->assertSame(Hostname::STATUS_DISABLED, $hostname->fresh()->status);
+    }
+
     public function test_verify_cannot_skip_dns(): void
     {
         TeamFactory::new()->create()->claimHost('app.acme.com');

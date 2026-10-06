@@ -92,6 +92,11 @@ class HostnameApiController extends Controller
             return $this->forbidden();
         }
 
+        // verify() leaves a disabled row alone; say why rather than blame DNS.
+        if ($hostname->status === Hostname::STATUS_DISABLED) {
+            return response()->json(['message' => 'This host is disabled.'], 400);
+        }
+
         if (!$hostname->verify()) {
             return response()->json(['message' => 'DNS verification failed. Please check your DNS record.'], 400);
         }
@@ -100,7 +105,8 @@ class HostnameApiController extends Controller
     }
 
     /**
-     * A new token. The host stops serving until its new record is checked.
+     * A new token. A verified host keeps serving; the daily re-check holds it
+     * to the new record.
      */
     public function token(Request $request, Hostname $hostname): JsonResponse
     {

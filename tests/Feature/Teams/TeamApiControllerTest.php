@@ -463,42 +463,6 @@ class TeamApiControllerTest extends TestCase
         $this->assertDatabaseHas('email_domains', ['id' => $domain->id]);
     }
 
-    // -----------------------------------------------------------------
-    // PUT /neev/teams/{team}/rules — update the team's rules
-    // -----------------------------------------------------------------
-
-    public function test_update_team_rules_success(): void
-    {
-        $this->enableDomainFederation();
-
-        [$user, $token] = $this->authenticatedUser();
-        $team = TeamFactory::new()->create(['user_id' => $user->id]);
-
-        $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->putJson("/neev/teams/{$team->id}/rules", ['mfa' => true])
-            ->assertOk()
-            ->assertJsonPath('message', 'Domain Rules have been updated.')
-            ->assertJsonPath('data', [['name' => 'mfa', 'value' => true]]);
-    }
-
-    // -----------------------------------------------------------------
-    // GET /neev/teams/{team}/rules — get the team's rules
-    // -----------------------------------------------------------------
-
-    public function test_get_team_rules_success(): void
-    {
-        $this->enableDomainFederation();
-
-        [$user, $token] = $this->authenticatedUser();
-        $team = TeamFactory::new()->create(['user_id' => $user->id]);
-        $team->users()->attach($user, ['joined' => true]);
-
-        $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->getJson("/neev/teams/{$team->id}/rules")
-            ->assertOk()
-            ->assertJsonPath('data', [['name' => 'mfa', 'value' => false]]);
-    }
-
     // =================================================================
     // Membership is what authorises a team action
     // =================================================================
@@ -749,38 +713,5 @@ class TeamApiControllerTest extends TestCase
             'user_id' => $invitee->id,
         ]);
         Mail::assertNothingSent();
-    }
-
-    // -----------------------------------------------------------------
-    // GET /neev/teams/{team}/rules — a missing team says so
-    // -----------------------------------------------------------------
-
-    /**
-     * A team that does not exist is reported as missing rather than as a
-     * permissions failure, which is what the caller can actually act on.
-     */
-    public function test_getting_rules_for_a_missing_team_says_it_is_missing(): void
-    {
-        [$user, $token] = $this->authenticatedUser();
-
-        $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->getJson('/neev/teams/99999/rules')
-            ->assertNotFound();
-    }
-
-    public function test_getting_rules_for_someone_elses_team_is_a_permissions_error(): void
-    {
-        $this->enableDomainFederation();
-
-        [$user, $token] = $this->authenticatedUser();
-        $team = TeamFactory::new()->create();
-
-        $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->getJson("/neev/teams/{$team->id}/rules")
-            ->assertStatus(403)
-            ->assertJsonPath(
-                'message',
-                'You do not have the required permissions to get domain rules.'
-            );
     }
 }

@@ -202,6 +202,7 @@ Neev fires Laravel's native auth events where semantics match, and its own event
 | `DomainVerificationFailed` | `$domain` | A previously verified one first fails re-verification |
 | `DomainUnverified` | `$domain` | Its record has been missing for `dns_verification.unverify_after_failed_days`: a host stops serving, an email domain stops federating and enforcing |
 | `DomainRemoved` | `$domain` | Its record is still missing at twice that, and the row is deleted |
+| `EmailDomainEnforceDropped` | `$domain` | An `EmailDomain` asking to enforce was verified while another owner already enforced the domain, so it was saved with `enforce` off |
 | `SlugChanged` | `$owner, $oldSlug, $newSlug` | A team or tenant took a new slug; its platform subdomain moved with it |
 
 The model-lifecycle events (`TeamCreated`, `TeamDeleted`, `TenantCreated`, `MemberAdded`, `MemberRemoved`, `SlugChanged`) implement `ShouldDispatchAfterCommit`, so listeners never observe state from a transaction that later rolls back. `EmailVerified` is likewise dispatched after commit.

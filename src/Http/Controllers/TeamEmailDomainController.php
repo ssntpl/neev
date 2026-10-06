@@ -86,15 +86,23 @@ class TeamEmailDomainController extends Controller
         }
         try {
             if ($request->verify) {
+                if ($domain->status === EmailDomain::STATUS_DISABLED) {
+                    return back()->withErrors(['message' => 'This domain is disabled.']);
+                }
+
                 if ($domain->verify()) {
-                    return back()->with('status', 'Domain verified successfully!');
+                    // Only the first owner to verify and enforce a domain
+                    // keeps enforcing.
+                    return back()->with('status', $domain->enforceWasDropped()
+                        ? 'Domain verified. Another owner already enforces this domain, so enforce was turned off.'
+                        : 'Domain verified successfully!');
                 }
                 return back()->withErrors(['message' => 'DNS record not found. Please try again later.']);
             }
 
             if ($request->token) {
-                // A new token unverifies the domain until the record is
-                // published.
+                // Only the token changes; the daily re-check holds a
+                // verified domain to the new record.
                 $token = $domain->generateVerificationToken();
                 if ($token === null) {
                     return back()->withErrors(['message' => 'This domain is disabled.']);

@@ -41,6 +41,10 @@ class Hostname extends Model
         'verification_failed_at',
     ];
 
+    protected $attributes = [
+        'status' => self::STATUS_PENDING,
+    ];
+
     protected $hidden = [
         'verification_token',
     ];

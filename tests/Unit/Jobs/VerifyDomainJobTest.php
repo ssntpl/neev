@@ -13,6 +13,7 @@ use Ssntpl\Neev\Events\DomainReverified;
 use Ssntpl\Neev\Events\DomainUnverified;
 use Ssntpl\Neev\Events\DomainVerificationFailed;
 use Ssntpl\Neev\Events\DomainVerified;
+use Ssntpl\Neev\Events\EmailDomainEnforceDropped;
 use Ssntpl\Neev\Jobs\VerifyDomainJob;
 use Ssntpl\Neev\Models\EmailDomain;
 use Ssntpl\Neev\Models\Hostname;
@@ -36,11 +37,11 @@ class VerifyDomainJobTest extends TestCase
     }
 
     /**
-     * The job re-checks a verified row. A new token issued after it was
-     * queued makes the row a fresh pending claim, whose record may not be
-     * published yet; the job must not mark that claim failed.
+     * The job re-checks a verified row. One sent back to pending after it
+     * was queued is a claim whose record may not be published yet; the job
+     * must not mark that claim failed.
      */
-    public function test_skips_a_domain_a_new_token_reset_after_it_was_queued(): void
+    public function test_skips_a_domain_made_pending_after_it_was_queued(): void
     {
         Event::fake([DomainVerified::class, DomainVerificationFailed::class]);
         $domain = EmailDomainFactory::new()->verified()->create([
@@ -103,6 +104,63 @@ class VerifyDomainJobTest extends TestCase
         $this->assertNotNull($domain->verified_at);
         $this->assertNotNull($domain->verification_failed_at);
         $this->assertSame(EmailDomain::STATUS_FAILED, $domain->status);
+    }
+
+    /**
+     * A row restored by the re-check while another owner has since started
+     * enforcing is restored without enforce. Nobody is watching the job, so
+     * the event is how the owner hears of it.
+     */
+    public function test_restoring_a_row_another_owner_now_enforces_fires_enforce_dropped(): void
+    {
+        Event::fake([EmailDomainEnforceDropped::class]);
+        FakeDns::txt('_neev-email.acme.com', 'published');
+        $domain = EmailDomainFactory::new()->create([
+            'domain' => 'acme.com',
+            'verification_token' => 'published',
+            'enforce' => true,
+            'status' => EmailDomain::STATUS_FAILED,
+            'verification_failed_at' => now()->subDays(8),
+        ]);
+        EmailDomainFactory::new()->verified()->create(['domain' => 'acme.com', 'enforce' => true]);
+
+        (new VerifyDomainJob($domain))->handle();
+
+        $domain->refresh();
+        $this->assertTrue($domain->isVerified());
+        $this->assertFalse($domain->enforce);
+        Event::assertDispatched(EmailDomainEnforceDropped::class);
+    }
+
+    /**
+     * A new token leaves the row verified, and the re-check holds it to the
+     * new token's record: the old record no longer counts.
+     */
+    public function test_re_checks_a_verified_row_against_its_new_token(): void
+    {
+        Event::fake([DomainVerificationFailed::class]);
+        FakeDns::txt('_neev-host.app.acme.com', 'old');
+        $hostname = HostnameFactory::new()->verified()->create([
+            'host' => 'app.acme.com',
+            'verification_token' => 'old',
+        ]);
+
+        $hostname->generateVerificationToken();
+        $this->assertTrue($hostname->fresh()->isVerified());
+
+        (new VerifyDomainJob($hostname->fresh()))->handle();
+
+        $hostname->refresh();
+        $this->assertTrue($hostname->isVerified(), 'It keeps serving until the window runs out.');
+        $this->assertSame(Hostname::STATUS_FAILED, $hostname->status);
+        Event::assertDispatched(DomainVerificationFailed::class);
+
+        FakeDns::txt('_neev-host.app.acme.com', $hostname->verification_token);
+        (new VerifyDomainJob($hostname))->handle();
+
+        $hostname->refresh();
+        $this->assertSame(Hostname::STATUS_VERIFIED, $hostname->status);
+        $this->assertNull($hostname->verification_failed_at);
     }
 
     /**
