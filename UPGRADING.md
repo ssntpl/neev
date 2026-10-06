@@ -80,6 +80,19 @@ domains have their own resources, addressed by ID in the path instead of a
   `neev.platform_domain`, is a `422` on `host`; enforcing an email domain
   another owner already enforces is a `422` on `enforce`.
 
+**Any member may manage a team's hosts and email domains (action required if
+only some should).** Neev now checks only that the caller
+belongs to the row's owner: a team's owner or members, or anyone in a tenant,
+from that tenant. Adding, verifying, re-issuing a token, setting the primary
+host, changing `enforce` and deleting used to be the team owner's alone. To
+keep that, or to apply your own roles, add middleware to those routes in a
+published `routes/neev.php`. The Blade pages follow the same rule: every member
+sees the **Email Domains** and **Hostnames** links and their controls, and may
+use them (re-eject the `team/hostnames` and `team/left-section` views to pick
+that up). A tenant's own hosts and email domains have new endpoints,
+`{prefix}/tenant/hostnames` and `{prefix}/tenant/email-domains`, registered
+under tenant isolation and open to anyone in the tenant until you add yours.
+
 **The Blade team domain page is split in two (re-eject to pick up).**
 `team/federation.blade.php` is now `team/email-domains.blade.php`, beside a new
 `team/hostnames.blade.php`, and the team menu links both. The routes are

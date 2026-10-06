@@ -124,6 +124,16 @@ class ApiRouteMapTest extends TestCase
         ];
     }
 
+    /** A tenant's own host and email-domain routes exist only under tenant isolation. */
+    public function test_the_tenant_domain_routes_need_tenant_isolation(): void
+    {
+        $routes = $this->registeredApiRoutes();
+
+        foreach (['GET neev/tenant/hostnames', 'POST neev/tenant/hostnames', 'GET neev/tenant/email-domains', 'POST neev/tenant/email-domains'] as $route) {
+            $this->assertNotContains($route, $routes);
+        }
+    }
+
     public function test_every_grouped_route_keeps_its_full_path(): void
     {
         $registered = $this->registeredApiRoutes();

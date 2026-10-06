@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use InvalidArgumentException;
 use Ssntpl\Neev\Exceptions\EmailDomainEnforcedException;
+use Ssntpl\Neev\Http\Controllers\Concerns\AuthorizesDomainOwners;
 use Ssntpl\Neev\Models\EmailDomain;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
@@ -14,11 +15,15 @@ use Ssntpl\Neev\Rules\Hostname as HostnameRule;
 
 /**
  * The Blade page for a team's email domains (RFC 006): users at them belong to
- * the team. Members see them; only the owner changes them. Every domain is
- * proven by its `_neev-email` record.
+ * the team. As on the API, Neev checks only that the caller belongs to the
+ * team (AuthorizesDomainOwners); which members may change them is the
+ * application's own middleware's to decide. Every domain is proven by its
+ * `_neev-email` record.
  */
 class TeamEmailDomainController extends Controller
 {
+    use AuthorizesDomainOwners;
+
     public function index(Request $request, Team $team)
     {
         /** @var User|null $user */
@@ -47,9 +52,7 @@ class TeamEmailDomainController extends Controller
 
     public function store(Request $request, Team $team)
     {
-        /** @var User|null $user */
-        $user = User::model()->find($request->user()?->id);
-        if (!$user || $team->user_id !== $user->id) {
+        if (!$this->belongsToOwner($request, $team)) {
             return back()->withErrors(['message' => 'You do not have the required permissions to federate domain.']);
         }
 
@@ -79,9 +82,7 @@ class TeamEmailDomainController extends Controller
 
     public function update(Request $request, EmailDomain $domain)
     {
-        /** @var User|null $user */
-        $user = User::model()->find($request->user()?->id);
-        if (!$user || !$domain->owner instanceof Team || $domain->owner->user_id !== $user->id) {
+        if (!$domain->owner instanceof Team || !$this->belongsToOwner($request, $domain->owner)) {
             return back()->withErrors(['message' => 'You do not have the required permissions to update domain.']);
         }
         try {
@@ -123,9 +124,7 @@ class TeamEmailDomainController extends Controller
 
     public function destroy(Request $request, EmailDomain $domain)
     {
-        /** @var User|null $user */
-        $user = User::model()->find($request->user()?->id);
-        if (!$user || !$domain->owner instanceof Team || $domain->owner->user_id !== $user->id) {
+        if (!$domain->owner instanceof Team || !$this->belongsToOwner($request, $domain->owner)) {
             return back()->withErrors(['message' => 'You do not have the required permissions to delete domain.']);
         }
         try {

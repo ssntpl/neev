@@ -67,7 +67,7 @@ class TeamHostnameWebTest extends TestCase
             ->assertOk()
             ->assertSee('app.acme.com')
             ->assertSee('acme.otper.com')
-            ->assertDontSee('Add Host');
+            ->assertSee('Add Host');
     }
 
     public function test_the_owner_claims_a_host_and_gets_its_record(): void
@@ -100,7 +100,8 @@ class TeamHostnameWebTest extends TestCase
         $this->assertSame(0, $team->hostnames()->count());
     }
 
-    public function test_a_member_cannot_claim_a_host(): void
+    /** As on the API, Neev checks membership only; the app's middleware may narrow it. */
+    public function test_a_member_can_claim_a_host(): void
     {
         [$team] = $this->teamWithOwner();
         $member = User::factory()->create();
@@ -109,9 +110,33 @@ class TeamHostnameWebTest extends TestCase
         $this->actingAs($member)
             ->from(route('teams.hostnames', $team->id))
             ->post(route('teams.hostnames.store', $team->id), ['host' => 'app.acme.com'])
-            ->assertSessionHasErrors('message');
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('dns_record_name', '_neev-host.app.acme.com');
 
-        $this->assertDatabaseCount('hostnames', 0);
+        $this->assertDatabaseCount('hostnames', 1);
+    }
+
+    public function test_an_outsider_cannot_claim_update_or_delete_a_host(): void
+    {
+        [$team] = $this->teamWithOwner();
+        $outsider = User::factory()->create();
+        $hostname = $this->verifiedHost($team, 'app.acme.com');
+
+        $this->actingAs($outsider)
+            ->from(route('teams.hostnames', $team->id))
+            ->post(route('teams.hostnames.store', $team->id), ['host' => 'other.acme.com'])
+            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to add a host.']);
+        $this->actingAs($outsider)
+            ->from(route('teams.hostnames', $team->id))
+            ->put(route('teams.hostnames.update', $hostname->id), ['primary' => 'primary'])
+            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to update this host.']);
+        $this->actingAs($outsider)
+            ->from(route('teams.hostnames', $team->id))
+            ->delete(route('teams.hostnames.destroy', $hostname->id))
+            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to delete this host.']);
+
+        $this->assertDatabaseCount('hostnames', 1);
+        $this->assertNull($team->fresh()->primary_hostname_id);
     }
 
     public function test_the_owner_verifies_a_host_by_its_record(): void
@@ -203,7 +228,7 @@ class TeamHostnameWebTest extends TestCase
         $this->assertSame($hostname->verification_token, $hostname->fresh()->verification_token);
     }
 
-    public function test_a_member_cannot_update_a_host(): void
+    public function test_a_member_can_make_a_host_primary(): void
     {
         [$team] = $this->teamWithOwner();
         $member = User::factory()->create();
@@ -213,9 +238,9 @@ class TeamHostnameWebTest extends TestCase
         $this->actingAs($member)
             ->from(route('teams.hostnames', $team->id))
             ->put(route('teams.hostnames.update', $hostname->id), ['primary' => 'primary'])
-            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to update this host.']);
+            ->assertSessionHasNoErrors();
 
-        $this->assertNull($team->fresh()->primary_hostname_id);
+        $this->assertSame($hostname->id, $team->fresh()->primary_hostname_id);
     }
 
     public function test_the_owner_gets_a_new_token_and_the_host_keeps_serving(): void

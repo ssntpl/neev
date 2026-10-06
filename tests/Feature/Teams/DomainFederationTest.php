@@ -166,7 +166,8 @@ class DomainFederationTest extends TestCase
         $this->assertSame(0, EmailDomain::count());
     }
 
-    public function test_non_owner_cannot_add_an_email_domain(): void
+    /** Neev checks membership only; which members may act is the app's middleware's call. */
+    public function test_a_member_who_is_not_the_owner_can_add_an_email_domain(): void
     {
         [$member, $token] = $this->authenticatedUser();
 
@@ -175,11 +176,10 @@ class DomainFederationTest extends TestCase
         $team->addMember($member);
 
         $this->bearer($token)
-            ->postJson("/neev/teams/{$team->id}/email-domains", ['domain' => 'forbidden.com'])
-            ->assertForbidden()
-            ->assertExactJson(['message' => 'You do not have permission to do this.']);
+            ->postJson("/neev/teams/{$team->id}/email-domains", ['domain' => 'member.com'])
+            ->assertCreated();
 
-        $this->assertDatabaseMissing('email_domains', ['domain' => 'forbidden.com']);
+        $this->assertDatabaseHas('email_domains', ['domain' => 'member.com', 'owner_id' => $team->id]);
     }
 
     // -----------------------------------------------------------------
@@ -241,6 +241,25 @@ class DomainFederationTest extends TestCase
             ->assertJsonPath('data.domain', 'acme.com');
     }
 
+    /** Belonging to the team is what Neev checks, so an outsider changes nothing. */
+    public function test_an_outsider_cannot_change_a_teams_email_domains(): void
+    {
+        [, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => User::factory()->create()->id]);
+        $domain = EmailDomainFactory::new()->forOwner($team)->create(['enforce' => false, 'verification_token' => 'old']);
+
+        $this->bearer($token)->postJson("/neev/teams/{$team->id}/email-domains", ['domain' => 'other.com'])->assertForbidden();
+        $this->bearer($token)->patchJson("/neev/email-domains/{$domain->id}", ['enforce' => true])->assertForbidden();
+        $this->bearer($token)->postJson("/neev/email-domains/{$domain->id}/token")->assertForbidden();
+        $this->bearer($token)->postJson("/neev/email-domains/{$domain->id}/verify")->assertForbidden();
+        $this->bearer($token)->deleteJson("/neev/email-domains/{$domain->id}")->assertForbidden();
+
+        $domain->refresh();
+        $this->assertFalse($domain->enforce);
+        $this->assertSame('old', $domain->verification_token);
+        $this->assertSame(1, EmailDomain::count());
+    }
+
     public function test_non_member_cannot_view_an_email_domain(): void
     {
         [, $token] = $this->authenticatedUser();
@@ -283,7 +302,7 @@ class DomainFederationTest extends TestCase
             ->assertJsonValidationErrors('enforce');
     }
 
-    public function test_non_owner_cannot_update_an_email_domain(): void
+    public function test_a_member_who_is_not_the_owner_can_update_an_email_domain(): void
     {
         [$member, $token] = $this->authenticatedUser();
 
@@ -294,9 +313,9 @@ class DomainFederationTest extends TestCase
 
         $this->bearer($token)
             ->patchJson('/neev/email-domains/' . $domain->id, ['enforce' => true])
-            ->assertForbidden();
+            ->assertOk();
 
-        $this->assertFalse($domain->fresh()->enforce);
+        $this->assertTrue($domain->fresh()->enforce);
     }
 
     // -----------------------------------------------------------------
@@ -372,18 +391,18 @@ class DomainFederationTest extends TestCase
         $this->assertSame(EmailDomain::STATUS_DISABLED, $domain->fresh()->status);
     }
 
-    public function test_non_owner_cannot_regenerate_the_token(): void
+    public function test_a_member_who_is_not_the_owner_can_regenerate_the_token(): void
     {
         [$member, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => User::factory()->create()->id]);
         $team->addMember($member);
-        $domain = EmailDomainFactory::new()->verified()->forOwner($team)->create();
+        $domain = EmailDomainFactory::new()->verified()->forOwner($team)->create(['verification_token' => 'old']);
 
         $this->bearer($token)
             ->postJson("/neev/email-domains/{$domain->id}/token")
-            ->assertForbidden();
+            ->assertOk();
 
-        $this->assertNotNull($domain->fresh()->verified_at);
+        $this->assertNotSame('old', $domain->fresh()->verification_token);
     }
 
     public function test_refederating_a_verified_domain_keeps_it_verified(): void
@@ -397,6 +416,58 @@ class DomainFederationTest extends TestCase
             ->assertOk();
 
         $this->assertNotNull($domain->fresh()->verified_at);
+    }
+
+    /**
+     * Re-posting a domain the team holds only re-issues its token: `enforce`,
+     * sent or not, applies to a new claim. PATCH is how it changes.
+     */
+    public function test_refederating_a_domain_leaves_its_enforce_alone(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $domain = EmailDomainFactory::new()->verified()->enforced()->forOwner($team)->create(['domain' => 'acme.com']);
+
+        foreach ([['domain' => 'acme.com'], ['domain' => 'acme.com', 'enforce' => false]] as $body) {
+            $this->bearer($token)
+                ->postJson("/neev/teams/{$team->id}/email-domains", $body)
+                ->assertOk()
+                ->assertJsonPath('message', 'Verification token issued.')
+                ->assertJsonPath('data.enforce', true);
+
+            $this->assertTrue($domain->fresh()->enforce);
+        }
+    }
+
+    public function test_refederating_with_enforce_does_not_turn_it_on(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $domain = EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.com']);
+
+        $this->bearer($token)
+            ->postJson("/neev/teams/{$team->id}/email-domains", ['domain' => 'acme.com', 'enforce' => true])
+            ->assertOk()
+            ->assertJsonPath('data.enforce', false);
+
+        $this->assertFalse($domain->fresh()->enforce);
+    }
+
+    /** Asking for a token is not asking to enforce, so another enforcer is no reason to refuse it. */
+    public function test_refederating_gets_a_token_while_another_owner_enforces(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $domain = EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com', 'verification_token' => 'old']);
+        EmailDomainFactory::new()->verified()->enforced()->create(['domain' => 'acme.com']);
+
+        $this->bearer($token)
+            ->postJson("/neev/teams/{$team->id}/email-domains", ['domain' => 'acme.com', 'enforce' => true])
+            ->assertOk()
+            ->assertJsonPath('message', 'Verification token issued.');
+
+        $this->assertNotSame('old', $domain->fresh()->verification_token);
+        $this->assertFalse($domain->fresh()->enforce);
     }
 
     public function test_a_disabled_domain_cannot_be_added_again(): void
@@ -529,7 +600,7 @@ class DomainFederationTest extends TestCase
         $this->assertNotNull($kept->fresh()->verified_at);
     }
 
-    public function test_non_owner_cannot_delete_an_email_domain(): void
+    public function test_a_member_who_is_not_the_owner_can_delete_an_email_domain(): void
     {
         [$member, $token] = $this->authenticatedUser();
 
@@ -540,9 +611,9 @@ class DomainFederationTest extends TestCase
 
         $this->bearer($token)
             ->deleteJson('/neev/email-domains/' . $domain->id)
-            ->assertForbidden();
+            ->assertOk();
 
-        $this->assertDatabaseHas('email_domains', ['id' => $domain->id]);
+        $this->assertDatabaseMissing('email_domains', ['id' => $domain->id]);
     }
 
     // -----------------------------------------------------------------
@@ -727,7 +798,7 @@ class DomainFederationTest extends TestCase
         $this->assertNull($domain->fresh()->verified_at);
     }
 
-    public function test_non_owner_cannot_verify_an_email_domain(): void
+    public function test_a_member_who_is_not_the_owner_can_verify_an_email_domain(): void
     {
         [$member, $token] = $this->authenticatedUser();
         $team = TeamFactory::new()->create(['user_id' => User::factory()->create()->id]);
@@ -738,9 +809,9 @@ class DomainFederationTest extends TestCase
 
         $this->bearer($token)
             ->postJson("/neev/email-domains/{$domain->id}/verify")
-            ->assertForbidden();
+            ->assertOk();
 
-        $this->assertNull($domain->fresh()->verified_at);
+        $this->assertNotNull($domain->fresh()->verified_at);
     }
 
     /**

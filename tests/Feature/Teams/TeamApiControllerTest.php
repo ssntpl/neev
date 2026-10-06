@@ -372,7 +372,7 @@ class TeamApiControllerTest extends TestCase
         ]);
     }
 
-    public function test_email_domain_federate_non_owner_is_forbidden(): void
+    public function test_email_domain_federate_by_a_member_who_is_not_the_owner(): void
     {
         $this->enableDomainFederation();
 
@@ -383,10 +383,9 @@ class TeamApiControllerTest extends TestCase
 
         $this->withHeader('Authorization', 'Bearer ' . $token)
             ->postJson("/neev/teams/{$team->id}/email-domains", ['domain' => 'example.com'])
-            ->assertForbidden()
-            ->assertJsonPath('message', 'You do not have permission to do this.');
+            ->assertCreated();
 
-        $this->assertDatabaseMissing('email_domains', ['domain' => 'example.com']);
+        $this->assertDatabaseHas('email_domains', ['domain' => 'example.com']);
     }
 
     // -----------------------------------------------------------------

@@ -5,17 +5,22 @@ namespace Ssntpl\Neev\Http\Controllers;
 use Illuminate\Http\Request;
 use InvalidArgumentException;
 use Ssntpl\Neev\Exceptions\HostnameTakenException;
+use Ssntpl\Neev\Http\Controllers\Concerns\AuthorizesDomainOwners;
 use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Rules\Hostname as HostnameRule;
 
 /**
- * The Blade page for a team's custom hosts (RFC 006). Members see them; only
- * the owner changes them. Every host is proven by its `_neev-host` record.
+ * The Blade page for a team's custom hosts (RFC 006). As on the API, Neev
+ * checks only that the caller belongs to the team (AuthorizesDomainOwners);
+ * which members may change them is the application's own middleware's to
+ * decide. Every host is proven by its `_neev-host` record.
  */
 class TeamHostnameController extends Controller
 {
+    use AuthorizesDomainOwners;
+
     public function index(Request $request, Team $team)
     {
         /** @var User|null $user */
@@ -34,7 +39,7 @@ class TeamHostnameController extends Controller
 
     public function store(Request $request, Team $team)
     {
-        if (!$this->isOwner($request, $team)) {
+        if (!$this->belongsToOwner($request, $team)) {
             return back()->withErrors(['message' => 'You do not have the required permissions to add a host.']);
         }
 
@@ -61,7 +66,7 @@ class TeamHostnameController extends Controller
     public function update(Request $request, Hostname $hostname)
     {
         $team = $hostname->owner;
-        if (!$team instanceof Team || !$this->isOwner($request, $team)) {
+        if (!$team instanceof Team || !$this->belongsToOwner($request, $team)) {
             return back()->withErrors(['message' => 'You do not have the required permissions to update this host.']);
         }
 
@@ -99,7 +104,7 @@ class TeamHostnameController extends Controller
     public function destroy(Request $request, Hostname $hostname)
     {
         $team = $hostname->owner;
-        if (!$team instanceof Team || !$this->isOwner($request, $team)) {
+        if (!$team instanceof Team || !$this->belongsToOwner($request, $team)) {
             return back()->withErrors(['message' => 'You do not have the required permissions to delete this host.']);
         }
 
@@ -108,13 +113,8 @@ class TeamHostnameController extends Controller
         return back()->with('status', 'Host has been deleted.');
     }
 
-    protected function isOwner(Request $request, Team $team): bool
-    {
-        return $request->user() !== null && $team->user_id === $request->user()->getKey();
-    }
-
     /**
-     * Flash the TXT record the owner has to publish.
+     * Flash the TXT record to publish.
      */
     protected function withRecord($response, Hostname $hostname)
     {

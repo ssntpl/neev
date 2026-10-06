@@ -8,12 +8,10 @@
         class="block px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 {{ request()->routeIs('teams.members') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : '' }}">
             Members
         </a>
-        @if ($team->user_id === $user->id)
-                <a href="{{ route('teams.email-domains', $team->id) }}"
-                class="block px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 {{ request()->routeIs('teams.email-domains') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : '' }}">
-                    Email Domains
-                </a>
-        @endif
+        <a href="{{ route('teams.email-domains', $team->id) }}"
+        class="block px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 {{ request()->routeIs('teams.email-domains') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : '' }}">
+            Email Domains
+        </a>
         <a href="{{ route('teams.hostnames', $team->id) }}"
         class="block px-4 py-2 rounded-md text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 {{ request()->routeIs('teams.hostnames') ? 'bg-gray-200 dark:bg-gray-700 font-semibold' : '' }}">
             Hostnames

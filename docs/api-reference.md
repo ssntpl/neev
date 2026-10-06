@@ -1706,9 +1706,12 @@ Authorization: Bearer {token}
 
 ## Team Management
 
-> These endpoints, and the [Hostnames](#hostnames) and
+> These endpoints, and the team [Hostnames](#hostnames) and
 > [Email Domains](#email-domains) ones, are registered only when
-> `'team' => true` in `config/neev.php`. With teams off they answer 404.
+> `'team' => true` in `config/neev.php`. With teams off they answer 404. The
+> per-row `/neev/hostnames/{hostname}` and `/neev/email-domains/{emailDomain}`
+> endpoints are also registered when `'tenant' => true`, for
+> [a tenant's own](#tenant-hostnames-and-email-domains).
 > [Get Current Context](#get-current-context) is registered either way.
 
 ### Get User's Teams
@@ -2165,7 +2168,11 @@ the row's token. The team's platform subdomain (its slug under
 `platform_domain`) is derived from the slug: it is listed, never stored, and
 cannot be added, verified or deleted here.
 
-Members read a team's hostnames; only the team owner changes them. Every
+A team's hostnames are reachable by its owner and members, and a tenant's by
+anyone in that tenant, from the tenant the request resolved to (see
+[Tenant Hostnames and Email Domains](#tenant-hostnames-and-email-domains)).
+Neev checks only that; which of them may add, verify or delete is the
+application's to decide, with its own middleware on these routes. Every
 endpoint needs `Authorization: Bearer {token}`. `{hostname}` must be numeric;
 anything else, or an id that does not exist, answers `404`. Adding, verifying
 and re-issuing a token share one limit of 10 requests a minute per user
@@ -2234,7 +2241,7 @@ primary, or `null`.
 POST /neev/teams/{team}/hostnames
 ```
 
-Team owner only. Rate limited (`neev-dns`).
+Any joined member, or the owner. Rate limited (`neev-dns`).
 
 **Request Body:**
 
@@ -2268,7 +2275,7 @@ Publish `dns_record`, then call [Verify Hostname](#verify-hostname).
 
 | Status | Message |
 |--------|---------|
-| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 403 | `You do not have permission to do this.` — the caller does not belong to the row's owner |
 | 422 | `The host must be a host name.` — `host` is missing, not a string, over 255 characters, or not a host name once canonicalised (a URL, path, port, space, single label, IP address, or a numeric last label) |
 | 422 | `A host under the platform domain follows the slug and cannot be added.` |
 | 422 | `This team has already added this host.` |
@@ -2283,7 +2290,7 @@ Publish `dns_record`, then call [Verify Hostname](#verify-hostname).
 GET /neev/hostnames/{hostname}
 ```
 
-Any joined member of the owning team.
+Anyone the row's owner reaches (above).
 
 **Response:**
 
@@ -2297,7 +2304,7 @@ Any joined member of the owning team.
 
 | Status | Message |
 |--------|---------|
-| 403 | `You do not have permission to do this.` — the caller is not a member, or the hostname is not a team's |
+| 403 | `You do not have permission to do this.` — the caller does not belong to the row's owner |
 | 404 | No hostname with that id |
 
 ---
@@ -2308,7 +2315,7 @@ Any joined member of the owning team.
 DELETE /neev/hostnames/{hostname}
 ```
 
-Team owner only. If the hostname was the team's primary, `primary_hostname_id`
+Anyone the row's owner reaches (above). If the hostname was the team's primary, `primary_hostname_id`
 is cleared first, so the team falls back to its next verified hostname, then
 its platform subdomain.
 
@@ -2324,7 +2331,7 @@ its platform subdomain.
 
 | Status | Message |
 |--------|---------|
-| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 403 | `You do not have permission to do this.` — the caller does not belong to the row's owner |
 | 404 | No hostname with that id |
 
 ---
@@ -2335,7 +2342,7 @@ its platform subdomain.
 POST /neev/hostnames/{hostname}/verify
 ```
 
-Team owner only. Rate limited (`neev-dns`). Looks up the TXT record at
+Anyone the row's owner reaches (above). Rate limited (`neev-dns`). Looks up the TXT record at
 `_neev-host.<host>` and, if it carries the token, marks the row `verified`.
 
 **Response:**
@@ -2353,7 +2360,7 @@ Team owner only. Rate limited (`neev-dns`). Looks up the TXT record at
 |--------|---------|
 | 400 | `DNS verification failed. Please check your DNS record.` — no matching record |
 | 400 | `This host is disabled.` — the app disabled the host; DNS does not bring it back |
-| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 403 | `You do not have permission to do this.` — the caller does not belong to the row's owner |
 | 404 | No hostname with that id |
 | 429 | Rate limit reached |
 
@@ -2365,7 +2372,7 @@ Team owner only. Rate limited (`neev-dns`). Looks up the TXT record at
 POST /neev/hostnames/{hostname}/token
 ```
 
-Team owner only. Rate limited (`neev-dns`). Issues a new token and changes
+Anyone the row's owner reaches (above). Rate limited (`neev-dns`). Issues a new token and changes
 nothing else: a verified host keeps serving, and the daily re-check holds it to
 the new record, so publish it before then.
 
@@ -2388,7 +2395,7 @@ the new record, so publish it before then.
 | Status | Message |
 |--------|---------|
 | 400 | `This host is disabled.` |
-| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 403 | `You do not have permission to do this.` — the caller does not belong to the row's owner |
 | 404 | No hostname with that id |
 | 429 | Rate limit reached |
 
@@ -2400,7 +2407,7 @@ the new record, so publish it before then.
 POST /neev/hostnames/{hostname}/primary
 ```
 
-Team owner only. Sets the team's `primary_hostname_id` to this hostname. The
+Anyone the row's owner reaches (above). Sets the team's `primary_hostname_id` to this hostname. The
 team is served at its verified primary, else its oldest verified hostname,
 else its platform subdomain.
 
@@ -2418,7 +2425,7 @@ else its platform subdomain.
 | Status | Message |
 |--------|---------|
 | 400 | `Only a verified host can be primary.` |
-| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 403 | `You do not have permission to do this.` — the caller does not belong to the row's owner |
 | 404 | No hostname with that id |
 
 ---
@@ -2474,8 +2481,12 @@ its TXT record at `_neev-email.<domain>` carries the row's token. Unlike a
 hostname it is not unique: several teams may hold and verify the same domain,
 but only one owner at a time may enforce it.
 
-Members read a team's email domains; only the team owner changes them. Every
-endpoint needs `Authorization: Bearer {token}`. `{emailDomain}` must be
+A team's email domains are reachable by its owner and members, and a tenant's
+by anyone in that tenant, from the tenant the request resolved to (see
+[Tenant Hostnames and Email Domains](#tenant-hostnames-and-email-domains)).
+Neev checks only that; which of them may change them is the application's to
+decide, with its own middleware on these routes. Every endpoint needs
+`Authorization: Bearer {token}`. `{emailDomain}` must be
 numeric; anything else, or an id that does not exist, answers `404`. Adding,
 verifying and re-issuing a token share the `neev-dns` limit of 10 requests a
 minute per user; past it they answer `429`.
@@ -2540,7 +2551,7 @@ rows do not carry the key.
 POST /neev/teams/{team}/email-domains
 ```
 
-Team owner only. Rate limited (`neev-dns`).
+Any joined member, or the owner. Rate limited (`neev-dns`).
 
 **Request Body:**
 
@@ -2559,8 +2570,9 @@ Team owner only. Rate limited (`neev-dns`).
 A domain the team does not hold yet is created `pending` with a new token
 (`201`, `Email domain added.`). One it already holds gets a new token instead
 (`200`, `Verification token issued.`): it keeps its status, the daily re-check
-holds it to the new record, and its `enforce` is set to the value sent, `false`
-when omitted.
+holds it to the new record, and its `enforce` stays as it was, whatever is
+sent. `enforce` here applies to a new claim only; change it with
+[Update Email Domain](#update-email-domain).
 
 **Response (`201`):**
 
@@ -2580,11 +2592,11 @@ when omitted.
 
 | Status | Message |
 |--------|---------|
-| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 403 | `You do not have permission to do this.` — the caller does not belong to the row's owner |
 | 422 `domain` | `The domain must be a host name.` — missing, not a string, over 255 characters, or not a host name once canonicalised (a URL, path, port, space, single label, IP address, or a numeric last label) |
 | 422 `domain` | `This domain is disabled.` — the team's row for it is disabled |
 | 422 `enforce` | Not a boolean |
-| 422 `enforce` | `Another owner already enforces this email domain.` — `enforce` is `true` and another owner's verified row enforces it |
+| 422 `enforce` | `Another owner already enforces this email domain.` — a new claim with `enforce` `true`, and another owner's verified row enforces it |
 | 429 | Rate limit reached |
 
 ---
@@ -2595,7 +2607,7 @@ when omitted.
 GET /neev/email-domains/{emailDomain}
 ```
 
-Any joined member of the owning team.
+Anyone the row's owner reaches (above).
 
 **Response:**
 
@@ -2609,7 +2621,7 @@ Any joined member of the owning team.
 
 | Status | Message |
 |--------|---------|
-| 403 | `You do not have permission to do this.` — the caller is not a member, or the domain is not a team's |
+| 403 | `You do not have permission to do this.` — the caller does not belong to the row's owner |
 | 404 | No email domain with that id |
 
 ---
@@ -2620,7 +2632,7 @@ Any joined member of the owning team.
 PATCH /neev/email-domains/{emailDomain}
 ```
 
-Team owner only. Turns enforcement on or off.
+Anyone the row's owner reaches (above). Turns enforcement on or off.
 
 **Request Body:**
 
@@ -2645,7 +2657,7 @@ Team owner only. Turns enforcement on or off.
 
 | Status | Message |
 |--------|---------|
-| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 403 | `You do not have permission to do this.` — the caller does not belong to the row's owner |
 | 404 | No email domain with that id |
 | 422 `enforce` | Missing or not a boolean |
 | 422 `enforce` | `Another owner already enforces this email domain.` |
@@ -2658,7 +2670,7 @@ Team owner only. Turns enforcement on or off.
 DELETE /neev/email-domains/{emailDomain}
 ```
 
-Team owner only. Deleting a domain, verified or not, reactivates the team's
+Anyone the row's owner reaches (above). Deleting a domain, verified or not, reactivates the team's
 deactivated members whose email is on it, since nothing manages them once it
 is gone. A member another team they belong to also holds the domain for is
 left deactivated, since that team may be the one that deactivated them.
@@ -2675,7 +2687,7 @@ left deactivated, since that team may be the one that deactivated them.
 
 | Status | Message |
 |--------|---------|
-| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 403 | `You do not have permission to do this.` — the caller does not belong to the row's owner |
 | 404 | No email domain with that id |
 
 ---
@@ -2686,7 +2698,7 @@ left deactivated, since that team may be the one that deactivated them.
 POST /neev/email-domains/{emailDomain}/verify
 ```
 
-Team owner only. Rate limited (`neev-dns`). Looks up the TXT record at
+Anyone the row's owner reaches (above). Rate limited (`neev-dns`). Looks up the TXT record at
 `_neev-email.<domain>` and, if it carries the token, marks the row `verified`.
 Only the first owner to verify and enforce a domain keeps enforcing it: if the
 row asks to enforce but another owner's verified row already enforces the
@@ -2713,7 +2725,7 @@ owner already enforces this domain, so enforce was turned off.`,
 |--------|---------|
 | 400 | `DNS verification failed. Please check your DNS record.` — no matching record |
 | 400 | `This domain is disabled.` — the app disabled the domain; DNS does not bring it back |
-| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 403 | `You do not have permission to do this.` — the caller does not belong to the row's owner |
 | 404 | No email domain with that id |
 | 429 | Rate limit reached |
 
@@ -2725,7 +2737,7 @@ owner already enforces this domain, so enforce was turned off.`,
 POST /neev/email-domains/{emailDomain}/token
 ```
 
-Team owner only. Rate limited (`neev-dns`). Issues a new token and changes
+Anyone the row's owner reaches (above). Rate limited (`neev-dns`). Issues a new token and changes
 nothing else: a verified domain keeps counting, and the daily re-check holds it
 to the new record, so publish it before then. `enforce` is kept.
 
@@ -2748,7 +2760,7 @@ to the new record, so publish it before then. `enforce` is kept.
 | Status | Message |
 |--------|---------|
 | 400 | `This domain is disabled.` |
-| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 403 | `You do not have permission to do this.` — the caller does not belong to the row's owner |
 | 404 | No email domain with that id |
 | 429 | Rate limit reached |
 
@@ -2757,6 +2769,32 @@ to the new record, so publish it before then. `enforce` is kept.
 > record its owner published there, while `dns_verification.legacy_record` is
 > on. The row's own record is checked first, and new claims publish only
 > `dns_record`. The fallback is removed with `domains` in the next release.
+
+---
+
+## Tenant Hostnames and Email Domains
+
+Registered when tenant isolation is on (`'tenant' => true`). They act on the
+tenant the request resolved to, from its host or the `X-Tenant` header, and
+answer `400 No tenant context.` when none did. Anyone in that tenant may call
+them: Neev checks only that the caller belongs to it (the `neev:api` group's
+`EnsureTenantMembership`). Which members may manage the tenant's hosts and
+email domains is the application's to decide, by adding its own middleware to
+these routes in a published `routes/neev.php`.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/neev/tenant/hostnames` | The tenant's hostnames, `platform_host` and `primary_hostname_id`, as [List Team Hostnames](#list-team-hostnames) |
+| POST | `/neev/tenant/hostnames` | Add a host (`host`), as [Add Hostname](#add-hostname) |
+| GET | `/neev/tenant/email-domains` | The tenant's email domains, as [List Team Email Domains](#list-team-email-domains), without `outside_members` |
+| POST | `/neev/tenant/email-domains` | Add a domain (`domain`, `enforce`) or re-issue its token, as [Add Email Domain](#add-email-domain) |
+
+Each row is then managed through the same endpoints as a team's:
+`/neev/hostnames/{hostname}` (`verify`, `token`, `primary`, `DELETE`) and
+`/neev/email-domains/{emailDomain}` (`PATCH`, `verify`, `token`, `DELETE`).
+A tenant's row is reachable only from that tenant: from any other context it
+answers `403 You do not have permission to do this.` Adding a host the tenant
+already holds answers `422` with `This tenant has already added this host.`
 
 ---
 

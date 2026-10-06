@@ -136,7 +136,28 @@ class DomainFederationWebTest extends TestCase
         $this->assertNotNull($domain->fresh()->verified_at);
     }
 
-    public function test_a_member_cannot_federate_a_domain(): void
+    /** The add form's checkbox is ticked by default; re-adding a held domain must not act on it. */
+    public function test_re_adding_a_held_domain_leaves_its_enforce_alone(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $off = EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.com']);
+        $on = EmailDomainFactory::new()->verified()->enforced()->forOwner($team)->create(['domain' => 'acme.io']);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->post(route('teams.email-domains.store', $team->id), ['domain' => 'acme.com', 'enforce' => 'on'])
+            ->assertSessionHasNoErrors();
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->post(route('teams.email-domains.store', $team->id), ['domain' => 'acme.io'])
+            ->assertSessionHasNoErrors();
+
+        $this->assertFalse($off->fresh()->enforce);
+        $this->assertTrue($on->fresh()->enforce);
+    }
+
+    /** As on the API, Neev checks membership only; the app's middleware may narrow it. */
+    public function test_a_member_can_federate_a_domain(): void
     {
         [$team] = $this->teamWithOwner();
         $member = User::factory()->create();
@@ -145,9 +166,33 @@ class DomainFederationWebTest extends TestCase
         $this->actingAs($member)
             ->from(config('neev.home'))
             ->post(route('teams.email-domains.store', $team->id), ['domain' => 'acme.com'])
-            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to federate domain.']);
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('dns_record_name', '_neev-email.acme.com');
 
-        $this->assertSame(0, EmailDomain::count());
+        $this->assertSame(1, $team->emailDomains()->count());
+    }
+
+    public function test_an_outsider_cannot_federate_update_or_delete_a_domain(): void
+    {
+        [$team] = $this->teamWithOwner();
+        $outsider = User::factory()->create();
+        $domain = EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com']);
+
+        $this->actingAs($outsider)
+            ->from(config('neev.home'))
+            ->post(route('teams.email-domains.store', $team->id), ['domain' => 'other.com'])
+            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to federate domain.']);
+        $this->actingAs($outsider)
+            ->from(config('neev.home'))
+            ->put(route('teams.email-domains.update', $domain->id), ['enforce' => 'on'])
+            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to update domain.']);
+        $this->actingAs($outsider)
+            ->from(config('neev.home'))
+            ->delete(route('teams.email-domains.destroy', $domain->id))
+            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to delete domain.']);
+
+        $this->assertSame(1, EmailDomain::count());
+        $this->assertFalse($domain->fresh()->enforce);
     }
 
     public function test_federating_a_disabled_domain_flashes_that_it_is_disabled(): void
@@ -326,7 +371,7 @@ class DomainFederationWebTest extends TestCase
         $this->assertSame(EmailDomain::STATUS_DISABLED, $domain->fresh()->status);
     }
 
-    public function test_a_member_cannot_update_a_domain(): void
+    public function test_a_member_can_update_a_domain(): void
     {
         [$team] = $this->teamWithOwner();
         $member = User::factory()->create();
@@ -336,9 +381,9 @@ class DomainFederationWebTest extends TestCase
         $this->actingAs($member)
             ->from(config('neev.home'))
             ->put(route('teams.email-domains.update', $domain->id), ['enforce' => 'on'])
-            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to update domain.']);
+            ->assertSessionHasNoErrors();
 
-        $this->assertFalse($domain->fresh()->enforce);
+        $this->assertTrue($domain->fresh()->enforce);
     }
 
     // -----------------------------------------------------------------
@@ -397,7 +442,7 @@ class DomainFederationWebTest extends TestCase
     // DELETE /teams/email-domains/{domain}
     // -----------------------------------------------------------------
 
-    public function test_a_member_cannot_delete_a_domain(): void
+    public function test_a_member_can_delete_a_domain(): void
     {
         [$team] = $this->teamWithOwner();
         $member = User::factory()->create();
@@ -407,9 +452,9 @@ class DomainFederationWebTest extends TestCase
         $this->actingAs($member)
             ->from(config('neev.home'))
             ->delete(route('teams.email-domains.destroy', $domain->id))
-            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to delete domain.']);
+            ->assertSessionHasNoErrors();
 
-        $this->assertDatabaseHas('email_domains', ['id' => $domain->id]);
+        $this->assertDatabaseMissing('email_domains', ['id' => $domain->id]);
     }
 
     public function test_an_unexpected_failure_while_deleting_is_logged_and_flashed(): void

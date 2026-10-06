@@ -340,8 +340,10 @@ counterpart (`PUT /neev/teams/request`) allows any member — see
 | PUT | `/teams/email-domains/{domain}` | `teams.email-domains.update` | `verify` checks the record, `token` issues a new one; otherwise sets `enforce` |
 | DELETE | `/teams/email-domains/{domain}` | `teams.email-domains.destroy` | Delete, reactivating the members it deactivated |
 
-Members may open `teams.email-domains`; every change is the owner's. The
-left-section **Email Domains** link is shown to the owner only. Adding a domain
+Every member may open `teams.email-domains`, sees its left-section **Email
+Domains** link, and may make changes: Neev checks only that the caller belongs
+to the team, and which members may act is yours to decide with your own
+middleware on these routes. Adding a domain
 or asking for a token flashes `token` and `dns_record_name` to the session, and
 the page shows the TXT record to publish at `_neev-email.{domain}`. Enforcing a
 domain another owner enforces is refused with
@@ -358,8 +360,9 @@ domain another owner enforces is refused with
 | PUT | `/teams/hostnames/{hostname}` | `teams.hostnames.update` | One action per form: `verify`, `token` or `primary` |
 | DELETE | `/teams/hostnames/{hostname}` | `teams.hostnames.destroy` | Release a host |
 
-Every member sees `teams.hostnames` and its left-section link; every change is
-the owner's. Adding a host or asking for a token flashes `token` and
+Every member sees `teams.hostnames` and its left-section link, and may make
+changes; as for email domains, narrow that with your own middleware. Adding a
+host or asking for a token flashes `token` and
 `dns_record_name`, the TXT record at `_neev-host.{host}`. A host another owner
 holds is refused with `This host cannot be added.`, and a host under
 `platform_domain` cannot be added at all. Only a verified host can be made

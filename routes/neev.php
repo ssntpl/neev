@@ -349,6 +349,23 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
             // Adding, verifying and re-issuing look up or publish DNS records,
             // so they share one limit (`neev-dns`) per user.
             Route::post('/teams/{team}/hostnames', [HostnameApiController::class, 'store'])->middleware('throttle:10,1,neev-dns');
+
+            Route::get('/teams/{team}/email-domains', [EmailDomainApiController::class, 'index']);
+            Route::post('/teams/{team}/email-domains', [EmailDomainApiController::class, 'store'])->middleware('throttle:10,1,neev-dns');
+        }
+
+        // A tenant's own hosts and email domains: the tenant this request
+        // resolved to. Neev checks only that; which members may manage them is
+        // the application's to decide, with its own middleware on these routes.
+        if (config('neev.tenant')) {
+            Route::get('/tenant/hostnames', [HostnameApiController::class, 'tenantIndex']);
+            Route::post('/tenant/hostnames', [HostnameApiController::class, 'tenantStore'])->middleware('throttle:10,1,neev-dns');
+            Route::get('/tenant/email-domains', [EmailDomainApiController::class, 'tenantIndex']);
+            Route::post('/tenant/email-domains', [EmailDomainApiController::class, 'tenantStore'])->middleware('throttle:10,1,neev-dns');
+        }
+
+        // One host or email domain by id, a team's or a tenant's.
+        if (config('neev.team') || config('neev.tenant')) {
             Route::prefix('/hostnames/{hostname}')->whereNumber('hostname')->group(function () {
                 Route::get('/', [HostnameApiController::class, 'show']);
                 Route::delete('/', [HostnameApiController::class, 'destroy']);
@@ -357,8 +374,6 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
                 Route::post('/primary', [HostnameApiController::class, 'primary']);
             });
 
-            Route::get('/teams/{team}/email-domains', [EmailDomainApiController::class, 'index']);
-            Route::post('/teams/{team}/email-domains', [EmailDomainApiController::class, 'store'])->middleware('throttle:10,1,neev-dns');
             Route::prefix('/email-domains/{emailDomain}')->whereNumber('emailDomain')->group(function () {
                 Route::get('/', [EmailDomainApiController::class, 'show']);
                 Route::patch('/', [EmailDomainApiController::class, 'update']);

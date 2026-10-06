@@ -13,9 +13,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphOne;
 use Illuminate\Database\Eloquent\Relations\Relation;
-use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
-use InvalidArgumentException;
 use Ssntpl\Neev\Contracts\ContextContainerInterface;
 use Ssntpl\Neev\Contracts\HasMembersInterface;
 use Ssntpl\Neev\Contracts\IdentityProviderOwnerInterface;
@@ -24,7 +22,6 @@ use Ssntpl\Neev\Events\MemberAdded;
 use Ssntpl\Neev\Events\MemberRemoved;
 use Ssntpl\Neev\Events\TeamCreated;
 use Ssntpl\Neev\Events\TeamDeleted;
-use Ssntpl\Neev\Exceptions\EmailDomainEnforcedException;
 use Ssntpl\Neev\Scopes\TeamTenantScope;
 use Ssntpl\Neev\Scopes\TenantScope;
 use Ssntpl\Neev\Services\TenantResolver;
@@ -318,44 +315,6 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
         }
 
         return $this->users->reject(fn ($member) => $this->hasVerifiedDomainFor((string) $member->getAttribute('email')))->count();
-    }
-
-    /**
-     * Claim an email domain, or re-issue the token of one already held. It is
-     * pending until its TXT record is published; the token is on the returned
-     * row. Other teams may hold the same domain (RFC 006 §2.1), but only one
-     * may enforce it.
-     *
-     * @throws InvalidArgumentException when the team's row is disabled
-     * @throws EmailDomainEnforcedException when asked to enforce a domain
-     *         another owner enforces
-     */
-    public function federateDomain(string $host, bool $enforce): EmailDomain
-    {
-        try {
-            return $this->federateDomainOnce($host, $enforce);
-        } catch (UniqueConstraintViolationException) {
-            // A request for the same domain, a double submit, created the row
-            // between our lookup and insert: re-issue the token on that row,
-            // as a second request after it would.
-            return $this->federateDomainOnce($host, $enforce);
-        }
-    }
-
-    protected function federateDomainOnce(string $host, bool $enforce): EmailDomain
-    {
-        /** @var EmailDomain $domain */
-        $domain = $this->emailDomains()->firstOrNew(['domain' => EmailDomain::canonicalHost($host)]);
-
-        if ($domain->status === EmailDomain::STATUS_DISABLED) {
-            throw new InvalidArgumentException('This domain is disabled.');
-        }
-
-        $domain->enforce = $enforce;
-        $domain->generateVerificationToken();
-        $this->unsetRelation('emailDomains');
-
-        return $domain;
     }
 
     /**

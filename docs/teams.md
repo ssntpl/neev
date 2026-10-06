@@ -280,12 +280,15 @@ endpoints never confirm which team ids are real.
 | `DELETE /neev/teams` | the owner, and only when they own another team |
 | `POST /neev/changeTeamOwner` | the owner, and only to an existing member |
 | `PUT /neev/role/change` | a member, and only for another user attached to the same team — joined or still pending |
-| email domain add / enforce / verify / token / delete | the owner |
-| hostname add / verify / token / primary / delete | the owner |
+| email domain add / enforce / verify / token / delete (API and Blade) | any member, or the owner; narrow it with your own middleware |
+| hostname add / verify / token / primary / delete (API and Blade) | any member, or the owner; narrow it with your own middleware |
 
 The email-domain and hostname endpoints take the team in the path, so a team id
 that does not exist answers `404` there, and a refusal answers
-`403 You do not have permission to do this.`
+`403 You do not have permission to do this.` On the API and the Blade pages
+alike, Neev checks only that the caller belongs to the team; which members may
+change its hosts and email domains is the application's to decide, with its
+own middleware on those routes.
 
 > **Known asymmetry:** acting on a join request is owner-only on the Blade
 > route and open to any member on the API route. Accepting a request admits
@@ -569,7 +572,9 @@ re-check restores the row.
 
 A claim does nothing until it is **verified**. Re-submitting a domain issues a
 new verification token, and so does asking for one (`POST .../token`, or
-**Get Token** on the page). Only the token changes: a verified domain stays
+**Get Token** on the page). `enforce` on the add request applies to a new claim
+only, so re-submitting leaves it as it was; turn it on or off with `PATCH`.
+Only the token changes: a verified domain stays
 verified, and the daily re-check holds it to the new token's record. Publish the
 new record before that runs, or the domain fails and, after
 `neev.dns_verification.unverify_after_failed_days`, is unverified like any
@@ -702,8 +707,9 @@ its own. Deleting a team deletes its email domains the same way.
 
 `GET /teams/{team}/email-domains` (`teams.email-domains`) lists the domains,
 adds one, toggles **Enforce**, and offers **Get Token**, **Verify** and
-**Delete** for each. Members may open it; only the owner may change anything,
-and the left-section **Email Domains** link is shown to the owner only. See
+**Delete** for each. Every member sees the page, its left-section **Email
+Domains** link and its controls; Neev checks only that the caller belongs to
+the team, so narrow it with your own middleware if only some should. See
 [Web Routes](./web-routes.md#email-domains).
 
 ---
@@ -761,8 +767,10 @@ host, else its oldest verified host, else its platform subdomain.
 
 `GET /teams/{team}/hostnames` (`teams.hostnames`) lists the platform subdomain
 and the custom hosts, and offers **Make Primary**, **Get Token**, **Verify** and
-**Delete**. Every member sees the page and its left-section **Hostnames** link;
-only the owner may change anything. See [Web Routes](./web-routes.md#hostnames).
+**Delete**. Every member sees the page, its left-section **Hostnames** link and
+its controls; Neev checks only that the caller belongs to the team, so narrow
+it with your own middleware if only some should. See
+[Web Routes](./web-routes.md#hostnames).
 
 ---
 

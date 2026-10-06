@@ -320,12 +320,14 @@ All API routes are prefixed with `/neev` — the prefix is configurable via `rou
 
 ### Hostname Endpoints
 
-Custom hosts a team is served at, proven by a TXT record at `_neev-host.<host>`.
+Custom hosts a team or tenant is served at, proven by a TXT record at `_neev-host.<host>`. Neev checks that the caller belongs to the owner; which members may manage them is up to your own middleware.
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | GET | `/neev/teams/{team}/hostnames` | List the team's custom hosts | Yes |
 | POST | `/neev/teams/{team}/hostnames` | Claim a custom host | Yes |
+| GET | `/neev/tenant/hostnames` | List the resolved tenant's custom hosts (tenant isolation) | Yes |
+| POST | `/neev/tenant/hostnames` | Claim a custom host for the resolved tenant (tenant isolation) | Yes |
 | GET | `/neev/hostnames/{id}` | Get host details | Yes |
 | DELETE | `/neev/hostnames/{id}` | Release a host | Yes |
 | POST | `/neev/hostnames/{id}/verify` | Check the DNS record | Yes |
@@ -335,12 +337,14 @@ Custom hosts a team is served at, proven by a TXT record at `_neev-host.<host>`.
 
 ### Email Domain Endpoints
 
-Email domains whose users join a team, proven by a TXT record at `_neev-email.<domain>`.
+Email domains whose users join a team or tenant, proven by a TXT record at `_neev-email.<domain>`.
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
 | GET | `/neev/teams/{team}/email-domains` | List the team's email domains | Yes |
 | POST | `/neev/teams/{team}/email-domains` | Claim an email domain | Yes |
+| GET | `/neev/tenant/email-domains` | List the resolved tenant's email domains (tenant isolation) | Yes |
+| POST | `/neev/tenant/email-domains` | Claim an email domain for the resolved tenant (tenant isolation) | Yes |
 | GET | `/neev/email-domains/{id}` | Get domain details | Yes |
 | PATCH | `/neev/email-domains/{id}` | Turn `enforce` on or off | Yes |
 | DELETE | `/neev/email-domains/{id}` | Delete, giving back the accounts it deactivated | Yes |

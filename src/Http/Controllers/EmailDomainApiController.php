@@ -7,24 +7,31 @@ use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
 use Ssntpl\Neev\Exceptions\EmailDomainEnforcedException;
+use Ssntpl\Neev\Http\Controllers\Concerns\AuthorizesDomainOwners;
 use Ssntpl\Neev\Models\EmailDomain;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Rules\Hostname as HostnameRule;
+use Ssntpl\Neev\Services\TenantResolver;
 
 /**
- * A team's email domains (RFC 006): users at them belong to the team, each
- * proven by a TXT record at `_neev-email.<domain>`. Members read them; only
- * the owner changes them. Other teams may hold the same domain.
+ * A team's or tenant's email domains (RFC 006): users at them belong to it,
+ * each proven by a TXT record at `_neev-email.<domain>`. Neev checks only that
+ * the caller belongs to the owner (AuthorizesDomainOwners); who among them may
+ * change them is the application's own middleware's to decide. Other owners
+ * may hold the same domain.
  */
 class EmailDomainApiController extends Controller
 {
+    use AuthorizesDomainOwners;
+
     /**
      * Each enforced, verified domain carries `outside_members`: how many
      * members are on none of the team's verified domains.
      */
     public function index(Request $request, Team $team): JsonResponse
     {
-        if (!$team->hasMember($request->user())) {
+        if (!$this->belongsToOwner($request, $team)) {
             return $this->forbidden();
         }
 
@@ -47,17 +54,59 @@ class EmailDomainApiController extends Controller
      */
     public function store(Request $request, Team $team): JsonResponse
     {
-        if (!$this->owns($request, $team)) {
+        if (!$this->belongsToOwner($request, $team)) {
             return $this->forbidden();
         }
 
+        return $this->claimFor($request, $team);
+    }
+
+    /**
+     * The email domains of the tenant this request resolved to.
+     */
+    public function tenantIndex(Request $request, TenantResolver $resolver): JsonResponse
+    {
+        $tenant = $resolver->currentTenant();
+
+        if (!$tenant) {
+            return $this->noTenant();
+        }
+
+        if (!$this->belongsToOwner($request, $tenant)) {
+            return $this->forbidden();
+        }
+
+        return response()->json(['data' => $tenant->emailDomains->sortBy('id')->values()]);
+    }
+
+    /**
+     * Claim a domain for the tenant this request resolved to, as store() does
+     * for a team.
+     */
+    public function tenantStore(Request $request, TenantResolver $resolver): JsonResponse
+    {
+        $tenant = $resolver->currentTenant();
+
+        if (!$tenant) {
+            return $this->noTenant();
+        }
+
+        if (!$this->belongsToOwner($request, $tenant)) {
+            return $this->forbidden();
+        }
+
+        return $this->claimFor($request, $tenant);
+    }
+
+    protected function claimFor(Request $request, Team|Tenant $owner): JsonResponse
+    {
         $request->validate([
             'domain' => ['bail', 'required', 'string', 'max:255', new HostnameRule()],
             'enforce' => ['sometimes', 'boolean'],
         ]);
 
         try {
-            $domain = $team->federateDomain($request->domain, $request->boolean('enforce'));
+            $domain = $owner->federateDomain($request->domain, $request->boolean('enforce'));
         } catch (InvalidArgumentException $e) {
             throw ValidationException::withMessages(['domain' => $e->getMessage()]);
         } catch (EmailDomainEnforcedException $e) {
@@ -71,8 +120,7 @@ class EmailDomainApiController extends Controller
 
     public function show(Request $request, EmailDomain $emailDomain): JsonResponse
     {
-        $team = $emailDomain->owner;
-        if (!$team instanceof Team || !$team->hasMember($request->user())) {
+        if (!$this->belongsToOwner($request, $emailDomain->owner)) {
             return $this->forbidden();
         }
 
@@ -81,7 +129,7 @@ class EmailDomainApiController extends Controller
 
     public function update(Request $request, EmailDomain $emailDomain): JsonResponse
     {
-        if (!$this->ownsDomain($request, $emailDomain)) {
+        if (!$this->belongsToOwner($request, $emailDomain->owner)) {
             return $this->forbidden();
         }
 
@@ -101,7 +149,7 @@ class EmailDomainApiController extends Controller
      */
     public function destroy(Request $request, EmailDomain $emailDomain): JsonResponse
     {
-        if (!$this->ownsDomain($request, $emailDomain)) {
+        if (!$this->belongsToOwner($request, $emailDomain->owner)) {
             return $this->forbidden();
         }
 
@@ -112,7 +160,7 @@ class EmailDomainApiController extends Controller
 
     public function verify(Request $request, EmailDomain $emailDomain): JsonResponse
     {
-        if (!$this->ownsDomain($request, $emailDomain)) {
+        if (!$this->belongsToOwner($request, $emailDomain->owner)) {
             return $this->forbidden();
         }
 
@@ -143,7 +191,7 @@ class EmailDomainApiController extends Controller
      */
     public function token(Request $request, EmailDomain $emailDomain): JsonResponse
     {
-        if (!$this->ownsDomain($request, $emailDomain)) {
+        if (!$this->belongsToOwner($request, $emailDomain->owner)) {
             return $this->forbidden();
         }
 
@@ -154,19 +202,15 @@ class EmailDomainApiController extends Controller
         return $this->withRecord('Verification token issued.', $emailDomain);
     }
 
-    protected function owns(Request $request, Team $team): bool
-    {
-        return $team->user_id === $request->user()?->getKey();
-    }
-
-    protected function ownsDomain(Request $request, EmailDomain $emailDomain): bool
-    {
-        return $emailDomain->owner instanceof Team && $this->owns($request, $emailDomain->owner);
-    }
 
     protected function forbidden(): JsonResponse
     {
         return response()->json(['message' => 'You do not have permission to do this.'], 403);
+    }
+
+    protected function noTenant(): JsonResponse
+    {
+        return response()->json(['message' => 'No tenant context.'], 400);
     }
 
     protected function withRecord(string $message, EmailDomain $domain, int $status = 200): JsonResponse

@@ -284,7 +284,8 @@ class HostnameApiTest extends TestCase
         $this->assertSame(1, Hostname::forHost('acme.com')->count());
     }
 
-    public function test_add_host_rejects_non_owner(): void
+    /** Neev checks membership only; which members may add is the app's middleware's call. */
+    public function test_a_member_who_is_not_the_owner_can_add_a_host(): void
     {
         [$user, $token] = $this->authenticatedUser();
 
@@ -293,11 +294,10 @@ class HostnameApiTest extends TestCase
         $team->allUsers()->attach($user, ['joined' => true]);
 
         $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->postJson('/neev/teams/' . $team->id . '/hostnames', ['host' => 'notmine.example.com'])
-            ->assertForbidden()
-            ->assertJsonPath('message', 'You do not have permission to do this.');
+            ->postJson('/neev/teams/' . $team->id . '/hostnames', ['host' => 'app.example.com'])
+            ->assertCreated();
 
-        $this->assertSame(0, Hostname::count());
+        $this->assertTrue(Hostname::forHost('app.example.com')->sole()->isOwnedBy($team));
     }
 
     public function test_add_duplicate_host_fails(): void
@@ -434,6 +434,29 @@ class HostnameApiTest extends TestCase
             ->assertNotFound();
     }
 
+    /** Belonging to the team is what Neev checks, so an outsider changes nothing. */
+    public function test_an_outsider_cannot_change_a_teams_hosts(): void
+    {
+        [, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create();
+        $hostname = HostnameFactory::new()->forOwner($team)->create(['verification_token' => 'old']);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/teams/' . $team->id . '/hostnames', ['host' => 'app.example.com'])
+            ->assertForbidden();
+        foreach (['token', 'verify', 'primary'] as $action) {
+            $this->withHeader('Authorization', 'Bearer ' . $token)
+                ->postJson("/neev/hostnames/{$hostname->id}/{$action}")
+                ->assertForbidden();
+        }
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/hostnames/' . $hostname->id)
+            ->assertForbidden();
+
+        $this->assertSame('old', $hostname->fresh()->verification_token);
+        $this->assertSame(1, Hostname::count());
+    }
+
     public function test_show_hostname_rejects_non_member(): void
     {
         [$user, $token] = $this->authenticatedUser();
@@ -522,7 +545,7 @@ class HostnameApiTest extends TestCase
         $this->assertSame('secondary.example.com', $team->canonicalHost());
     }
 
-    public function test_delete_hostname_rejects_non_owner(): void
+    public function test_a_member_who_is_not_the_owner_can_delete_a_host(): void
     {
         [$user, $token] = $this->authenticatedUser();
 
@@ -533,9 +556,9 @@ class HostnameApiTest extends TestCase
 
         $this->withHeader('Authorization', 'Bearer ' . $token)
             ->deleteJson('/neev/hostnames/' . $hostname->id)
-            ->assertForbidden();
+            ->assertOk();
 
-        $this->assertDatabaseHas('hostnames', ['id' => $hostname->id]);
+        $this->assertDatabaseMissing('hostnames', ['id' => $hostname->id]);
     }
 
     public function test_delete_returns_404_for_nonexistent_hostname(): void

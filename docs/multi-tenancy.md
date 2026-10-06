@@ -304,7 +304,9 @@ A host says nothing about who has addresses there, and an email domain is never 
 
 ### Managing a Tenant's Hosts
 
-Tenant hosts have no HTTP endpoints; the `/tenant-domains` API is gone. Manage them in code or from the CLI. Team-owned hosts also have an API (`{prefix}/teams/{team}/hostnames`, see the [Teams Guide](./teams.md)); in tenant mode a team's host resolves to the team's tenant.
+Over the API, `GET|POST {prefix}/tenant/hostnames` list and add the hosts of the tenant the request resolved to, and `{prefix}/hostnames/{id}` (`verify`, `token`, `primary`, `DELETE`) manages each one; see [Tenant Hostnames and Email Domains](./api-reference.md#tenant-hostnames-and-email-domains). A tenant's row is reachable only from that tenant. Neev checks only that the caller belongs to the tenant: which members may manage its hosts is yours to decide, with your own middleware on these routes in a published `routes/neev.php`. The old `/tenant-domains` API is gone.
+
+They can also be managed in code or from the CLI. Team-owned hosts have their own endpoints (`{prefix}/teams/{team}/hostnames`, see the [Teams Guide](./teams.md)); in tenant mode a team's host resolves to the team's tenant.
 
 ```php
 $hostname = $tenant->claimHost('app.acme.com');   // pending claim
@@ -337,8 +339,11 @@ php artisan neev:hostname:list --owner-type=tenant --owner-id=acme
 
 ### Email Domains
 
+Over the API, `GET|POST {prefix}/tenant/email-domains` list and add the resolved tenant's email domains, and `{prefix}/email-domains/{id}` (`PATCH` for `enforce`, `verify`, `token`, `DELETE`) manages each one, on the same terms as hosts above.
+
 ```php
 $tenant->emailDomains;                            // EmailDomain rows
+$tenant->federateDomain('acme.com', true);        // claim, or re-issue the token of one held
 ```
 
 ```bash
