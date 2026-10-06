@@ -245,11 +245,11 @@ class PlatformHostResolutionTest extends TestCase
         TeamFactory::new()->create(['slug' => 'acme'])->update(['slug' => 'acme-corp']);
 
         $this->get('https://acme.otper.com/probe?tab=1')
-            ->assertStatus(301)
+            ->assertStatus(302)
             ->assertRedirect('https://acme-corp.otper.com/probe?tab=1');
 
         $this->head('https://acme.otper.com/probe')
-            ->assertStatus(301)
+            ->assertStatus(302)
             ->assertRedirect('https://acme-corp.otper.com/probe');
 
         $this->get('https://acme-corp.otper.com/probe')->assertOk()->assertSee('served');

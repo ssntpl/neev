@@ -793,7 +793,7 @@ Saving a slug another team holds, or one another team has retired, throws
 A rename fires `Ssntpl\Neev\Events\SlugChanged` (`$owner`, `$oldSlug`,
 `$newSlug`) after the transaction commits — the place to tell the owner to
 update what still points at the old host. The old platform host keeps serving,
-with a `301` for page navigations, for `neev.slug.retired_host_days` (90 by
+with a `302` for page navigations, for `neev.slug.retired_host_days` (90 by
 default); the slug itself stays retired after that.
 
 Only model saves are guarded. A query-builder update bypasses all of this.

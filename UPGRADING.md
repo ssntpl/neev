@@ -67,31 +67,33 @@ domains have their own resources, addressed by ID in the path instead of a
 | `DELETE /domains` (`domain_id`) | `DELETE /email-domains/{id}` or `DELETE /hostnames/{id}` |
 | `PUT /domains/primary` | `POST /hostnames/{id}/primary` (verified hosts only) |
 | `GET` / `PUT /domains/rules` (`domain_id`) | none: the `mfa` rule is removed |
+| `GET /tenant-domains` | `GET /tenant/hostnames` and `GET /tenant/email-domains` |
+| `POST /tenant-domains` | `POST /tenant/hostnames` (`host`) or `POST /tenant/email-domains` (`domain`, `enforce`) |
+| `GET`, `DELETE /tenant-domains/{id}`, `/verify`, `/primary` | the same on `/hostnames/{id}` or `/email-domains/{id}` |
+| `POST /tenant-domains/{id}/regenerate-token` | `POST /hostnames/{id}/token` or `POST /email-domains/{id}/token` |
 | `GET /tenant-domains/current` | `GET /hostnames/current` |
-| the rest of `/tenant-domains` | none: manage a tenant's hosts with `neev:hostname:*` or `$tenant->claimHost()` |
 
 - **Responses that issue a token** (adding, `/token`) carry `dns_record`:
   `{type: "TXT", name, value}`. Publish `name` and `value` as given; the name is
   no longer `_neev-verification.<domain>`.
-- **The hostnames index** also returns `platform_host`, the subdomain the
-  team's slug gives it, and `primary_hostname_id`. The platform host is not a
-  row and has no ID.
+- **The hostnames index** also returns `platform_host` and
+  `primary_hostname_id`. `platform_host` is the subdomain the owner's slug
+  gives it: a team's in shared mode, a tenant's (`/tenant/hostnames`) under
+  tenant isolation, and `null` for a team there. It is not a row and has no ID.
 - **New refusals:** adding a host another owner holds, or any host under
   `neev.platform_domain`, is a `422` on `host`; enforcing an email domain
   another owner already enforces is a `422` on `enforce`.
 
-**Any member may manage a team's hosts and email domains (action required if
-only some should).** Neev now checks only that the caller
-belongs to the row's owner: a team's owner or members, or anyone in a tenant,
-from that tenant. Adding, verifying, re-issuing a token, setting the primary
-host, changing `enforce` and deleting used to be the team owner's alone. To
-keep that, or to apply your own roles, add middleware to those routes in a
-published `routes/neev.php`. The Blade pages follow the same rule: every member
-sees the **Email Domains** and **Hostnames** links and their controls, and may
-use them (re-eject the `team/hostnames` and `team/left-section` views to pick
-that up). A tenant's own hosts and email domains have new endpoints,
-`{prefix}/tenant/hostnames` and `{prefix}/tenant/email-domains`, registered
-under tenant isolation and open to anyone in the tenant until you add yours.
+**Any member may manage hosts and email domains (action required if only
+some should).** Neev now checks only that the caller belongs to the row's
+owner: a team's owner or members, or anyone in a tenant, from that tenant.
+Adding, verifying, re-issuing a token, setting the primary host, changing
+`enforce` and deleting used to be the team owner's alone. To keep that, or to
+apply your own roles, add middleware to these routes, including the new
+`/tenant/*` ones, in a published `routes/neev.php`. The Blade pages follow the
+same rule: every member sees the **Email Domains** and **Hostnames** links and
+their controls (re-eject the `team/hostnames` and `team/left-section` views to
+pick that up).
 
 **The Blade team domain page is split in two (re-eject to pick up).**
 `team/federation.blade.php` is now `team/email-domains.blade.php`, beside a new
@@ -140,10 +142,12 @@ of them each night stops.
   `disable()` stops a row: neither DNS nor a new token revives it, and
   `markUnverified()` sends one back to `pending` until its record is checked.
 - **A new token no longer unverifies (behaviour change from 0.6.8).** Asking
-  for a token, or re-submitting a domain the team holds, changes only the
-  token. A verified host keeps serving and a verified email domain keeps
+  for a token, or re-submitting a domain the team holds, keeps the row
+  verified. A verified host keeps serving and a verified email domain keeps
   federating; the next re-check looks for the new token's record, so publish
-  it first, or the row fails and is unverified after the window above.
+  it first, or the row fails and is unverified after the window above. An
+  email domain verified without DNS (`--force`, `--skip-verification`) goes
+  back to DNS proof with its new token, so it is re-checked from then on.
 - **The domain events** (`DomainVerified`, `DomainReverified`,
   `DomainVerificationFailed`, `DomainUnverified`, `DomainRemoved`) carry an
   `EmailDomain` or a `Hostname` in `$domain`. A listener that reads
@@ -159,6 +163,30 @@ throws `Ssntpl\Neev\Exceptions\EmailDomainEnforcedException`. Under tenant
 isolation a verified email domain counts only inside its own tenant. A host is
 unique across every owner: claiming one another owner holds throws
 `Ssntpl\Neev\Exceptions\HostnameTakenException`.
+
+**Only an enforced email domain deactivates a member (behaviour change).**
+Removing a member through `PUT /neev/teams/leave` or the Blade `teams.leave`
+route deactivated their account whenever their email was on one of the team's
+verified email domains. Several owners may verify one domain, so any of them
+could deactivate an account application-wide. Now only the team that enforces
+the member's domain (verified and `enforce` on) deactivates and reactivates
+them, and only that team stops them leaving on their own.
+
+- **A team whose domain is verified but not enforced** now removes the member
+  (`Removed Successfully`) instead of answering `User Deactivated Successfully`,
+  and the member may leave. A member it deactivated before this release is
+  reactivated as they are removed, unless another team they belong to holds a
+  claim on that domain. To keep deactivating its members, turn `enforce` on
+  (`PATCH /neev/email-domains/{id}`); it fails with `422` when another owner
+  already enforces the domain.
+- **Code of your own that decides deactivation**, a policy or a view, should
+  call `Team::managesAccountOf($email)` instead of
+  `Team::hasVerifiedDomainFor($email)`. The latter still answers whether an
+  address is on a verified domain, which is what limits invitations under
+  enforcement.
+- **Re-eject `team/members.blade.php` and `account/teams.blade.php`.** An
+  ejected copy offers **Deactivate** and hides **Leave** on a domain that is only
+  verified, and the server then removes the member instead.
 
 **`Domain` is deprecated and read-only (action required if you use it).**
 `Ssntpl\Neev\Models\Domain` stays for this release so you can read the old
@@ -238,7 +266,7 @@ keep resolving to the owner, and `TenantMiddleware` (in every Neev route
 group) answers them:
 
 - **A browser navigation** (a GET or HEAD on the old host that does not want
-  JSON) gets a `301` to the same path on the current host.
+  JSON) gets a `302` to the same path on the current host.
 - **Anything else** — an API call, a JSON request, a POST, or an `X-Tenant`
   header naming the old slug or host — is served in place with
   `X-Tenant-Slug: <current slug>`. Read that header and switch to the new
@@ -293,30 +321,6 @@ it.
 - **Before removing a method from the config**, remove or migrate the active
   factors that use it, or those users are challenged at every sign-in for a
   method the app no longer offers and cannot turn it off themselves.
-
-**Only an enforced email domain deactivates a member (behaviour change).**
-Removing a member through `PUT /neev/teams/leave` or the Blade `teams.leave`
-route deactivated their account whenever their email was on one of the team's
-verified email domains. Several owners may verify one domain, so any of them
-could deactivate an account application-wide. Now only the team that enforces
-the member's domain (verified and `enforce` on) deactivates and reactivates
-them, and only that team stops them leaving on their own.
-
-- **A team whose domain is verified but not enforced** now removes the member
-  (`Removed Successfully`) instead of answering `User Deactivated Successfully`,
-  and the member may leave. A member it deactivated before this release is
-  reactivated as they are removed, unless another team they belong to holds a
-  claim on that domain. To keep deactivating its members, turn `enforce` on
-  (`PATCH /neev/email-domains/{id}`); it fails with `422` when another owner
-  already enforces the domain.
-- **Code of your own that decides deactivation**, a policy or a view, should
-  call `Team::managesAccountOf($email)` instead of
-  `Team::hasVerifiedDomainFor($email)`. The latter still answers whether an
-  address is on a verified domain, which is what limits invitations under
-  enforcement.
-- **Re-eject `team/members.blade.php` and `account/teams.blade.php`.** An
-  ejected copy offers **Deactivate** and hides **Leave** on a domain that is only
-  verified, and the server then removes the member instead.
 
 ---
 

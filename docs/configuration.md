@@ -537,7 +537,7 @@ Used for team slugs when `team => true`, and for tenant slugs: `reserved` and
 |--------|-------------|
 | `min_length` | Minimum slug length |
 | `max_length` | Maximum slug length (63 for DNS compliance) |
-| `retired_host_days` | Days a renamed owner's old subdomain keeps serving. A browser navigation there gets a 301 to the current host; other requests are served in place with `X-Tenant-Slug`. The old slug itself is never issued to another owner, however long this is |
+| `retired_host_days` | Days a renamed owner's old subdomain keeps serving. A browser navigation there gets a 302 to the current host; other requests are served in place with `X-Tenant-Slug`. The old slug itself is never issued to another owner, however long this is |
 | `reserved` | Slugs that cannot be used by teams |
 
 A slug is also the host handed out under

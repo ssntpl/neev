@@ -84,8 +84,9 @@ class TenantMiddleware
     }
 
     /**
-     * 301 a navigation on a retired platform host to the owner's current one
-     * (RFC 006 §4.4). The resolver only answers a retired host within
+     * 302 a navigation on a retired platform host to the owner's current one
+     * (RFC 006 §4.4). Not a 301: a browser caches that for good, and an owner
+     * that takes its old slug back would send it round in a loop. The resolver only answers a retired host within
      * `neev.slug.retired_host_days`, so the redirect ends with the window.
      * Signed links do not survive it: the host is inside the signature, so a
      * redirected one fails as invalid rather than as the wrong host.
@@ -101,6 +102,6 @@ class TenantMiddleware
         $port = $request->getPort();
         $port = in_array($port, [80, 443, null], true) ? '' : ':' . $port;
 
-        return redirect()->away($request->getScheme() . '://' . $host . $port . $request->getRequestUri(), 301);
+        return redirect()->away($request->getScheme() . '://' . $host . $port . $request->getRequestUri(), 302);
     }
 }

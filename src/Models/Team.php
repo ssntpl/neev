@@ -70,17 +70,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
         // stamp the resolved context's id blindly, and in shared mode that
         // context is a Team. So the tenant_id assignment is done here instead.
         static::creating(function (Team $team) {
-            if ($team->tenant_id !== null || !app()->bound(TenantResolver::class)) {
-                return;
-            }
-
-            $context = app(TenantResolver::class)->resolvedContext();
-
-            // Only in isolated mode. In shared mode the resolved context is
-            // itself a Team, which must never become a team's parent.
-            if ($context && $context->getContextType() === 'tenant') {
-                $team->tenant_id = $context->getContextId();
-            }
+            $team->tenant_id = $team->tenantIdToStamp();
         });
 
         static::created(fn (Team $team) => event(new TeamCreated($team)));
@@ -485,7 +475,7 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
      */
     protected function generateSlug(): ?string
     {
-        return SlugHelper::generate($this->name);
+        return SlugHelper::generateFor($this, $this->name);
     }
 
     /**
@@ -512,13 +502,32 @@ class Team extends Model implements ContextContainerInterface, IdentityProviderO
 
     /**
      * Every team in this team's tenant, or every platform team when it has none.
+     * SlugHelper generates a team slug among these, the teams the save checks.
      */
-    protected function teamsInSameTenant(): Builder
+    public function teamsInSameTenant(): Builder
     {
-        $tenantId = $this->tenant_id;
+        // The slug is checked on saving, before creating stamps the tenant on
+        // a new team, so a new team is checked against the tenant it will get.
+        $tenantId = $this->exists ? $this->tenant_id : $this->tenantIdToStamp();
 
         return static::withoutGlobalScopes()
             ->when($tenantId === null, fn (Builder $q) => $q->whereNull('tenant_id'), fn (Builder $q) => $q->where('tenant_id', $tenantId));
+    }
+
+    /**
+     * The tenant a new team is created under: its own tenant_id if set, else
+     * the resolved context's in isolated mode. In shared mode the resolved
+     * context is itself a Team, which must never become a team's parent.
+     */
+    private function tenantIdToStamp(): ?int
+    {
+        if ($this->tenant_id !== null || !app()->bound(TenantResolver::class)) {
+            return $this->tenant_id;
+        }
+
+        $context = app(TenantResolver::class)->resolvedContext();
+
+        return $context && $context->getContextType() === 'tenant' ? $context->getContextId() : null;
     }
 
     // -----------------------------------------------------------------

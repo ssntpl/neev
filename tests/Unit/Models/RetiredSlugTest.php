@@ -172,6 +172,49 @@ class RetiredSlugTest extends TestCase
         TeamFactory::new()->create(['slug' => 'engineering', 'tenant_id' => $one->id]);
     }
 
+    public function test_a_new_isolated_team_is_checked_against_its_resolved_tenant(): void
+    {
+        $this->enableTenantIsolation();
+        $tenant = TenantFactory::new()->create();
+        $inContext = fn (array $attributes) => app(TenantResolver::class)
+            ->runInContext($tenant, fn () => TeamFactory::new()->create($attributes));
+
+        // A platform team's slug does not block a team the context places in a tenant.
+        TeamFactory::new()->create(['slug' => 'acme']);
+        $this->assertSame($tenant->id, $inContext(['slug' => 'acme'])->tenant_id);
+
+        // Nor does it let through a slug the tenant retired or holds now.
+        $inContext(['slug' => 'engineering'])->update(['slug' => 'platform']);
+
+        foreach (['engineering', 'platform'] as $slug) {
+            try {
+                $inContext(['slug' => $slug]);
+                $this->fail("A new team in the tenant took {$slug}.");
+            } catch (SlugUnavailableException) {
+            }
+        }
+    }
+
+    public function test_a_generated_slug_is_chosen_among_the_teams_tenant(): void
+    {
+        $this->enableTenantIsolation();
+        $tenant = TenantFactory::new()->create();
+        $create = function () use ($tenant) {
+            // A seeder or admin script: a tenant named, none resolved, no slug.
+            $team = TeamFactory::new()->make(['name' => 'Acme', 'slug' => null]);
+            $team->tenant_id = $tenant->id;
+            $team->save();
+
+            return $team;
+        };
+
+        $first = $create();
+        $first->update(['slug' => 'acme-corp']);
+
+        $this->assertSame('acme-1', $create()->slug);
+        $this->assertSame('acme-2', $create()->slug);
+    }
+
     public function test_an_application_model_retires_its_own_slugs(): void
     {
         Schema::create('projects', function (Blueprint $table) {

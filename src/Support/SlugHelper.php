@@ -149,8 +149,8 @@ class SlugHelper
      * retired slug counts as existing, since it is never issued again (RFC 006
      * §6 Q1).
      *
-     * Teams are narrowed by the tenant scope newQuery() applies, and their
-     * retirements to those same teams in isolated mode.
+     * In isolated mode teams are narrowed to the given team's tenant, the one
+     * its save checks, and their retirements to those same teams.
      *
      * @param Model $model A model instance to check against
      * @param string $slug The slug to check
@@ -159,7 +159,9 @@ class SlugHelper
      */
     protected static function slugExistsFor(Model $model, string $slug, ?int $excludeId = null): bool
     {
-        $held = $model->newQuery()
+        $peers = fn () => $model instanceof Team && config('neev.tenant', false) ? $model->teamsInSameTenant() : $model->newQuery();
+
+        $held = $peers()
             ->where('slug', $slug)
             ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
             ->exists();
@@ -169,7 +171,7 @@ class SlugHelper
         }
 
         return RetiredSlug::heldAgainst($model->getMorphClass(), $slug, $excludeId)
-            ->when($model instanceof Team && config('neev.tenant', false), fn ($q) => $q->amongOwners($model->newQuery()))
+            ->when($model instanceof Team && config('neev.tenant', false), fn ($q) => $q->amongOwners($peers()))
             ->exists();
     }
 }

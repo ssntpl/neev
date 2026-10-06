@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Tests\Feature\Hostnames;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
 use Ssntpl\Neev\Database\Factories\HostnameFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
@@ -480,6 +481,26 @@ class HostnameApiTest extends TestCase
         $this->withHeader('Authorization', 'Bearer ' . $token)
             ->getJson('/neev/hostnames/' . $hostname->id)
             ->assertForbidden();
+    }
+
+    /** A host whose owner is gone belongs to nobody, so nobody may reach it. */
+    public function test_show_hostname_rejects_a_host_whose_owner_is_gone(): void
+    {
+        [$user, $token] = $this->authenticatedUser();
+
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        $hostname = HostnameFactory::new()->forOwner($team)->create();
+        DB::table('teams')->where('id', $team->id)->delete();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->getJson('/neev/hostnames/' . $hostname->id)
+            ->assertForbidden();
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->deleteJson('/neev/hostnames/' . $hostname->id)
+            ->assertForbidden();
+
+        $this->assertNotNull($hostname->fresh());
     }
 
     // -----------------------------------------------------------------

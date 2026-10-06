@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Tests\Feature\Teams;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
@@ -269,6 +270,25 @@ class DomainFederationTest extends TestCase
         $this->bearer($token)
             ->getJson('/neev/email-domains/' . $domain->id)
             ->assertForbidden();
+    }
+
+    /** An email domain whose owner is gone belongs to nobody, so nobody may reach it. */
+    public function test_an_email_domain_whose_owner_is_gone_is_out_of_reach(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $domain = EmailDomainFactory::new()->forOwner($team)->create();
+        DB::table('teams')->where('id', $team->id)->delete();
+
+        $this->bearer($token)
+            ->getJson('/neev/email-domains/' . $domain->id)
+            ->assertForbidden();
+
+        $this->bearer($token)
+            ->patchJson('/neev/email-domains/' . $domain->id, ['enforce' => true])
+            ->assertForbidden();
+
+        $this->assertFalse($domain->fresh()->enforce);
     }
 
     // -----------------------------------------------------------------

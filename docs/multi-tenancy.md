@@ -180,7 +180,7 @@ Renaming an owner retires its old slug in the `retired_slugs` table. A retired s
 
 Within the window:
 
-- A browser navigation — a `GET` or `HEAD` on the retired host that does not ask for JSON — gets a `301` to the owner's current platform host, with the same path and query.
+- A browser navigation — a `GET` or `HEAD` on the retired host that does not ask for JSON — gets a `302` to the owner's current platform host, with the same path and query.
 - Anything else, such as an API call, is served in place with an `X-Tenant-Slug` response header carrying the current slug. A redirect that changes host makes clients drop `Authorization`, which would turn the call into a 401.
 - An `X-Tenant` header naming a retired slug is served in place the same way, with `X-Tenant-Slug` on the response.
 
@@ -238,7 +238,7 @@ $resolver->runInContext($tenant, function () {
 
 Renaming a tenant (or, in shared mode, a team) moves its platform subdomain with it. `Ssntpl\Neev\Events\SlugChanged` fires after the transaction commits, with `$owner`, `$oldSlug` and `$newSlug`. Three things do not follow the rename:
 
-- **Signed links.** Email verification, password reset and email change links sent before the rename carry the old host inside their signature. A 301 cannot rescue them: they fail as invalid until they expire, up to `url_expiry_time` (60 minutes by default).
+- **Signed links.** Email verification, password reset and email change links sent before the rename carry the old host inside their signature. A redirect cannot rescue them: they fail as invalid until they expire, up to `url_expiry_time` (60 minutes by default).
 - **Passkeys enrolled on the old subdomain.** Each host is its own relying party, and a retired host is never one, so the browser refuses the ceremony there and on the new host. Users enrol a new passkey on the new host. Passkeys on a custom host are not affected.
 - **External configuration.** IdP redirect URIs, API base URLs and integrations pointing at the old host are the tenant's to update. Listen for `SlugChanged` to ask them.
 
@@ -592,7 +592,7 @@ Always list the group **before** any `neev:*` alias or custom middleware — eve
 1. Skips entirely when both `tenant` and `team` are `false`
 2. Resolves the context via `TenantResolver` (X-Tenant header, then the platform subdomain or a verified row in `hostnames`)
 3. If nothing resolves: returns 404 in `required` mode (`neev:tenant` group), otherwise passes through
-4. On a retired host within `slug.retired_host_days`: a browser navigation gets a `301` to the current platform host
+4. On a retired host within `slug.retired_host_days`: a browser navigation gets a `302` to the current platform host
 5. If the resolved host is not verified: returns 403
 6. Sets the `tenant` attribute on the request and proceeds; a request served through a retired slug or host gets an `X-Tenant-Slug` response header
 

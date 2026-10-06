@@ -224,6 +224,30 @@ class TenantDomainsApiTest extends TestCase
         $this->asTenant('GET', '/neev/tenant/email-domains', $tenant, $token)->assertOk()->assertJsonCount(0, 'data');
     }
 
+    /**
+     * A user signed in outside any tenant, on a request that names none, has
+     * no tenant to list or add to: each tenant route says so, and nothing is
+     * stored.
+     */
+    public function test_the_tenant_routes_need_a_tenant_context(): void
+    {
+        $token = User::factory()->create()->createLoginToken(60)->plainTextToken;
+        $bearer = ['Authorization' => 'Bearer ' . $token];
+
+        foreach (['hostnames' => ['host' => 'app.acme.com'], 'email-domains' => ['domain' => 'acme.com']] as $uri => $data) {
+            $this->withHeaders($bearer)->getJson("/neev/tenant/{$uri}")
+                ->assertStatus(400)
+                ->assertJsonPath('message', 'No tenant context.');
+
+            $this->withHeaders($bearer)->postJson("/neev/tenant/{$uri}", $data)
+                ->assertStatus(400)
+                ->assertJsonPath('message', 'No tenant context.');
+        }
+
+        $this->assertSame(0, Hostname::count());
+        $this->assertSame(0, EmailDomain::count());
+    }
+
     public function test_the_tenant_routes_need_a_signed_in_user(): void
     {
         $tenant = TenantFactory::new()->create(['slug' => 'acme']);
