@@ -5,9 +5,12 @@ namespace Ssntpl\Neev\Exceptions;
 use Exception;
 
 /**
- * Thrown by Domain::verify() when another owner of the same kind has already
- * verified the host. The first owner to prove a host gets it; a later claim
- * cannot, whatever its DNS record says.
+ * Was thrown by Domain::verify() when another owner of the same kind had
+ * already verified the host. Nothing throws it since `domains` became
+ * read-only (RFC 006): a host taken by another owner throws
+ * HostnameTakenException when it is claimed.
+ *
+ * @deprecated Removed with Domain in the next release.
  */
 class DomainAlreadyVerifiedException extends Exception
 {

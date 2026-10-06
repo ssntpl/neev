@@ -25,7 +25,7 @@ Neev supports multiple authentication methods:
 1. User submits registration form with name, email, password
 2. System validates password against rules
 3. User account is created with email (unverified)
-4. If teams enabled, personal team is created (skipped for invitation-link signups and verified federated domains)
+4. If teams enabled, personal team is created (skipped for invitation-link signups and addresses at a verified email domain)
 5. Verification email is sent
 6. User is logged in and redirected
 
@@ -271,11 +271,14 @@ replaced out from under its owner, and a redemption ends that — so a user who
 legitimately requests and uses three links inside one window (a second device, a
 lost mail, a re-login after logout) is not locked out for the remainder of it.
 
-In tenant mode the link is built on a verified host that resolves the tenant —
-the one the request came in on, the tenant's own domain, or one of its teams'. A tenant with **no** verified domain at all still gets the
+In tenant mode the link is built on a host the tenant is served at — the
+verified custom host the request came in on, else the tenant's canonical host
+(its primary hostname, else its oldest verified one, else its platform
+subdomain), else a verified hostname of one of its teams. A tenant with **no**
+such host — no `platform_domain` and no verified hostname — still gets the
 platform host, where the tenant-scoped token cannot be found and the link is
-dead; a warning is logged when that happens. Give every tenant a verified
-domain before offering magic links.
+dead; a warning is logged when that happens. Set `platform_domain` or verify a
+hostname for every tenant before offering magic links.
 
 A magic link is a **first factor, not a way around the second**. An account with MFA enrolled stops at the same challenge it would after a password login — the link issues the short-lived MFA JWT instead of a full access token, and `POST /neev/mfa/otp/verify` completes it exactly as after a password.
 
@@ -454,14 +457,14 @@ WebAuthn requires the relying party ID to be the browser origin's host or a regi
 A single app-wide value therefore locks passkeys to the platform domain. It is instead read off the
 request's context, by one rule:
 
-> the **verified domain that equals the request's origin** — the row the request resolved through,
-> or one the resolved context owns, whether or not that host sits inside the platform's own zone.
-> The match is exact: a row covers the host it names and no other. No context, no origin, or no such
-> domain, and `relying_party_id` stands.
+> the **host of the resolved context that equals the request's origin** — its current platform
+> subdomain, derived from its slug, or a verified row in `hostnames`: the row the request resolved
+> through, or one the resolved context owns. The match is exact: a host covers itself and no other.
+> No context, no origin, or no such host, and `relying_party_id` stands.
 
 The origin is the browser's `Origin` header, and only that — the request's host is the host the
 request was *addressed to*, which on a shared API is not where the ceremony would run. The context is
-whichever one the request resolved — the `X-Tenant` header, a subdomain, a custom domain, all of
+whichever one the request resolved — the `X-Tenant` header, a platform subdomain, a custom host, all of
 them — so the API may be deployed anywhere: a SPA on `acme.com` calling an API on `api.platform.com`
 sends `X-Tenant`, as it must for everything else to be scoped correctly, sends
 `Origin: https://acme.com` as every browser does cross-origin, and the ceremony runs under
@@ -487,23 +490,25 @@ host — reading only its rows would drop the ceremony to `relying_party_id`, wh
 host then refuses. The resolving row is taken first, and `rp.name` is its owner's name (the team's,
 not the tenant's it routes to).
 
-**A verified row is not by itself a serving host**, which is why the origin decides. `domains` is
-also the federation registry: a team reached at `acme.example.com` federates `acme.com` so that
-`@acme.com` staff auto-join, with nothing ever served there. Handing that row the relying party would
-break the host users do sign in on — `navigator.credentials.create()` rejects `rp.id = "acme.com"` on
-`acme.example.com` with a `SecurityError`, and every credential already enrolled drops out of
-`allowCredentials` — so a domain the origin cannot use is never taken.
+**An email domain never names a relying party.** `email_domains` says who joins, not where anyone
+signs in: a team reached at `acme.example.com` federates `acme.com` so that `@acme.com` staff
+auto-join, with nothing ever served there. Handing `acme.com` the relying party would break the host
+users do sign in on — `navigator.credentials.create()` rejects `rp.id = "acme.com"` on
+`acme.example.com` with a `SecurityError` — so only `hostnames` rows and the platform subdomain are
+read, and of those only the one the origin names.
 
-**A verified row inside the platform's own zone is treated like any other.** A tenant reached at
+**A platform subdomain is its own relying party.** A tenant reached at
 `acme.example.com` gets `rp.id = "acme.example.com"`, not the platform's `example.com`. Sharing one
 relying party across a zone means sharing credentials across it: every host under `example.com`
 answers to the same relying party, so a tenant that can run script on its own subdomain — tenant
 branding, stored XSS, a node it hosts itself — could start a ceremony that returns a victim's
 credential ids and completes with the browser showing `example.com` throughout. Per-host relying
 parties make a credential enrolled on one tenant's host unusable on another's. The platform keeps
-`relying_party_id` for the hosts it serves itself, which resolve no tenant context.
+`relying_party_id` for the hosts it serves itself, which resolve no tenant context. A retired
+subdomain (a slug renamed within `slug.retired_host_days`) is never a relying party, so a ceremony
+there runs under `relying_party_id` and the browser refuses it.
 
-Only verified rows count, and the row is read on every ceremony, so a domain that loses its
+Only verified `hostnames` rows count, and the row is read on every ceremony, so a domain that loses its
 verification stops granting a relying party on the very next request. The credential rows survive and
 are simply never selected again; nothing is deleted on a user's behalf.
 
@@ -520,9 +525,9 @@ a package limitation and no setting changes it:
   that way: it returns every credential the user holds, whichever relying party issued it, so one
   enrolled on a tenant's domain stays revocable from the platform. `rp_id` is on each row — label
   them by it, and expect a credential the user cannot sign in with from the domain they are on
-- a verified subdomain of the configured domain is its own relying party, so a passkey enrolled on
-  `acme.example.com` is a different credential from one enrolled on `example.com` — and from one
-  enrolled on `other.example.com`. An **unverified** host resolves no context and runs under the
+- a platform subdomain is its own relying party, so a passkey enrolled on `acme.example.com` is a
+  different credential from one enrolled on `example.com` — and from one enrolled on
+  `other.example.com`. An **unverified** custom host resolves no context and runs under the
   platform's, as does any host the platform serves itself
 - nothing is matched by suffix, on any relying party — not the relying party a host is given, and
   not the origins a ceremony admits. WebAuthn would let a browser on `app.acme.com` use a credential
@@ -582,11 +587,11 @@ password with MFA.
 
 #### Origins
 
-`allowed_origins` does **not** need to list a verified tenant domain. A ceremony under a relying party
-taken from the `domains` table admits `https://` plus the domain record's own value, added to the
+`allowed_origins` does **not** need to list a tenant's own hosts. A ceremony under a relying party
+taken from a `hostnames` row or the platform subdomain admits `https://` plus that host, added to the
 configured list — which is kept whole on every relying party.
 
-That origin is built from the record, never from the request, so a call arriving over `http` or on a
+That origin is built from the slug or the record, never from the request, so a call arriving over `http` or on a
 non-standard port cannot widen what the ceremony accepts. Serve verified tenant domains over HTTPS on
 the default port, which WebAuthn requires in any case.
 
@@ -633,13 +638,11 @@ Every admitted origin is therefore named, and comes from one of two places:
    ],
    ```
 
-2. **The verified `domains` row the request itself names.** A tenant on `acme.example.com` is
-   admitted because its verified row says so — not because the host ends in your platform domain.
-   Tenant subdomains therefore need no entry in `allowed_origins`. Inside the platform's zone only
-   the single host the request's `Origin` names is admitted, never every platform-zone row the
-   context happens to hold: those hosts all share `relying_party_id`, so admitting a sibling would
-   let a ceremony run there complete against a credential enrolled here. A tenant's verified
-   **custom** domain (`acme.com`) works the same way, and becomes the relying party as well.
+2. **The one host the relying party was taken from.** A tenant on `acme.example.com` is admitted
+   because that is its platform subdomain, derived from its slug — not because the host ends in your
+   platform domain. Tenant subdomains therefore need no entry in `allowed_origins`. A tenant's
+   verified **custom** host (`acme.com`) is admitted from its `hostnames` row the same way. Only the
+   host the request's `Origin` names is admitted, never a sibling the context also holds.
 
    What this leaves is the platform's own boundary. Every host in your zone shares one relying party,
    which is WebAuthn's rule and not something an origin list can undo — so script execution on any

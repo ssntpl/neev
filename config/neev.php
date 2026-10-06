@@ -127,7 +127,8 @@ return [
     //
     // Matched EXACTLY — subdomain matching is off and cannot be enabled, so
     // list every one of your own hosts that serves passkeys ('app.', 'login.').
-    // Tenant hosts are admitted from their verified `domains` rows instead.
+    // Tenant hosts are admitted from their platform subdomain and verified
+    // `hostnames` rows instead.
     //
     // This list applies on every relying party, tenant domains included. Web
     // origins are inert there, but native-app facets

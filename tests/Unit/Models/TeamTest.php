@@ -4,7 +4,7 @@ namespace Ssntpl\Neev\Tests\Unit\Models;
 
 use Exception;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Ssntpl\Neev\Database\Factories\DomainFactory;
+use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
 use Ssntpl\Neev\Database\Factories\HostnameFactory;
 use Ssntpl\LaravelAcl\Models\Role;
@@ -399,14 +399,31 @@ class TeamTest extends TestCase
     // domains(), primaryDomain(), customDomains(), invitations()
     // -----------------------------------------------------------------
 
+    /**
+     * A `domains` row as an install upgraded from before RFC 006 holds it. The
+     * Domain model is read-only, so rows are written past it.
+     */
+    private function insertDomain(Team $team, array $attributes = []): void
+    {
+        DB::table('domains')->insert($attributes + [
+            'owner_type' => 'team',
+            'owner_id' => $team->id,
+            'domain' => fake()->unique()->domainName(),
+            'is_primary' => false,
+            'enforce' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     public function test_domains_returns_morph_many_relationship(): void
     {
         $team = TeamFactory::new()->create();
 
         $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\MorphMany::class, $team->domains());
 
-        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
-        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
+        $this->insertDomain($team);
+        $this->insertDomain($team);
 
         $team->refresh();
 
@@ -417,10 +434,11 @@ class TeamTest extends TestCase
     {
         $team = TeamFactory::new()->create();
 
-        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'is_primary' => false]);
-        DomainFactory::new()->primary()->verified()->create([
-            'owner_type' => 'team', 'owner_id' => $team->id,
+        $this->insertDomain($team);
+        $this->insertDomain($team, [
             'domain' => 'primary.example.com',
+            'is_primary' => true,
+            'verified_at' => now(),
         ]);
 
         $primary = $team->primaryDomain;
@@ -434,9 +452,9 @@ class TeamTest extends TestCase
     {
         $team = TeamFactory::new()->create();
 
-        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
-        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
-        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]); // unverified
+        $this->insertDomain($team, ['verified_at' => now()]);
+        $this->insertDomain($team, ['verified_at' => now()]);
+        $this->insertDomain($team); // unverified
 
         $this->assertCount(2, $team->customDomains);
     }

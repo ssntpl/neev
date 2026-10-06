@@ -1706,9 +1706,10 @@ Authorization: Bearer {token}
 
 ## Team Management
 
-> These endpoints, and the [Domain Federation](#domain-federation) ones, are
-> registered only when `'team' => true` in `config/neev.php`. With teams off
-> they answer 404.
+> These endpoints, and the [Team Rules](#team-rules), [Hostnames](#hostnames)
+> and [Email Domains](#email-domains) ones, are registered only when
+> `'team' => true` in `config/neev.php`. With teams off they answer 404.
+> [Get Current Context](#get-current-context) is registered either way.
 
 ### Get User's Teams
 
@@ -2048,9 +2049,9 @@ Authorization: Bearer {token}
 as is a slug that matches no team.
 
 The request is recorded as a pending membership with
-`action = request_from_user`, and the team owner is emailed. A team whose
-primary domain is verified, or with any enforced verified domain, does not
-accept join requests — membership there follows from the verified domain.
+`action = request_from_user`, and the team owner is emailed. A team with any
+verified email domain does not accept join requests — membership there follows
+from the verified domain.
 
 ---
 
@@ -2155,12 +2156,12 @@ to is answered exactly like one that does not exist.
 
 ---
 
-## Domain Federation
+## Team Rules
 
-### Get Team Domains
+### Get Team Rules
 
 ```http
-GET /neev/domains?team_id=1
+GET /neev/teams/{team}/rules
 ```
 
 **Headers:**
@@ -2168,194 +2169,348 @@ GET /neev/domains?team_id=1
 Authorization: Bearer {token}
 ```
 
----
-
-### Add Domain
-
-```http
-POST /neev/domains
-```
-
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
-
-**Request Body:**
-
-```json
-{
-    "team_id": 1,
-    "domain": "company.com",
-    "enforce": false
-}
-```
+Any joined member may read the rules.
 
 **Response:**
 
 ```json
 {
-    "message": "Domain federated successfully.",
-    "token": "abc123verification...",
+    "data": [
+        { "name": "mfa", "value": false }
+    ]
+}
+```
+
+`data` lists every rule by `name`. A team that has never set one reads as all
+off. `mfa` is stored as `require_mfa` on `team_auth_settings`.
+
+> **Not enforced yet.** `mfa` is stored and returned, but login does not
+> require MFA for the team's members yet.
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 403 | `You do not have the required permissions to get domain rules.` — the caller is not a member |
+| 404 | No team with that id |
+
+---
+
+### Update Team Rules
+
+```http
+PUT /neev/teams/{team}/rules
+```
+
+**Headers:**
+```http
+Authorization: Bearer {token}
+```
+
+**Request Body:**
+
+```json
+{
+    "mfa": true
+}
+```
+
+Only the team owner may change the rules. Only the rules named in the body
+change; an empty body changes nothing. Each value is read as a boolean.
+
+**Response:**
+
+```json
+{
+    "message": "Domain Rules have been updated.",
+    "data": [
+        { "name": "mfa", "value": true }
+    ]
+}
+```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 403 | `You do not have the required permissions to update domain rules.` — the caller is not the owner |
+| 404 | No team with that id |
+
+---
+
+## Hostnames
+
+A hostname is a custom host a team is served at. It is unique across every
+owner, and it serves only once its TXT record at `_neev-host.<host>` carries
+the row's token. The team's platform subdomain (its slug under
+`platform_domain`) is derived from the slug: it is listed, never stored, and
+cannot be added, verified or deleted here.
+
+Members read a team's hostnames; only the team owner changes them. Every
+endpoint needs `Authorization: Bearer {token}`. `{hostname}` must be numeric;
+anything else, or an id that does not exist, answers `404`. Adding, verifying
+and re-issuing a token share one limit of 10 requests a minute per user
+(`neev-dns`); past it they answer `429`.
+
+A hostname is returned without its `verification_token`. The token is shown
+only in `dns_record`, on add and on a new token:
+
+```json
+{
+    "id": 7,
+    "owner_type": "team",
+    "owner_id": 1,
+    "host": "app.acme.com",
+    "status": "pending",
+    "verified_at": null,
+    "verification_failed_at": null,
+    "created_at": "2026-10-01T10:00:00.000000Z",
+    "updated_at": "2026-10-01T10:00:00.000000Z"
+}
+```
+
+`status` is `pending` (not proven), `verified`, `failed` (proven, but the
+record has been missing since `verification_failed_at`) or `disabled`
+(disabled by the app; neither DNS nor a new token brings it back). A row
+serves while `verified_at` is set.
+
+### List Team Hostnames
+
+```http
+GET /neev/teams/{team}/hostnames
+```
+
+Any joined member may list.
+
+**Response:**
+
+```json
+{
+    "data": [
+        { "id": 7, "host": "app.acme.com", "status": "verified", "...": "..." }
+    ],
+    "platform_host": "acme.example.com",
+    "primary_hostname_id": 7
+}
+```
+
+`data` is the team's custom hostnames, oldest first. `platform_host` is the
+team's platform subdomain, or `null` when there is none: `platform_domain` is
+not set, or tenant isolation is on (a team's slug is unique only within its
+tenant, so it names no host). `primary_hostname_id` is the hostname marked
+primary, or `null`.
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 403 | `You do not have permission to do this.` — the caller is not a member |
+| 404 | No team with that id |
+
+---
+
+### Add Hostname
+
+```http
+POST /neev/teams/{team}/hostnames
+```
+
+Team owner only. Rate limited (`neev-dns`).
+
+**Request Body:**
+
+```json
+{
+    "host": "app.acme.com"
+}
+```
+
+`host` is required, at most 255 characters, and compared in canonical form
+(lowercase, no surrounding dots), so `App.Acme.com.` is stored as
+`app.acme.com`. The row is created `pending` with a new token.
+
+**Response (`201`):**
+
+```json
+{
+    "message": "Host added.",
+    "data": { "id": 7, "host": "app.acme.com", "status": "pending", "...": "..." },
     "dns_record": {
         "type": "TXT",
-        "name": "_neev-verification.company.com",
-        "value": "abc123verification..."
+        "name": "_neev-host.app.acme.com",
+        "value": "3f9c...e1"
     }
 }
 ```
 
-`domain` is required and compared in canonical form (lowercase, no trailing
-dot), so re-submitting `Company.com.` updates the team's existing `company.com`
-row. Re-submitting a domain issues a new token and unverifies it until the new
-record is verified; its primary flag is kept.
+Publish `dns_record`, then call [Verify Hostname](#verify-hostname).
 
-**Errors:**
-- `422` — `domain` is not a host name: missing, not a string, nothing once
-  canonicalised (`...`), or a URL, path, port, space, single label or IP
-  address.
-- `400 This domain is already verified by another team.`
-- `400 A platform subdomain does not use a verification token.` — the team
-  already holds this platform subdomain; it is verified by the platform and
-  cannot be re-verified through DNS.
-- `400 An unexpected error occurred.` — the domain could not be saved.
+**Errors:** all `422` errors are on the `host` key.
+
+| Status | Message |
+|--------|---------|
+| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 422 | `The domain must be a host name.` — `host` is missing, not a string, over 255 characters, or not a host name once canonicalised (a URL, path, port, space, single label, IP address, or a numeric last label) |
+| 422 | `A host under the platform domain follows the slug and cannot be added.` |
+| 422 | `This team has already added this host.` |
+| 422 | `This host cannot be added.` — another owner holds the host, verified or not. The message does not say so, since that owner may be in another tenant |
+| 429 | Rate limit reached |
 
 ---
 
-### Verify Domain
+### Get Hostname
 
 ```http
-PUT /neev/domains
+GET /neev/hostnames/{hostname}
 ```
 
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
+Any joined member of the owning team.
 
-**Request Body:**
+**Response:**
 
 ```json
 {
-    "domain_id": 1,
-    "verify": true
+    "data": { "id": 7, "host": "app.acme.com", "status": "verified", "...": "..." }
 }
 ```
 
 **Errors:**
-- `400 DNS record not found. Please try again later.`
-- `400 This domain is already verified by another team.` — another team
-  verified the domain first; this claim cannot be verified.
 
-To get a new token, send `"token": true` instead of `"verify"`. The response
-carries `token` and `dns_record` as for [Add Domain](#add-domain), and the
-domain is unverified until the new record is verified. A platform subdomain is
-refused with `400 A platform subdomain does not use a verification token.`
+| Status | Message |
+|--------|---------|
+| 403 | `You do not have permission to do this.` — the caller is not a member, or the hostname is not a team's |
+| 404 | No hostname with that id |
 
 ---
 
-### Delete Domain
+### Delete Hostname
 
 ```http
-DELETE /neev/domains
+DELETE /neev/hostnames/{hostname}
 ```
 
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
+Team owner only. If the hostname was the team's primary, `primary_hostname_id`
+is cleared first, so the team falls back to its next verified hostname, then
+its platform subdomain.
 
-**Request Body:**
+**Response:**
 
 ```json
 {
-    "domain_id": 1
+    "message": "Host deleted."
 }
 ```
 
-Deleting the primary domain makes one of the remaining domains primary,
-preferring a verified one, and among those the oldest. Deleting a domain,
-including one a new token has unverified, reactivates the team's deactivated
-members whose email is on it, since nothing manages them once it is gone. A
-member another team they belong to also holds a claim on that domain for is
-left deactivated, since that team may be the one that deactivated them.
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 404 | No hostname with that id |
 
 ---
 
-## Tenant Domains (Multi-Tenancy)
-
-### Get Tenant Domains
+### Verify Hostname
 
 ```http
-GET /neev/tenant-domains
+POST /neev/hostnames/{hostname}/verify
 ```
 
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
+Team owner only. Rate limited (`neev-dns`). Looks up the TXT record at
+`_neev-host.<host>` and, if it carries the token, marks the row `verified`.
 
----
-
-### Add Tenant Domain
-
-```http
-POST /neev/tenant-domains
-```
-
-**Headers:**
-```http
-Authorization: Bearer {token}
-```
-
-**Request Body:**
+**Response:**
 
 ```json
 {
-    "domain": "custom.example.com"
+    "message": "Host verified.",
+    "data": { "id": 7, "host": "app.acme.com", "status": "verified", "...": "..." }
 }
 ```
 
-Whether the domain needs DNS verification is derived from the host and the
-claiming team, against the `platform_domain` config — the request cannot
-influence it. A team's own subdomain (its slug under a platform domain) is
-verified immediately and the response carries no token; anything else comes back
-with `verification_token` and `dns_record` to publish. A `domain` that is
-not a host name (nothing once canonicalised, not a string, a URL, a path, a
-port, a space, a single label, an IP address, or over 255 characters) is
-refused with `422`. The domain is compared
-in canonical form (lowercase, no trailing dot), so `ACME.com.` beside the
-team's `acme.com` is refused with `422` too.
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 400 | `DNS verification failed. Please check your DNS record.` — no matching record, or the hostname is disabled |
+| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 404 | No hostname with that id |
+| 429 | Rate limit reached |
 
 ---
 
-### Verify Tenant Domain
+### Issue New Hostname Token
 
 ```http
-POST /neev/tenant-domains/{id}/verify
+POST /neev/hostnames/{hostname}/token
 ```
 
-Answers `400 This domain is already verified by another team.` when another
-team verified the domain first.
+Team owner only. Rate limited (`neev-dns`). Issues a new token and sets the row
+back to `pending`: the host stops serving until the new record is verified.
 
----
+**Response:**
 
-### Set Primary Tenant Domain
-
-```http
-POST /neev/tenant-domains/{id}/primary
+```json
+{
+    "message": "Verification token issued.",
+    "data": { "id": 7, "host": "app.acme.com", "status": "pending", "...": "..." },
+    "dns_record": {
+        "type": "TXT",
+        "name": "_neev-host.app.acme.com",
+        "value": "a71d...04"
+    }
+}
 ```
 
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 400 | `This host is disabled.` |
+| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 404 | No hostname with that id |
+| 429 | Rate limit reached |
+
 ---
 
-### Get Current Tenant
-
-Reports the context the resolver settled on for this request, and the domain it
-was resolved from. Requires `tenant => true`: with tenant isolation off the
-resolver never runs and this always answers 400.
+### Set Primary Hostname
 
 ```http
-GET /neev/tenant-domains/current
+POST /neev/hostnames/{hostname}/primary
+```
+
+Team owner only. Sets the team's `primary_hostname_id` to this hostname. The
+team is served at its verified primary, else its oldest verified hostname,
+else its platform subdomain.
+
+**Response:**
+
+```json
+{
+    "message": "Primary host set.",
+    "data": { "id": 7, "host": "app.acme.com", "status": "verified", "...": "..." }
+}
+```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 400 | `Only a verified host can be primary.` |
+| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 404 | No hostname with that id |
+
+---
+
+### Get Current Context
+
+Reports the context the resolver settled on for this request, and the custom
+hostname it came in on, if any. Registered whether or not teams are on. With
+both `tenant` and `team` off the resolver never runs, and this always answers
+`400`.
+
+```http
+GET /neev/hostnames/current
 ```
 
 **Headers:**
@@ -2370,27 +2525,309 @@ Authorization: Bearer {token}
     "data": {
         "type": "tenant",
         "context": { "id": 1, "name": "Acme", "slug": "acme" },
-        "domain": { "id": 4, "domain": "acme.example.com", "is_primary": true },
-        "team": null
+        "hostname": { "id": 4, "host": "acme.example.com", "status": "verified", "...": "..." }
     }
 }
 ```
 
-`context` is that record and `type` says what it is. Resolution from the
-`X-Tenant` header or the request host always yields a `Tenant` (a team-owned
-domain resolves up to that team's tenant), so `type` is normally `tenant`. It is
-`team` only when the application has made a Team the context itself via
-`TenantResolver::setCurrentTenant()`.
-
-`team` repeats `context` when the type is `team`, and is `null` otherwise — kept
-for callers written before tenant isolation, when the context could only ever be
-a Team. New code should read `context` and branch on `type`.
+`context` is the resolved record and `type` says what it is: `tenant` under
+tenant isolation (a team-owned host resolves up to that team's tenant), `team`
+in shared mode, or when the application made a Team the context itself via
+`TenantResolver::setCurrentTenant()`. `hostname` is the verified custom
+hostname the request resolved through, without its token; it is `null` when
+the context came from the `X-Tenant` header by id or slug, or from a platform
+subdomain.
 
 **Errors:**
 
 | Status | Message |
 |--------|---------|
 | 400 | `No tenant context.` |
+
+---
+
+## Email Domains
+
+An email domain says that users at it belong to the team. It counts only once
+its TXT record at `_neev-email.<domain>` carries the row's token. Unlike a
+hostname it is not unique: several teams may hold and verify the same domain,
+but only one owner at a time may enforce it.
+
+Members read a team's email domains; only the team owner changes them. Every
+endpoint needs `Authorization: Bearer {token}`. `{emailDomain}` must be
+numeric; anything else, or an id that does not exist, answers `404`. Adding,
+verifying and re-issuing a token share the `neev-dns` limit of 10 requests a
+minute per user; past it they answer `429`.
+
+An email domain is returned without its `verification_token`:
+
+```json
+{
+    "id": 3,
+    "owner_type": "team",
+    "owner_id": 1,
+    "domain": "acme.com",
+    "status": "verified",
+    "verification_strategy": "dns",
+    "verified_at": "2026-10-01T10:05:00.000000Z",
+    "verification_failed_at": null,
+    "enforce": true,
+    "created_at": "2026-10-01T10:00:00.000000Z",
+    "updated_at": "2026-10-01T10:05:00.000000Z"
+}
+```
+
+`status` takes the same values as a hostname's. `verification_strategy` is
+`dns`, or `manual` when the application verified the row itself.
+
+### List Team Email Domains
+
+```http
+GET /neev/teams/{team}/email-domains
+```
+
+Any joined member may list.
+
+**Response:**
+
+```json
+{
+    "data": [
+        { "id": 3, "domain": "acme.com", "enforce": true, "status": "verified", "outside_members": 2, "...": "..." },
+        { "id": 4, "domain": "acme.io", "enforce": false, "status": "pending", "...": "..." }
+    ]
+}
+```
+
+Oldest first. Each verified domain with `enforce` on also carries
+`outside_members`: how many joined members are on none of the team's verified
+email domains. It is one count for the team, repeated on each such row; other
+rows do not carry the key.
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 403 | `You do not have permission to do this.` — the caller is not a member |
+| 404 | No team with that id |
+
+---
+
+### Add Email Domain
+
+```http
+POST /neev/teams/{team}/email-domains
+```
+
+Team owner only. Rate limited (`neev-dns`).
+
+**Request Body:**
+
+```json
+{
+    "domain": "acme.com",
+    "enforce": false
+}
+```
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `domain` | yes | A host name, at most 255 characters, compared in canonical form (lowercase, no surrounding dots) |
+| `enforce` | no | Boolean, default `false` |
+
+A domain the team does not hold yet is created `pending` with a new token
+(`201`, `Email domain added.`). One it already holds gets a new token instead
+(`200`, `Verification token issued.`): it goes back to `pending` and stops
+counting until the new record is verified, and its `enforce` is set to the
+value sent, `false` when omitted.
+
+**Response (`201`):**
+
+```json
+{
+    "message": "Email domain added.",
+    "data": { "id": 3, "domain": "acme.com", "enforce": false, "status": "pending", "...": "..." },
+    "dns_record": {
+        "type": "TXT",
+        "name": "_neev-email.acme.com",
+        "value": "9b2e...7c"
+    }
+}
+```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 422 `domain` | `The domain must be a host name.` — missing, not a string, over 255 characters, or not a host name once canonicalised (a URL, path, port, space, single label, IP address, or a numeric last label) |
+| 422 `domain` | `This domain is disabled.` — the team's row for it is disabled |
+| 422 `enforce` | Not a boolean |
+| 422 `enforce` | `Another owner already enforces this email domain.` — `enforce` is `true` and another owner's verified row enforces it |
+| 429 | Rate limit reached |
+
+---
+
+### Get Email Domain
+
+```http
+GET /neev/email-domains/{emailDomain}
+```
+
+Any joined member of the owning team.
+
+**Response:**
+
+```json
+{
+    "data": { "id": 3, "domain": "acme.com", "enforce": true, "status": "verified", "...": "..." }
+}
+```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 403 | `You do not have permission to do this.` — the caller is not a member, or the domain is not a team's |
+| 404 | No email domain with that id |
+
+---
+
+### Update Email Domain
+
+```http
+PATCH /neev/email-domains/{emailDomain}
+```
+
+Team owner only. Turns enforcement on or off.
+
+**Request Body:**
+
+```json
+{
+    "enforce": true
+}
+```
+
+`enforce` is required and must be a boolean.
+
+**Response:**
+
+```json
+{
+    "message": "Email domain updated.",
+    "data": { "id": 3, "domain": "acme.com", "enforce": true, "...": "..." }
+}
+```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 404 | No email domain with that id |
+| 422 `enforce` | Missing or not a boolean |
+| 422 `enforce` | `Another owner already enforces this email domain.` |
+
+---
+
+### Delete Email Domain
+
+```http
+DELETE /neev/email-domains/{emailDomain}
+```
+
+Team owner only. Deleting a domain, verified or not, reactivates the team's
+deactivated members whose email is on it, since nothing manages them once it
+is gone. A member another team they belong to also holds the domain for is
+left deactivated, since that team may be the one that deactivated them.
+
+**Response:**
+
+```json
+{
+    "message": "Email domain deleted."
+}
+```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 404 | No email domain with that id |
+
+---
+
+### Verify Email Domain
+
+```http
+POST /neev/email-domains/{emailDomain}/verify
+```
+
+Team owner only. Rate limited (`neev-dns`). Looks up the TXT record at
+`_neev-email.<domain>` and, if it carries the token, marks the row `verified`.
+If the row asks to enforce but another owner's verified row already enforces
+the domain, it is verified with `enforce` turned off.
+
+**Response:**
+
+```json
+{
+    "message": "Email domain verified.",
+    "data": { "id": 3, "domain": "acme.com", "status": "verified", "...": "..." }
+}
+```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 400 | `DNS verification failed. Please check your DNS record.` — no matching record, or the domain is disabled |
+| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 404 | No email domain with that id |
+| 429 | Rate limit reached |
+
+---
+
+### Issue New Email Domain Token
+
+```http
+POST /neev/email-domains/{emailDomain}/token
+```
+
+Team owner only. Rate limited (`neev-dns`). Issues a new token and sets the row
+back to `pending`: the domain stops counting until the new record is verified.
+`enforce` is kept.
+
+**Response:**
+
+```json
+{
+    "message": "Verification token issued.",
+    "data": { "id": 3, "domain": "acme.com", "status": "pending", "...": "..." },
+    "dns_record": {
+        "type": "TXT",
+        "name": "_neev-email.acme.com",
+        "value": "c04f...2a"
+    }
+}
+```
+
+**Errors:**
+
+| Status | Message |
+|--------|---------|
+| 400 | `This domain is disabled.` |
+| 403 | `You do not have permission to do this.` — the caller is not the owner |
+| 404 | No email domain with that id |
+| 429 | Rate limit reached |
+
+> **Legacy record.** A hostname or email domain copied from the old `domains`
+> table, with its token, also verifies against the `_neev-verification.<name>`
+> record its owner published there, while `dns_verification.legacy_record` is
+> on. The row's own record is checked first, and new claims publish only
+> `dns_record`. The fallback is removed with `domains` in the next release.
 
 ---
 

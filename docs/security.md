@@ -1015,7 +1015,7 @@ Set up alerts for:
 - Review login attempt logs
 - Check for inactive users
 - Audit API token usage
-- Verify domain configurations
+- Review custom hosts and email domains (`neev:hostname:list`, `neev:email-domain:list`)
 
 ### 7. Keep Dependencies Updated
 

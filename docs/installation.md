@@ -114,8 +114,10 @@ This creates the following tables:
 | `team_user` | Team-user membership pivot table |
 | `team_invitations` | Pending invitations |
 | `tenants` | Tenants (isolated identity mode) |
-| `domains` | Custom domains and email domains for federation |
-| `domain_rules` | Domain-specific security rules |
+| `hostnames` | Custom hosts a team or tenant is served at (unique across owners) |
+| `email_domains` | Email domains whose users join a team or tenant |
+| `retired_slugs` | Slugs given up by a rename, never reissued to another owner |
+| `domains` | Deprecated, read-only; kept for one release so the app can copy its rows |
 | `team_auth_settings` | Per-team authentication settings |
 | `tenant_auth_settings` | Per-tenant authentication/SSO settings |
 

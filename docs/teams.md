@@ -11,7 +11,8 @@ Neev's team system allows users to:
 - Create and manage teams/organizations
 - Invite members via email
 - Assign roles and permissions
-- Configure domain-based auto-joining
+- Claim email domains whose users belong to the team
+- Serve the team at custom hosts
 - Belong to multiple teams and set a default team
 
 ---
@@ -26,7 +27,9 @@ Neev's team system allows users to:
 ```
 
 This is what registers the team routes — `/teams/*` and `/account/teams` on the
-web, `/neev/teams/*`, `/neev/domains/*` and `/neev/changeTeamOwner` on the API.
+web, `/neev/teams/*`, `/neev/email-domains/*`, `/neev/hostnames/{hostname}/*`
+and `/neev/changeTeamOwner` on the API. `GET /neev/hostnames/current` is the
+exception: it answers the resolved context, team or not, so it is always registered.
 With `'team' => false` they are not registered at all, so the paths answer 404
 and `route('teams.create')` throws; guard any link with
 `@if (config('neev.team'))`.
@@ -38,15 +41,16 @@ and `route('teams.create')` throws; guard any link with
 'slug' => [
     'min_length' => 2,
     'max_length' => 63,
-    'reserved' => ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn', 'assets', 'static'],
+    'retired_host_days' => 90,
+    'reserved' => ['www', 'api', 'admin', 'app', 'mail', /* ... */],
 ],
 ```
 
-Slugs are auto-generated from the team name on creation (normalized, uniquified, reserved words avoided).
+Slugs are auto-generated from the team name on creation (normalized, uniquified, reserved words avoided). See [Slugs](#slugs) below for uniqueness and renaming.
 
-### Domain Federation
+### Email Domains and Hostnames
 
-Domain federation (domain-based auto-joining) has no config toggle — it is available whenever teams are enabled. See [Domain Federation](#domain-federation) below.
+Email domains and custom hosts have no config toggle — they are available whenever teams are enabled. See [Email Domains](#email-domains) and [Custom Hosts](#custom-hosts) below.
 
 ---
 
@@ -71,7 +75,9 @@ $team->allUsers;       // All users (including invited)
 $team->invitedUsers;   // Users with pending invitations
 $team->joinRequests;   // Users requesting to join
 $team->invitations;    // Email invitations
-$team->domains;        // Federated domains
+$team->emailDomains;   // Email domains whose users belong to the team
+$team->hostnames;      // Custom hosts the team is served at
+$team->primaryHostname; // The host marked primary, if any
 
 // Check membership
 $team->hasUser($user);
@@ -81,6 +87,11 @@ $team->isActive();
 $team->activate();
 $team->deactivate('subscription_expired');
 ```
+
+`domains()`, `domain()`, `primaryDomain()` and `customDomains()` still read the
+old `domains` table, through the deprecated `Ssntpl\Neev\Models\Domain`. They
+are read-only and are removed with the table in the next release; use
+`emailDomains()`, `hostnames()` and `primaryHostname()`.
 
 ---
 
@@ -168,7 +179,7 @@ name=New+Team&public=0
 
 ### Auto-Created Teams
 
-When users register (with teams enabled), a personal team is created — unless they registered via a team invitation link, or their email domain matches a verified federated domain:
+When users register (with teams enabled), a personal team is created — unless they registered via a team invitation link, or their email domain is a verified [email domain](#email-domains) (`EmailDomain::isVerifiedForEmail()`; under tenant isolation only a claim inside the current tenant counts):
 
 ```php
 $team = Team::model()->forceCreate([
@@ -259,7 +270,7 @@ endpoints never confirm which team ids are real.
 | Endpoint | Who may call it |
 |----------|-----------------|
 | `PUT /neev/teams` (update) | any member |
-| `GET /neev/domains` | any member |
+| `GET /neev/teams/{team}/email-domains`, `/hostnames`, `/rules` | any member |
 | `PUT /neev/teams/request` (accept/reject a join request) | any member |
 | `PUT {prefix}/teams/members/request/action` (the Blade form) | the owner |
 | `PUT /neev/teams/leave` (remove a member) | any member, and only for another member of the same team; the owner cannot be removed |
@@ -267,9 +278,16 @@ endpoints never confirm which team ids are real.
 | `PUT /neev/teams/leave` (revoke an invitation) | any member (the owner included), or the invitee declining their own |
 | `PUT /neev/teams/inviteUser` | the owner |
 | `DELETE /neev/teams` | the owner, and only when they own another team |
-| `PUT /neev/teams/owner/change` | the owner, and only to an existing member |
+| `POST /neev/changeTeamOwner` | the owner, and only to an existing member |
 | `PUT /neev/role/change` | a member, and only for another user attached to the same team — joined or still pending |
-| domain federate / update / delete | the owner |
+| email domain add / enforce / verify / token / delete | the owner |
+| hostname add / verify / token / primary / delete | the owner |
+| `PUT /neev/teams/{team}/rules` | the owner |
+
+The email-domain, hostname and rules endpoints take the team in the path, so a
+team id that does not exist answers `404` there, and a refusal answers
+`403 You do not have permission to do this.` (the rules endpoints keep their
+own `403` messages).
 
 > **Known asymmetry:** acting on a join request is owner-only on the Blade
 > route and open to any member on the API route. Accepting a request admits
@@ -388,9 +406,8 @@ route (`POST {prefix}/teams/members/request`) accepts the same two, plus an
 `email` (the owner's) and `team` (the team name) pair. It tries `team_id`
 first, then `slug`, then the pair.
 
-A team does not take join requests when its primary domain is verified, or
-when any of its verified domains is enforced — membership there follows from
-the verified domain instead. `Team::acceptsJoinRequests()` answers the same
+A team does not take join requests once any of its email domains is verified —
+membership there follows from the verified domain instead. `Team::acceptsJoinRequests()` answers the same
 question, and the Blade profile page shows **Request to join** only when it is
 true.
 
@@ -431,19 +448,19 @@ curl -X PUT https://yourapp.com/neev/teams/leave \
   -d '{"team_id": 1, "user_id": 5}'
 ```
 
-### Members on a Verified Domain
+### Members on a Verified Email Domain
 
-Removing a member whose email is on any of the team's verified domains does not take them out of the team: the domain governs their membership, so their account is **deactivated** instead (`User Deactivated Successfully`). Removing them again reactivates it (`User Activated Successfully`).
+Removing a member whose email is on any of the team's verified email domains does not take them out of the team: the domain governs their membership, so their account is **deactivated** instead (`User Deactivated Successfully`). Removing them again reactivates it (`User Activated Successfully`).
 
 An unverified domain manages nobody. Once a new token unverifies it, removing a member on it detaches them like any other member (`Removed Successfully`). A deactivated member whose email is on a domain the team still holds is reactivated as they are removed, so a member deactivated through that domain is not left locked out of the whole application. Neev does not record which team deactivated an account, so when another team the member belongs to also holds a claim on that domain, the account is left deactivated; removing them from a team that is the only one of theirs with a claim on it does reactivate them. A deactivated member on no domain of the team's keeps that state. `Team::reactivatesOnRemoval($user)` answers whether removing a member gives their account back. Members on other addresses are removed as usual.
 
-Only members of the team can be removed, deactivated or reactivated this way. A `user_id` with no membership in the team answers `403 You cannot perform this action on this team.`, even when that user's email is on one of the team's verified domains, since deactivation reaches their whole account.
+Only members of the team can be removed, deactivated or reactivated this way. A `user_id` with no membership in the team answers `403 You cannot perform this action on this team.`, even when that user's email is on one of the team's verified email domains, since deactivation reaches their whole account.
 
 A pending membership (an invitation not yet accepted, or a join request not yet answered) is simply withdrawn (`Removed Successfully`), never deactivated, whatever the user's domain. Any member can withdraw it, and so can the user it names, by sending only `team_id`. The **Remove** button under pending invitations on the members page and **Revoke** on a sent request on the account teams page both do this.
 
 Rejecting (`PUT /neev/teams/inviteUser` with `team_id` and `"action": "reject"`, or `PUT /neev/teams/request` with `"action": "reject"`) also acts only on a membership not yet joined. A joined member is never removed that way; it answers `400 Invitation not found` / `400 Request not found`, and removing a member goes through `leave` and the rules above.
 
-Such a member cannot remove themselves: deactivation is account-wide, so leaving would lock them out of the whole application. The attempt answers `403 You cannot leave a team your email domain manages.`, and the Blade pages do not offer **Leave** to them. Members on other addresses can leave, and the Blade pages offer them **Leave**, even when the team's primary domain is verified. `Team::hasVerifiedDomainFor($email)` tells whether an address is on one of the team's verified domains, and `Team::holdsDomainFor($email)` whether it is on any domain the team holds, verified or not.
+Such a member cannot remove themselves: deactivation is account-wide, so leaving would lock them out of the whole application. The attempt answers `403 You cannot leave a team your email domain manages.`, and the Blade pages do not offer **Leave** to them. Members on other addresses can leave, and the Blade pages offer them **Leave**, even when the team has a verified email domain. `Team::hasVerifiedDomainFor($email)` tells whether an address is on one of the team's verified email domains, and `Team::holdsDomainFor($email)` whether it is on any email domain the team holds, verified or not.
 
 ### Note: Owners Cannot Leave
 
@@ -521,134 +538,285 @@ On the web, `PUT /teams/switch` (route `teams.switch`) simply redirects to the s
 
 ---
 
-## Domain Federation
+## Email Domains
 
-Automatically associate users with teams based on email domain. Available whenever teams are enabled (`'team' => true`) — there is no separate config toggle.
+An email domain says "users at this domain belong to this team". Claims live in
+`email_domains` (model `Ssntpl\Neev\Models\EmailDomain`). Available whenever
+teams are enabled (`'team' => true`) — there is no separate config toggle.
+
+An email domain is about membership, not serving: it does not make the team
+reachable at that host. That is a [custom host](#custom-hosts).
 
 ### Who may claim a domain
 
-A domain belongs to **one team and one tenant** — never to two teams, or two tenants. A tenant and one of its teams may both federate the same company domain; a second team may not take a domain another team holds.
+Claiming is **not exclusive**. Several teams (and tenants) may each claim and
+verify the same domain — two subsidiaries may both verify `acme.com`, each with
+its own TXT record. One team holds a domain once: re-submitting it updates the
+existing row instead of adding another. The domain is compared in its canonical
+form (lowercase, no trailing dot), so `ACME.com.` is the same domain as `acme.com`.
 
-A claim only reserves the domain once it has been **verified**. An unverified row proves nothing and blocks nobody, so several teams may hold pending claims on the same domain and whichever verifies first wins. Once one has, verifying any other team's claim is refused with `400 This domain is already verified by another team.` — even if that team's TXT record is in place. The same team cannot register the same domain twice — re-submitting it updates the existing row instead of adding another. The domain is compared in its canonical form (lowercase, no trailing dot), so `ACME.com.` is the same domain as `acme.com`.
+**Enforcing is exclusive.** Only one owner's verified row may enforce a domain.
+Asking to enforce a domain another owner already enforces throws
+`Ssntpl\Neev\Exceptions\EmailDomainEnforcedException`
+(`Another owner already enforces this email domain.`); the API answers `422`
+with that message on `enforce`. A row that already enforces and becomes verified
+while another owner enforces stops enforcing instead of throwing.
 
-Re-submitting a domain issues a new verification token, and so does asking for one (`"token": true`, or **Get Token** on the domain page). A new token no longer matches the TXT record already published, so the domain goes back to **unverified** until the new record is verified. Its primary flag is kept.
+A claim does nothing until it is **verified**. Re-submitting a domain issues a
+new verification token, and so does asking for one (`POST .../token`, or
+**Get Token** on the page). A new token no longer matches the TXT record already
+published, so the domain goes back to `pending` until the new record is verified.
 
-A platform subdomain (a host under `neev.platform_domain`) never gets a new token: it is verified by the platform, and nobody can publish a record in the platform's zone, so it could never verify again. Asking for one, or re-submitting it, answers `400 A platform subdomain does not use a verification token.`
+A row has a `status`: `pending`, `verified`, `failed` (proven, but the record
+has been missing since `verification_failed_at`) or `disabled` (disabled by the
+app; a disabled domain gets no new token and is not checked). A verified domain
+whose record goes missing keeps counting for
+`neev.dns_verification.unverify_after_failed_days`, is then unverified, and is
+deleted at twice that.
 
-### Members across several federated domains
+### Members across several email domains
 
-When a team federates more than one domain, the "outside members" warning on the domain page counts a member as outside only if their address matches **none** of the team's verified domains. A member on `@acme.io` is not flagged against `@acme.com` when the team federates both.
+When a team claims more than one domain, a member counts as outside the team's
+boundary only if their address matches **none** of its verified email domains.
+A member on `@acme.io` is not flagged against `@acme.com` when the team holds
+both. `Team::membersOutsideEmailDomains()` returns that count while any verified
+domain is enforced (`Team::enforcesDomain()`), and `0` otherwise.
 
-### Add Domain to Team
+### Add an Email Domain
 
 ```bash
-curl -X POST https://yourapp.com/neev/domains \
+curl -X POST https://yourapp.com/neev/teams/1/email-domains \
   -H "Authorization: Bearer {token}" \
   -d '{
-    "team_id": 1,
     "domain": "company.com",
     "enforce": false
   }'
 ```
 
-**Response:**
+**Response** (`201` for a new claim, `200` when the team already held it and
+a new token was issued):
 
 ```json
 {
-  "message": "Domain federated successfully.",
-  "token": "abc123def456...",
+  "message": "Email domain added.",
+  "data": {"id": 1, "domain": "company.com", "status": "pending", "enforce": false, "...": "..."},
   "dns_record": {
     "type": "TXT",
-    "name": "_neev-verification.company.com",
+    "name": "_neev-email.company.com",
     "value": "abc123def456..."
   }
 }
 ```
 
-`dns_record` says exactly what to publish: a `TXT` record at `name` whose value is the token. The domain page's token dialog shows the same three fields.
+`dns_record` says exactly what to publish: a `TXT` record at `name` whose value
+is the token. The token is hidden from `data`. The Blade page's token dialog
+shows the same record name and value.
 
-A `domain` that is not a host name — missing, not a string, nothing once canonicalised (`...`), a URL, a path, a port, a space, a single label such as `localhost`, or an IP address — is refused with a `422` validation error. Internationalised names are accepted in their punycode form (`xn--mnchen-3ya.de`).
+A `domain` that is not a host name — missing, not a string, nothing once
+canonicalised (`...`), a URL, a path, a port, a space, a single label such as
+`localhost`, or an IP address — is refused with a `422` validation error.
+Internationalised names are accepted in their punycode form (`xn--mnchen-3ya.de`).
+A disabled domain is refused with `422` too.
 
-### Verify Domain
+In code, `$team->federateDomain($domain, $enforce)` does the same: it claims the
+domain, or re-issues the token of one the team holds, and returns the
+`EmailDomain` with its token.
 
-Add a TXT record named `_neev-verification.{domain}` to your DNS with the token as its value:
+### Verify an Email Domain
+
+Add a TXT record named `_neev-email.{domain}` with the token as its value:
 
 ```
-_neev-verification.company.com.  TXT  "abc123def456..."
+_neev-email.company.com.  TXT  "abc123def456..."
 ```
 
 Then verify:
 
 ```bash
-curl -X PUT https://yourapp.com/neev/domains \
-  -H "Authorization: Bearer {token}" \
-  -d '{"domain_id": 1, "verify": true}'
+curl -X POST https://yourapp.com/neev/email-domains/1/verify \
+  -H "Authorization: Bearer {token}"
 ```
 
-Verifying again after a new token keeps the domain's rules and their values.
+A record that is not there answers `400 DNS verification failed. Please check your DNS record.`
 
-To get a new token (for example when the old one was lost), send `"token": true` instead; the response carries `token` and `dns_record` as above, and the domain is unverified until the new record is verified.
+To get a new token (for example when the old one was lost), call
+`POST /neev/email-domains/{id}/token`; the response carries `dns_record` as
+above, and the domain is `pending` until the new record is verified.
+
+A domain copied from the old `domains` table also passes on the record
+published for it there, `_neev-verification.{domain}`, while
+`neev.dns_verification.legacy_record` is on. That fallback is for this release
+only; publish `_neev-email` records and turn it off.
 
 #### Verifying from your own code
 
-`$domain->verify()` checks DNS and records the result. It throws `Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException` when another owner of the same type has already verified the host.
+`$emailDomain->verify()` checks DNS and records the result, firing
+`DomainVerified` when a pending row is proven. `$emailDomain->generateVerificationToken()`
+issues a new token and sets the row back to `pending`; it returns `null` for a
+disabled row.
 
-To issue a new token, call `$domain->regenerateVerificationToken()`. It returns the token and unverifies the domain, clearing any earlier failure, as the endpoints do.
+To mark a domain verified without DNS, use the CLI:
+`php artisan neev:email-domain:add {domain} --skip-verification` or
+`php artisan neev:email-domain:verify {domain} --force`.
 
-To mark a claim verified without DNS (an admin tool, say), call `$domain->markVerified()` rather than setting `verified_at` yourself. It applies the same first-owner rule and throws the same exception, and fires `DomainVerified` when the claim was pending, as a DNS match does. It re-checks the rule with every claim on the host locked, reading whether this claim is pending from its locked row, so two claims verified at the same moment cannot both win. Writing `verified_at` directly skips that check.
+### Enforcement
 
-### Domain Enforcement
-
-When `enforce` is true on any of the team's verified domains:
-- Only users whose email is on one of the team's **verified** domains can be invited — not only the domain that is enforced, and not only the primary
-- Join requests are refused
-- Members whose email matches none of the team's verified domains are reported as `outside_members` in the domains listing, the same count the domain page shows
+When `enforce` is true on any of the team's verified email domains:
+- Only users whose email is on one of the team's **verified** email domains can be invited — not only the domain that is enforced
+- Members whose email matches none of the team's verified email domains are reported as `outside_members` on each enforced, verified domain in the listing, the same count the Blade page shows
 
 ```bash
-curl -X PUT https://yourapp.com/neev/domains \
+curl -X PATCH https://yourapp.com/neev/email-domains/1 \
   -H "Authorization: Bearer {token}" \
-  -d '{"domain_id": 1, "enforce": true}'
+  -d '{"enforce": true}'
 ```
 
-### Deleting a Domain
+Join requests are refused by any verified email domain, enforced or not (see
+[Join Requests](#join-requests)).
 
-Deleting the team's primary domain hands the primary flag to one of the remaining domains, a verified one if there is any and the oldest among them, so the team is not left without a primary.
+### Deleting an Email Domain
 
-Deleting a domain also reactivates the team's deactivated members whose email is on it, including after a new token has unverified it: once the domain is gone nothing manages them, and the package would offer no way to reactivate them. A member another team they belong to also holds a claim on that domain for is left deactivated, since Neev does not record which team deactivated an account and that team may be the one that did; once the last claim on the domain is deleted, they are reactivated.
+Deleting a domain reactivates the team's deactivated members whose email is on
+it, including after a new token has unverified it: once the domain is gone
+nothing manages them, and the package would offer no way to reactivate them. A
+member another team they belong to also holds that domain for is left
+deactivated, since Neev does not record which team deactivated an account and
+that team may be the one that did; once the last claim on the domain is
+deleted, they are reactivated.
 
-From your own code, `$domain->deleteAndPromote()` does both, with the domain's rules, in one transaction.
+From your own code, `$emailDomain->deleteAndReactivate()` does both in one
+transaction, and `$team->reactivateMembersOn($domain)` runs the reactivation on
+its own. Deleting a team deletes its email domains the same way.
+
+### The Blade page
+
+`GET /teams/{team}/email-domains` (`teams.email-domains`) lists the domains,
+adds one, toggles **Enforce**, and offers **Get Token**, **Verify** and
+**Delete** for each. Members may open it; only the owner may change anything,
+and the left-section **Email Domains** link is shown to the owner only. See
+[Web Routes](./web-routes.md#email-domains).
 
 ---
 
-## Domain Rules
+## Custom Hosts
 
-Configure security policies for federated domains:
+A hostname says "this team is served at this host". Rows live in `hostnames`
+(model `Ssntpl\Neev\Models\Hostname`). Only custom hosts are stored: a team's
+platform subdomain is its slug under `neev.platform_domain` and is derived, not
+written (shared mode only; in isolated mode the tenant has the subdomain).
 
-### Available Rules
+### Who may claim a host
 
-| Rule | Description |
-|------|-------------|
-| `mfa` | Require MFA for domain users |
+A host is **unique across every owner**. A claim by another owner, verified or
+not, holds it: claiming it throws `Ssntpl\Neev\Exceptions\HostnameTakenException`
+(`This host cannot be added.`). The message does not say who holds the host,
+since the holder may be in another tenant. A host under `neev.platform_domain`
+cannot be claimed at all; it follows a slug.
+
+A host serves only once it is **verified** by a TXT record at
+`_neev-host.{host}`. Like email domains, it re-checks daily, keeps serving for
+`neev.dns_verification.unverify_after_failed_days` after its record goes missing,
+then stops serving, and is deleted at twice that, freeing it for another owner.
+
+### Add and verify a host
+
+```bash
+curl -X POST https://yourapp.com/neev/teams/1/hostnames \
+  -H "Authorization: Bearer {token}" \
+  -d '{"host": "app.company.com"}'
+```
+
+The `201` response carries `data` and `dns_record`
+(`{"type": "TXT", "name": "_neev-host.app.company.com", "value": "..."}`).
+Publish it, then `POST /neev/hostnames/{id}/verify`. `POST /neev/hostnames/{id}/token`
+issues a new token, and the host stops serving until its new record is verified.
+
+In code: `$team->claimHost($host)` returns the team's row (pending, with its
+token), `$hostname->verify()` checks DNS, and `$team->releaseHost($host)` or
+`$hostname->release()` deletes it.
+
+### Primary hostname
+
+`teams.primary_hostname_id` points at the host marked primary. Only a verified
+host of the team can be primary (`POST /neev/hostnames/{id}/primary`, or
+`$team->makePrimaryHostname($hostname)`); anything else answers
+`400 Only a verified host can be primary.` Deleting the primary host unpoints it.
+
+`$team->canonicalHost()` answers where the team is served: its verified primary
+host, else its oldest verified host, else its platform subdomain.
+`$team->webDomain` is the verified primary host only, or `null`.
+
+### The Blade page
+
+`GET /teams/{team}/hostnames` (`teams.hostnames`) lists the platform subdomain
+and the custom hosts, and offers **Make Primary**, **Get Token**, **Verify** and
+**Delete**. Every member sees the page and its left-section **Hostnames** link;
+only the owner may change anything. See [Web Routes](./web-routes.md#hostnames).
+
+---
+
+## Slugs
+
+A team slug is unique **per tenant** in isolated mode (the `(tenant_id, slug)`
+index) and **installation-wide** in shared mode, where `tenant_id` is null and
+the index cannot stop two nulls, so the save checks it instead.
+
+Slugs can change but are **never reissued**. Renaming a team retires its old
+slug in `retired_slugs` for good: in shared mode the platform subdomain is the
+slug, and a slug handed to someone else would hand them a host that SSO redirect
+URIs, emailed links and password managers still trust. In isolated mode a team
+slug retires within its tenant only. The team may take its own old slug back.
+
+Saving a slug another team holds, or one another team has retired, throws
+`Ssntpl\Neev\Exceptions\SlugUnavailableException`
+(`The slug "acme" is not available.`). Generated slugs skip retired ones.
+
+A rename fires `Ssntpl\Neev\Events\SlugChanged` (`$owner`, `$oldSlug`,
+`$newSlug`) after the transaction commits — the place to tell the owner to
+update what still points at the old host. The old platform host keeps serving,
+with a `301` for page navigations, for `neev.slug.retired_host_days` (90 by
+default); the slug itself stays retired after that.
+
+Only model saves are guarded. A query-builder update bypasses all of this.
+
+---
+
+## Team Rules
+
+Rules are policies the team sets for its members. They are stored on
+`team_auth_settings`, one set per team (they used to be per domain).
+
+| Rule | Column | Description |
+|------|--------|-------------|
+| `mfa` | `require_mfa` | Require MFA for team members |
+
+> **Not enforced yet.** `require_mfa` is stored and returned, but login does not
+> check it yet. Setting it has no effect on who can sign in.
 
 ### Get Rules
 
 ```bash
-curl -X GET "https://yourapp.com/neev/domains/rules?domain_id=1" \
+curl -X GET https://yourapp.com/neev/teams/1/rules \
   -H "Authorization: Bearer {token}"
 ```
 
-A `domain_id` matching no domain answers `400 Domain not found.`; a domain
-owned by a team you are not in answers `400 You do not have the required
-permissions to get domain rules.` The two are told apart because a caller can
-act on the first (fix the id) but not the second.
+```json
+{"data": [{"name": "mfa", "value": false}]}
+```
+
+Any member may read them. A team with no settings row has every rule off.
 
 ### Update Rules
 
 ```bash
-curl -X PUT https://yourapp.com/neev/domains/rules \
+curl -X PUT https://yourapp.com/neev/teams/1/rules \
   -H "Authorization: Bearer {token}" \
-  -d '{"domain_id": 1, "mfa": true}'
+  -d '{"mfa": true}'
 ```
+
+Owner only. Only the rules named in the request change. The Blade route
+`PUT /teams/{team}/rules` (`teams.rules`) sets every rule from the form, so an
+unchecked box turns its rule off.
 
 ---
 
@@ -713,17 +881,39 @@ php artisan neev:team:activate {team}
 | PUT | `/neev/teams/request` | Accept/reject request |
 | PUT | `/neev/role/change` | Change member role |
 
-### Domain Endpoints
+### Email Domain Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/neev/domains` | List team domains |
-| POST | `/neev/domains` | Add domain |
-| PUT | `/neev/domains` | Update/verify domain |
-| DELETE | `/neev/domains` | Delete domain |
-| GET | `/neev/domains/rules` | Get domain rules |
-| PUT | `/neev/domains/rules` | Update domain rules |
-| PUT | `/neev/domains/primary` | Set primary domain |
+| GET | `/neev/teams/{team}/email-domains` | List the team's email domains |
+| POST | `/neev/teams/{team}/email-domains` | Add a domain, or re-issue its token |
+| GET | `/neev/email-domains/{id}` | Get one email domain |
+| PATCH | `/neev/email-domains/{id}` | Set `enforce` |
+| DELETE | `/neev/email-domains/{id}` | Delete, reactivating the members it deactivated |
+| POST | `/neev/email-domains/{id}/verify` | Check the `_neev-email` record |
+| POST | `/neev/email-domains/{id}/token` | Issue a new token |
+
+### Hostname Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/neev/teams/{team}/hostnames` | List custom hosts, with `platform_host` and `primary_hostname_id` |
+| POST | `/neev/teams/{team}/hostnames` | Claim a host |
+| GET | `/neev/hostnames/{id}` | Get one host |
+| DELETE | `/neev/hostnames/{id}` | Release a host |
+| POST | `/neev/hostnames/{id}/verify` | Check the `_neev-host` record |
+| POST | `/neev/hostnames/{id}/token` | Issue a new token |
+| POST | `/neev/hostnames/{id}/primary` | Make a verified host primary |
+| GET | `/neev/hostnames/current` | The context this request resolved to (always registered) |
+
+Adding, verifying and re-issuing a token share one limit, 10 a minute per user (`neev-dns`).
+
+### Rules Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/neev/teams/{team}/rules` | Get the team's rules |
+| PUT | `/neev/teams/{team}/rules` | Update the team's rules |
 
 ---
 
@@ -741,25 +931,17 @@ php artisan neev:team:activate {team}
 | is_public | boolean | Can users request to join |
 | activated_at | timestamp | When team was activated |
 | inactive_reason | string | Why team is inactive |
+| primary_hostname_id | bigint (nullable) | The primary host (`hostnames.id`), nulled when that host is deleted |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 
 **Uniqueness:**
 
-- `slug` is unique across the whole installation. That is what lets
-  `Team::resolveBySlug()` and `GET /neev/teams/slug/{slug}` find a team
-  without being told which tenant to look in.
-- `(tenant_id, name, user_id)` is unique, so one owner cannot hold two teams
-  of the same name inside a tenant. Scoping it to the tenant means the same
-  owner may reuse a team name in a different tenant — names only have to be
-  distinct within the tenant that sees them.
-
-> **Caveat:** SQL treats `NULL`s as distinct in a unique index, so when
-> `tenant_id` is `NULL` — every install running without tenants — the
-> `(tenant_id, name, user_id)` index does not fire, and an owner *can* hold
-> two teams with the same name. If uniqueness matters to you outside tenant
-> mode, enforce it in validation or add a partial index for
-> `tenant_id IS NULL`.
+- `(tenant_id, slug)` is unique, so in isolated mode a slug is unique within
+  its tenant. In shared mode `tenant_id` is `NULL`, which a unique index does
+  not compare, so the save itself refuses a slug another team holds and the
+  slug is unique across the installation. See [Slugs](#slugs).
+- Team names may repeat, even for one owner.
 
 ### team_user Table (Memberships)
 
@@ -786,21 +968,53 @@ Roles are stored in laravel-acl's polymorphic role assignment table, not on this
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 
-### domains Table
+### email_domains Table
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | bigint | Primary key |
 | owner_type | string | Polymorphic owner type (`team` or `tenant`) |
 | owner_id | bigint | Polymorphic owner ID |
-| domain | string | Email domain or web domain |
-| is_primary | boolean | Primary domain |
-| enforce | boolean | Enforce domain matching |
+| domain | string | Email domain, canonical form |
+| status | string | `pending`, `verified`, `failed` or `disabled` |
+| verification_strategy | string | `dns`, or `manual` when verified from the CLI without DNS |
 | verification_token | string | DNS verification token |
-| verified_at | timestamp | When verified |
-| verification_failed_at | timestamp | When re-verification last failed |
+| verified_at | timestamp | When verified; the domain counts while set |
+| verification_failed_at | timestamp | When the record was first found missing |
+| enforce | boolean | Only users on the team's verified email domains may be invited |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
+
+`(owner_type, owner_id, domain)` is unique: one claim per owner, many owners per domain.
+
+### hostnames Table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | bigint | Primary key |
+| owner_type | string | Polymorphic owner type (`team` or `tenant`) |
+| owner_id | bigint | Polymorphic owner ID |
+| host | string | Custom host, canonical form; unique across every owner |
+| status | string | `pending`, `verified`, `failed` or `disabled` |
+| verification_token | string | DNS verification token |
+| verified_at | timestamp | When verified; the host serves while set |
+| verification_failed_at | timestamp | When the record was first found missing |
+| created_at | timestamp | Creation time |
+| updated_at | timestamp | Last update time |
+
+### retired_slugs Table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | bigint | Primary key |
+| owner_type | string | Polymorphic owner type (`team` or `tenant`) |
+| owner_id | bigint | The owner that gave the slug up |
+| slug | string | The retired slug |
+| created_at | timestamp | When it was retired |
+| updated_at | timestamp | Last update time |
+
+Rows are kept forever. The old `domains` table is still created and read by the
+deprecated `Domain` model for this release only; nothing writes to it.
 
 ---
 

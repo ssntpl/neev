@@ -268,7 +268,7 @@ global login
 
 ## Domain Federation (Shared Identity)
 
-Domain federation is supported as a resolver strategy.
+Domain federation is driven by verified email domains (`email_domains`), never by the hosts an owner is served at (`hostnames`). A verified custom host federates nothing.
 
 ### Concept
 
@@ -284,15 +284,15 @@ acme.com → Team A
 
 ### Rules
 
-* One domain maps to one team.
-* Resolver must be deterministic.
+* Several owners may verify one email domain, each with its own TXT record; only one may enforce it.
+* Under tenant isolation a claim counts only inside its own tenant.
 * Ambiguous matches require explicit user selection.
 
 ### Scope
 
 Neev core provides:
 
-* Domain → team mapping
+* Email domain → team mapping
 * Resolver integration
 
 Neev does NOT provide:

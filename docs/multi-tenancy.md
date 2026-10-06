@@ -57,7 +57,7 @@ The two booleans are orthogonal, giving four modes:
 | Mode | `tenant` | `team` | Who shares an email | What `TenantResolver` resolves | Typical product shape |
 |------|----------|--------|---------------------|--------------------------------|-----------------------|
 | **Single-app** | `false` | `false` | One account per email, application-wide | Nothing — resolver is inactive | Personal apps, internal tools, products with no organization concept |
-| **B2B teams** | `false` | `true` | One account per email, application-wide; that account joins many teams | A `Team`, from its verified domain — no user scoping, but it makes per-team SSO reachable | GitHub/Slack-style collaboration SaaS |
+| **B2B teams** | `false` | `true` | One account per email, application-wide; that account joins many teams | A `Team`, from its platform subdomain or a verified hostname — no user scoping, but it makes per-team SSO reachable | GitHub/Slack-style collaboration SaaS |
 | **Isolated tenants** | `true` | `false` | Unique per `(tenant_id, email)` — the same email can be a separate account in each tenant | A `Tenant` (X-Tenant header → subdomain → custom domain) | White-label SaaS, reseller platforms, regulated industries |
 | **Tenant + teams** | `true` | `true` | Unique per `(tenant_id, email)` | A `Tenant`; teams are resolved within it | Enterprise SaaS: each customer is an isolated tenant with internal teams/workspaces |
 
@@ -65,7 +65,7 @@ Email uniqueness comes from the composite unique index on `users (tenant_id, ema
 
 **Single-app** (`tenant: false`, `team: false`) — Neev is a drop-in auth layer: password/passkey/OAuth login, MFA, sessions, tokens. No organization modeling at all. Choose this when users only ever act as themselves.
 
-**B2B teams** (`tenant: false`, `team: true`) — users are global and log in once; teams are collaboration containers a user can create, join, and switch between. Per-team SSO and roles are available, but identity stays global — a user is the same account in every team. Choose this for the GitHub/Jira/Trello shape. The resolver runs here too, resolving the `Team` that owns the request's domain, which is what lets the SSO routes read that team's auth settings; it does **not** scope users or data — that stays a `tenant: true` concern.
+**B2B teams** (`tenant: false`, `team: true`) — users are global and log in once; teams are collaboration containers a user can create, join, and switch between. Per-team SSO and roles are available, but identity stays global — a user is the same account in every team. Choose this for the GitHub/Jira/Trello shape. The resolver runs here too, resolving the `Team` the request's host names, which is what lets the SSO routes read that team's auth settings; it does **not** scope users or data — that stays a `tenant: true` concern.
 
 **Isolated tenants** (`tenant: true`, `team: false`) — the tenant is an identity boundary resolved *before* authentication (so Neev knows which identity provider and user namespace to use). Users belong to exactly one tenant and never interact across tenants. Choose this when each customer must be invisible to every other customer.
 
@@ -94,7 +94,7 @@ Per-tenant and per-team authentication (password vs SSO) is **not** a config tog
 'team' => true,     // Optional: team sub-grouping within tenants
 ```
 
-There are no other tenant-related config keys. Domain-based access (subdomains and custom domains) is managed through the `domains` table, and per-tenant auth settings live in the `tenant_auth_settings` table.
+Host-based access is configured with `platform_domain` (the zone platform subdomains are served under), `slug.retired_host_days` and `dns_verification`. Custom hosts live in the `hostnames` table, email domains in `email_domains`, and per-tenant auth settings in `tenant_auth_settings`.
 
 ---
 
@@ -115,7 +115,7 @@ When `tenant => false`, the `tenant_id` columns remain `NULL` and the global sco
 
 The `tenant` config key controls the **identity infrastructure**: user scoping (`TenantScope`), team scoping (`TeamTenantScope`), tenant membership enforcement, and whether a `Tenant` is resolved from the `X-Tenant` header and request host.
 
-Context resolution itself also runs when `team` is enabled on its own: in shared mode the resolver resolves the **`Team`** that owns the request's domain, so the SSO routes can read that team's `team_auth_settings`. Scoping stays off — `TenantScope` and `TeamTenantScope` both key on `tenant`.
+Context resolution itself also runs when `team` is enabled on its own: in shared mode the resolver resolves the **`Team`** the request's host names, so the SSO routes can read that team's `team_auth_settings`. Scoping stays off — `TenantScope` and `TeamTenantScope` both key on `tenant`.
 
 The `BelongsToTenant` trait controls **per-model scoping**. Adding the trait to a model opts that model into automatic query scoping and `tenant_id` auto-assignment — regardless of the `tenant` config value. This means you can use `BelongsToTenant` on your own models even in simpler setups where you manage the tenant context manually via `TenantResolver::setCurrentTenant()`.
 
@@ -151,16 +151,48 @@ $team->save();
 
 ## Tenant Resolution
 
-The `TenantResolver` (a request-scoped singleton) resolves the current tenant — it only runs when `tenant => true`. Priority order:
+The `TenantResolver` (a request-scoped singleton) resolves the request's context. It runs when `tenant` or `team` is enabled: with `tenant => true` it resolves a `Tenant`, with only `team => true` a `Team`. Priority order:
 
-1. **X-Tenant Header** -- Resolve by tenant ID (numeric), slug, or a domain registered in the `domains` table
-2. **Request Host** -- Look up the full host (subdomain or custom domain) in the `domains` table
+1. **X-Tenant Header** -- Resolve by ID (numeric), current slug, a slug retired within `neev.slug.retired_host_days`, or a host (looked up as in step 2)
+2. **Request Host** -- A platform subdomain resolves by its slug; any other host is looked up in the `hostnames` table
 
-Host lookups only match **verified** domains and are cached for 5 minutes. A domain owned directly by a tenant resolves that tenant; a domain owned by a team resolves the team's tenant.
+Custom host lookups only match **verified** rows and are cached for 5 minutes; saving or deleting a row clears its entry. A host owned by a tenant resolves that tenant; a host owned by a team resolves the team's tenant. Platform subdomains are not cached, so a rename takes effect at once.
+
+### Platform Subdomains
+
+With `platform_domain` set, an owner's subdomain is its slug, one label under that zone: tenant `acme` is served at `acme.otper.com`. It is derived from the slug on every request and never stored, so it needs no row and no DNS proof.
+
+```php
+// config/neev.php
+'platform_domain' => env('NEEV_PLATFORM_DOMAIN'),   // e.g. 'otper.com'
+```
+
+- Only the owner kind the mode routes on has a subdomain: tenants with `tenant => true`, teams with only `team => true`. In tenant mode a team's slug is unique only within its tenant, so it names no host.
+- The bare zone (`otper.com`) and anything deeper (`a.b.otper.com`) name no owner.
+- Nothing under `platform_domain` can be claimed as a custom host.
+- `slug.reserved` keeps your own operational names (`app`, `login`, ...) from being taken as slugs, and so as subdomains.
+
+With `platform_domain` unset no subdomains are served; owners are reached by custom host or the `X-Tenant` header.
+
+### Retired Slugs and Hosts
+
+Renaming an owner retires its old slug in the `retired_slugs` table. A retired slug is never issued to anyone else. Its old subdomain keeps serving the owner for `neev.slug.retired_host_days` (90 by default), then stops answering. `0` turns the window off.
+
+Within the window:
+
+- A browser navigation — a `GET` or `HEAD` on the retired host that does not ask for JSON — gets a `301` to the owner's current platform host, with the same path and query.
+- Anything else, such as an API call, is served in place with an `X-Tenant-Slug` response header carrying the current slug. A redirect that changes host makes clients drop `Authorization`, which would turn the call into a 401.
+- An `X-Tenant` header naming a retired slug is served in place the same way, with `X-Tenant-Slug` on the response.
+
+`resolvedVia()` reports `retired` for a request on a retired host.
+
+### Custom Hosts
+
+Any host outside `platform_domain` must be a verified row in the `hostnames` table. A host is unique across every owner: once one owner has claimed it, pending or verified, no other owner can. See [Custom Hosts & Email Domains](#custom-hosts--email-domains).
 
 ### Using the X-Tenant Header (API)
 
-For API requests where domain routing isn't available, use the `X-Tenant` header:
+For API requests where host routing isn't available, use the `X-Tenant` header:
 
 ```bash
 # By tenant ID
@@ -169,7 +201,7 @@ curl -H "X-Tenant: 42" -H "Authorization: Bearer {token}" https://api.yourapp.co
 # By tenant slug
 curl -H "X-Tenant: acme-corp" -H "Authorization: Bearer {token}" https://api.yourapp.com/resource
 
-# By domain
+# By host (platform subdomain or verified custom host)
 curl -H "X-Tenant: app.acme.com" -H "Authorization: Bearer {token}" https://api.yourapp.com/resource
 ```
 
@@ -183,12 +215,15 @@ $resolver = app(TenantResolver::class);
 // The resolved Tenant model
 $tenant = $resolver->currentTenant();
 
-// The resolved context container (Tenant, or Team when set manually)
+// The resolved context container (Tenant, or Team in shared mode or when set manually)
 $context = $resolver->resolvedContext();
 
 // Resolution metadata
-$resolver->resolvedVia();                  // 'header', 'custom', or 'manual'
-$resolver->isResolvedDomainVerified();     // Whether the domain is verified
+$resolver->resolvedVia();                  // 'header', 'subdomain', 'retired', 'custom', or 'manual'
+$resolver->currentHostname();              // The Hostname row a custom host resolved through, or null
+$resolver->platformHost();                 // The context's current platform subdomain, or null
+$resolver->headerSlugRetired();            // Whether X-Tenant named a retired slug
+$resolver->isResolvedDomainVerified();     // Whether the resolved host is verified
 $resolver->currentId();                     // Context ID (Tenant ID or Team ID)
 $resolver->isEnabled();                     // true when config('neev.tenant') is enabled
 
@@ -199,36 +234,42 @@ $resolver->runInContext($tenant, function () {
 });
 ```
 
+### Renaming a Slug
+
+Renaming a tenant (or, in shared mode, a team) moves its platform subdomain with it. `Ssntpl\Neev\Events\SlugChanged` fires after the transaction commits, with `$owner`, `$oldSlug` and `$newSlug`. Three things do not follow the rename:
+
+- **Signed links.** Email verification, password reset and email change links sent before the rename carry the old host inside their signature. A 301 cannot rescue them: they fail as invalid until they expire, up to `url_expiry_time` (60 minutes by default).
+- **Passkeys enrolled on the old subdomain.** Each host is its own relying party, and a retired host is never one, so the browser refuses the ceremony there and on the new host. Users enrol a new passkey on the new host. Passkeys on a custom host are not affected.
+- **External configuration.** IdP redirect URIs, API base URLs and integrations pointing at the old host are the tenant's to update. Listen for `SlugChanged` to ask them.
+
 ---
 
-## Domain-Based Tenancy
+## Host-Based Tenancy
 
 ### How It Works
 
 1. User accesses `acme.yourapp.com` (or `app.acme.com`)
-2. `TenantMiddleware` passes the host to `TenantResolver::resolve()`
-3. The host is looked up in the `domains` table (only verified domains match)
-4. The domain's owner (Tenant, or a Team belonging to a Tenant) determines the tenant
+2. `TenantMiddleware` passes the request to `TenantResolver::resolve()`
+3. A host under `platform_domain` resolves to the owner of its slug (or, within the window, the owner that retired it); any other host is looked up in `hostnames` (only verified rows match)
+4. The owner (Tenant, or a Team belonging to a Tenant) determines the tenant
 5. Tenant context is set for the request
 
-Subdomains are not derived from slugs at request time — every host (subdomain or custom domain) must exist as a verified `Domain` record.
-
-Whether a host needs DNS verification is decided from the host and the claiming team, against the `platform_domain` config — never from anything the request says. A tenant's subdomain is its slug, so team `acme` is issued `acme.otper.com` and that single claim is taken on trust. Every other host — another team's slug, one of your own operational names like `app.otper.com`, the platform apex, or any outside domain — must prove control with the DNS TXT record. With `platform_domain` unset, nothing auto-verifies.
-
-> **Passkeys do not work on custom domains.** WebAuthn binds credentials to the single
-> `relying_party_id` from `config/neev.php`, which a tenant's own domain cannot satisfy — the browser
-> refuses the ceremony client-side. Subdomains of the configured domain are fine. Tenants on custom
-> domains need magic link, OAuth, or password with MFA instead. See
+> **Passkeys work per host.** The WebAuthn relying party is the host the browser is on: the context's
+> current platform subdomain, or a verified hostname equal to the request's origin. Otherwise the
+> configured `relying_party_id` stands. A passkey enrolled on one host never works on another, so a
+> tenant reached at both its subdomain and a custom host enrols one per host. See
 > [Supported Domains](./authentication.md#supported-domains).
 
 ### Tenant & Team Slugs
 
-Slugs are auto-generated from names and can be used for `X-Tenant` header resolution:
+Slugs are auto-generated from names and name the platform subdomain and the `X-Tenant` header value:
 
 ```php
 $team = Team::create(['name' => 'Acme Corporation']);
 // $team->slug = 'acme-corporation'
 ```
+
+Slugs can be renamed but never recycled. Saving a slug another owner of the same kind has retired throws `SlugUnavailableException`. An owner may take back its own retired slug.
 
 ### Slug Configuration
 
@@ -237,76 +278,118 @@ $team = Team::create(['name' => 'Acme Corporation']);
 'slug' => [
     'min_length' => 2,
     'max_length' => 63,
-    'reserved' => ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn', 'assets', 'static'],
+    'retired_host_days' => 90,   // Days a renamed owner's old subdomain keeps serving
+    'reserved' => ['www', 'api', 'admin', 'app', 'mail', /* ... */],
 ],
 ```
 
 ---
 
-## Custom Domains
+## Custom Hosts & Email Domains
 
-Allow tenants to use their own domains.
+A host an owner is served at and an email domain whose users belong to it are different things, with opposite uniqueness rules, so they live in two tables:
 
-### Add Custom Domain
+| | `hostnames` | `email_domains` |
+|---|---|---|
+| Means | This owner is served at this host | Users at this domain belong to this owner |
+| Unique | Across every owner | Per owner; two owners may each verify `acme.com` |
+| DNS record | `_neev-host.<host>` | `_neev-email.<domain>` |
+| Model | `Ssntpl\Neev\Models\Hostname` | `Ssntpl\Neev\Models\EmailDomain` |
 
-```bash
-curl -X POST https://yourapp.com/neev/tenant-domains \
-  -H "Authorization: Bearer {token}" \
-  -d '{"domain": "app.acme.com"}'
-```
+A host says nothing about who has addresses there, and an email domain is never served. `Tenant` and `Team` both use the `HasHostnames` and `HasEmailDomains` traits. Deleting an owner deletes its rows.
 
-**Response:**
+> `Ssntpl\Neev\Models\Domain` and the `domains` table are deprecated. `Domain` is a read-only reader
+> kept for this release; saving or deleting one throws `LogicException`. Both are removed in the next
+> release. Use `Hostname` and `EmailDomain`.
 
-```json
-{
-  "message": "Domain added successfully.",
-  "data": {
-    "id": 1,
-    "domain": "app.acme.com",
-    "verified_at": null
-  },
-  "verification_token": "abc123...",
-  "dns_record": {
-    "type": "TXT",
-    "name": "_neev-verification.app.acme.com",
-    "value": "abc123..."
-  }
-}
-```
+### Managing a Tenant's Hosts
 
-### DNS Verification
-
-Tenant must add a TXT record named `_neev-verification.{domain}` whose value is the verification token:
-
-```
-_neev-verification.app.acme.com.  TXT  "abc123..."
-```
-
-### Verify Domain
-
-```bash
-curl -X POST https://yourapp.com/neev/tenant-domains/1/verify \
-  -H "Authorization: Bearer {token}"
-```
-
-The first team to verify a domain gets it: once one has, verifying another team's claim answers `400 This domain is already verified by another team.`
-
-`DELETE /neev/tenant-domains/{id}` deletes a domain the same way as the team endpoint: the primary flag moves to a remaining domain, a verified one first, and deleting it reactivates the team's deactivated members whose email is on it, unless another team they belong to also holds a claim on that domain.
-
-`POST /neev/tenant-domains/{id}/regenerate-token` issues a new token and returns it with `dns_record`. The domain goes back to unverified, with any earlier failure cleared, until the new record is verified.
-
-### Set Primary Domain
-
-```bash
-curl -X POST https://yourapp.com/neev/tenant-domains/1/primary \
-  -H "Authorization: Bearer {token}"
-```
-
-### Web Domain Resolution
+Tenant hosts have no HTTP endpoints; the `/tenant-domains` API is gone. Manage them in code or from the CLI. Team-owned hosts also have an API (`{prefix}/teams/{team}/hostnames`, see the [Teams Guide](./teams.md)); in tenant mode a team's host resolves to the team's tenant.
 
 ```php
-$team->webDomain;  // Returns the primary verified domain, or null
+$hostname = $tenant->claimHost('app.acme.com');   // pending claim
+$hostname->getDnsRecordName();                    // '_neev-host.app.acme.com'
+$hostname->verification_token;                    // the TXT value (hidden from serialization)
+
+$hostname->verify();                              // checks DNS; true once the record is published
+$tenant->makePrimaryHostname($hostname);          // only a verified host of this owner
+
+$tenant->hostnames;                               // every row, whatever its status
+$tenant->primaryHostname;                         // the row primary_hostname_id points at
+$tenant->canonicalHost();                         // verified primary, else oldest verified host, else platform subdomain
+$tenant->platformHost();                          // 'acme.otper.com', or null
+$tenant->releaseHost('app.acme.com');             // deletes the row; false when not held
 ```
+
+- `claimHost()` returns the owner's existing row for the host as it is. It throws `HostnameTakenException` when another owner holds the host, and `InvalidArgumentException` for a host under `platform_domain`.
+- `releaseHost()` unpoints `primary_hostname_id` first, so the owner falls back to its next host. The platform subdomain is not a row and cannot be released.
+- `generateVerificationToken()` issues a new token and puts the row back to `pending` until the new record is verified.
+- `Team::$webDomain` returns the team's verified primary hostname, or `null`. `canonicalHost()` answers where an owner is served, platform subdomain included.
+
+From the CLI:
+
+```bash
+php artisan neev:hostname:add app.acme.com --owner-type=tenant --owner-id=acme   # prints the TXT record
+php artisan neev:hostname:verify app.acme.com
+php artisan neev:hostname:primary app.acme.com
+php artisan neev:hostname:list --owner-type=tenant --owner-id=acme
+```
+
+### Email Domains
+
+```php
+$tenant->emailDomains;                            // EmailDomain rows
+```
+
+```bash
+php artisan neev:email-domain:add acme.com --owner-type=tenant --owner-id=acme
+php artisan neev:email-domain:verify acme.com --owner-type=tenant --owner-id=acme
+php artisan neev:email-domain:list --owner-type=tenant --owner-id=acme
+```
+
+Enforcement, auto-join and the team endpoints are covered in the [Teams Guide](./teams.md).
+
+Under tenant isolation a claim counts only inside its own tenant. `EmailDomain::isVerifiedForEmail()` — which makes a sign-up federated, so it gets no personal team — looks only at the resolved tenant's own email domains and those of its teams. Another tenant verifying `acme.com` has no effect here.
+
+### DNS Records
+
+Publish a TXT record whose value is the row's verification token:
+
+```
+_neev-host.app.acme.com.  TXT  "abc123..."
+_neev-email.acme.com.     TXT  "abc123..."
+```
+
+A row your app copied from the old `domains` table, with the same owner and token (see [UPGRADING](../UPGRADING.md)), also passes on the record published for it there, `_neev-verification.<name>`, while `neev.dns_verification.legacy_record` is on (default `true`, env `NEEV_DNS_LEGACY_RECORD`). It is checked only when the row's own record is missing. That one record proves both a host and an email domain, so the fallback is for this release only and is removed with `domains`. Publish the new records, then set it to `false`.
+
+### Verification Lifecycle
+
+`verified_at` is what grants: a host serves and an email domain federates while it is set. `status` says why:
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Claimed, not yet proven (or given a new token) |
+| `verified` | Record found |
+| `failed` | Proven before, but the record has been missing since `verification_failed_at` |
+| `disabled` | Disabled by the application with `disable()`; neither DNS nor a new token brings it back |
+
+`VerifyAllDomainsJob` re-checks every verified row and every row unverified for a missing record. The package does not schedule it; schedule it daily:
+
+```php
+// routes/console.php
+use Illuminate\Support\Facades\Schedule;
+use Ssntpl\Neev\Jobs\VerifyAllDomainsJob;
+
+Schedule::job(new VerifyAllDomainsJob)->daily();
+```
+
+With `neev.dns_verification.unverify_after_failed_days` at N (7 by default):
+
+1. The first missed check marks the row `failed` and fires `DomainVerificationFailed`. It still grants.
+2. After N days missing, the row is unverified and `DomainUnverified` fires: a host stops serving, an email domain stops federating, enforcing and deactivating. It stays `failed`, and publishing the record again restores it (`DomainReverified`).
+3. After 2N days missing, the row is deleted and `DomainRemoved` fires, freeing the host for another owner. A removed email domain gives back the accounts it deactivated.
+
+`0` never unverifies or deletes. A pending claim is never re-checked by the job; verify it with `verify()` or `neev:hostname:verify`. An email domain verified manually from the CLI has no record and is skipped.
 
 ---
 
@@ -501,11 +584,12 @@ Always list the group **before** any `neev:*` alias or custom middleware — eve
 
 ### TenantMiddleware Behavior
 
-1. Skips entirely when `tenant => false`
-2. Resolves the tenant via `TenantResolver` (X-Tenant header, then host lookup in the `domains` table)
-3. If no tenant resolves: returns 404 in `required` mode (`neev:tenant` group), otherwise passes through
-4. If the resolved domain is not verified: returns 403
-5. Sets the `tenant` attribute on the request and proceeds
+1. Skips entirely when both `tenant` and `team` are `false`
+2. Resolves the context via `TenantResolver` (X-Tenant header, then the platform subdomain or a verified row in `hostnames`)
+3. If nothing resolves: returns 404 in `required` mode (`neev:tenant` group), otherwise passes through
+4. On a retired host within `slug.retired_host_days`: a browser navigation gets a `301` to the current platform host
+5. If the resolved host is not verified: returns 403
+6. Sets the `tenant` attribute on the request and proceeds; a request served through a retired slug or host gets an `X-Tenant-Slug` response header
 
 ---
 
@@ -564,14 +648,14 @@ $tenant->getAutoProvisionRole(); // role assigned to auto-provisioned users
 
 SSO is owner-agnostic: a `Tenant` (isolated mode) and a `Team` (shared mode) both own their auth settings, and the whole flow — `TenantSSOManager`, the `/sso/*` routes, `EnsureContextSSO` — works against whichever context the request resolves to.
 
-**Per-team SSO in shared mode** (`tenant: false`, `team: true`) therefore needs a resolvable team: the team must own a **verified** domain, and the request must arrive on that host. `/neev/tenant/auth` then reports the team's method, and `/neev/sso/redirect` builds the driver from `team_auth_settings`:
+**Per-team SSO in shared mode** (`tenant: false`, `team: true`) therefore needs a resolvable team: the request must arrive on the team's platform subdomain or on a **verified** hostname it owns, or name the team in `X-Tenant`. `/neev/tenant/auth` then reports the team's method, and `/neev/sso/redirect` builds the driver from `team_auth_settings`:
 
 ```bash
 php artisan neev:auth:configure --team=acme --method=sso \
     --sso-provider=google --sso-client-id=... --sso-client-secret=...
 ```
 
-Without a resolvable context the SSO endpoints answer as unconfigured — configuring team SSO is not enough on its own, the domain has to resolve to that team.
+Without a resolvable context the SSO endpoints answer as unconfigured — configuring team SSO is not enough on its own, the request has to resolve to that team.
 
 ### Supported Providers
 
@@ -699,7 +783,7 @@ localStorage.setItem('auth_token', token);
 window.history.replaceState(null, '', window.location.pathname);
 ```
 
-> **Security:** The `redirect_uri` must match a verified domain belonging to the tenant. Neev validates this to prevent open redirect attacks. The URL fragment is never sent to the server in HTTP requests, making it safer than query parameters for token transport.
+> **Security:** The `redirect_uri` host must be the tenant's platform subdomain, one of its verified hostnames whose record is not failing, or the current request's host. An email domain does not count. Neev validates this to prevent open redirect attacks. The URL fragment is never sent to the server in HTTP requests, making it safer than query parameters for token transport.
 
 ---
 
@@ -767,22 +851,17 @@ $ssoManager->ensureMembership($user, $tenant);
 
 ## API Endpoints
 
-### Tenant Domain Management
+### Current Context
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/neev/tenant-domains` | List tenant domains |
-| POST | `/neev/tenant-domains` | Add custom domain |
-| GET | `/neev/tenant-domains/{id}` | Get domain details |
-| DELETE | `/neev/tenant-domains/{id}` | Delete domain |
-| POST | `/neev/tenant-domains/{id}/verify` | Verify domain |
-| POST | `/neev/tenant-domains/{id}/regenerate-token` | New verification token |
-| POST | `/neev/tenant-domains/{id}/primary` | Set as primary |
-| GET | `/neev/tenant-domains/current` | The resolved context and its domain |
+| GET | `/neev/hostnames/current` | The resolved context and the hostname it resolved through |
+
+It replaces `/neev/tenant-domains/current`. The rest of the `/tenant-domains` API is removed: a tenant's hosts are managed in code or from the CLI (see [Managing a Tenant's Hosts](#managing-a-tenants-hosts)). The route sits in the `neev:api` group, so it needs an authenticated user.
 
 `current` reports the context the resolver settled on for this request. With
 `tenant => true` that is the Tenant named by the `X-Tenant` header or the
-request host — a team-owned domain resolves up to that team's tenant — so
+request host — a team-owned host resolves up to that team's tenant — so
 `type` is `tenant`:
 
 ```json
@@ -790,20 +869,19 @@ request host — a team-owned domain resolves up to that team's tenant — so
   "data": {
     "type": "tenant",
     "context": { "id": 1, "name": "Acme", "slug": "acme" },
-    "domain": { "id": 4, "domain": "acme.example.com", "is_primary": true },
-    "team": null
+    "hostname": { "id": 4, "owner_type": "tenant", "owner_id": 1, "host": "app.acme.com", "status": "verified", "verified_at": "..." }
   }
 }
 ```
 
-`context` is that record, and `type` says what it is. `type` is `team` only when
-the application has made a Team the context itself via
-`TenantResolver::setCurrentTenant()`; `team` then repeats `context`, for callers
-written before tenant isolation existed, and is `null` otherwise. Read `context`
-and branch on `type`.
+`context` is that record, and `type` says what it is: `tenant`, or `team` in
+shared mode or when the application has made a Team the context itself via
+`TenantResolver::setCurrentTenant()`. `hostname` is the verified row a custom
+host resolved through, and `null` on a platform subdomain or when the context
+came from the `X-Tenant` header.
 
 With nothing resolved the endpoint answers `400 No tenant context.` — including
-on every request when `tenant => false`, where the resolver never runs.
+on every request when both `tenant` and `team` are `false`, where the resolver never runs.
 
 ### Tenant Auth
 
@@ -823,10 +901,11 @@ controller, so the context is resolved by the time the controller asks for it �
 including `GET /neev/tenant/auth`, which an SPA reads to decide which sign-in
 buttons to show.
 
-That middleware is a no-op when `tenant => false`: it passes the request
-straight through, the controllers see no context, and `/neev/tenant/auth`
-answers with its default of `auth_method: password`, `sso_enabled: false`.
-Tenant-driven SSO needs `tenant => true`.
+That middleware is a no-op when both `tenant` and `team` are `false`: it
+passes the request straight through, the controllers see no context, and
+`/neev/tenant/auth` answers with its default of `auth_method: password`,
+`sso_enabled: false`. With only `team => true` the context is a Team (see
+[Enterprise SSO](#enterprise-sso)).
 
 > The `/neev` prefix on these endpoints is configurable via `route_prefix` in `config/neev.php` (env `NEEV_ROUTE_PREFIX`).
 
@@ -849,28 +928,58 @@ The `users` table has a unique constraint on `(tenant_id, email)`, allowing the 
 | slug | string | Unique URL-friendly identifier |
 | activated_at | timestamp (nullable) | Activation time |
 | inactive_reason | string (nullable) | Reason for deactivation |
+| primary_hostname_id | bigint (nullable) | The tenant's primary hostname; `teams` has the same column |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 
-### domains Table
+### hostnames Table
 
 | Column | Type | Description |
 |--------|------|-------------|
 | id | bigint | Primary key |
-| owner_type | string (nullable) | Polymorphic owner type (`team` or `tenant`) |
-| owner_id | bigint (nullable) | Polymorphic owner ID |
-| enforce | boolean | Enforce email-domain matching (federation) |
-| domain | string | Custom domain or email domain |
-| verification_token | string | DNS verification token |
-| verified_at | timestamp | When verified |
-| verification_failed_at | timestamp | When re-verification last failed |
-| is_primary | boolean | Primary custom domain |
+| owner_type | string | Polymorphic owner type (`team`, `tenant`, or an application model) |
+| owner_id | bigint | Polymorphic owner ID |
+| host | string | Custom host, canonical (lowercase, no trailing dot); unique across every owner |
+| status | string | `pending`, `verified`, `failed` or `disabled` |
+| verification_token | string (nullable) | DNS verification token |
+| verified_at | timestamp (nullable) | When verified; set while the host serves |
+| verification_failed_at | timestamp (nullable) | Start of the current missing-record streak |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 
-The `domains` table serves two purposes:
-- **Domain federation**: email domains claimed by teams for auto-join rules
-- **Custom domains** (tenant mode): domains for tenant/team access (e.g., `app.acme.com`)
+Platform subdomains are derived from the slug and never stored here.
+
+### email_domains Table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | bigint | Primary key |
+| owner_type | string | Polymorphic owner type |
+| owner_id | bigint | Polymorphic owner ID |
+| domain | string | Email domain; unique per owner |
+| status | string | `pending`, `verified`, `failed` or `disabled` |
+| verification_strategy | string | `dns`, or `manual` when verified from the CLI without DNS |
+| verification_token | string (nullable) | DNS verification token |
+| verified_at | timestamp (nullable) | When verified; set while the domain federates |
+| verification_failed_at | timestamp (nullable) | Start of the current missing-record streak |
+| enforce | boolean | Only invite users at this domain; one owner per domain |
+| created_at | timestamp | Creation time |
+| updated_at | timestamp | Last update time |
+
+### retired_slugs Table
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | bigint | Primary key |
+| owner_type | string | Polymorphic owner type |
+| owner_id | bigint | Owner that gave up the slug |
+| slug | string | The retired slug; never issued to another owner of this type |
+| created_at | timestamp | When it was retired; starts the `retired_host_days` window |
+| updated_at | timestamp | Last update time |
+
+### domains Table (deprecated)
+
+Kept for this release so your app can copy its rows into `hostnames` and `email_domains` (the migrations copy nothing; see [UPGRADING](../UPGRADING.md)), so the deprecated `Domain` model can still read them, and so the legacy `_neev-verification` record can be matched. Neev no longer writes to it. It is removed in the next release.
 
 ### team_auth_settings Table
 
@@ -886,6 +995,7 @@ The `domains` table serves two purposes:
 | sso_extra_config | json | Additional provider config (base URL, domain restrictions, etc.) |
 | auto_provision | boolean | Auto-create users |
 | auto_provision_role | string | Role for auto-provisioned users |
+| require_mfa | boolean | Require MFA for members. Stored, but not yet enforced at login |
 | created_at | timestamp | Creation time |
 | updated_at | timestamp | Last update time |
 
@@ -897,12 +1007,13 @@ Same schema as `team_auth_settings`, but with `tenant_id` instead of `team_id`. 
 
 ## Security Considerations
 
-### Domain Verification
+### Host Verification
 
-- Always verify domain ownership via DNS
-- The first owner to verify a host gets it; a later claim of the same owner type is refused, even with its TXT record in place. When verifying outside the package's endpoints, use `Domain::verify()` or `Domain::markVerified()` rather than writing `verified_at`, so that rule is applied
-- Don't allow unverified domains for auth — `TenantMiddleware` rejects unverified custom domains with a 403
-- Re-verify periodically for long-lived tenants (`VerifyDomainJob` / `VerifyAllDomainsJob` support scheduled re-verification, tracked via `verification_failed_at`). `VerifyDomainJob` re-checks only a domain that is verified when it runs; verify a pending claim with `Domain::verify()` or `neev:domain:verify`
+- Always verify host ownership via DNS; a claim serves nothing until its `_neev-host` record is verified
+- A host is unique across every owner. The first claim holds it, pending or verified, and a second claim throws `HostnameTakenException` even with its own TXT record in place
+- Don't allow unverified hosts for auth — the resolver only matches verified rows, and `TenantMiddleware` rejects an unverified custom host with a 403
+- Schedule `VerifyAllDomainsJob` daily. A host whose record stays missing stops serving after `dns_verification.unverify_after_failed_days` and is deleted at twice that, so a lapsed domain registration does not hand the tenant's host to whoever registers the name next
+- Set `dns_verification.legacy_record` to `false` once tenants have published the new records; the legacy `_neev-verification` record proves a host and an email domain at once
 
 ### Secret Storage
 
@@ -911,9 +1022,9 @@ Same schema as `team_auth_settings`, but with `tenant_id` instead of `team_id`. 
 
 ### Redirect URI Validation
 
-- Validate `redirect_uri` against tenant domains
+- Validate `redirect_uri` against the tenant's platform subdomain and verified hostnames
 - Prevent open redirect attacks
-- Only allow same-origin or verified domains
+- Only allow same-origin or verified hosts
 
 ### User Association
 
@@ -1084,5 +1195,5 @@ class ProjectController extends Controller
 
 - [Architecture](./architecture.md) -- conceptual foundations for identity modes, tenant vs team
 - [Security Features](./security.md) -- brute force protection, login tracking, session management
-- [Teams Guide](./teams.md) -- team management, invitations, domain federation
+- [Teams Guide](./teams.md) -- team management, invitations, email domains
 - [API Reference](./api-reference.md) -- complete API endpoint reference
