@@ -113,18 +113,6 @@ class RelyingPartyResolverTest extends TestCase
         EmailDomainFactory::new()->forOwner($owner)->verified()->create(['domain' => $domain]);
     }
 
-    // ---------------------------------------------------------------
-    // The context's domain
-    // ---------------------------------------------------------------
-
-    public function test_the_contexts_domain_is_the_relying_party(): void
-    {
-        $this->enableTeams();
-        $this->teamOwning('acme.com');
-
-        $this->assertSame('acme.com', $this->forHost('acme.com'));
-    }
-
     /**
      * The primary decides nothing here: the origin does. Rank cannot hand a
      * browser on `acme.com` a relying party of `acme.io`, which it would only

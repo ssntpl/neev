@@ -46,6 +46,17 @@ class RetiredSlugTest extends TestCase
             && $e->newSlug === 'acme-corp');
     }
 
+    public function test_a_retired_slug_resolves_its_owner(): void
+    {
+        $team = TeamFactory::new()->create(['slug' => 'acme']);
+        $team->update(['slug' => 'acme-corp']);
+
+        $owner = RetiredSlug::sole()->owner;
+
+        $this->assertInstanceOf(Team::class, $owner);
+        $this->assertTrue($owner->is($team));
+    }
+
     public function test_saving_without_a_slug_change_retires_nothing(): void
     {
         Event::fake([SlugChanged::class]);
@@ -185,6 +196,22 @@ class RetiredSlugTest extends TestCase
         $this->expectException(SlugUnavailableException::class);
 
         Project::create(['handle' => 'acme']);
+    }
+
+    public function test_an_application_model_saved_without_a_slug_is_saved_without_one(): void
+    {
+        Schema::create('projects', function (Blueprint $table) {
+            $table->id();
+            $table->string('handle')->nullable()->unique();
+            $table->timestamps();
+        });
+
+        // Project does not override generateSlug(), so nothing is filled in.
+        $project = Project::create([]);
+
+        $this->assertTrue($project->exists);
+        $this->assertNull($project->fresh()->handle);
+        $this->assertDatabaseCount('retired_slugs', 0);
     }
 
     /**

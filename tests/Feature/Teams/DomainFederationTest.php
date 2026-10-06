@@ -337,6 +337,23 @@ class DomainFederationTest extends TestCase
         $this->assertNull($domain->verification_failed_at);
     }
 
+    public function test_a_disabled_domain_gets_no_new_token(): void
+    {
+        [$owner, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $owner->id]);
+        $domain = EmailDomainFactory::new()->forOwner($team)->create();
+        $domain->disable();
+        $old = $domain->fresh()->verification_token;
+
+        $this->bearer($token)
+            ->postJson("/neev/email-domains/{$domain->id}/token")
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'This domain is disabled.');
+
+        $this->assertSame($old, $domain->fresh()->verification_token);
+        $this->assertSame(EmailDomain::STATUS_DISABLED, $domain->fresh()->status);
+    }
+
     public function test_non_owner_cannot_regenerate_the_token(): void
     {
         [$member, $token] = $this->authenticatedUser();

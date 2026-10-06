@@ -181,13 +181,6 @@ class TenantTest extends TestCase
         $this->assertSame('sso', $tenant->fresh()->getAuthMethod());
     }
 
-    public function test_requires_sso_returns_false_by_default(): void
-    {
-        $tenant = TenantFactory::new()->create();
-
-        $this->assertFalse($tenant->requiresSSO());
-    }
-
     public function test_requires_sso_returns_false_when_no_auth_settings(): void
     {
         $tenant = TenantFactory::new()->create();

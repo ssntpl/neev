@@ -2,6 +2,7 @@
 
 namespace Ssntpl\Neev\Tests\Unit\Models;
 
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Cache;
@@ -24,6 +25,7 @@ use Ssntpl\Neev\Models\EmailDomain;
 use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\Tests\Support\FakeDns;
 use Ssntpl\Neev\Tests\TestCase;
+use Ssntpl\Neev\Traits\HasHostnames;
 
 // Must load before any test calls verify(); see the file for why.
 require_once __DIR__ . '/../../Support/FakeDns.php';
@@ -94,6 +96,55 @@ class HostnameLifecycleTest extends TestCase
         $owner = TeamFactory::new()->create();
 
         $this->assertTrue($owner->claimHost('app.acme.com')->isOwnedBy($owner));
+    }
+
+    public function test_a_blank_host_cannot_be_claimed(): void
+    {
+        $team = TeamFactory::new()->create();
+
+        foreach (['', '  ', ' . '] as $host) {
+            try {
+                $team->claimHost($host);
+                $this->fail("'{$host}' was claimed.");
+            } catch (InvalidArgumentException $e) {
+                $this->assertSame('A host is required.', $e->getMessage());
+            }
+        }
+
+        $this->assertSame(0, Hostname::count());
+    }
+
+    public function test_claiming_a_host_again_returns_the_owners_row_as_it_is(): void
+    {
+        $team = TeamFactory::new()->create();
+        $first = $team->claimHost('app.acme.com');
+
+        $again = $team->claimHost('APP.acme.com');
+
+        $this->assertTrue($again->is($first));
+        $this->assertSame($first->verification_token, $again->verification_token, 'No new token was issued.');
+        $this->assertSame(1, Hostname::count());
+    }
+
+    public function test_a_claim_saved_by_another_owner_mid_claim_takes_the_host(): void
+    {
+        $other = TeamFactory::new()->create();
+        // Another owner's claim lands after our lookup but before our insert,
+        // so only the unique index catches it.
+        Hostname::creating(function (Hostname $hostname) use ($other) {
+            DB::table('hostnames')->insert([
+                'owner_type' => 'team',
+                'owner_id' => $other->id,
+                'host' => $hostname->host,
+                'status' => Hostname::STATUS_PENDING,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        });
+
+        $this->expectException(HostnameTakenException::class);
+
+        TeamFactory::new()->create()->claimHost('app.acme.com');
     }
 
     public function test_nothing_under_the_platform_zone_can_be_claimed(): void
@@ -208,6 +259,17 @@ class HostnameLifecycleTest extends TestCase
         FakeDns::txt('_neev-verification.app.acme.com', $hostname->verification_token);
 
         $this->assertFalse($hostname->verify());
+    }
+
+    public function test_a_row_without_a_token_is_not_proven(): void
+    {
+        $hostname = HostnameFactory::new()->create(['host' => 'app.acme.com', 'verification_token' => null]);
+        // An empty record must not match the missing token.
+        FakeDns::txt('_neev-host.app.acme.com', '');
+
+        $this->assertFalse($hostname->verify());
+        $this->assertFalse($hostname->fresh()->isVerified());
+        $this->assertNotNull($hostname->fresh()->verification_failed_at);
     }
 
     public function test_a_failure_is_dated_from_the_first_miss(): void
@@ -487,6 +549,19 @@ class HostnameLifecycleTest extends TestCase
 
         $team->fresh()->releaseHost('app.acme.com');
         $this->assertSame('acme.otper.com', $team->fresh()->canonicalHost());
+    }
+
+    public function test_an_owner_that_is_not_a_context_has_no_platform_host(): void
+    {
+        $owner = new class () extends Model {
+            use HasHostnames;
+
+            protected $table = 'projects';
+        };
+        $owner->forceFill(['id' => 1, 'slug' => 'acme']);
+
+        $this->assertNull($owner->platformHost());
+        $this->assertNull($owner->canonicalHost(), 'It is served nowhere.');
     }
 
     public function test_a_pending_primary_is_not_canonical(): void

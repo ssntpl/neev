@@ -3,7 +3,10 @@
 namespace Ssntpl\Neev\Tests\Feature\Teams;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Mockery;
+use RuntimeException;
 use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Models\EmailDomain;
@@ -166,6 +169,66 @@ class DomainFederationWebTest extends TestCase
         $this->assertNull($domain->fresh()->verified_at);
     }
 
+    public function test_a_member_cannot_federate_a_domain(): void
+    {
+        [$team] = $this->teamWithOwner();
+        $member = User::factory()->create();
+        $team->addMember($member);
+
+        $this->actingAs($member)
+            ->from(config('neev.home'))
+            ->post(route('teams.email-domains.store', $team->id), ['domain' => 'acme.com'])
+            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to federate domain.']);
+
+        $this->assertSame(0, EmailDomain::count());
+    }
+
+    public function test_federating_a_disabled_domain_flashes_that_it_is_disabled(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $domain = EmailDomainFactory::new()->forOwner($team)->create([
+            'domain' => 'acme.com',
+            'status' => EmailDomain::STATUS_DISABLED,
+        ]);
+        $token = $domain->verification_token;
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->post(route('teams.email-domains.store', $team->id), ['domain' => 'acme.com'])
+            ->assertSessionHasErrors(['message' => 'This domain is disabled.'])
+            ->assertSessionMissing('token');
+
+        $this->assertSame($token, $domain->fresh()->verification_token);
+    }
+
+    public function test_federating_with_enforce_a_domain_another_owner_enforces_is_refused(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        EmailDomainFactory::new()->verified()->create(['domain' => 'acme.com', 'enforce' => true]);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->post(route('teams.email-domains.store', $team->id), ['domain' => 'acme.com', 'enforce' => 'on'])
+            ->assertSessionHasErrors(['message' => 'Another owner already enforces this email domain.']);
+
+        $this->assertSame(0, $team->emailDomains()->count());
+    }
+
+    public function test_an_unexpected_failure_while_federating_is_logged_and_flashed(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        Log::spy();
+        EmailDomain::saving(fn () => throw new RuntimeException('database is down'));
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->post(route('teams.email-domains.store', $team->id), ['domain' => 'acme.com'])
+            ->assertSessionHasErrors(['message' => 'Failed to federate domain.']);
+
+        Log::shouldHaveReceived('error')->once()->with(Mockery::type(RuntimeException::class));
+        $this->assertSame(0, EmailDomain::count());
+    }
+
     // -----------------------------------------------------------------
     // PUT /teams/email-domains/{domain} — token and verify
     // -----------------------------------------------------------------
@@ -231,9 +294,140 @@ class DomainFederationWebTest extends TestCase
         $this->assertNotNull($domain->fresh()->verified_at);
     }
 
+    public function test_verify_without_the_record_flashes_that_it_was_not_found(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $domain = EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com']);
+        FakeDns::txt('_neev-email.acme.com');
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->put(route('teams.email-domains.update', $domain->id), ['verify' => 'verify'])
+            ->assertSessionHasErrors(['message' => 'DNS record not found. Please try again later.']);
+
+        $this->assertNull($domain->fresh()->verified_at);
+    }
+
+    public function test_a_new_token_for_a_disabled_domain_is_refused(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $domain = EmailDomainFactory::new()->forOwner($team)->create([
+            'domain' => 'acme.com',
+            'status' => EmailDomain::STATUS_DISABLED,
+        ]);
+        $token = $domain->verification_token;
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->put(route('teams.email-domains.update', $domain->id), ['token' => 'token'])
+            ->assertSessionHasErrors(['message' => 'This domain is disabled.'])
+            ->assertSessionMissing('token');
+
+        $this->assertSame($token, $domain->fresh()->verification_token);
+        $this->assertSame(EmailDomain::STATUS_DISABLED, $domain->fresh()->status);
+    }
+
+    public function test_a_member_cannot_update_a_domain(): void
+    {
+        [$team] = $this->teamWithOwner();
+        $member = User::factory()->create();
+        $team->addMember($member);
+        $domain = EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com']);
+
+        $this->actingAs($member)
+            ->from(config('neev.home'))
+            ->put(route('teams.email-domains.update', $domain->id), ['enforce' => 'on'])
+            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to update domain.']);
+
+        $this->assertFalse($domain->fresh()->enforce);
+    }
+
+    // -----------------------------------------------------------------
+    // PUT /teams/email-domains/{domain} — enforce
+    // -----------------------------------------------------------------
+
+    public function test_the_owner_turns_enforce_on_and_an_unticked_box_turns_it_off(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $domain = EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.com']);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->put(route('teams.email-domains.update', $domain->id), ['enforce' => 'on'])
+            ->assertSessionHas('status', 'domain has been updated.');
+        $this->assertTrue($domain->fresh()->enforce);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->put(route('teams.email-domains.update', $domain->id), [])
+            ->assertSessionHas('status', 'domain has been updated.');
+        $this->assertFalse($domain->fresh()->enforce);
+    }
+
+    public function test_enforcing_a_domain_another_owner_enforces_is_refused(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        EmailDomainFactory::new()->verified()->create(['domain' => 'acme.com', 'enforce' => true]);
+        $domain = EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.com']);
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->put(route('teams.email-domains.update', $domain->id), ['enforce' => 'on'])
+            ->assertSessionHasErrors(['message' => 'Another owner already enforces this email domain.']);
+
+        $this->assertFalse($domain->fresh()->enforce);
+    }
+
+    public function test_an_unexpected_failure_while_updating_is_logged_and_flashed(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $domain = EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.com']);
+        Log::spy();
+        EmailDomain::saving(fn () => throw new RuntimeException('database is down'));
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->put(route('teams.email-domains.update', $domain->id), ['enforce' => 'on'])
+            ->assertSessionHasErrors(['message' => 'Failed to update domain.']);
+
+        Log::shouldHaveReceived('error')->once()->with(Mockery::type(RuntimeException::class));
+        $this->assertFalse($domain->fresh()->enforce);
+    }
+
     // -----------------------------------------------------------------
     // DELETE /teams/email-domains/{domain}
     // -----------------------------------------------------------------
+
+    public function test_a_member_cannot_delete_a_domain(): void
+    {
+        [$team] = $this->teamWithOwner();
+        $member = User::factory()->create();
+        $team->addMember($member);
+        $domain = EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com']);
+
+        $this->actingAs($member)
+            ->from(config('neev.home'))
+            ->delete(route('teams.email-domains.destroy', $domain->id))
+            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to delete domain.']);
+
+        $this->assertDatabaseHas('email_domains', ['id' => $domain->id]);
+    }
+
+    public function test_an_unexpected_failure_while_deleting_is_logged_and_flashed(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $domain = EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com']);
+        Log::spy();
+        EmailDomain::deleting(fn () => throw new RuntimeException('database is down'));
+
+        $this->actingAs($owner)
+            ->from(config('neev.home'))
+            ->delete(route('teams.email-domains.destroy', $domain->id))
+            ->assertSessionHasErrors(['message' => 'Failed to delete domain.']);
+
+        Log::shouldHaveReceived('error')->once()->with(Mockery::type(RuntimeException::class));
+        $this->assertDatabaseHas('email_domains', ['id' => $domain->id]);
+    }
 
     // -----------------------------------------------------------------
     // Invite and leave use every verified domain of the team
@@ -444,6 +638,24 @@ class DomainFederationWebTest extends TestCase
             ->assertOk()
             ->assertSee('_neev-email.acme.com')
             ->assertSee('the-token-value');
+    }
+
+    /**
+     * Members outside the team's domains are counted against the enforced,
+     * verified domain only, not against a domain that does not enforce.
+     */
+    public function test_the_page_warns_about_outside_members_only_on_the_enforced_verified_domain(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        EmailDomainFactory::new()->verified()->forOwner($team)->create(['domain' => 'acme.com', 'enforce' => true]);
+        EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.io']);
+
+        $this->actingAs($owner)
+            ->get(route('teams.email-domains', $team->id))
+            ->assertOk()
+            ->assertSee('acme.io')
+            ->assertSee('outside your verified domain (@acme.com)', false)
+            ->assertDontSee('outside your verified domain (@acme.io)', false);
     }
 
     public function test_federating_a_domain_that_is_not_a_string_is_refused(): void

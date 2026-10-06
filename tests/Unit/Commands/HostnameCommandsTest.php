@@ -3,9 +3,12 @@
 namespace Ssntpl\Neev\Tests\Unit\Commands;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Bus;
 use Ssntpl\Neev\Database\Factories\HostnameFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
+use Ssntpl\Neev\Jobs\VerifyDomainJob;
 use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Tests\Support\FakeDns;
@@ -122,6 +125,31 @@ class HostnameCommandsTest extends TestCase
             ->assertFailed();
     }
 
+    public function test_add_asks_for_the_host_when_it_is_missing(): void
+    {
+        $team = TeamFactory::new()->create();
+
+        $this->artisan('neev:hostname:add', ['--owner-type' => 'team', '--owner-id' => (string) $team->id])
+            ->expectsQuestion('What host would you like to add?', 'app.acme.com')
+            ->expectsOutputToContain('Host added: app.acme.com')
+            ->assertSuccessful();
+
+        $this->assertTrue(Hostname::forHost('app.acme.com')->sole()->isOwnedBy($team));
+    }
+
+    public function test_add_asks_for_the_owner_when_it_is_missing(): void
+    {
+        $team = TeamFactory::new()->create();
+
+        $this->artisan('neev:hostname:add', ['host' => 'app.acme.com'])
+            ->expectsQuestion('What owns it?', 'team')
+            ->expectsQuestion('Which team? (ID or slug)', $team->slug)
+            ->expectsOutputToContain('Host added: app.acme.com')
+            ->assertSuccessful();
+
+        $this->assertTrue(Hostname::forHost('app.acme.com')->sole()->isOwnedBy($team));
+    }
+
     public function test_add_needs_an_owner(): void
     {
         $this->artisan('neev:hostname:add', ['host' => 'app.acme.com', '--no-interaction' => true])
@@ -163,6 +191,37 @@ class HostnameCommandsTest extends TestCase
             ->doesntExpectOutputToContain('proven.acme.com')
             ->doesntExpectOutputToContain('other.acme.com')
             ->assertSuccessful();
+    }
+
+    public function test_list_reports_when_no_host_matches(): void
+    {
+        HostnameFactory::new()->verified()->create(['host' => 'proven.acme.com']);
+
+        $this->artisan('neev:hostname:list', ['--unverified' => true])
+            ->expectsOutputToContain('No hosts found.')
+            ->doesntExpectOutputToContain('proven.acme.com')
+            ->assertSuccessful();
+    }
+
+    public function test_list_prints_json(): void
+    {
+        $team = TeamFactory::new()->create();
+        HostnameFactory::new()->forOwner($team)->create(['host' => 'app.acme.com']);
+
+        $this->assertSame(0, Artisan::call('neev:hostname:list', ['--json' => true]));
+
+        $rows = json_decode(Artisan::output(), true);
+        $this->assertCount(1, $rows);
+        $this->assertSame('app.acme.com', $rows[0]['host']);
+        $this->assertSame($team->id, $rows[0]['owner_id']);
+        $this->assertArrayNotHasKey('verification_token', $rows[0]);
+    }
+
+    public function test_list_rejects_an_unknown_owner_type(): void
+    {
+        $this->artisan('neev:hostname:list', ['--owner-type' => 'group'])
+            ->expectsOutputToContain('--owner-type must be "team" or "tenant".')
+            ->assertFailed();
     }
 
     public function test_list_needs_the_owner_type_with_a_slug(): void
@@ -208,6 +267,29 @@ class HostnameCommandsTest extends TestCase
         $this->expectException(InvalidOptionException::class);
 
         $this->artisan('neev:hostname:verify', ['host' => 'app.acme.com', '--force' => true]);
+    }
+
+    public function test_verify_all_queues_a_recheck_for_each_verified_or_failing_host(): void
+    {
+        Bus::fake();
+        $verified = HostnameFactory::new()->verified()->create(['host' => 'proven.acme.com']);
+        $failing = HostnameFactory::new()->create(['host' => 'lapsed.acme.com', 'status' => Hostname::STATUS_FAILED]);
+        HostnameFactory::new()->create(['host' => 'pending.acme.com']);
+
+        $this->artisan('neev:hostname:verify', ['--all' => true])
+            ->expectsOutputToContain('Dispatched verification jobs for all verified and failing hosts.')
+            ->assertSuccessful();
+
+        Bus::assertDispatchedTimes(VerifyDomainJob::class, 2);
+        Bus::assertDispatched(VerifyDomainJob::class, fn (VerifyDomainJob $job) => $job->domain->is($verified));
+        Bus::assertDispatched(VerifyDomainJob::class, fn (VerifyDomainJob $job) => $job->domain->is($failing));
+    }
+
+    public function test_verify_needs_a_host_or_all(): void
+    {
+        $this->artisan('neev:hostname:verify')
+            ->expectsOutputToContain('You must specify a host or use --all.')
+            ->assertFailed();
     }
 
     public function test_verify_reports_an_unknown_host(): void
@@ -267,6 +349,16 @@ class HostnameCommandsTest extends TestCase
     {
         $this->artisan('neev:hostname:primary', ['host' => 'app.acme.com'])
             ->expectsOutputToContain('Host not found: app.acme.com')
+            ->assertFailed();
+    }
+
+    public function test_primary_refuses_a_host_whose_owner_is_gone(): void
+    {
+        // No foreign key ties a host to its owner, so a host can outlive it.
+        HostnameFactory::new()->verified()->create(['host' => 'app.acme.com', 'owner_id' => 999999]);
+
+        $this->artisan('neev:hostname:primary', ['host' => 'app.acme.com'])
+            ->expectsOutputToContain('The owner of app.acme.com keeps no primary host.')
             ->assertFailed();
     }
 }

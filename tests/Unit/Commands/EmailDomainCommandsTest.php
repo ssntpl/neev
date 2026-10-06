@@ -3,12 +3,15 @@
 namespace Ssntpl\Neev\Tests\Unit\Commands;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Bus;
 use Illuminate\Support\Facades\Event;
 use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Events\DomainReverified;
 use Ssntpl\Neev\Events\DomainVerified;
+use Ssntpl\Neev\Jobs\VerifyDomainJob;
 use Ssntpl\Neev\Models\EmailDomain;
 use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Tests\Support\FakeDns;
@@ -102,6 +105,31 @@ class EmailDomainCommandsTest extends TestCase
         $this->assertSame(1, $team->emailDomains()->count());
     }
 
+    public function test_add_asks_for_the_domain_when_it_is_missing(): void
+    {
+        $team = TeamFactory::new()->create();
+
+        $this->artisan('neev:email-domain:add', ['--owner-type' => 'team', '--owner-id' => (string) $team->id])
+            ->expectsQuestion('What email domain would you like to add?', 'acme.com')
+            ->expectsOutputToContain('Domain added: acme.com')
+            ->assertSuccessful();
+
+        $this->assertSame('acme.com', $team->emailDomains()->sole()->domain);
+    }
+
+    public function test_add_asks_for_the_owner_when_it_is_missing(): void
+    {
+        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme']);
+
+        $this->artisan('neev:email-domain:add', ['domain' => 'acme.com'])
+            ->expectsQuestion('What owns it?', 'tenant')
+            ->expectsQuestion('Which tenant? (ID or slug)', 'acme')
+            ->expectsOutputToContain('Domain added: acme.com')
+            ->assertSuccessful();
+
+        $this->assertSame('acme.com', $tenant->emailDomains()->sole()->domain);
+    }
+
     public function test_add_rejects_an_unknown_owner_type(): void
     {
         $this->artisan('neev:email-domain:add', ['domain' => 'acme.com', '--owner-type' => 'group', '--owner-id' => '1'])
@@ -147,6 +175,40 @@ class EmailDomainCommandsTest extends TestCase
             ->expectsOutputToContain('pending.com')
             ->doesntExpectOutputToContain('proven.com')
             ->assertSuccessful();
+    }
+
+    public function test_list_reports_when_no_domain_matches(): void
+    {
+        EmailDomainFactory::new()->verified()->create(['domain' => 'proven.com']);
+
+        $this->artisan('neev:email-domain:list', ['--unverified' => true])
+            ->expectsOutputToContain('No domains found.')
+            ->doesntExpectOutputToContain('proven.com')
+            ->assertSuccessful();
+    }
+
+    public function test_list_prints_json(): void
+    {
+        $team = TeamFactory::new()->create();
+        EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com']);
+
+        $this->assertSame(0, Artisan::call('neev:email-domain:list', ['--json' => true]));
+
+        $rows = json_decode(Artisan::output(), true);
+        $this->assertCount(1, $rows);
+        $this->assertSame('acme.com', $rows[0]['domain']);
+        $this->assertSame($team->id, $rows[0]['owner_id']);
+        $this->assertArrayNotHasKey('verification_token', $rows[0]);
+    }
+
+    public function test_list_rejects_an_unknown_owner_type(): void
+    {
+        EmailDomainFactory::new()->create(['domain' => 'acme.com']);
+
+        $this->artisan('neev:email-domain:list', ['--owner-type' => 'group'])
+            ->expectsOutputToContain('--owner-type must be "team" or "tenant".')
+            ->doesntExpectOutputToContain('acme.com')
+            ->assertFailed();
     }
 
     public function test_list_reports_an_unknown_slug(): void
@@ -287,5 +349,39 @@ class EmailDomainCommandsTest extends TestCase
         $this->artisan('neev:email-domain:verify', ['domain' => 'acme.com'])
             ->expectsOutputToContain('Domain not found: acme.com')
             ->assertFailed();
+    }
+
+    public function test_verify_all_queues_a_recheck_for_each_verified_or_failing_domain(): void
+    {
+        Bus::fake();
+        $verified = EmailDomainFactory::new()->verified()->create(['domain' => 'proven.com']);
+        $failing = EmailDomainFactory::new()->create(['domain' => 'lapsed.com', 'status' => EmailDomain::STATUS_FAILED]);
+        EmailDomainFactory::new()->create(['domain' => 'pending.com']);
+
+        $this->artisan('neev:email-domain:verify', ['--all' => true])
+            ->expectsOutputToContain('Dispatched verification jobs for all verified and failing email domains.')
+            ->assertSuccessful();
+
+        Bus::assertDispatchedTimes(VerifyDomainJob::class, 2);
+        Bus::assertDispatched(VerifyDomainJob::class, fn (VerifyDomainJob $job) => $job->domain->is($verified));
+        Bus::assertDispatched(VerifyDomainJob::class, fn (VerifyDomainJob $job) => $job->domain->is($failing));
+    }
+
+    public function test_verify_needs_a_domain_or_all(): void
+    {
+        $this->artisan('neev:email-domain:verify')
+            ->expectsOutputToContain('You must specify a domain or use --all.')
+            ->assertFailed();
+    }
+
+    public function test_verify_rejects_an_unknown_owner_type(): void
+    {
+        $domain = EmailDomainFactory::new()->create(['domain' => 'acme.com']);
+
+        $this->artisan('neev:email-domain:verify', ['domain' => 'acme.com', '--owner-type' => 'group', '--force' => true])
+            ->expectsOutputToContain('--owner-type must be "team" or "tenant".')
+            ->assertFailed();
+
+        $this->assertFalse($domain->fresh()->isVerified());
     }
 }

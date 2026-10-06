@@ -175,6 +175,102 @@ class TeamHostnameWebTest extends TestCase
         $this->assertNotNull(Hostname::find($hostname->id));
     }
 
+    public function test_a_non_member_cannot_see_the_hosts_page(): void
+    {
+        [$team] = $this->teamWithOwner();
+        $this->verifiedHost($team, 'app.acme.com');
+        $stranger = User::factory()->create();
+
+        $this->actingAs($stranger)
+            ->from(config('neev.home'))
+            ->get(route('teams.hostnames', $team->id))
+            ->assertRedirect(config('neev.home'))
+            ->assertSessionHasErrors(['message' => 'You cannot perform this action on this team.']);
+    }
+
+    public function test_claiming_a_host_the_team_already_holds_is_refused(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $hostname = $team->claimHost('app.acme.com');
+
+        $this->actingAs($owner)
+            ->from(route('teams.hostnames', $team->id))
+            ->post(route('teams.hostnames.store', $team->id), ['host' => 'APP.acme.com'])
+            ->assertSessionHasErrors(['message' => 'This team has already added this host.'])
+            ->assertSessionMissing('token');
+
+        $this->assertSame(1, $team->hostnames()->count());
+        $this->assertSame($hostname->verification_token, $hostname->fresh()->verification_token);
+    }
+
+    public function test_a_member_cannot_update_a_host(): void
+    {
+        [$team] = $this->teamWithOwner();
+        $member = User::factory()->create();
+        $team->addMember($member);
+        $hostname = $this->verifiedHost($team, 'app.acme.com');
+
+        $this->actingAs($member)
+            ->from(route('teams.hostnames', $team->id))
+            ->put(route('teams.hostnames.update', $hostname->id), ['primary' => 'primary'])
+            ->assertSessionHasErrors(['message' => 'You do not have the required permissions to update this host.']);
+
+        $this->assertNull($team->fresh()->primary_hostname_id);
+    }
+
+    public function test_the_owner_gets_a_new_token_that_unverifies_the_host(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $hostname = $this->verifiedHost($team, 'app.acme.com');
+        $oldToken = $hostname->verification_token;
+
+        $this->actingAs($owner)
+            ->from(route('teams.hostnames', $team->id))
+            ->put(route('teams.hostnames.update', $hostname->id), ['token' => 'token'])
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('dns_record_name', '_neev-host.app.acme.com');
+
+        $hostname->refresh();
+        $this->assertNotSame($oldToken, $hostname->verification_token);
+        $this->assertSame(session('token'), $hostname->verification_token);
+        $this->assertFalse($hostname->isVerified());
+    }
+
+    public function test_a_new_token_for_a_disabled_host_is_refused(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $hostname = $team->claimHost('app.acme.com');
+        $hostname->forceFill(['status' => Hostname::STATUS_DISABLED])->save();
+        $token = $hostname->verification_token;
+
+        $this->actingAs($owner)
+            ->from(route('teams.hostnames', $team->id))
+            ->put(route('teams.hostnames.update', $hostname->id), ['token' => 'token'])
+            ->assertSessionHasErrors(['message' => 'This host is disabled.'])
+            ->assertSessionMissing('token');
+
+        $this->assertSame($token, $hostname->fresh()->verification_token);
+        $this->assertSame(Hostname::STATUS_DISABLED, $hostname->fresh()->status);
+    }
+
+    public function test_an_update_without_an_action_changes_nothing(): void
+    {
+        [$team, $owner] = $this->teamWithOwner();
+        $hostname = $this->verifiedHost($team, 'app.acme.com');
+        $from = route('teams.hostnames', $team->id);
+
+        $this->actingAs($owner)
+            ->from($from)
+            ->put(route('teams.hostnames.update', $hostname->id), [])
+            ->assertRedirect($from)
+            ->assertSessionHasNoErrors()
+            ->assertSessionMissing('status')
+            ->assertSessionMissing('token');
+
+        $this->assertTrue($hostname->fresh()->isVerified());
+        $this->assertNull($team->fresh()->primary_hostname_id);
+    }
+
     /**
      * @return array{0: Team, 1: User}
      */

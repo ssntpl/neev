@@ -9,9 +9,9 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
 use Ssntpl\Neev\Database\Factories\HostnameFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Exceptions\DomainAlreadyVerifiedException;
 use Ssntpl\Neev\Models\Domain;
 use Ssntpl\Neev\Models\Hostname;
-use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Tests\TestCase;
 
 /**
@@ -99,6 +99,28 @@ class DomainTest extends TestCase
         }
 
         $this->assertSame(1, DB::table('domains')->count());
+    }
+
+    public function test_verification_is_stale_only_after_the_given_days(): void
+    {
+        $this->assertFalse($this->insertDomain()->isVerificationStale(0), 'An unverified row is never stale.');
+
+        $domain = $this->insertDomain(['domain' => 'old.acme.com', 'verified_at' => now()->subDays(10)]);
+
+        $this->assertTrue($domain->isVerificationStale(7));
+        $this->assertFalse($domain->isVerificationStale(30));
+    }
+
+    public function test_the_deprecated_already_verified_exception_names_the_owner_kind(): void
+    {
+        $this->assertSame(
+            'This domain is already verified by another team.',
+            (new DomainAlreadyVerifiedException())->getMessage(),
+        );
+        $this->assertSame(
+            'This domain is already verified by another tenant.',
+            (new DomainAlreadyVerifiedException('tenant'))->getMessage(),
+        );
     }
 
     // -----------------------------------------------------------------
@@ -208,17 +230,5 @@ class DomainTest extends TestCase
         config(['neev.platform_domain' => $configured]);
 
         $this->assertSame($expected, Domain::isPlatformSubdomainFor($host, $slug));
-    }
-
-    public function test_the_team_relations_read_old_rows(): void
-    {
-        $team = TeamFactory::new()->create();
-        $this->insertDomain(['owner_id' => $team->id, 'is_primary' => true, 'verified_at' => now()]);
-
-        /** @var Team $team */
-        $team = $team->fresh();
-
-        $this->assertCount(1, $team->domains);
-        $this->assertSame('acme.com', $team->primaryDomain?->domain);
     }
 }

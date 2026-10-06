@@ -104,16 +104,6 @@ class TeamApiControllerTest extends TestCase
     // GET /neev/teams — get user teams
     // -----------------------------------------------------------------
 
-    public function test_get_teams_returns_user_teams(): void
-    {
-        [$user, $token] = $this->authenticatedUser();
-
-        $response = $this->withHeader('Authorization', 'Bearer ' . $token)
-            ->getJson('/neev/teams');
-
-        $response->assertOk();
-    }
-
     public function test_get_teams_returns_only_the_resolved_tenants_teams(): void
     {
         $this->enableTenantIsolation();

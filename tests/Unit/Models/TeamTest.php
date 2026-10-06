@@ -430,7 +430,7 @@ class TeamTest extends TestCase
         $this->assertCount(2, $team->domains);
     }
 
-    public function test_primary_domain_returns_primary_domain(): void
+    public function test_primary_domain_and_domain_return_the_primary_domain(): void
     {
         $team = TeamFactory::new()->create();
 
@@ -446,6 +446,7 @@ class TeamTest extends TestCase
         $this->assertNotNull($primary);
         $this->assertSame('primary.example.com', $primary->domain);
         $this->assertTrue($primary->is_primary);
+        $this->assertTrue($primary->is($team->domain));
     }
 
     public function test_custom_domains_returns_verified_domains(): void

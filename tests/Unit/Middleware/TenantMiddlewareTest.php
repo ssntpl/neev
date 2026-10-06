@@ -119,6 +119,34 @@ class TenantMiddlewareTest extends TestCase
         $this->assertStringContainsString('Domain not verified', $response->getContent());
     }
 
+    public function test_a_retired_host_with_no_current_platform_host_is_served_in_place(): void
+    {
+        $this->enableTenantIsolation();
+
+        $tenant = TenantFactory::new()->create(['slug' => 'acme-corp']);
+
+        // A navigation on a retired host whose owner has no platform host to
+        // redirect to.
+        $resolver = $this->createPartialMock(TenantResolver::class, [
+            'resolve', 'resolvedVia', 'resolvedDomain', 'platformHost', 'isResolvedDomainVerified',
+        ]);
+        $resolver->method('resolve')->willReturn($tenant);
+        $resolver->method('resolvedVia')->willReturn('retired');
+        $resolver->method('resolvedDomain')->willReturn('acme.otper.com');
+        $resolver->method('platformHost')->willReturn(null);
+        $resolver->method('isResolvedDomainVerified')->willReturn(true);
+
+        $middleware = new TenantMiddleware($resolver);
+
+        $request = Request::create('http://acme.otper.com/dashboard');
+
+        $response = $middleware->handle($request, $this->passThrough());
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertSame('acme-corp', $response->headers->get('X-Tenant-Slug'));
+        $this->assertSame($tenant, $request->attributes->get('tenant'));
+    }
+
     // -----------------------------------------------------------------
     // Valid tenant: sets attribute and passes through
     // -----------------------------------------------------------------
