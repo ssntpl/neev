@@ -800,8 +800,11 @@ the index cannot stop two nulls, so the save checks it instead.
 Slugs can change but are **never reissued**. Renaming a team retires its old
 slug in `retired_slugs` for good: in shared mode the platform subdomain is the
 slug, and a slug handed to someone else would hand them a host that SSO redirect
-URIs, emailed links and password managers still trust. In isolated mode a team
-slug retires within its tenant only. The team may take its own old slug back.
+URIs, emailed links and password managers still trust. Deleting a team retires
+the slug it held the same way, so a new team cannot pick up a deleted one's
+subdomain. In isolated mode a team slug retires within its tenant only, and a
+deleted team's retirements stop counting, since its slug names no host there.
+The team may take its own old slug back.
 
 Saving a slug another team holds, or one another team has retired, throws
 `Ssntpl\Neev\Exceptions\SlugUnavailableException`
@@ -813,7 +816,10 @@ update what still points at the old host. The old platform host keeps serving,
 with a `302` for page navigations, for `neev.slug.retired_host_days` (90 by
 default); the slug itself stays retired after that.
 
-Only model saves are guarded. A query-builder update bypasses all of this.
+Only model saves and deletes are guarded. A query-builder update or delete, or
+a database cascade, bypasses all of this. Deleting a user therefore deletes the
+teams they own through the model first, rather than leaving them to the
+`teams.user_id` cascade.
 
 ---
 
@@ -998,7 +1004,7 @@ Roles are stored in laravel-acl's polymorphic role assignment table, not on this
 |--------|------|-------------|
 | id | bigint | Primary key |
 | owner_type | string | Polymorphic owner type (`team` or `tenant`) |
-| owner_id | bigint | The owner that gave the slug up |
+| owner_id | bigint | The owner that gave the slug up, by renaming or being deleted |
 | slug | string | The retired slug |
 | created_at | timestamp | When it was retired |
 | updated_at | timestamp | Last update time |

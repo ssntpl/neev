@@ -50,6 +50,15 @@ tenant, and `EnsureTenantMembership` follows it. Such a user could not sign in
 to the tenant anyway, so no sign-in changes; check any code of your own that
 called `hasMember()` for a user of another tenant or a platform user.
 
+**Deleting a team or tenant retires its slug.**
+A deleted owner's slug is now recorded in `retired_slugs`, like a renamed one's,
+so it is never issued to another owner. Nothing to migrate, but owners deleted
+before this release left no row, and their slugs stay free. If you know them
+(from an audit log or backup) and their subdomains may still be trusted
+somewhere, reserve them with a row each: `owner_type` the morph class (`team`
+or `tenant`), `owner_id` the deleted ID, `slug` the slug. A model that deletes
+through the query builder, or by a database cascade, still bypasses this.
+
 **Invitations are accepted only inside their team's tenant.**
 Under tenant isolation an invitation to another tenant's team, opened on a
 different tenant's host or on the platform, now answers `Invitation not found`

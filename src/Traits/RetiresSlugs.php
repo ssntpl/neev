@@ -16,21 +16,23 @@ use Ssntpl\Neev\Models\RetiredSlug;
  *
  * Any model with a slug may use this: Neev's Team and Tenant do, and an
  * application's own models can. Renaming retires the old slug for good and
- * fires SlugChanged. Saving a slug another model of the same kind has retired
+ * fires SlugChanged. Deleting retires the slug the model held, soft deletes
+ * included, since the subdomain is just as trusted after its owner is gone. Saving a slug another model of the same kind has retired
  * throws SlugUnavailableException. Retirements are keyed by the model's morph
  * class, so each kind of model has its own slugs.
  *
  * A model can also have the save refuse a slug another one holds now, by
  * returning its peers from slugPeers(), for when a unique index cannot do it.
  * A save that sets a slug holds a cache lock on that slug, and a rename on
- * the old one too, so two saves involving the same slug cannot both pass the
- * checks; saves on different slugs do not wait for each other. A slug the
+ * the old one too, and a delete holds one on the slug it retires, so two
+ * saves involving the same slug cannot both pass the checks; saves on different slugs do not wait for each other. A slug the
  * model generates is chosen before locking, and chosen again if another save
  * takes it first. The locks end when the save returns; a save inside a
  * caller's transaction is not visible to the next one until that transaction
  * commits.
  *
- * Only model saves are guarded. A query-builder update bypasses all of this.
+ * Only model saves and deletes are guarded. A query-builder update or delete,
+ * or a database cascade, bypasses all of this.
  */
 trait RetiresSlugs
 {
@@ -74,6 +76,32 @@ trait RetiresSlugs
                 event(new SlugChanged($owner, $old, $new));
             }
         });
+
+        // A deleted owner's slug is retired like a renamed one's, so it is
+        // never issued to another owner. firstOrCreate: a soft-deleted model
+        // force-deleted later is deleted twice.
+        static::deleted(function (self $owner) {
+            $slug = $owner->getOriginal($owner->getSlugColumn());
+
+            if ($slug === null || $slug === '') {
+                return;
+            }
+
+            RetiredSlug::firstOrCreate([
+                'owner_type' => $owner->getMorphClass(),
+                'owner_id' => $owner->getKey(),
+                'slug' => $slug,
+            ]);
+        });
+    }
+
+    /**
+     * Delete the model holding a lock on its slug, so no save can take the
+     * slug between the row going and its retirement being recorded.
+     */
+    public function delete()
+    {
+        return $this->withSlugLocks([$this->getOriginal($this->getSlugColumn())], fn () => parent::delete());
     }
 
     public function save(array $options = [])

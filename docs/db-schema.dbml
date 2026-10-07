@@ -271,7 +271,7 @@ Table retired_slugs {
     (owner_type, slug)
   }
 
-  Note: 'RFC 006: a slug its owner renamed away from. Never issued to another owner of the same kind; the owner may take it back, which deletes the row'
+  Note: 'RFC 006: a slug its owner renamed away from, or held when it was deleted. Never issued to another owner of the same kind; the owner may take it back, which deletes the row'
 }
 
 Table team_auth_settings {

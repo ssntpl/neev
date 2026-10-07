@@ -176,7 +176,7 @@ With `platform_domain` unset no subdomains are served; owners are reached by cus
 
 ### Retired Slugs and Hosts
 
-Renaming an owner retires its old slug in the `retired_slugs` table. A retired slug is never issued to anyone else. Its old subdomain keeps serving the owner for `neev.slug.retired_host_days` (90 by default), then stops answering. `0` turns the window off.
+Renaming an owner retires its old slug in the `retired_slugs` table, and deleting one retires the slug it held. A retired slug is never issued to anyone else. Its old subdomain keeps serving the owner for `neev.slug.retired_host_days` (90 by default), then stops answering. `0` turns the window off.
 
 Within the window:
 
@@ -269,7 +269,7 @@ $team = Team::create(['name' => 'Acme Corporation']);
 // $team->slug = 'acme-corporation'
 ```
 
-Slugs can be renamed but never recycled. Saving a slug another owner of the same kind has retired throws `SlugUnavailableException`. An owner may take back its own retired slug.
+Slugs can be renamed but never recycled, not even after their owner is deleted. Saving a slug another owner of the same kind has retired throws `SlugUnavailableException`. An owner may take back its own retired slug.
 
 ### Slug Configuration
 

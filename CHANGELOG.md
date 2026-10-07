@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Deleting a team or tenant freed its slug** — only a rename retired a slug, so a deleted owner's slug, and with it its platform subdomain, could go straight to a new owner while SSO redirect URIs, OAuth allowlists and emailed links still trusted it. Deleting a model that uses `RetiresSlugs` now retires the slug it held (soft deletes included), under the same slug lock a save takes. Deleting a user deletes the teams they own through the model first, in one transaction, rather than leaving them to the `teams.user_id` cascade, so their slugs retire and `TeamDeleted` fires for each. Slugs freed by deletions before this release are not reserved; see [UPGRADING](./UPGRADING.md#070--unreleased)
 - **Accepting an invitation to another tenant's team crashed** — the invitation row is not tenant-scoped, but its team is, so on another tenant's host, or on the platform, the team came back `null`: the API answered a generic `400` and registration a `500`. Under tenant isolation an invitation is accepted only by a user of the team's own tenant (`TeamInvitation::teamFor($user)`, or `teamInTenant($tenantId)` for an account not created yet); anyone else gets `Invitation not found`, the Blade page's error, or the registration's invalid-invitation `400`, and nothing is written. The Blade registration page refuses such a link before showing the form, rather than after it is submitted
 
 ## [0.7.0] - 2026-10-07
