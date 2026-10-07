@@ -158,7 +158,7 @@ php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --owner-name="
 | `name` | Name of the tenant or team (prompted if omitted) |
 | `--slug=` | Custom slug (auto-generated from name if omitted) |
 | `--owner=` | Shared mode: an existing user, by ID or email. Isolated mode: the email of an owner to create in the new tenant |
-| `--owner-name=` | Isolated mode: the new owner's name (defaults to the part of the email before the `@`) |
+| `--owner-name=` | Isolated mode, with `--owner`: the new owner's name. Optional — defaults to the part of the email before the `@` |
 | `--domain=` | Claim a custom host for it (shows the DNS TXT record to publish) |
 | `--activate` | Activate the team immediately |
 
@@ -172,6 +172,8 @@ php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --owner-name="
 
 - Shared mode with `neev.team` off — refuses outright.
 - Isolated mode with `neev.team` off and `--owner` given — refuses, because the owner is held by a team.
+
+**Options that would be ignored are refused.** `--owner-name` names the owner the command creates, so it is refused without `--owner`, and in shared mode, where `--owner` picks an existing user who keeps their name. Nothing is created; leave it out to name the owner from their email.
 
 **Every option is checked before the first row is written**, so a bad value leaves nothing behind: an unknown `--owner` (shared mode), an `--owner` that is not an email (isolated mode), an invalid or already-taken `--slug`, or a `--domain` that is under `platform_domain` or already claimed by any owner. All problems are reported together:
 

@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\URL;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Models\Team;
@@ -339,6 +340,55 @@ class RegistrationTest extends TestCase
         $this->assertSame($tenant->id, $user->tenant_id);
         $this->assertTrue($team->allUsers()->where('users.id', $user->id)->wherePivot('joined', true)->exists());
         $this->assertDatabaseMissing('team_invitations', ['id' => $invitation->id]);
+    }
+
+    /**
+     * The form is refused up front where its submission would be: on the
+     * platform, an invitation to a tenant's team can never be accepted.
+     */
+    public function test_register_page_on_the_platform_refuses_a_tenant_teams_invitation(): void
+    {
+        $this->enableTeams();
+        $this->enableTenantIsolation();
+
+        $tenant = TenantFactory::new()->create();
+        $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
+        $plainToken = TeamInvitation::generateToken();
+        $invitation = $team->invitations()->create([
+            'email' => 'invitee@example.com',
+            'token' => $plainToken,
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $url = URL::temporarySignedRoute('register', now()->addHour(), ['id' => $invitation->id, 'token' => $plainToken]);
+
+        $this->get($url)
+            ->assertRedirect()
+            ->assertSessionHasErrors(['message' => 'Invalid or expired invitation link.']);
+    }
+
+    public function test_register_page_on_the_tenant_host_shows_its_teams_invitation(): void
+    {
+        $this->enableTeams();
+        $this->enableTenantIsolation();
+        config(['neev.platform_domain' => 'otper.test']);
+
+        $tenant = TenantFactory::new()->create(['slug' => 'acme']);
+        $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
+        $plainToken = TeamInvitation::generateToken();
+        $invitation = $team->invitations()->create([
+            'email' => 'invitee@example.com',
+            'token' => $plainToken,
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        URL::forceRootUrl('https://acme.otper.test');
+        $url = URL::temporarySignedRoute('register', now()->addHour(), ['id' => $invitation->id, 'token' => $plainToken]);
+        URL::forceRootUrl(null);
+
+        $this->get($url)
+            ->assertOk()
+            ->assertViewHas('email', 'invitee@example.com');
     }
 
     public function test_register_via_invalid_invitation_returns_error(): void

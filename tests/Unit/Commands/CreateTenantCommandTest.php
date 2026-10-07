@@ -77,6 +77,31 @@ class CreateTenantCommandTest extends TestCase
         $this->assertDatabaseCount('teams', 0);
     }
 
+    /** --owner-name names a created owner, and there is none to name here. */
+    public function test_owner_name_in_shared_mode_creates_nothing(): void
+    {
+        config(['neev.tenant' => false, 'neev.team' => true]);
+
+        $user = User::factory()->create();
+
+        $this->artisan('neev:tenant:create', ['name' => 'Acme', '--owner' => $user->email, '--owner-name' => 'Ada'])
+            ->expectsOutputToContain('--owner-name applies under tenant isolation only')
+            ->assertFailed();
+
+        $this->assertDatabaseCount('teams', 0);
+    }
+
+    public function test_owner_name_without_owner_under_isolation_creates_nothing(): void
+    {
+        config(['neev.tenant' => true, 'neev.team' => true]);
+
+        $this->artisan('neev:tenant:create', ['name' => 'Acme', '--owner-name' => 'Ada'])
+            ->expectsOutputToContain('--owner-name names the owner --owner creates, so it needs --owner.')
+            ->assertFailed();
+
+        $this->assertDatabaseCount('tenants', 0);
+    }
+
     public function test_an_invalid_slug_creates_nothing(): void
     {
         config(['neev.tenant' => true, 'neev.team' => true]);

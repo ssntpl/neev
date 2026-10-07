@@ -148,7 +148,8 @@ class AppEmailLinks extends EmailLinks
     public function invitationUrl(int|string $invitationId, string $token, DateTimeInterface $expiresAt): string
     {
         $tenant = TeamInvitation::find($invitationId)?->team()->withoutTenantScope()->first()?->tenant;
-        $root = $tenant ? 'https://' . $tenant->canonicalHost() : $this->base();
+        $host = $tenant?->canonicalHost();
+        $root = $host !== null ? 'https://' . $host : $this->base();
 
         return $root . '/register?' . http_build_query(['invitation_id' => $invitationId, 'token' => $token]);
     }
@@ -156,7 +157,8 @@ class AppEmailLinks extends EmailLinks
 ```
 
 Take the host from the tenant's records (`canonicalHost()`: its verified
-custom host, else its platform subdomain), never from the request, so a
+custom host, else its platform subdomain; null when it has neither, so fall
+back to `base()`), never from the request, so a
 spoofed `Host` cannot send a link elsewhere. A signed link is checked against
 the URL it is followed on, so keep a link that posts back to the API — the
 headless password reset does — signed for the host your frontend posts to.

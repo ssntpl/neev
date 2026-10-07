@@ -100,6 +100,14 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
             }
         }
 
+        // Only an owner created in the tenant is given a name; anywhere else
+        // the option would be dropped without a word.
+        if ($this->option('owner-name') && ! ($this->isIsolated() && $ownerRef)) {
+            $errors[] = $this->isIsolated()
+                ? '--owner-name names the owner --owner creates, so it needs --owner.'
+                : '--owner-name applies under tenant isolation only: in shared mode --owner picks an existing user, who keeps their name.';
+        }
+
         if ($domain = $this->option('domain')) {
             // A host is unique across every owner, so any holder clashes.
             $held = Hostname::forHost($domain)->first();

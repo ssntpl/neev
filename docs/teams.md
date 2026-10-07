@@ -380,10 +380,13 @@ https://yourapp.com/register?id=1&hash=abc123&signature=...
 When the user registers, they're automatically added to the team.
 
 Under tenant isolation an invitation is accepted only by a user of the team's
-own tenant (`TeamInvitation::teamFor()`), whether registering or signed in. So
-an invitee to a tenant's team must register on that tenant's host — one made on
-the platform host is a platform user, and the invitation is refused as
-`Invitation not found` (or the registration's invalid-invitation `400`). Under
+own tenant (`TeamInvitation::teamFor($user)`, or `teamInTenant($tenantId)` for
+an account not created yet), whether registering or signed in. So an invitee to
+a tenant's team must register on that tenant's host — one made on the platform
+host is a platform user, and the invitation is refused as `Invitation not
+found` (or the registration's invalid-invitation `400`). The Blade registration
+page refuses such a link before showing the form, with `Invalid or expired
+invitation link.`, rather than after it is filled in. Under
 a headless frontend, send the link there by overriding
 `EmailLinks::invitationUrl()` (see [Email Links](./email-links.md)).
 
