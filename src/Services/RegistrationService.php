@@ -6,7 +6,7 @@ use Illuminate\Auth\Events\Registered;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Ssntpl\Neev\Exceptions\InvalidInvitationException;
-use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\EmailDomain;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
@@ -63,7 +63,7 @@ class RegistrationService
             if (config('neev.team')) {
                 if ($invitationId) {
                     $this->acceptInvitation($user, $invitationId, $token);
-                } elseif (!Domain::isVerifiedForEmail($data['email'])) {
+                } elseif (!EmailDomain::isVerifiedForEmail($data['email'])) {
                     $this->createDefaultTeam($user)->addMember($user);
                 }
             }
@@ -96,7 +96,7 @@ class RegistrationService
             $user = User::model()->forceCreate($userData);
             $user = User::model()->find($user->id);
 
-            if (config('neev.team') && !Domain::isVerifiedForEmail($email)) {
+            if (config('neev.team') && !EmailDomain::isVerifiedForEmail($email)) {
                 $this->createDefaultTeam($user)->addMember($user);
             }
 

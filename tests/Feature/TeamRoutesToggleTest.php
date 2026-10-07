@@ -19,7 +19,7 @@ class TeamRoutesToggleTest extends TestCase
         'teams.switch',
         'teams.create',
         'teams.members',
-        'teams.domain',
+        'teams.email-domains',
         'teams.settings',
         'teams.store',
         'teams.update',
@@ -31,8 +31,13 @@ class TeamRoutesToggleTest extends TestCase
         'teams.request',
         'teams.request.action',
         'teams.owner.change',
-        'domain.rules',
-        'domain.primary',
+        'teams.email-domains.store',
+        'teams.email-domains.update',
+        'teams.email-domains.destroy',
+        'teams.hostnames',
+        'teams.hostnames.store',
+        'teams.hostnames.update',
+        'teams.hostnames.destroy',
     ];
 
     protected array $apiPaths = [
@@ -40,8 +45,10 @@ class TeamRoutesToggleTest extends TestCase
         ['post', '/neev/teams'],
         ['get', '/neev/teams/invitations'],
         ['post', '/neev/changeTeamOwner'],
-        ['get', '/neev/domains'],
-        ['put', '/neev/domains/primary'],
+        ['get', '/neev/teams/1/email-domains'],
+        ['get', '/neev/teams/1/hostnames'],
+        ['get', '/neev/email-domains/1'],
+        ['get', '/neev/hostnames/1'],
     ];
 
     public function test_team_routes_are_absent_when_teams_are_disabled(): void

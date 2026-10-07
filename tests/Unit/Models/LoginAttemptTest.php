@@ -31,6 +31,10 @@ class LoginAttemptTest extends TestCase
         $this->assertSame('magic auth', LoginAttempt::MagicAuth);
     }
 
+    /**
+     * The SSO callback writes this value to the session and EnsureContextSSO
+     * reads it, so it has to stay 'sso' or the two sides stop agreeing.
+     */
     public function test_sso_constant(): void
     {
         $this->assertSame('sso', LoginAttempt::SSO);

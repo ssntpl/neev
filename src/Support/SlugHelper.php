@@ -3,8 +3,10 @@
 namespace Ssntpl\Neev\Support;
 
 use Illuminate\Database\Eloquent\Model;
+use Ssntpl\Neev\Models\RetiredSlug;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Tenant;
+use Ssntpl\Neev\Traits\RetiresSlugs;
 
 class SlugHelper
 {
@@ -142,21 +144,34 @@ class SlugHelper
     }
 
     /**
-     * Check if a slug already exists for a given model.
+     * Check if a slug already exists for a given model: another one holds it
+     * now, or, for a model using RetiresSlugs, another one has retired it. A
+     * retired slug counts as existing, since it is never issued again (RFC 006
+     * §6 Q1).
+     *
+     * In isolated mode teams are narrowed to the given team's tenant, the one
+     * its save checks, and their retirements to those same teams.
      *
      * @param Model $model A model instance to check against
      * @param string $slug The slug to check
-     * @param int|null $excludeId ID to exclude from check
+     * @param int|null $excludeId ID whose own slug, live or retired, stays available
      * @return bool True if exists
      */
     protected static function slugExistsFor(Model $model, string $slug, ?int $excludeId = null): bool
     {
-        $query = $model->newQuery()->where('slug', $slug);
+        $peers = fn () => $model instanceof Team && config('neev.tenant', false) ? $model->teamsInSameTenant() : $model->newQuery();
 
-        if ($excludeId) {
-            $query->where('id', '!=', $excludeId);
+        $held = $peers()
+            ->where('slug', $slug)
+            ->when($excludeId, fn ($q) => $q->where('id', '!=', $excludeId))
+            ->exists();
+
+        if ($held || ! in_array(RetiresSlugs::class, class_uses_recursive($model), true)) {
+            return $held;
         }
 
-        return $query->exists();
+        return RetiredSlug::heldAgainst($model->getMorphClass(), $slug, $excludeId)
+            ->when($model instanceof Team && config('neev.tenant', false), fn ($q) => $q->amongOwners($peers()))
+            ->exists();
     }
 }

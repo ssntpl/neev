@@ -474,10 +474,10 @@ class RegistrationTest extends TestCase
         ]);
 
         // Create a verified domain for the team
-        $team->domains()->create([
+        $team->emailDomains()->create([
             'domain' => 'domainteam.com',
+            'status' => 'verified',
             'verified_at' => now(),
-            'is_primary' => true,
         ]);
 
         $response = $this->postJson('/neev/register', [

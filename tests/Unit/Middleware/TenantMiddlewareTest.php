@@ -5,7 +5,7 @@ namespace Ssntpl\Neev\Tests\Unit\Middleware;
 use Closure;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
-use Ssntpl\Neev\Database\Factories\DomainFactory;
+use Ssntpl\Neev\Database\Factories\HostnameFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Http\Middleware\TenantMiddleware;
@@ -119,6 +119,34 @@ class TenantMiddlewareTest extends TestCase
         $this->assertStringContainsString('Domain not verified', $response->getContent());
     }
 
+    public function test_a_retired_host_with_no_current_platform_host_is_served_in_place(): void
+    {
+        $this->enableTenantIsolation();
+
+        $tenant = TenantFactory::new()->create(['slug' => 'acme-corp']);
+
+        // A navigation on a retired host whose owner has no platform host to
+        // redirect to.
+        $resolver = $this->createPartialMock(TenantResolver::class, [
+            'resolve', 'resolvedVia', 'resolvedDomain', 'platformHost', 'isResolvedDomainVerified',
+        ]);
+        $resolver->method('resolve')->willReturn($tenant);
+        $resolver->method('resolvedVia')->willReturn('retired');
+        $resolver->method('resolvedDomain')->willReturn('acme.otper.com');
+        $resolver->method('platformHost')->willReturn(null);
+        $resolver->method('isResolvedDomainVerified')->willReturn(true);
+
+        $middleware = new TenantMiddleware($resolver);
+
+        $request = Request::create('http://acme.otper.com/dashboard');
+
+        $response = $middleware->handle($request, $this->passThrough());
+
+        $this->assertEquals(200, $response->getStatusCode());
+        $this->assertSame('acme-corp', $response->headers->get('X-Tenant-Slug'));
+        $this->assertSame($tenant, $request->attributes->get('tenant'));
+    }
+
     // -----------------------------------------------------------------
     // Valid tenant: sets attribute and passes through
     // -----------------------------------------------------------------
@@ -146,7 +174,7 @@ class TenantMiddlewareTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Domain resolution via domains table
+    // Host resolution via the hostnames table
     // -----------------------------------------------------------------
 
     public function test_resolves_tenant_via_verified_domain_host(): void
@@ -155,9 +183,9 @@ class TenantMiddlewareTest extends TestCase
 
         $tenant = TenantFactory::new()->create();
 
-        DomainFactory::new()->verified()->create([
+        HostnameFactory::new()->verified()->create([
             'owner_type' => 'tenant', 'owner_id' => $tenant->id,
-            'domain' => 'myteam.test.com',
+            'host' => 'myteam.test.com',
         ]);
 
         $request = Request::create('http://myteam.test.com/dashboard');
@@ -218,9 +246,9 @@ class TenantMiddlewareTest extends TestCase
 
         $tenant = TenantFactory::new()->create();
 
-        DomainFactory::new()->verified()->create([
+        HostnameFactory::new()->verified()->create([
             'owner_type' => 'tenant', 'owner_id' => $tenant->id,
-            'domain' => 'custom.example.org',
+            'host' => 'custom.example.org',
         ]);
 
         $request = Request::create('http://custom.example.org/dashboard');
@@ -234,7 +262,7 @@ class TenantMiddlewareTest extends TestCase
     }
 
     // -----------------------------------------------------------------
-    // Unverified custom domain returns 404 (not found by findByHost)
+    // Unverified custom domain returns 404 (only verified hosts resolve)
     // -----------------------------------------------------------------
 
     public function test_returns_404_for_unverified_custom_domain_in_required_mode(): void
@@ -244,10 +272,10 @@ class TenantMiddlewareTest extends TestCase
         $owner = User::factory()->create();
         $team = TeamFactory::new()->create(['user_id' => $owner->id]);
 
-        // Domain without verified_at -- findByHost won't find it
-        DomainFactory::new()->create([
+        // Hostname without verified_at -- it does not resolve
+        HostnameFactory::new()->create([
             'owner_type' => 'team', 'owner_id' => $team->id,
-            'domain' => 'unverified.example.org',
+            'host' => 'unverified.example.org',
         ]);
 
         $request = Request::create('http://unverified.example.org/dashboard');

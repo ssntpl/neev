@@ -15,12 +15,12 @@ return new class () extends Migration {
             $table->foreignId('tenant_id')->nullable()->constrained('tenants')->nullOnDelete();
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
             $table->string('name');
-            $table->string('slug')->unique()->nullable();
+            $table->string('slug')->nullable();
             $table->boolean('is_public')->default(true);
             $table->timestamp('activated_at')->nullable();
             $table->string('inactive_reason')->nullable();
             $table->timestamps();
-            $table->unique(['tenant_id', 'name', 'user_id']);
+            $table->unique(['tenant_id', 'slug']);
             $table->index('slug');
         });
 

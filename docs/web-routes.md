@@ -292,7 +292,8 @@ any link to them with `@if (config('neev.team'))`.
 | GET | `/teams/create` | `teams.create` | Show create team form |
 | GET | `/teams/{team}/profile` | `teams.profile` | Show team profile |
 | GET | `/teams/{team}/members` | `teams.members` | Show team members |
-| GET | `/teams/{team}/domain` | `teams.domain` | Show domain settings |
+| GET | `/teams/{team}/email-domains` | `teams.email-domains` | Show email domains |
+| GET | `/teams/{team}/hostnames` | `teams.hostnames` | Show custom hosts and the platform subdomain |
 | GET | `/teams/{team}/settings` | `teams.settings` | Show team settings |
 
 ---
@@ -331,15 +332,47 @@ counterpart (`PUT /neev/teams/request`) allows any member — see
 
 ---
 
-### Domain Federation
+### Email Domains
 
 | Method | Route | Name | Description |
 |--------|-------|------|-------------|
-| POST | `/teams/{team}/domain` | - | Add domain |
-| PUT | `/teams/{domain}/domain` | - | Update domain |
-| DELETE | `/teams/{domain}/domain` | - | Delete domain |
-| PUT | `/teams/{domain}/domain/rules` | `domain.rules` | Update domain rules |
-| PUT | `/teams/domain/primary` | `domain.primary` | Set primary domain |
+| POST | `/teams/{team}/email-domains` | `teams.email-domains.store` | Add a domain (`domain`, `enforce`), or re-issue its token |
+| PUT | `/teams/email-domains/{domain}` | `teams.email-domains.update` | `verify` checks the record, `token` issues a new one; otherwise sets `enforce` |
+| DELETE | `/teams/email-domains/{domain}` | `teams.email-domains.destroy` | Delete, reactivating the members it deactivated |
+
+Every member may open `teams.email-domains`, sees its left-section **Email
+Domains** link, and may make changes: Neev checks only that the caller belongs
+to the team, and which members may act is yours to decide with your own
+middleware on these routes. Adding a domain
+or asking for a token flashes `token` and `dns_record_name` to the session, and
+the page shows the TXT record to publish at `_neev-email.{domain}`. Enforcing a
+domain another owner enforces is refused with
+`Another owner already enforces this email domain.` See
+[teams.md](./teams.md#email-domains).
+
+---
+
+### Hostnames
+
+| Method | Route | Name | Description |
+|--------|-------|------|-------------|
+| POST | `/teams/{team}/hostnames` | `teams.hostnames.store` | Claim a custom host (`host`) |
+| PUT | `/teams/hostnames/{hostname}` | `teams.hostnames.update` | One action per form: `verify`, `token` or `primary` |
+| DELETE | `/teams/hostnames/{hostname}` | `teams.hostnames.destroy` | Release a host |
+
+Every member sees `teams.hostnames` and its left-section link, and may make
+changes; as for email domains, narrow that with your own middleware. Adding a
+host or asking for a token flashes `token` and
+`dns_record_name`, the TXT record at `_neev-host.{host}`. A host another owner
+holds is refused with `This host cannot be added.`, and a host under
+`platform_domain` cannot be added at all. Only a verified host can be made
+primary. See [teams.md](./teams.md#custom-hosts).
+
+Adding, verifying and re-issuing a token, for email domains and hosts alike,
+share one limit: 10 a minute per user (`neev-dns`).
+
+These replace the `/teams/{team}/domain` routes and the `teams.domain`,
+`domain.rules` and `domain.primary` route names, which no longer exist.
 
 ---
 
@@ -360,6 +393,11 @@ The `{user}` parameter is automatically bound to the User model:
 ```php
 Route::bind('user', fn($value) => User::model()->findOrFail($value));
 ```
+
+### Domain and Hostname Parameters
+
+`{domain}` binds to an `EmailDomain` and `{hostname}` to a `Hostname`, by
+implicit binding on the controller's type hint. An id that does not exist answers 404.
 
 ---
 
@@ -408,6 +446,8 @@ php artisan neev:ui blade
 | `auth/change-email.blade.php` | Change email form |
 | `auth/otp-mfa.blade.php` | MFA verification |
 | `account/security.blade.php` | Password, MFA, passkeys and sessions; shows the emailed-code form while a reset code is pending |
+| `team/email-domains.blade.php` | A team's email domains: add, enforce, token, verify, delete |
+| `team/hostnames.blade.php` | A team's platform subdomain and custom hosts: add, token, verify, primary, delete |
 
 ---
 

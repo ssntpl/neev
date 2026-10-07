@@ -10,7 +10,10 @@ use Ssntpl\Neev\Http\Controllers\Auth\UserAuthController;
 use Ssntpl\Neev\Http\Controllers\RoleController;
 use Ssntpl\Neev\Http\Controllers\TeamApiController;
 use Ssntpl\Neev\Http\Controllers\TeamController;
-use Ssntpl\Neev\Http\Controllers\TenantDomainController;
+use Ssntpl\Neev\Http\Controllers\EmailDomainApiController;
+use Ssntpl\Neev\Http\Controllers\HostnameApiController;
+use Ssntpl\Neev\Http\Controllers\TeamEmailDomainController;
+use Ssntpl\Neev\Http\Controllers\TeamHostnameController;
 use Ssntpl\Neev\Http\Controllers\UserApiController;
 use Ssntpl\Neev\Http\Controllers\UserController;
 use Ssntpl\Neev\Http\Middleware\TenantMiddleware;
@@ -190,8 +193,8 @@ if (config('neev.ui') === 'blade') {
                         ->name('teams.create');
                     Route::get('/{team}/members', [TeamController::class, 'members'])
                         ->name('teams.members');
-                    Route::get('/{team}/domain', [TeamController::class, 'domain'])
-                        ->name('teams.domain');
+                    Route::get('/{team}/email-domains', [TeamEmailDomainController::class, 'index'])
+                        ->name('teams.email-domains');
                     Route::get('/{team}/settings', [TeamController::class, 'settings'])
                         ->name('teams.settings');
 
@@ -215,13 +218,26 @@ if (config('neev.ui') === 'blade') {
                         ->name('teams.request.action');
                     Route::put('/owner/change', [TeamController::class, 'ownerChange'])
                         ->name('teams.owner.change');
-                    Route::post('/{team}/domain', [TeamController::class, 'federateDomain']);
-                    Route::put('/{domain}/domain', [TeamController::class, 'updateDomain']);
-                    Route::delete('/{domain}/domain', [TeamController::class, 'deleteDomain']);
-                    Route::put('/{domain}/domain/rules', [TeamController::class, 'updateDomainRule'])
-                        ->name('domain.rules');
-                    Route::put('/domain/primary', [TeamController::class, 'primaryDomain'])
-                        ->name('domain.primary');
+                    // Adding, verifying and re-issuing look up or publish DNS
+                    // records, so they share one limit (`neev-dns`) per user.
+                    Route::post('/{team}/email-domains', [TeamEmailDomainController::class, 'store'])
+                        ->middleware('throttle:10,1,neev-dns')
+                        ->name('teams.email-domains.store');
+                    Route::put('/email-domains/{domain}', [TeamEmailDomainController::class, 'update'])
+                        ->middleware('throttle:10,1,neev-dns')
+                        ->name('teams.email-domains.update');
+                    Route::delete('/email-domains/{domain}', [TeamEmailDomainController::class, 'destroy'])
+                        ->name('teams.email-domains.destroy');
+                    Route::get('/{team}/hostnames', [TeamHostnameController::class, 'index'])
+                        ->name('teams.hostnames');
+                    Route::post('/{team}/hostnames', [TeamHostnameController::class, 'store'])
+                        ->middleware('throttle:10,1,neev-dns')
+                        ->name('teams.hostnames.store');
+                    Route::put('/hostnames/{hostname}', [TeamHostnameController::class, 'update'])
+                        ->middleware('throttle:10,1,neev-dns')
+                        ->name('teams.hostnames.update');
+                    Route::delete('/hostnames/{hostname}', [TeamHostnameController::class, 'destroy'])
+                        ->name('teams.hostnames.destroy');
                 });
             }
         });
@@ -329,29 +345,47 @@ Route::prefix(config('neev.route_prefix', 'neev'))->middleware(TenantMiddleware:
 
             Route::post('/changeTeamOwner', [TeamApiController::class, 'changeTeamOwner']);
 
-            Route::prefix('/domains')->group(function () {
-                Route::get('/', [TeamApiController::class, 'getDomains']);
-                Route::post('/', [TeamApiController::class, 'domainFederate']);
-                Route::put('/', [TeamApiController::class, 'updateDomain']);
-                Route::delete('/', [TeamApiController::class, 'deleteDomain']);
-                Route::put('/rules', [TeamApiController::class, 'updateDomainRule']);
-                Route::get('/rules', [TeamApiController::class, 'getDomainRule']);
-                Route::put('/primary', [TeamApiController::class, 'primaryDomain']);
+            Route::get('/teams/{team}/hostnames', [HostnameApiController::class, 'index']);
+            // Adding, verifying and re-issuing look up or publish DNS records,
+            // so they share one limit (`neev-dns`) per user.
+            Route::post('/teams/{team}/hostnames', [HostnameApiController::class, 'store'])->middleware('throttle:10,1,neev-dns');
+
+            Route::get('/teams/{team}/email-domains', [EmailDomainApiController::class, 'index']);
+            Route::post('/teams/{team}/email-domains', [EmailDomainApiController::class, 'store'])->middleware('throttle:10,1,neev-dns');
+        }
+
+        // A tenant's own hosts and email domains: the tenant this request
+        // resolved to. Neev checks only that; which members may manage them is
+        // the application's to decide, with its own middleware on these routes.
+        if (config('neev.tenant')) {
+            Route::get('/tenant/hostnames', [HostnameApiController::class, 'tenantIndex']);
+            Route::post('/tenant/hostnames', [HostnameApiController::class, 'tenantStore'])->middleware('throttle:10,1,neev-dns');
+            Route::get('/tenant/email-domains', [EmailDomainApiController::class, 'tenantIndex']);
+            Route::post('/tenant/email-domains', [EmailDomainApiController::class, 'tenantStore'])->middleware('throttle:10,1,neev-dns');
+        }
+
+        // One host or email domain by id, a team's or a tenant's.
+        if (config('neev.team') || config('neev.tenant')) {
+            Route::prefix('/hostnames/{hostname}')->whereNumber('hostname')->group(function () {
+                Route::get('/', [HostnameApiController::class, 'show']);
+                Route::delete('/', [HostnameApiController::class, 'destroy']);
+                Route::post('/verify', [HostnameApiController::class, 'verify'])->middleware('throttle:10,1,neev-dns');
+                Route::post('/token', [HostnameApiController::class, 'token'])->middleware('throttle:10,1,neev-dns');
+                Route::post('/primary', [HostnameApiController::class, 'primary']);
+            });
+
+            Route::prefix('/email-domains/{emailDomain}')->whereNumber('emailDomain')->group(function () {
+                Route::get('/', [EmailDomainApiController::class, 'show']);
+                Route::patch('/', [EmailDomainApiController::class, 'update']);
+                Route::delete('/', [EmailDomainApiController::class, 'destroy']);
+                Route::post('/verify', [EmailDomainApiController::class, 'verify'])->middleware('throttle:10,1,neev-dns');
+                Route::post('/token', [EmailDomainApiController::class, 'token'])->middleware('throttle:10,1,neev-dns');
             });
         }
 
         Route::put('/role/change', [RoleController::class, 'roleChangeViaAPI']);
 
-        // Tenant Domain Management (requires tenant_isolation config)
-        Route::prefix('/tenant-domains')->group(function () {
-            Route::get('/', [TenantDomainController::class, 'index']);
-            Route::post('/', [TenantDomainController::class, 'store']);
-            Route::get('/current', [TenantDomainController::class, 'currentTenant']);
-            Route::get('/{id}', [TenantDomainController::class, 'show']);
-            Route::delete('/{id}', [TenantDomainController::class, 'destroy']);
-            Route::post('/{id}/verify', [TenantDomainController::class, 'verify']);
-            Route::post('/{id}/regenerate-token', [TenantDomainController::class, 'regenerateToken']);
-            Route::post('/{id}/primary', [TenantDomainController::class, 'setPrimary']);
-        });
+        // The context this request resolved to; teams or not.
+        Route::get('/hostnames/current', [HostnameApiController::class, 'current']);
     });
 });

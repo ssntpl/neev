@@ -13,6 +13,275 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ## 0.6.8 → Unreleased
 
+**Domains are split into `hostnames` and `email_domains`, and your app copies
+the old rows (action required if you use domains).**
+The `domains` table held two different things: hosts a team or tenant is
+served at, and email domains whose users join it. Holding both in one row is
+why verifying `app.acme.com` as a custom host also federated every
+`@app.acme.com` sign-up ([RFC 006](docs/rfcs/006-hostnames-vs-email-domains.md)).
+The new migrations create `hostnames`, `email_domains` and `retired_slugs`,
+and add `primary_hostname_id` to `teams` and `tenants`. They copy nothing:
+only your app knows what each of its domains is for. From this release Neev
+resolves hosts and federates sign-ups from the new tables, so fill them after
+`php artisan migrate` and before the release serves traffic.
+
+For each `domains` row with an owner:
+
+- **Under `neev.platform_domain`** (`acme.otper.com`): don't copy it. Neev now
+  derives that host from the owner's slug.
+- **An email domain** (users at it should join the owner): create an
+  `EmailDomain` with the owner, `domain`, `enforce`, `verification_token`,
+  `verified_at`, `verification_failed_at`, and a `status` of `verified`,
+  `failed` or `pending`.
+- **A host the app is served at**: create a `Hostname` with the owner, `host`,
+  the same verification columns and `status`. A host is unique across every
+  owner; where two owners verified one, give it to the owner that serves it.
+- **Both**: create both. Don't make a host an email domain only because it is
+  verified; that is the bug this change removes.
+- **`is_primary`**, on a row that became a hostname: set the owner's
+  `primary_hostname_id` to that hostname.
+
+The models store the canonical spelling (`ACME.com.` becomes `acme.com`), so
+create rows through them rather than inserting raw values. `domains` stays in
+place, read-only, for this release, and is dropped in the next one. A fresh
+install no longer creates `domain_rules`, and its `mfa` rule is removed without
+a replacement (Neev wrote it and never enforced it). On an upgraded install,
+drop the table:
+
+```php
+Schema::dropIfExists('domain_rules');
+```
+
+**The domain endpoints are replaced (action required for API clients).**
+`{prefix}/domains` and `{prefix}/tenant-domains` are gone. Hosts and email
+domains have their own resources, addressed by ID in the path instead of a
+`team_id` or `domain_id` in the body:
+
+| Before | Now |
+|---|---|
+| `GET /domains?team_id=` | `GET /teams/{team}/email-domains` and `GET /teams/{team}/hostnames` |
+| `POST /domains` (`team_id`, `domain`, `enforce`) | `POST /teams/{team}/email-domains` (`domain`, `enforce`) or `POST /teams/{team}/hostnames` (`host`) |
+| `PUT /domains` with `enforce` | `PATCH /email-domains/{id}` (`enforce`) |
+| `PUT /domains` with `verify` | `POST /email-domains/{id}/verify` or `POST /hostnames/{id}/verify` |
+| `PUT /domains` with `token` | `POST /email-domains/{id}/token` or `POST /hostnames/{id}/token` |
+| `DELETE /domains` (`domain_id`) | `DELETE /email-domains/{id}` or `DELETE /hostnames/{id}` |
+| `PUT /domains/primary` | `POST /hostnames/{id}/primary` (verified hosts only) |
+| `GET` / `PUT /domains/rules` (`domain_id`) | none: the `mfa` rule is removed |
+| `GET /tenant-domains` | `GET /tenant/hostnames` and `GET /tenant/email-domains` |
+| `POST /tenant-domains` | `POST /tenant/hostnames` (`host`) or `POST /tenant/email-domains` (`domain`, `enforce`) |
+| `GET`, `DELETE /tenant-domains/{id}`, `/verify`, `/primary` | the same on `/hostnames/{id}` or `/email-domains/{id}` |
+| `POST /tenant-domains/{id}/regenerate-token` | `POST /hostnames/{id}/token` or `POST /email-domains/{id}/token` |
+| `GET /tenant-domains/current` | `GET /hostnames/current` |
+
+- **Responses that issue a token** (adding, `/token`) carry `dns_record`:
+  `{type: "TXT", name, value}`. Publish `name` and `value` as given; the name is
+  no longer `_neev-verification.<domain>`.
+- **The hostnames index** also returns `platform_host` and
+  `primary_hostname_id`. `platform_host` is the subdomain the owner's slug
+  gives it: a team's in shared mode, a tenant's (`/tenant/hostnames`) under
+  tenant isolation, and `null` for a team there. It is not a row and has no ID.
+- **New refusals:** adding a host another owner holds, or any host under
+  `neev.platform_domain`, is a `422` on `host`; enforcing an email domain
+  another owner already enforces is a `422` on `enforce`.
+
+**Any member may manage hosts and email domains (action required if only
+some should).** Neev now checks only that the caller belongs to the row's
+owner: a team's owner or members, or anyone in a tenant, from that tenant.
+Adding, verifying, re-issuing a token, setting the primary host, changing
+`enforce` and deleting used to be the team owner's alone. To keep that, or to
+apply your own roles, add middleware to these routes, including the new
+`/tenant/*` ones, in a published `routes/neev.php`. The Blade pages follow the
+same rule: every member sees the **Email Domains** and **Hostnames** links and
+their controls (re-eject the `team/hostnames` and `team/left-section` views to
+pick that up).
+
+**The Blade team domain page is split in two (re-eject to pick up).**
+`team/federation.blade.php` is now `team/email-domains.blade.php`, beside a new
+`team/hostnames.blade.php`, and the team menu links both. The routes are
+`teams.email-domains`, `teams.email-domains.store|update|destroy`,
+`teams.hostnames` and `teams.hostnames.store|update|destroy`.
+The `GET|POST /teams/{team}/domain`, `PUT|DELETE /teams/{domain}/domain`,
+`domain.rules` and `domain.primary` routes are removed. An ejected view that
+links to them throws `RouteNotFoundException` until it is re-ejected or edited.
+
+**`neev:domain:*` is split in two (action required for scripts and cron).**
+`neev:domain:add`, `neev:domain:list` and `neev:domain:verify` are removed.
+
+- **Hosts:** `neev:hostname:add`, `neev:hostname:list`,
+  `neev:hostname:verify [host] [--all]` and `neev:hostname:primary <host>`.
+- **Email domains:** `neev:email-domain:add [--enforce] [--skip-verification]`,
+  `neev:email-domain:list` and `neev:email-domain:verify [domain] [--force] [--all]`.
+- `--primary` is gone from `add`; use `neev:hostname:primary`. Verifying
+  without DNS (`--force`, `--skip-verification`) is for email domains only,
+  and records the row's `verification_strategy` as `manual`.
+
+**New DNS record names (action required: publish them).**
+A host is proven by a TXT record at `_neev-host.<host>` and an email domain by
+one at `_neev-email.<domain>`, so one record can no longer prove both. A row
+you copied from `domains` with its `verification_token` still passes on its old
+`_neev-verification.<domain>` record while `neev.dns_verification.legacy_record`
+is on (default `true`, env `NEEV_DNS_LEGACY_RECORD`). Ask owners to publish the
+new records, then turn it off. The fallback is removed with `domains` in the
+next release.
+
+**Hosts and email domains are re-checked daily, and removed after 14 days
+missing (action required: schedule the job, listen for the events).**
+Neev does not schedule `VerifyAllDomainsJob`; schedule it daily. It re-checks
+every verified or failing custom host and email domain. Platform subdomains
+are never checked, so the `DomainVerificationFailed` that fired for every one
+of them each night stops.
+
+- **A record missing for `neev.dns_verification.unverify_after_failed_days`**
+  (default 7) unverifies the row and fires `DomainUnverified`: a host stops
+  serving, an email domain stops federating and enforcing. Publishing the
+  record again restores it (`DomainReverified`).
+- **Still missing at twice that**, the row is deleted and `DomainRemoved`
+  fires. An email domain first reactivates the accounts it deactivated. Set
+  the option to `0` to never unverify or delete.
+- **Rows have a `status`**: `pending`, `verified`, `failed` or `disabled`.
+  `disable()` stops a row: neither DNS nor a new token revives it, and
+  `markUnverified()` sends one back to `pending` until its record is checked.
+- **A new token no longer unverifies (behaviour change from 0.6.8).** Asking
+  for a token, or re-submitting a domain the team holds, keeps the row
+  verified. A verified host keeps serving and a verified email domain keeps
+  federating; the next re-check looks for the new token's record, so publish
+  it first, or the row fails and is unverified after the window above. An
+  email domain verified without DNS (`--force`, `--skip-verification`) goes
+  back to DNS proof with its new token, so it is re-checked from then on.
+- **The domain events** (`DomainVerified`, `DomainReverified`,
+  `DomainVerificationFailed`, `DomainUnverified`, `DomainRemoved`) carry an
+  `EmailDomain` or a `Hostname` in `$domain`. A listener that reads
+  `$event->domain->domain` must read `host` for a `Hostname`.
+
+**A verified host no longer federates, and enforcing is exclusive (behaviour
+change).**
+Sign-ups at a domain join its owners only through `email_domains`. A team that
+had verified `app.acme.com` as a host will not federate `@app.acme.com` unless
+you copy that row as an email domain too. Several owners may verify one email
+domain, but only one may enforce it: enforcing a domain another owner enforces
+throws `Ssntpl\Neev\Exceptions\EmailDomainEnforcedException`. Under tenant
+isolation a verified email domain counts only inside its own tenant. A host is
+unique across every owner: claiming one another owner holds throws
+`Ssntpl\Neev\Exceptions\HostnameTakenException`.
+
+**Only an enforced email domain deactivates a member (behaviour change).**
+Removing a member through `PUT /neev/teams/leave` or the Blade `teams.leave`
+route deactivated their account whenever their email was on one of the team's
+verified email domains. Several owners may verify one domain, so any of them
+could deactivate an account application-wide. Now only the team that enforces
+the member's domain (verified and `enforce` on) deactivates and reactivates
+them, and only that team stops them leaving on their own.
+
+- **A team whose domain is verified but not enforced** now removes the member
+  (`Removed Successfully`) instead of answering `User Deactivated Successfully`,
+  and the member may leave. A member it deactivated before this release is
+  reactivated as they are removed, unless another team they belong to holds a
+  claim on that domain. To keep deactivating its members, turn `enforce` on
+  (`PATCH /neev/email-domains/{id}`); it fails with `422` when another owner
+  already enforces the domain.
+- **Code of your own that decides deactivation**, a policy or a view, should
+  call `Team::managesAccountOf($email)` instead of
+  `Team::hasVerifiedDomainFor($email)`. The latter still answers whether an
+  address is on a verified domain, which is what limits invitations under
+  enforcement.
+- **Re-eject `team/members.blade.php` and `account/teams.blade.php`.** An
+  ejected copy offers **Deactivate** and hides **Leave** on a domain that is only
+  verified, and the server then removes the member instead.
+
+**`Domain` is deprecated and read-only (action required if you use it).**
+`Ssntpl\Neev\Models\Domain` stays for this release so you can read the old
+rows while copying them. Saving or deleting one throws `LogicException`. Both
+the model and the `domains` table are removed in the next release.
+
+- **Its lookups read the new tables:** `findByHost()`,
+  `findByHostForOwnerType()` and `findByHostForOwner()` return a verified
+  `Hostname`, not a `Domain`. `isVerifiedForEmail()` calls
+  `EmailDomain::isVerifiedForEmail()`. `platformDomain()`,
+  `isPlatformSubdomain()` and `isPlatformSubdomainFor()` use
+  `Ssntpl\Neev\Support\PlatformHost`.
+- **Removed from it:** `verify()`, `markVerified()`, `markAsPrimary()`,
+  `generateVerificationToken()`, `regenerateVerificationToken()`,
+  `newVerificationToken()`, `deleteAndPromote()`, `rules()`, `rule()` and
+  `findPrimaryByHost()`. Use the same operations on `Hostname` or
+  `EmailDomain`, or on the owner: `claimHost()`, `releaseHost()`,
+  `makePrimaryHostname()`, `federateDomain()`.
+- **Removed outright:** the `DomainRule` model and `DomainFactory`.
+  `DomainAlreadyVerifiedException` is deprecated; nothing throws it.
+- **`Team::domains()`, `domain()`, `primaryDomain()`, `customDomains()` and
+  `Tenant::domains()`** still read `domains` and are deprecated. Use
+  `emailDomains()`, `hostnames()` and `primaryHostname()`.
+
+**Team slugs are unique per tenant, and team names may repeat (action
+required on an existing install).**
+A fresh install's `teams` table now has `unique(tenant_id, slug)` in place of
+the unique on `slug` and of `unique(tenant_id, name, user_id)`. Laravel does
+not re-run a migration an install has already run, so an upgraded install
+keeps the old indexes: two tenants still cannot both have an `engineering`
+team, and one owner still cannot repeat a team name. To match, add a migration
+of your own:
+
+```php
+Schema::table('teams', function (Blueprint $table) {
+    $table->dropUnique(['slug']);
+    $table->dropUnique(['tenant_id', 'name', 'user_id']);
+    $table->unique(['tenant_id', 'slug']);
+});
+```
+
+Keep `unique(tenant_id, name, user_id)` if your app relies on team names being
+distinct; Neev no longer does. In shared mode `tenant_id` is null and the new
+index cannot stop two equal slugs; the team's save enforces that instead.
+
+**A duplicate slug throws `SlugUnavailableException` (action required if you
+catch the database error).**
+Saving a team or tenant with a slug another one holds, or has retired, throws
+`Ssntpl\Neev\Exceptions\SlugUnavailableException` (an
+`InvalidArgumentException`) before the query runs. Code that caught
+`Illuminate\Database\QueryException` for a duplicate slug must catch the new
+exception.
+
+**A renamed slug is never issued to anyone else.**
+Renaming a team or tenant records the old slug in `retired_slugs`. Only that
+owner can take it back; every other owner of the same kind is refused it for
+good, and `SlugHelper` skips it when generating one. If your app recycles
+slugs, for example by renaming one team to free a name for another, that now
+fails. The old host keeps serving for `neev.slug.retired_host_days` (default
+90). Only model saves are guarded: a query-builder update of `slug` records no
+retirement.
+
+**Every slug now has a platform subdomain (action required if you set
+`neev.platform_domain` and gate who gets one).**
+A host one label under `neev.platform_domain` resolves to the owner holding
+that slug, with no `domains` row: a tenant in isolated mode, a team in shared
+mode. Before, only a host with a verified row resolved. If your app gave a
+subdomain only to some owners by creating rows for them, every owner now has
+one; refuse the others in your own routing until Neev ships a per-owner
+switch. A platform host no slug answers for resolves to nothing: a host under
+`neev.platform_domain` cannot be a `hostnames` row.
+
+**A renamed owner's old host redirects or tells the client (action required
+for API clients and cross-origin frontends).**
+For `neev.slug.retired_host_days` after a rename, the old host and old slug
+keep resolving to the owner, and `TenantMiddleware` (in every Neev route
+group) answers them:
+
+- **A browser navigation** (a GET or HEAD on the old host that does not want
+  JSON) gets a `302` to the same path on the current host.
+- **Anything else** — an API call, a JSON request, a POST, or an `X-Tenant`
+  header naming the old slug or host — is served in place with
+  `X-Tenant-Slug: <current slug>`. Read that header and switch to the new
+  slug; after the window the old one stops resolving. A frontend on another
+  origin must list `X-Tenant-Slug` in `exposed_headers` in `config/cors.php`,
+  or the browser hides it from your code.
+- **Signed links** (magic links, email verification) made for the old host
+  fail as invalid after a rename, because the host is inside the signature.
+  They expire within `url_expiry_time` anyway.
+- **Passkeys made on the old host** stop working on the new one. Each host is
+  its own WebAuthn relying party, and a credential is bound to the host it was
+  made on. Users sign in another way on the new host and register a new
+  passkey there. The old host is not a relying party even while it serves.
+  Listen for `SlugChanged` to warn the owner before or after a rename.
+
 **A new reset email lifts the wrong-code lock (action required if your reset
 screen tells a locked-out user to wait).**
 The 10-wrong-codes-per-hour limit is counted per account, and wrong codes need

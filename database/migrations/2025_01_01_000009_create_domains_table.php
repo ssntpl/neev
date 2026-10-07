@@ -22,15 +22,6 @@ return new class () extends Migration {
             $table->timestamps();
             $table->index(['domain', 'verified_at']);
         });
-
-        Schema::create('domain_rules', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('domain_id')->constrained()->onDelete('cascade');
-            $table->string('name');
-            $table->unique(['name', 'domain_id']);
-            $table->string('value')->nullable();
-            $table->timestamps();
-        });
     }
 
     /**
@@ -38,6 +29,7 @@ return new class () extends Migration {
      */
     public function down(): void
     {
+        // Created here before RFC 006; an upgraded install may still hold it.
         Schema::dropIfExists('domain_rules');
         Schema::dropIfExists('domains');
     }

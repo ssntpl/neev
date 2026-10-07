@@ -5,7 +5,8 @@ namespace Ssntpl\Neev\Tests\Feature\Auth;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
-use Ssntpl\Neev\Database\Factories\DomainFactory;
+use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
+use Ssntpl\Neev\Database\Factories\HostnameFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Models\Passkey;
 use Ssntpl\Neev\Mail\EmailOTP;
@@ -460,9 +461,8 @@ class PasskeyTest extends TestCase
             'neev.allowed_origins' => ['https://example.com'],
         ]);
 
-        $team = TeamFactory::new()->create();
-        $this->verifiedDomain($team, 'acme.example.com', primary: true);
-        $this->verifiedDomain($team, 'acme.com');
+        $team = TeamFactory::new()->create(['slug' => 'acme']);
+        EmailDomainFactory::new()->forOwner($team)->verified()->create(['domain' => 'acme.com']);
 
         [$user, $token] = $this->authenticatedUser();
         $passkey = $this->createPasskey($user, ['rp_id' => 'acme.example.com']);
@@ -512,10 +512,8 @@ class PasskeyTest extends TestCase
             'neev.allowed_origins' => ['https://example.com'],
         ]);
 
-        $victimTeam = TeamFactory::new()->create();
-        $this->verifiedDomain($victimTeam, 'victim.example.com', primary: true);
-        $evilTeam = TeamFactory::new()->create();
-        $this->verifiedDomain($evilTeam, 'evil.example.com', primary: true);
+        TeamFactory::new()->create(['slug' => 'victim']);
+        TeamFactory::new()->create(['slug' => 'evil']);
 
         [$user] = $this->authenticatedUser();
 
@@ -543,8 +541,7 @@ class PasskeyTest extends TestCase
             'neev.allowed_origins' => ['https://example.com'],
         ]);
 
-        $team = TeamFactory::new()->create();
-        $this->verifiedDomain($team, 'acme.example.com', primary: true);
+        TeamFactory::new()->create(['slug' => 'acme']);
 
         [$user] = $this->authenticatedUser();
         $this->createPasskey($user, ['rp_id' => null]);
@@ -564,8 +561,7 @@ class PasskeyTest extends TestCase
             'neev.allowed_origins' => ['https://example.com'],
         ]);
 
-        $team = TeamFactory::new()->create();
-        $this->verifiedDomain($team, 'acme.example.com', primary: true);
+        TeamFactory::new()->create(['slug' => 'acme']);
 
         [$user] = $this->authenticatedUser();
         $this->createPasskey($user, ['rp_id' => null]);
@@ -610,7 +606,7 @@ class PasskeyTest extends TestCase
             ->assertJsonPath('rp.id', config('neev.relying_party_id'));
     }
 
-    /** The team's own domain still takes over when it is the host being served. */
+    /** The team's own hostname still takes over when it is the host being served. */
     public function test_ceremonies_on_the_custom_domain_use_it(): void
     {
         $this->enableTeams();
@@ -620,9 +616,8 @@ class PasskeyTest extends TestCase
             'neev.allowed_origins' => ['https://example.com'],
         ]);
 
-        $team = TeamFactory::new()->create();
-        $this->verifiedDomain($team, 'acme.example.com');
-        $this->verifiedDomain($team, 'acme.com');
+        $team = TeamFactory::new()->create(['slug' => 'acme']);
+        HostnameFactory::new()->forOwner($team)->verified()->create(['host' => 'acme.com']);
 
         $user = User::factory()->create();
         $onPlatform = $this->createPasskey($user, ['rp_id' => 'example.com']);
@@ -636,16 +631,6 @@ class PasskeyTest extends TestCase
             [$onCustom->credential_id],
             array_column($login->json('allowCredentials'), 'id')
         );
-    }
-
-    private function verifiedDomain(object $owner, string $host, bool $primary = false): void
-    {
-        DomainFactory::new()->verified()->create([
-            'owner_type' => $owner->getContextType(),
-            'owner_id' => $owner->getKey(),
-            'domain' => $host,
-            'is_primary' => $primary,
-        ]);
     }
 
     /**

@@ -1,13 +1,13 @@
 <?php
 
 /*
- * Fake DNS TXT answers for Domain::verify() without touching production code.
+ * Fake DNS TXT answers for verify() without touching production code.
  *
  * Domain::verify() calls dns_get_record() unqualified from inside the
- * Ssntpl\Neev\Models namespace, so PHP looks for
- * Ssntpl\Neev\Models\dns_get_record() before the global function. Defining
- * it here lets a test answer for a record name and hands every other lookup to
- * the real function.
+ * Ssntpl\Neev\Models namespace, and Hostname and EmailDomain from the
+ * VerifiesWithDns trait in Ssntpl\Neev\Traits, so PHP looks for the function
+ * in that namespace before the global one. Defining it in both lets a test
+ * answer for a record name and hands every other lookup to the real function.
  *
  * PHP remembers which function a call site resolved to, so this file has to be
  * loaded before anything calls verify(). Require it at the top of the test
@@ -68,6 +68,26 @@ namespace Ssntpl\Neev\Tests\Support {
 }
 
 namespace Ssntpl\Neev\Models {
+    use Ssntpl\Neev\Tests\Support\FakeDns;
+
+    if (! function_exists(__NAMESPACE__ . '\dns_get_record')) {
+        function dns_get_record(
+            string $hostname,
+            int $type = DNS_ANY,
+            &$authoritative_name_servers = null,
+            &$additional_records = null,
+            bool $raw = false,
+        ): array|false {
+            if ($type === DNS_TXT && ($records = FakeDns::lookup($hostname)) !== null) {
+                return $records;
+            }
+
+            return \dns_get_record($hostname, $type, $authoritative_name_servers, $additional_records, $raw);
+        }
+    }
+}
+
+namespace Ssntpl\Neev\Traits {
     use Ssntpl\Neev\Tests\Support\FakeDns;
 
     if (! function_exists(__NAMESPACE__ . '\dns_get_record')) {

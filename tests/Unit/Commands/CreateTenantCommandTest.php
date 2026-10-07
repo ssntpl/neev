@@ -3,7 +3,8 @@
 namespace Ssntpl\Neev\Tests\Unit\Commands;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Hostname;
+use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Tests\TestCase;
@@ -82,23 +83,44 @@ class CreateTenantCommandTest extends TestCase
         $this->assertDatabaseCount('tenants', 1);
     }
 
-    public function test_a_domain_verified_by_another_tenant_creates_nothing(): void
+    public function test_a_host_another_tenant_holds_creates_nothing(): void
     {
         config(['neev.tenant' => true, 'neev.team' => true]);
 
-        $other = Tenant::create(['name' => 'Other', 'slug' => 'other']);
-        Domain::create([
-            'domain' => 'acme.test',
-            'owner_type' => 'tenant',
-            'owner_id' => $other->id,
-            'verified_at' => now(),
-        ]);
+        $this->verifiedHost(Tenant::create(['name' => 'Other', 'slug' => 'other']), 'acme.test');
 
         $this->artisan('neev:tenant:create', ['name' => 'Acme', '--domain' => 'acme.test'])
-            ->expectsOutputToContain('already verified')
+            ->expectsOutputToContain('Host already claimed: acme.test')
             ->assertFailed();
 
         $this->assertDatabaseCount('tenants', 1);
+    }
+
+    /**
+     * A host is unique, so even another owner's pending claim holds it.
+     */
+    public function test_a_host_another_tenant_has_only_claimed_creates_nothing(): void
+    {
+        config(['neev.tenant' => true, 'neev.team' => true]);
+
+        Tenant::create(['name' => 'Other', 'slug' => 'other'])->claimHost('acme.test');
+
+        $this->artisan('neev:tenant:create', ['name' => 'Acme', '--domain' => 'acme.test'])
+            ->expectsOutputToContain('Host already claimed: acme.test')
+            ->assertFailed();
+
+        $this->assertDatabaseCount('tenants', 1);
+    }
+
+    public function test_a_host_under_the_platform_domain_creates_nothing(): void
+    {
+        config(['neev.tenant' => true, 'neev.team' => true, 'neev.platform_domain' => 'neev.test']);
+
+        $this->artisan('neev:tenant:create', ['name' => 'Acme', '--domain' => 'acme.neev.test'])
+            ->expectsOutputToContain('A host under the platform domain follows the slug: acme.neev.test')
+            ->assertFailed();
+
+        $this->assertDatabaseCount('tenants', 0);
     }
 
     // -----------------------------------------------------------------
@@ -118,5 +140,40 @@ class CreateTenantCommandTest extends TestCase
         $this->assertNotNull($tenant);
         $this->assertCount(1, $tenant->teams);
         $this->assertSame($user->id, $tenant->teams->first()->user_id);
+    }
+
+    public function test_domain_claims_a_pending_host_which_is_not_primary_yet(): void
+    {
+        config(['neev.tenant' => true, 'neev.team' => true]);
+
+        $this->artisan('neev:tenant:create', ['name' => 'Acme', '--domain' => 'App.Acme.test'])
+            ->expectsOutputToContain('Domain attached: app.acme.test')
+            ->expectsOutputToContain('_neev-host.app.acme.test')
+            ->expectsOutputToContain('neev:hostname:primary app.acme.test')
+            ->assertSuccessful();
+
+        $tenant = Tenant::firstWhere('name', 'Acme');
+        $hostname = Hostname::forHost('app.acme.test')->first();
+        $this->assertNotNull($hostname);
+        $this->assertTrue($hostname->isOwnedBy($tenant));
+        $this->assertFalse($hostname->isVerified());
+        $this->assertNotNull($hostname->verification_token);
+        $this->assertNull($tenant->primary_hostname_id, 'Only a verified host can be primary.');
+    }
+
+    public function test_domain_on_a_team_claims_a_pending_host(): void
+    {
+        config(['neev.tenant' => false, 'neev.team' => true]);
+
+        $user = User::factory()->create();
+
+        $this->artisan('neev:tenant:create', ['name' => 'Acme', '--owner' => $user->email, '--domain' => 'app.acme.test'])
+            ->assertSuccessful();
+
+        $team = Team::withoutTenantScope()->firstWhere('name', 'Acme');
+        $hostname = $team->hostnames()->first();
+        $this->assertSame('app.acme.test', $hostname->host);
+        $this->assertNull($team->primary_hostname_id);
+        $this->assertDatabaseCount('email_domains', 0);
     }
 }

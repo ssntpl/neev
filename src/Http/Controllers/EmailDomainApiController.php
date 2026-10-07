@@ -1,0 +1,228 @@
+<?php
+
+namespace Ssntpl\Neev\Http\Controllers;
+
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
+use Ssntpl\Neev\Exceptions\EmailDomainEnforcedException;
+use Ssntpl\Neev\Http\Controllers\Concerns\AuthorizesDomainOwners;
+use Ssntpl\Neev\Models\EmailDomain;
+use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Models\Tenant;
+use Ssntpl\Neev\Rules\Hostname as HostnameRule;
+use Ssntpl\Neev\Services\TenantResolver;
+
+/**
+ * A team's or tenant's email domains (RFC 006): users at them belong to it,
+ * each proven by a TXT record at `_neev-email.<domain>`. Neev checks only that
+ * the caller belongs to the owner (AuthorizesDomainOwners); who among them may
+ * change them is the application's own middleware's to decide. Other owners
+ * may hold the same domain.
+ */
+class EmailDomainApiController extends Controller
+{
+    use AuthorizesDomainOwners;
+
+    /**
+     * Each enforced, verified domain carries `outside_members`: how many
+     * members are on none of the team's verified domains.
+     */
+    public function index(Request $request, Team $team): JsonResponse
+    {
+        if (!$this->belongsToOwner($request, $team)) {
+            return $this->forbidden();
+        }
+
+        $domains = $team->emailDomains->sortBy('id')->values();
+        $outside = $team->membersOutsideEmailDomains();
+
+        foreach ($domains as $domain) {
+            if ($domain->enforce && $domain->isVerified()) {
+                $domain->setAttribute('outside_members', $outside);
+            }
+        }
+
+        return response()->json(['data' => $domains]);
+    }
+
+    /**
+     * Claim a domain (`201`), or re-issue the token of one the team holds
+     * (`200`). A disabled domain, or enforcing one another owner enforces, is
+     * refused with `422`.
+     */
+    public function store(Request $request, Team $team): JsonResponse
+    {
+        if (!$this->belongsToOwner($request, $team)) {
+            return $this->forbidden();
+        }
+
+        return $this->claimFor($request, $team);
+    }
+
+    /**
+     * The email domains of the tenant this request resolved to.
+     */
+    public function tenantIndex(Request $request, TenantResolver $resolver): JsonResponse
+    {
+        $tenant = $resolver->currentTenant();
+
+        if (!$tenant) {
+            return $this->noTenant();
+        }
+
+        if (!$this->belongsToOwner($request, $tenant)) {
+            return $this->forbidden();
+        }
+
+        return response()->json(['data' => $tenant->emailDomains->sortBy('id')->values()]);
+    }
+
+    /**
+     * Claim a domain for the tenant this request resolved to, as store() does
+     * for a team.
+     */
+    public function tenantStore(Request $request, TenantResolver $resolver): JsonResponse
+    {
+        $tenant = $resolver->currentTenant();
+
+        if (!$tenant) {
+            return $this->noTenant();
+        }
+
+        if (!$this->belongsToOwner($request, $tenant)) {
+            return $this->forbidden();
+        }
+
+        return $this->claimFor($request, $tenant);
+    }
+
+    protected function claimFor(Request $request, Team|Tenant $owner): JsonResponse
+    {
+        $request->validate([
+            'domain' => ['bail', 'required', 'string', 'max:255', new HostnameRule()],
+            'enforce' => ['sometimes', 'boolean'],
+        ]);
+
+        try {
+            $domain = $owner->federateDomain($request->domain, $request->boolean('enforce'));
+        } catch (InvalidArgumentException $e) {
+            throw ValidationException::withMessages(['domain' => $e->getMessage()]);
+        } catch (EmailDomainEnforcedException $e) {
+            throw ValidationException::withMessages(['enforce' => $e->getMessage()]);
+        }
+
+        return $domain->wasRecentlyCreated
+            ? $this->withRecord('Email domain added.', $domain, 201)
+            : $this->withRecord('Verification token issued.', $domain);
+    }
+
+    public function show(Request $request, EmailDomain $emailDomain): JsonResponse
+    {
+        if (!$this->belongsToOwner($request, $emailDomain->owner)) {
+            return $this->forbidden();
+        }
+
+        return response()->json(['data' => $emailDomain]);
+    }
+
+    public function update(Request $request, EmailDomain $emailDomain): JsonResponse
+    {
+        if (!$this->belongsToOwner($request, $emailDomain->owner)) {
+            return $this->forbidden();
+        }
+
+        $request->validate(['enforce' => ['required', 'boolean']]);
+
+        try {
+            $emailDomain->update(['enforce' => $request->boolean('enforce')]);
+        } catch (EmailDomainEnforcedException $e) {
+            throw ValidationException::withMessages(['enforce' => $e->getMessage()]);
+        }
+
+        return response()->json(['message' => 'Email domain updated.', 'data' => $emailDomain]);
+    }
+
+    /**
+     * Delete the domain, giving back the accounts it deactivated.
+     */
+    public function destroy(Request $request, EmailDomain $emailDomain): JsonResponse
+    {
+        if (!$this->belongsToOwner($request, $emailDomain->owner)) {
+            return $this->forbidden();
+        }
+
+        $emailDomain->deleteAndReactivate();
+
+        return response()->json(['message' => 'Email domain deleted.']);
+    }
+
+    public function verify(Request $request, EmailDomain $emailDomain): JsonResponse
+    {
+        if (!$this->belongsToOwner($request, $emailDomain->owner)) {
+            return $this->forbidden();
+        }
+
+        // verify() leaves a disabled row alone; say why rather than blame DNS.
+        if ($emailDomain->status === EmailDomain::STATUS_DISABLED) {
+            return response()->json(['message' => 'This domain is disabled.'], 400);
+        }
+
+        if (!$emailDomain->verify()) {
+            return response()->json(['message' => 'DNS verification failed. Please check your DNS record.'], 400);
+        }
+
+        // Only the first owner to verify and enforce a domain keeps enforcing.
+        $dropped = $emailDomain->enforceWasDropped();
+
+        return response()->json([
+            'message' => $dropped
+                ? 'Email domain verified. Another owner already enforces this domain, so enforce was turned off.'
+                : 'Email domain verified.',
+            'data' => $emailDomain,
+            'enforce_dropped' => $dropped,
+        ]);
+    }
+
+    /**
+     * A new token. A verified domain keeps counting; the daily re-check holds
+     * it to the new record.
+     */
+    public function token(Request $request, EmailDomain $emailDomain): JsonResponse
+    {
+        if (!$this->belongsToOwner($request, $emailDomain->owner)) {
+            return $this->forbidden();
+        }
+
+        if ($emailDomain->generateVerificationToken() === null) {
+            return response()->json(['message' => 'This domain is disabled.'], 400);
+        }
+
+        return $this->withRecord('Verification token issued.', $emailDomain);
+    }
+
+
+    protected function forbidden(): JsonResponse
+    {
+        return response()->json(['message' => 'You do not have permission to do this.'], 403);
+    }
+
+    protected function noTenant(): JsonResponse
+    {
+        return response()->json(['message' => 'No tenant context.'], 400);
+    }
+
+    protected function withRecord(string $message, EmailDomain $domain, int $status = 200): JsonResponse
+    {
+        return response()->json([
+            'message' => $message,
+            'data' => $domain,
+            'dns_record' => [
+                'type' => 'TXT',
+                'name' => $domain->getDnsRecordName(),
+                'value' => $domain->verification_token,
+            ],
+        ], $status);
+    }
+}

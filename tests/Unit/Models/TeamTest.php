@@ -3,14 +3,14 @@
 namespace Ssntpl\Neev\Tests\Unit\Models;
 
 use Exception;
-use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use Ssntpl\Neev\Database\Factories\DomainFactory;
+use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
+use Ssntpl\Neev\Database\Factories\HostnameFactory;
 use Ssntpl\LaravelAcl\Models\Role;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
-use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Exceptions\SlugUnavailableException;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Tenant;
@@ -159,27 +159,22 @@ class TeamTest extends TestCase
     // getWebDomainAttribute()
     // -----------------------------------------------------------------
 
-    public function test_web_domain_returns_primary_domain_if_verified(): void
+    public function test_web_domain_returns_primary_hostname_if_verified(): void
     {
         $team = TeamFactory::new()->create();
 
-        DomainFactory::new()->verified()->primary()->create([
-            'owner_type' => 'team', 'owner_id' => $team->id,
-            'domain' => 'custom.example.com',
-        ]);
+        $this->verifiedHost($team, 'custom.example.com', primary: true);
 
         $this->assertSame('custom.example.com', $team->web_domain);
     }
 
-    public function test_web_domain_returns_null_when_no_verified_primary_domain(): void
+    public function test_web_domain_returns_null_when_no_verified_primary_hostname(): void
     {
         $team = TeamFactory::new()->create(['slug' => 'acme']);
 
-        // Create an unverified primary domain
-        DomainFactory::new()->primary()->create([
-            'owner_type' => 'team', 'owner_id' => $team->id,
-            'domain' => 'custom.example.com',
-        ]);
+        // Point the primary at a claim not yet proven
+        $hostname = $team->claimHost('custom.example.com');
+        $team->forceFill(['primary_hostname_id' => $hostname->id])->save();
 
         $this->assertNull($team->web_domain);
     }
@@ -404,28 +399,46 @@ class TeamTest extends TestCase
     // domains(), primaryDomain(), customDomains(), invitations()
     // -----------------------------------------------------------------
 
+    /**
+     * A `domains` row as an install upgraded from before RFC 006 holds it. The
+     * Domain model is read-only, so rows are written past it.
+     */
+    private function insertDomain(Team $team, array $attributes = []): void
+    {
+        DB::table('domains')->insert($attributes + [
+            'owner_type' => 'team',
+            'owner_id' => $team->id,
+            'domain' => fake()->unique()->domainName(),
+            'is_primary' => false,
+            'enforce' => false,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
     public function test_domains_returns_morph_many_relationship(): void
     {
         $team = TeamFactory::new()->create();
 
         $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\MorphMany::class, $team->domains());
 
-        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
-        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
+        $this->insertDomain($team);
+        $this->insertDomain($team);
 
         $team->refresh();
 
         $this->assertCount(2, $team->domains);
     }
 
-    public function test_primary_domain_returns_primary_domain(): void
+    public function test_primary_domain_and_domain_return_the_primary_domain(): void
     {
         $team = TeamFactory::new()->create();
 
-        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'is_primary' => false]);
-        DomainFactory::new()->primary()->verified()->create([
-            'owner_type' => 'team', 'owner_id' => $team->id,
+        $this->insertDomain($team);
+        $this->insertDomain($team, [
             'domain' => 'primary.example.com',
+            'is_primary' => true,
+            'verified_at' => now(),
         ]);
 
         $primary = $team->primaryDomain;
@@ -433,15 +446,16 @@ class TeamTest extends TestCase
         $this->assertNotNull($primary);
         $this->assertSame('primary.example.com', $primary->domain);
         $this->assertTrue($primary->is_primary);
+        $this->assertTrue($primary->is($team->domain));
     }
 
     public function test_custom_domains_returns_verified_domains(): void
     {
         $team = TeamFactory::new()->create();
 
-        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
-        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id]);
-        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id]); // unverified
+        $this->insertDomain($team, ['verified_at' => now()]);
+        $this->insertDomain($team, ['verified_at' => now()]);
+        $this->insertDomain($team); // unverified
 
         $this->assertCount(2, $team->customDomains);
     }
@@ -487,14 +501,11 @@ class TeamTest extends TestCase
         $this->assertNull(Team::resolveBySlug('nonexistent'));
     }
 
-    public function test_resolve_by_domain_returns_team_for_verified_domain(): void
+    public function test_resolve_by_domain_returns_team_for_verified_hostname(): void
     {
         $team = TeamFactory::new()->create();
 
-        DomainFactory::new()->verified()->create([
-            'owner_type' => 'team', 'owner_id' => $team->id,
-            'domain' => 'custom.example.com',
-        ]);
+        HostnameFactory::new()->forOwner($team)->verified()->create(['host' => 'custom.example.com']);
 
         $resolved = Team::resolveByDomain('custom.example.com');
 
@@ -502,14 +513,11 @@ class TeamTest extends TestCase
         $this->assertTrue($resolved->is($team));
     }
 
-    public function test_resolve_by_domain_returns_null_for_unverified_domain(): void
+    public function test_resolve_by_domain_returns_null_for_unverified_hostname(): void
     {
         $team = TeamFactory::new()->create();
 
-        DomainFactory::new()->create([
-            'owner_type' => 'team', 'owner_id' => $team->id,
-            'domain' => 'unverified.example.com',
-        ]);
+        HostnameFactory::new()->forOwner($team)->create(['host' => 'unverified.example.com']);
 
         $this->assertNull(Team::resolveByDomain('unverified.example.com'));
     }
@@ -523,31 +531,23 @@ class TeamTest extends TestCase
     {
         $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme']);
 
-        DomainFactory::new()->verified()->create([
-            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
-            'domain' => 'acme.example.com',
-        ]);
+        HostnameFactory::new()->forOwner($tenant)->verified()->create(['host' => 'acme.example.com']);
 
         // Returning the Tenant here would break the ?static contract.
         $this->assertNull(Team::resolveByDomain('acme.example.com'));
     }
 
-    public function test_resolve_by_domain_finds_the_team_row_behind_a_tenant_row(): void
+    /**
+     * An email domain says who has addresses there, not where a team is
+     * served, so it does not resolve the team.
+     */
+    public function test_resolve_by_domain_ignores_a_verified_email_domain(): void
     {
-        $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme']);
         $team = TeamFactory::new()->create();
 
-        // Tenant row first: an unfiltered lookup would shadow the team's.
-        DomainFactory::new()->verified()->create([
-            'owner_type' => 'tenant', 'owner_id' => $tenant->id,
-            'domain' => 'shared.example.com',
-        ]);
-        DomainFactory::new()->verified()->create([
-            'owner_type' => 'team', 'owner_id' => $team->id,
-            'domain' => 'shared.example.com',
-        ]);
+        EmailDomainFactory::new()->forOwner($team)->verified()->create(['domain' => 'acme.example.com']);
 
-        $this->assertTrue(Team::resolveByDomain('shared.example.com')?->is($team));
+        $this->assertNull(Team::resolveByDomain('acme.example.com'));
     }
 
     // -----------------------------------------------------------------
@@ -625,10 +625,10 @@ class TeamTest extends TestCase
     // -----------------------------------------------------------------
 
     /**
-     * One owner cannot hold two teams of the same name inside one tenant —
-     * the pair is how the older join-request form names a team.
+     * A team is identified by its slug, not its name, so one owner may hold
+     * two teams of the same name, in one tenant or across tenants.
      */
-    public function test_an_owner_cannot_repeat_a_team_name_within_a_tenant(): void
+    public function test_an_owner_may_repeat_a_team_name(): void
     {
         $owner = User::factory()->create();
         $tenant = TenantFactory::new()->create();
@@ -636,50 +636,26 @@ class TeamTest extends TestCase
         TeamFactory::new()->create([
             'user_id' => $owner->id, 'name' => 'Acme', 'tenant_id' => $tenant->id,
         ]);
-
-        $this->expectException(QueryException::class);
-
         TeamFactory::new()->create([
             'user_id' => $owner->id, 'name' => 'Acme', 'tenant_id' => $tenant->id,
         ]);
-    }
-
-    /**
-     * The constraint is scoped to the tenant, so the same owner may hold the
-     * same team name in two tenants — names only have to be distinct inside
-     * the tenant that sees them.
-     */
-    public function test_the_same_owner_may_repeat_a_team_name_in_another_tenant(): void
-    {
-        $owner = User::factory()->create();
-        $one = TenantFactory::new()->create();
-        $two = TenantFactory::new()->create();
-
-        TeamFactory::new()->create([
-            'user_id' => $owner->id, 'name' => 'Acme', 'tenant_id' => $one->id,
-        ]);
-        $second = TeamFactory::new()->create([
-            'user_id' => $owner->id, 'name' => 'Acme', 'tenant_id' => $two->id,
-        ]);
 
         $this->assertDatabaseCount('teams', 2);
-        $this->assertSame($two->id, $second->tenant_id);
     }
 
     /**
-     * The per-tenant slug index was dropped as redundant: the `slug` column
-     * is unique on its own, which is stricter. That global uniqueness is what
-     * lets `resolveBySlug()` and the slug endpoints look a team up without a
-     * tenant filter and still land on exactly one team.
+     * In shared mode a team is host-resolvable, so its slug is unique across
+     * the installation (RFC 006 §6 Q5). The index is per tenant, so this is
+     * the save that refuses it, not the database.
      */
-    public function test_a_slug_is_unique_across_every_tenant(): void
+    public function test_a_slug_is_unique_across_every_tenant_in_shared_mode(): void
     {
         $one = TenantFactory::new()->create();
         $two = TenantFactory::new()->create();
 
         TeamFactory::new()->create(['slug' => 'shared', 'tenant_id' => $one->id]);
 
-        $this->expectException(QueryException::class);
+        $this->expectException(SlugUnavailableException::class);
 
         TeamFactory::new()->create(['slug' => 'shared', 'tenant_id' => $two->id]);
     }
@@ -687,8 +663,10 @@ class TeamTest extends TestCase
     public function test_an_address_on_an_unverified_domain_is_held_but_not_verified(): void
     {
         $team = TeamFactory::new()->create();
-        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.com']);
-        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.io']);
+        EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com']);
+        EmailDomainFactory::new()->forOwner($team)->verified()->create(['domain' => 'acme.io']);
+        // A host the team is served at is not an email domain.
+        $this->verifiedHost($team, 'acme.net');
 
         $this->assertTrue($team->holdsDomainFor('Alice@ACME.com'));
         $this->assertFalse($team->hasVerifiedDomainFor('Alice@ACME.com'));
@@ -696,23 +674,8 @@ class TeamTest extends TestCase
         $this->assertFalse($team->holdsDomainFor('carol@other.com'));
         // The suffix is the whole domain, not any tail of it.
         $this->assertFalse($team->holdsDomainFor('dave@notacme.com'));
-    }
-
-    public function test_verified_domains_are_read_from_the_loaded_domains_without_another_query(): void
-    {
-        $team = TeamFactory::new()->create();
-        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.com']);
-        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.io']);
-
-        $team->load('domains');
-
-        DB::enableQueryLog();
-        DB::flushQueryLog();
-
-        $this->assertTrue($team->hasVerifiedDomainFor('bob@acme.io'));
-        $this->assertFalse($team->hasVerifiedDomainFor('alice@acme.com'), 'A pending claim is not verified.');
-        $this->assertSame([], DB::getQueryLog());
-        $this->assertFalse($team->relationLoaded('customDomains'));
+        $this->assertFalse($team->holdsDomainFor('erin@acme.net'));
+        $this->assertFalse($team->hasVerifiedDomainFor('erin@acme.net'));
     }
 
     /**
@@ -724,9 +687,9 @@ class TeamTest extends TestCase
         $team = TeamFactory::new()->create();
         $other = TeamFactory::new()->create();
         $stranger = TeamFactory::new()->create();
-        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $team->id, 'domain' => 'acme.com']);
-        DomainFactory::new()->verified()->create(['owner_type' => 'team', 'owner_id' => $other->id, 'domain' => 'acme.com']);
-        DomainFactory::new()->create(['owner_type' => 'team', 'owner_id' => $stranger->id, 'domain' => 'acme.com']);
+        EmailDomainFactory::new()->forOwner($team)->create(['domain' => 'acme.com']);
+        EmailDomainFactory::new()->forOwner($other)->verified()->create(['domain' => 'acme.com']);
+        EmailDomainFactory::new()->forOwner($stranger)->create(['domain' => 'acme.com']);
 
         $shared = User::factory()->create(['active' => true, 'email' => 'bob@acme.com']);
         $team->addMember($shared);
@@ -741,6 +704,33 @@ class TeamTest extends TestCase
 
         $this->assertFalse($shared->fresh()->active, 'Another of their teams claims the host.');
         $this->assertTrue($only->fresh()->active, 'A claim by a team they are not in does not count.');
+    }
+
+    /**
+     * Deleting a team deletes its email domains, and with them the only thing
+     * that could reactivate the members they deactivated.
+     */
+    public function test_deleting_a_team_reactivates_the_members_its_email_domains_deactivated(): void
+    {
+        $team = TeamFactory::new()->create();
+        $other = TeamFactory::new()->create();
+        EmailDomainFactory::new()->forOwner($team)->verified()->create(['domain' => 'acme.com']);
+        EmailDomainFactory::new()->forOwner($other)->verified()->create(['domain' => 'acme.com']);
+
+        $member = User::factory()->create(['active' => true, 'email' => 'alice@acme.com']);
+        $team->addMember($member);
+        $member->deactivate();
+
+        $shared = User::factory()->create(['active' => true, 'email' => 'bob@acme.com']);
+        $team->addMember($shared);
+        $other->addMember($shared);
+        $shared->deactivate();
+
+        $team->delete();
+
+        $this->assertTrue($member->fresh()->active);
+        $this->assertFalse($shared->fresh()->active, 'Another of their teams still claims the domain.');
+        $this->assertSame(0, $team->emailDomains()->count());
     }
 
 }

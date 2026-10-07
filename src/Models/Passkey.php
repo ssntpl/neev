@@ -66,7 +66,7 @@ class Passkey extends Model
      */
     public static function configuredRpId(): string
     {
-        return Domain::canonicalHost((string) config('neev.relying_party_id'));
+        return Hostname::canonicalHost((string) config('neev.relying_party_id'));
     }
 
     /** Whether this credential belongs to the given relying party. */

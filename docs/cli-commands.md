@@ -150,7 +150,7 @@ Create a new tenant or team.
 php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --activate
 
 # Isolated mode — creates a tenant (and a default team if --owner is provided)
-php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --domain=acme.yourapp.com
+php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --domain=app.acme.com
 ```
 
 | Argument / Option | Description |
@@ -158,19 +158,21 @@ php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --domain=acme.
 | `name` | Name of the tenant or team (prompted if omitted) |
 | `--slug=` | Custom slug (auto-generated from name if omitted) |
 | `--owner=` | Owner by user ID or email address |
-| `--domain=` | Attach a domain as primary (shows DNS TXT verification instructions) |
+| `--domain=` | Claim a custom host for it (shows the DNS TXT record to publish) |
 | `--activate` | Activate the team immediately |
 
 **Shared mode**: Creates a `Team` with the given owner. If `--activate` is passed, sets `activated_at`.
 
-**Isolated mode**: Creates a `Tenant`. If `--owner` is provided, also creates a default team with the owner attached. If `--domain` is provided, attaches it to the tenant.
+**Isolated mode**: Creates a `Tenant`. If `--owner` is provided, also creates a default team with the owner attached. If `--domain` is provided, claims it as a host of the tenant.
+
+**`--domain`** claims the host in either mode. It is pending until its TXT record is checked and is not made primary: run `neev:hostname:verify`, then `neev:hostname:primary`, as the command prints.
 
 **Disabled features are refused.** The command will not create rows the installation has no code path to reach:
 
 - Shared mode with `neev.team` off — refuses outright.
 - Isolated mode with `neev.team` off and `--owner` given — refuses, because the owner is held by a team.
 
-**Every option is checked before the first row is written**, so a bad value leaves nothing behind: an unknown `--owner`, an invalid or already-taken `--slug`, or a `--domain` another owner of the same kind has already verified. All problems are reported together:
+**Every option is checked before the first row is written**, so a bad value leaves nothing behind: an unknown `--owner`, an invalid or already-taken `--slug`, or a `--domain` that is under `platform_domain` or already claimed by any owner. All problems are reported together:
 
 ```
 Nothing was created. Fix the following and run the command again:
@@ -203,7 +205,7 @@ php artisan neev:tenant:list --inactive --json
 
 ### `neev:tenant:show`
 
-Show details for a tenant or team. Resolves by ID, slug, or domain.
+Show details for a tenant or team. Resolves by ID, slug, or custom host.
 
 ```bash
 php artisan neev:tenant:show acme-corp
@@ -214,95 +216,169 @@ php artisan neev:tenant:show acme-corp --json
 
 | Argument / Option | Description |
 |-------------------|-------------|
-| `identifier` | ID, slug, or domain (prompted if omitted) |
+| `identifier` | ID, slug, or custom host (prompted if omitted) |
 | `--json` | Output as JSON |
 
-Displays: name, ID, slug, status, owner, member/team count, domains, auth config summary.
+Displays: name, ID, slug, status, owner, member/team count, hostnames (primary marked), email domains (enforced marked), auth config summary. `--json` loads `hostnames` and `emailDomains`.
 
 ---
 
-## Domain Management
+## Hostname Management
 
-Manage domains attached to tenants or teams.
+Manage the custom hosts a tenant or team is served at. A host is unique across every owner, and is only ever proven by its DNS record. A platform subdomain (`{slug}.{platform_domain}`) is derived from the slug and never stored, so these commands do not list or accept it.
 
-### `neev:domain:add`
+### `neev:hostname:add`
 
-Add a domain to a tenant or team.
+Claim a custom host for a tenant or team.
 
 ```bash
-# Add a domain to a team
-php artisan neev:domain:add acme.yourapp.com --owner-type=team --owner-id=1 --primary
-
-# Add a domain to a tenant (requires DNS verification)
-php artisan neev:domain:add app.acme.com --owner-type=tenant --owner-id=42
-
-# Skip verification (local dev)
-php artisan neev:domain:add custom.local --owner-type=team --owner-id=1 --skip-verification
+php artisan neev:hostname:add app.acme.com --owner-type=tenant --owner-id=42
+php artisan neev:hostname:add login.acme.com --owner-type=team --owner-id=acme
 ```
 
 | Argument / Option | Description |
 |-------------------|-------------|
-| `domain` | The domain to add (prompted if omitted) |
+| `host` | The host to add (prompted if omitted) |
 | `--owner-type=` | Owner type: `team` or `tenant` (prompted if omitted) |
 | `--owner-id=` | Owner ID **or slug** (prompted if omitted) |
-| `--primary` | Set as primary domain |
-| `--enforce` | Enforce domain-based federation |
-| `--skip-verification` | Mark as verified immediately |
 
-Run interactively without the owner options and the command asks for them, the way it already asks for the domain:
+Run interactively without the owner options and the command asks for them, the way it already asks for the host:
 
 ```
- What owns this domain?  › A tenant / A team          # defaults by identity mode
- Which tenant owns it? (ID or slug)  › acme
+ What owns it?  › A tenant / A team                   # defaults by identity mode
+ Which tenant? (ID or slug)  › acme
 ```
 
 Non-interactive runs (`--no-interaction`, CI) still require `--owner-type` and `--owner-id`.
 
-**Uniqueness is per owner type.** A tenant and a team may both federate the same company domain, but two teams — or two tenants — may not. A domain is only reserved once its owner has *verified* it; an unverified claim blocks nobody. The command also refuses a domain the same owner already holds.
+The command refuses a host the owner already holds, a host another owner has claimed (verified or not), and any host under `platform_domain`. On success it prints the TXT record to publish, `_neev-host.{host}`, and its token. The host does not serve until it is verified.
 
-Unless `--skip-verification` is passed, the command displays the DNS TXT record (name and token) required to verify the domain.
+### `neev:hostname:verify`
 
-### `neev:domain:verify`
-
-Verify a domain via DNS TXT record lookup.
+Verify a custom host via its DNS TXT record.
 
 ```bash
 # Check DNS and verify
-php artisan neev:domain:verify app.acme.com
+php artisan neev:hostname:verify app.acme.com
+
+# Re-check every verified or failing host (dispatches queued jobs)
+php artisan neev:hostname:verify --all
+```
+
+| Argument / Option | Description |
+|-------------------|-------------|
+| `host` | The host to verify (optional when using `--all`) |
+| `--all` | Re-check every verified or failing host |
+
+Looks up `_neev-host.{host}` and matches the TXT value against the stored token. A disabled host is refused (`Host is disabled: {host}`) without a lookup. A host has no `--force`: it serves real traffic, so only its record proves it. A match fires `DomainVerified` for a pending host, or `DomainReverified` for one whose record had gone missing.
+
+`--all` queues a `VerifyDomainJob` per verified host and per host already unverified for a missing record. The job skips a pending host; verify that one without `--all`.
+
+### `neev:hostname:primary`
+
+Make a verified host its owner's primary host.
+
+```bash
+php artisan neev:hostname:primary app.acme.com
+```
+
+| Argument | Description |
+|----------|-------------|
+| `host` | The verified host to make primary |
+
+Sets `primary_hostname_id` on the owning team or tenant. An unverified host is refused. With no primary set, the owner's canonical host is its oldest verified host, else its platform subdomain.
+
+### `neev:hostname:list`
+
+List custom hosts with optional filters.
+
+```bash
+php artisan neev:hostname:list
+php artisan neev:hostname:list --owner-type=tenant --unverified
+php artisan neev:hostname:list --owner-type=team --owner-id=acme --json
+```
+
+| Option | Description |
+|--------|-------------|
+| `--owner-type=` | Filter by owner type (`team` or `tenant`) |
+| `--owner-id=` | Filter by owner ID, or by slug (a slug needs `--owner-type`) |
+| `--unverified` | Show only unverified hosts |
+| `--json` | Output as JSON |
+
+Columns: ID, Host, Owner Type, Owner ID, Primary, Status.
+
+---
+
+## Email Domain Management
+
+Manage the email domains whose users join a tenant or team. An email domain is not exclusive: several owners may each verify `acme.com` with their own record. Enforcing it is exclusive to one owner.
+
+### `neev:email-domain:add`
+
+Add an email domain to a tenant or team.
+
+```bash
+# Add a domain (requires DNS verification)
+php artisan neev:email-domain:add acme.com --owner-type=team --owner-id=acme --enforce
+
+# Skip verification (local dev)
+php artisan neev:email-domain:add acme.test --owner-type=team --owner-id=1 --skip-verification
+```
+
+| Argument / Option | Description |
+|-------------------|-------------|
+| `domain` | The email domain to add (prompted if omitted) |
+| `--owner-type=` | Owner type: `team` or `tenant` (prompted if omitted) |
+| `--owner-id=` | Owner ID **or slug** (prompted if omitted) |
+| `--enforce` | Only invite users at this domain |
+| `--skip-verification` | Mark as verified without DNS |
+
+The owner prompts work as in `neev:hostname:add`. The command refuses a domain the same owner already holds, and `--enforce` on a domain another owner's verified row already enforces.
+
+Unless `--skip-verification` is passed, the command prints the TXT record to publish, `_neev-email.{domain}`, and its token.
+
+### `neev:email-domain:verify`
+
+Verify an email domain via its DNS TXT record.
+
+```bash
+# Check DNS and verify
+php artisan neev:email-domain:verify acme.com
 
 # Force-verify without DNS check (local dev)
-php artisan neev:domain:verify app.acme.com --force
+php artisan neev:email-domain:verify acme.com --force
 
 # Pick one claim when several owners have claimed the domain
-php artisan neev:domain:verify acme.com --owner-type=team --owner-id=acme
+php artisan neev:email-domain:verify acme.com --owner-type=team --owner-id=acme
 
-# Re-verify all previously verified domains (dispatches queued jobs)
-php artisan neev:domain:verify --all
+# Re-check every verified or failing email domain (dispatches queued jobs)
+php artisan neev:email-domain:verify --all
 ```
 
 | Argument / Option | Description |
 |-------------------|-------------|
 | `domain` | The domain to verify (optional when using `--all`) |
 | `--owner-type=` | `team` or `tenant`; narrows to that owner's claim |
-| `--owner-id=` | Owner ID or slug (needs `--owner-type`) |
+| `--owner-id=` | Owner ID, or slug with `--owner-type` |
 | `--force` | Mark verified without DNS check |
-| `--all` | Re-verify all previously verified domains |
+| `--all` | Re-check every verified or failing email domain |
 
-Performs a `dns_get_record()` lookup on `_neev-verification.{domain}` and matches the TXT value against the stored verification token.
+Looks up `_neev-email.{domain}` and matches the TXT value against the stored token.
 
-When more than one owner has claimed the domain, the command lists the claims and exits without verifying any; pass `--owner-type` and `--owner-id` to choose one. `--force` skips the DNS check but not the ownership rule: it refuses a claim when another owner of the same type has already verified the domain. It goes through `Domain::markVerified()`, as a DNS match does, so it also clears any earlier verification failure and fires `DomainVerified` for a pending claim.
+When more than one owner has claimed the domain, the command lists the claims and exits without verifying any; pass `--owner-type` and `--owner-id` to choose one.
 
-`--all` queues a `VerifyDomainJob` per verified domain. `VerifyDomainJob` re-checks a domain that is verified when the job runs, and does nothing for any other. A domain unverified by a new token after its job was queued is therefore skipped: it is a new claim waiting for its record, not one to re-check, so it is neither verified nor marked failed. Verify a pending claim with this command without `--all`, or with `Domain::verify()`.
+`--force` here and `--skip-verification` on `neev:email-domain:add` exist only for email domains. They record the row with `verification_strategy = manual`, clear any earlier failure, and fire `DomainVerified` (or `DomainReverified` for a row that had failed). The daily re-check skips a `manual` row, since it has no record to check. Issuing a new token makes it `dns` again. A disabled domain is refused, with or without `--force` (`Domain is disabled: {domain}`): neither DNS nor an operator revives it.
 
-### `neev:domain:list`
+`--all` queues a `VerifyDomainJob` per verified email domain and per one already unverified for a missing record. The job skips a pending claim and a `manual` row.
 
-List domains with optional filters.
+### `neev:email-domain:list`
+
+List email domains with optional filters.
 
 ```bash
-php artisan neev:domain:list
-php artisan neev:domain:list --owner-type=tenant --unverified
-php artisan neev:domain:list --owner-type=team --owner-id=1 --json
-php artisan neev:domain:list --owner-type=team --owner-id=acme
+php artisan neev:email-domain:list
+php artisan neev:email-domain:list --owner-type=tenant --unverified
+php artisan neev:email-domain:list --owner-type=team --owner-id=acme --json
 ```
 
 | Option | Description |
@@ -312,7 +388,7 @@ php artisan neev:domain:list --owner-type=team --owner-id=acme
 | `--unverified` | Show only unverified domains |
 | `--json` | Output as JSON |
 
-Columns: ID, Domain, Owner Type, Owner ID, Primary, Enforce, Status.
+Columns: ID, Domain, Owner Type, Owner ID, Enforce, Status.
 
 ---
 

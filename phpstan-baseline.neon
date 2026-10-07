@@ -153,8 +153,20 @@ parameters:
 		-
 			message: '#^Parameter \#1 \$view of function view expects view\-string\|null, string given\.$#'
 			identifier: argument.type
-			count: 5
+			count: 4
 			path: src/Http/Controllers/TeamController.php
+
+		-
+			message: '#^Parameter \#1 \$view of function view expects view\-string\|null, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/TeamHostnameController.php
+
+		-
+			message: '#^Parameter \#1 \$view of function view expects view\-string\|null, string given\.$#'
+			identifier: argument.type
+			count: 1
+			path: src/Http/Controllers/TeamEmailDomainController.php
 
 		-
 			message: '#^Property Ssntpl\\Neev\\Models\\DomainRule\:\:\$value \(string\|null\) does not accept bool\.$#'

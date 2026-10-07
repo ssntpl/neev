@@ -15,12 +15,12 @@ Start here to set up and use Neev in your application.
 | [Authentication](./authentication.md) | Password, magic link, passkey, OAuth, and SSO login flows |
 | [SPA Authentication](./spa-authentication.md) | Wiring a same-origin React/Vue SPA to neev: cookie mode, CSRF, CORS, SSO hand-off, troubleshooting |
 | [MFA](./mfa.md) | Authenticator apps (TOTP), email OTP, and recovery codes |
-| [Teams](./teams.md) | Team creation, invitations, roles, domain federation |
+| [Teams](./teams.md) | Team creation, invitations, roles, email domain federation |
 | [Roles & Permissions](./roles-permissions.md) | Where roles live, who assigns them, what Neev enforces vs what your app must check |
 | [Multi-Tenancy](./multi-tenancy.md) | Identity strategy, tenant isolation, subdomain/custom domain, enterprise SSO |
 | [Email Links](./email-links.md) | Where emailed links land and what a followed link answers — the `EmailLinks` seam |
 | [Security](./security.md) | Brute force protection, password policies, login tracking, session management |
-| [CLI Commands](./cli-commands.md) | All Artisan commands: tenant provisioning, domains, members, auth/SSO, team lifecycle |
+| [CLI Commands](./cli-commands.md) | All Artisan commands: tenant provisioning, hostnames, email domains, members, auth/SSO, team lifecycle |
 
 ## Reference
 
@@ -80,10 +80,10 @@ neev/
     ├── Contracts/             # Interfaces (ContextContainer, HasMembers, etc.)
     ├── Events/                # Auth, MFA, team/tenant lifecycle, and domain events
     ├── Http/
-    │   ├── Controllers/       # Auth, User, Team, Role, TenantDomain, TenantSSO
+    │   ├── Controllers/       # Auth, User, Team, Role, Hostname, EmailDomain, TenantSSO
     │   └── Middleware/        # Auth, tenant, team, context middleware
     ├── Mail/                  # 5 Mailables (verification, OTP, login link, etc.)
-    ├── Models/                # User, Team, Tenant, AccessToken, Domain, etc.
+    ├── Models/                # User, Team, Tenant, AccessToken, Hostname, EmailDomain, etc.
     ├── Rules/                 # PasswordHistory, PasswordUserData
     ├── Scopes/                # TenantScope, TeamScope
     ├── Services/              # ContextManager, TenantResolver, TenantSSOManager, EmailLinks, etc.
@@ -197,11 +197,15 @@ Neev fires Laravel's native auth events where semantics match, and its own event
 | `MemberAdded` / `MemberRemoved` | `$team, $user` | Team membership changes |
 | `TenantCreated` | `$tenant` | A tenant is created |
 | `SsoUserProvisioned` | `$user, $owner` | SSO auto-provisions a new user |
-| `DomainVerified` | `$domain` | A domain passes DNS verification for the first time |
-| `DomainReverified` | `$domain` | A domain that had been failing re-verification passes again |
-| `DomainVerificationFailed` | `$domain` | A previously verified domain first fails re-verification |
+| `DomainVerified` | `$domain` | An email domain or custom host (`EmailDomain` or `Hostname`) is verified for the first time |
+| `DomainReverified` | `$domain` | One that had been failing re-verification passes again |
+| `DomainVerificationFailed` | `$domain` | A previously verified one first fails re-verification |
+| `DomainUnverified` | `$domain` | Its record has been missing for `dns_verification.unverify_after_failed_days`: a host stops serving, an email domain stops federating and enforcing |
+| `DomainRemoved` | `$domain` | Its record is still missing at twice that, and the row is deleted |
+| `EmailDomainEnforceDropped` | `$domain` | An `EmailDomain` asking to enforce was verified while another owner already enforced the domain, so it was saved with `enforce` off |
+| `SlugChanged` | `$owner, $oldSlug, $newSlug` | A team or tenant took a new slug; its platform subdomain moved with it |
 
-The model-lifecycle events (`TeamCreated`, `TeamDeleted`, `TenantCreated`, `MemberAdded`, `MemberRemoved`) implement `ShouldDispatchAfterCommit`, so listeners never observe state from a transaction that later rolls back. `EmailVerified` is likewise dispatched after commit.
+The model-lifecycle events (`TeamCreated`, `TeamDeleted`, `TenantCreated`, `MemberAdded`, `MemberRemoved`, `SlugChanged`) implement `ShouldDispatchAfterCommit`, so listeners never observe state from a transaction that later rolls back. `EmailVerified` is likewise dispatched after commit.
 
 > **Note:** neev's User model deliberately does not implement `MustVerifyEmail`. If your custom user model does, Laravel's auto-registered `SendEmailVerificationNotification` listener will also react to `Registered` — disable it or neev's own verification mail to avoid duplicate emails.
 
@@ -233,10 +237,14 @@ See [CLI Commands](./cli-commands.md) for full reference with options and exampl
 | `neev:clean-access-tokens` | Delete expired access tokens |
 | `neev:tenant:create` | Create a tenant (isolated) or team (shared) |
 | `neev:tenant:list` | List tenants or teams |
-| `neev:tenant:show` | Show tenant/team details by ID, slug, or domain |
-| `neev:domain:add` | Add a domain to a tenant or team |
-| `neev:domain:verify` | Verify a domain via DNS TXT record |
-| `neev:domain:list` | List domains |
+| `neev:tenant:show` | Show tenant/team details by ID, slug, or custom host |
+| `neev:hostname:add` | Add a custom host a tenant or team is served at |
+| `neev:hostname:verify` | Verify a custom host via its `_neev-host` TXT record |
+| `neev:hostname:primary` | Make a verified host its owner's primary |
+| `neev:hostname:list` | List custom hosts |
+| `neev:email-domain:add` | Add an email domain to a tenant or team |
+| `neev:email-domain:verify` | Verify an email domain via its `_neev-email` TXT record |
+| `neev:email-domain:list` | List email domains |
 | `neev:member:add` | Add a user to a team (bypasses invitation) |
 | `neev:member:remove` | Remove a user from a team |
 | `neev:member:list` | List members of a team or tenant |

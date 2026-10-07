@@ -13,7 +13,7 @@ use Ssntpl\Neev\Events\MagicLinkRejected;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
 use Ssntpl\Neev\Exceptions\MagicLinkChannelException;
 use Ssntpl\Neev\Exceptions\MagicLinkThrottledException;
-use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\Models\MagicLinkToken;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
@@ -636,15 +636,16 @@ class MagicLinkManager
     /**
      * A verified host the resolved tenant can be reached at.
      *
-     * Only verified domain records qualify — hosts the tenant, or one of its
-     * teams, has proven control of — never the request's Host header. In order
-     * of preference: the record this request actually resolved through (that
-     * is where the user is, and it resolves back to the same tenant the token
-     * is scoped to); the tenant's own verified domain, primary first; and in
-     * isolated mode a verified domain of one of the tenant's teams, since a
-     * tenant reached only through its teams' hosts owns no record of its own.
-     * A link mailed to any other host could never find the tenant-scoped
-     * token.
+     * Only hosts the tenant is known to be served at qualify — its platform
+     * subdomain, or a hostname it, or one of its teams, has proven control of
+     * — never the request's Host header. In order of preference: the verified
+     * hostname this request resolved through (that is where the user is, and
+     * it resolves back to the same tenant the token is scoped to); the
+     * tenant's canonical host, which prefers a verified custom host over the
+     * platform subdomain; and in isolated mode a verified hostname of one
+     * of its teams, since a tenant reached only through its teams' hosts holds
+     * none of its own. A link mailed to any other host could never find the
+     * tenant-scoped token.
      */
     protected function verifiedTenantHost(): ?string
     {
@@ -659,21 +660,16 @@ class MagicLinkManager
             return null;
         }
 
-        $current = $resolver->currentDomain();
-        if ($current !== null && $current->verified_at !== null) {
-            return $current->domain;
+        $current = $resolver->currentHostname();
+        if ($current !== null && $current->isVerified()) {
+            return $current->host;
         }
 
-        $own = Domain::query()
-            ->where('owner_type', $context->getContextType())
-            ->where('owner_id', $context->getContextId())
-            ->whereNotNull('verified_at')
-            ->orderByDesc('is_primary')
-            ->orderBy('id')
-            ->first();
-
-        if ($own !== null) {
-            return $own->domain;
+        // On a platform subdomain, current or retired, the link goes to the
+        // canonical host: a verified custom host if the tenant has one, else
+        // its current subdomain.
+        if (method_exists($context, 'canonicalHost') && ($host = $context->canonicalHost()) !== null) {
+            return $host;
         }
 
         if ($context->getContextType() !== 'tenant') {
@@ -684,15 +680,12 @@ class MagicLinkManager
             ->where('tenant_id', $context->getContextId())
             ->pluck('id');
 
-        $team = Domain::query()
+        return Hostname::query()
+            ->verified()
             ->where('owner_type', 'team')
             ->whereIn('owner_id', $teamIds)
-            ->whereNotNull('verified_at')
-            ->orderByDesc('is_primary')
             ->orderBy('id')
-            ->first();
-
-        return $team?->domain;
+            ->value('host');
     }
 
     /**

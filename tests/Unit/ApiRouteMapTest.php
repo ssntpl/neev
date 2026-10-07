@@ -100,18 +100,38 @@ class ApiRouteMapTest extends TestCase
             'POST neev/teams/request',
             'PUT neev/teams/request',
 
-            // domains
-            'GET neev/domains',
-            'POST neev/domains',
-            'PUT neev/domains',
-            'DELETE neev/domains',
-            'PUT neev/domains/rules',
-            'GET neev/domains/rules',
-            'PUT neev/domains/primary',
+            // hostnames
+            'GET neev/teams/{team}/hostnames',
+            'POST neev/teams/{team}/hostnames',
+            'GET neev/hostnames/{hostname}',
+            'DELETE neev/hostnames/{hostname}',
+            'POST neev/hostnames/{hostname}/verify',
+            'POST neev/hostnames/{hostname}/token',
+            'POST neev/hostnames/{hostname}/primary',
+            'GET neev/hostnames/current',
+
+            // email domains
+            'GET neev/teams/{team}/email-domains',
+            'POST neev/teams/{team}/email-domains',
+            'GET neev/email-domains/{emailDomain}',
+            'PATCH neev/email-domains/{emailDomain}',
+            'DELETE neev/email-domains/{emailDomain}',
+            'POST neev/email-domains/{emailDomain}/verify',
+            'POST neev/email-domains/{emailDomain}/token',
 
             // left outside the team group on purpose
             'POST neev/changeTeamOwner',
         ];
+    }
+
+    /** A tenant's own host and email-domain routes exist only under tenant isolation. */
+    public function test_the_tenant_domain_routes_need_tenant_isolation(): void
+    {
+        $routes = $this->registeredApiRoutes();
+
+        foreach (['GET neev/tenant/hostnames', 'POST neev/tenant/hostnames', 'GET neev/tenant/email-domains', 'POST neev/tenant/email-domains'] as $route) {
+            $this->assertNotContains($route, $routes);
+        }
     }
 
     public function test_every_grouped_route_keeps_its_full_path(): void

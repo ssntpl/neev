@@ -3,6 +3,7 @@
 namespace Ssntpl\Neev\Models;
 
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -18,6 +19,10 @@ use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Events\TenantCreated;
 use Ssntpl\Neev\Scopes\TeamTenantScope;
+use Ssntpl\Neev\Support\SlugHelper;
+use Ssntpl\Neev\Traits\HasEmailDomains;
+use Ssntpl\Neev\Traits\HasHostnames;
+use Ssntpl\Neev\Traits\RetiresSlugs;
 
 /**
  * @property int $id
@@ -26,14 +31,21 @@ use Ssntpl\Neev\Scopes\TeamTenantScope;
  * @property Carbon|null $activated_at
  * @property string|null $inactive_reason
  * @property Carbon|null $created_at
+ * @property int|null $primary_hostname_id
  * @property Carbon|null $updated_at
  * @property-read TenantAuthSettings|null $authSettings
  * @property-read Collection<int, Team> $teams
  * @property-read Collection<int, Domain> $domains
+ * @property-read Collection<int, EmailDomain> $emailDomains
+ * @property-read Collection<int, Hostname> $hostnames
+ * @property-read Hostname|null $primaryHostname
  */
 class Tenant extends Model implements ContextContainerInterface, IdentityProviderOwnerInterface, HasMembersInterface, ResolvableContextInterface
 {
+    use HasEmailDomains;
     use HasFactory;
+    use HasHostnames;
+    use RetiresSlugs;
 
     protected $fillable = [
         'name',
@@ -66,6 +78,29 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
     public static function getClass(): string
     {
         return config('neev.tenant_model', Tenant::class);
+    }
+
+    // -----------------------------------------------------------------
+    // Slugs (RetiresSlugs)
+    // -----------------------------------------------------------------
+
+    /**
+     * A tenant saved without a slug gets one from its name. It is chosen in
+     * save(), before the slug is locked.
+     */
+    protected function generateSlug(): ?string
+    {
+        return SlugHelper::generateForTenant($this->name);
+    }
+
+    /**
+     * A tenant slug is unique across the installation. The unique index holds
+     * that too; checking here as well gives a held slug the same
+     * SlugUnavailableException as a retired one.
+     */
+    protected function slugPeers(): ?Builder
+    {
+        return static::query();
     }
 
     // -----------------------------------------------------------------
@@ -102,6 +137,11 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
         return (new TenantAuthSettings())->newFromBuilder($attributes);
     }
 
+    /**
+     * Rows of the `domains` table, read-only for this release.
+     *
+     * @deprecated Use emailDomains() or hostnames() (RFC 006).
+     */
     public function domains(): MorphMany
     {
         return $this->morphMany(Domain::class, 'owner');
@@ -238,9 +278,7 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
 
     public static function resolveByDomain(string $domain): ?static
     {
-        $domainRecord = Domain::findByHostForOwnerType($domain, 'tenant');
-
         /** @var static|null */
-        return $domainRecord?->owner;
+        return Hostname::ownerOf($domain, 'tenant');
     }
 }

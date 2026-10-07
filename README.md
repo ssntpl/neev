@@ -49,7 +49,7 @@ Neev is a comprehensive Laravel package that provides enterprise-grade user auth
 - Create and manage teams/organizations
 - Invite members via email
 - Role-based access control
-- Domain-based auto-joining (federation)
+- Email-domain auto-joining (federation)
 - Team switching for multi-team users
 
 ### Security Features
@@ -61,8 +61,8 @@ Neev is a comprehensive Laravel package that provides enterprise-grade user auth
 - Suspicious login detection
 
 ### Multi-Tenancy
-- Domain-based tenant resolution (`X-Tenant` header or host lookup)
-- Custom domain support with DNS verification
+- Tenant resolution from the `X-Tenant` header, a platform subdomain (the slug) or a custom host
+- Custom hosts and email domains, each verified by its own DNS TXT record
 - Per-tenant authentication configuration
 - Per-tenant SSO integration
 
@@ -318,30 +318,38 @@ All API routes are prefixed with `/neev` — the prefix is configurable via `rou
 | PUT | `/neev/teams/request` | Accept/reject request | Yes |
 | PUT | `/neev/role/change` | Change member role | Yes |
 
-### Domain Endpoints
+### Hostname Endpoints
+
+Custom hosts a team or tenant is served at, proven by a TXT record at `_neev-host.<host>`. Neev checks that the caller belongs to the owner; which members may manage them is up to your own middleware.
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| GET | `/neev/domains` | List team domains | Yes |
-| POST | `/neev/domains` | Add domain | Yes |
-| PUT | `/neev/domains` | Update/verify domain | Yes |
-| DELETE | `/neev/domains` | Delete domain | Yes |
-| GET | `/neev/domains/rules` | Get domain rules | Yes |
-| PUT | `/neev/domains/rules` | Update domain rules | Yes |
-| PUT | `/neev/domains/primary` | Set primary domain | Yes |
+| GET | `/neev/teams/{team}/hostnames` | List the team's custom hosts | Yes |
+| POST | `/neev/teams/{team}/hostnames` | Claim a custom host | Yes |
+| GET | `/neev/tenant/hostnames` | List the resolved tenant's custom hosts (tenant isolation) | Yes |
+| POST | `/neev/tenant/hostnames` | Claim a custom host for the resolved tenant (tenant isolation) | Yes |
+| GET | `/neev/hostnames/{id}` | Get host details | Yes |
+| DELETE | `/neev/hostnames/{id}` | Release a host | Yes |
+| POST | `/neev/hostnames/{id}/verify` | Check the DNS record | Yes |
+| POST | `/neev/hostnames/{id}/token` | Issue a new verification token | Yes |
+| POST | `/neev/hostnames/{id}/primary` | Make a verified host the primary | Yes |
+| GET | `/neev/hostnames/current` | The resolved context and the custom host it came in on | Yes |
 
-### Tenant Domain Endpoints
+### Email Domain Endpoints
+
+Email domains whose users join a team or tenant, proven by a TXT record at `_neev-email.<domain>`.
 
 | Method | Endpoint | Description | Auth |
 |--------|----------|-------------|------|
-| GET | `/neev/tenant-domains` | List tenant domains | Yes |
-| POST | `/neev/tenant-domains` | Add custom domain | Yes |
-| GET | `/neev/tenant-domains/current` | Get current tenant | Yes |
-| GET | `/neev/tenant-domains/{id}` | Get domain details | Yes |
-| DELETE | `/neev/tenant-domains/{id}` | Delete domain | Yes |
-| POST | `/neev/tenant-domains/{id}/verify` | Verify domain | Yes |
-| POST | `/neev/tenant-domains/{id}/regenerate-token` | Regenerate verification token | Yes |
-| POST | `/neev/tenant-domains/{id}/primary` | Set as primary | Yes |
+| GET | `/neev/teams/{team}/email-domains` | List the team's email domains | Yes |
+| POST | `/neev/teams/{team}/email-domains` | Claim an email domain | Yes |
+| GET | `/neev/tenant/email-domains` | List the resolved tenant's email domains (tenant isolation) | Yes |
+| POST | `/neev/tenant/email-domains` | Claim an email domain for the resolved tenant (tenant isolation) | Yes |
+| GET | `/neev/email-domains/{id}` | Get domain details | Yes |
+| PATCH | `/neev/email-domains/{id}` | Turn `enforce` on or off | Yes |
+| DELETE | `/neev/email-domains/{id}` | Delete, giving back the accounts it deactivated | Yes |
+| POST | `/neev/email-domains/{id}/verify` | Check the DNS record | Yes |
+| POST | `/neev/email-domains/{id}/token` | Issue a new verification token | Yes |
 
 ---
 
@@ -410,7 +418,8 @@ The Blade page routes below (everything except the OAuth/SSO endpoints) register
 | POST | `/teams/create` | `teams.store` | Store new team |
 | GET | `/teams/{team}/profile` | `teams.profile` | Team profile |
 | GET | `/teams/{team}/members` | `teams.members` | Team members |
-| GET | `/teams/{team}/domain` | `teams.domain` | Domain settings |
+| GET | `/teams/{team}/hostnames` | `teams.hostnames` | Custom hosts |
+| GET | `/teams/{team}/email-domains` | `teams.email-domains` | Email domains |
 | GET | `/teams/{team}/settings` | `teams.settings` | Team settings |
 | PUT | `/teams/switch` | `teams.switch` | Switch team |
 | PUT | `/teams/update` | `teams.update` | Update team |
@@ -506,7 +515,8 @@ $team->owner;          // Team owner
 $team->users;          // Team members
 $team->invitedUsers;   // Pending invitations
 $team->joinRequests;   // Join requests
-$team->domains;        // Federated domains
+$team->hostnames;      // Custom hosts it is served at
+$team->emailDomains;   // Email domains whose users join it
 ```
 
 ### API Usage
@@ -540,7 +550,7 @@ curl -X PUT https://yourapp.com/neev/teams/inviteUser \
 'team' => true,    // optional team sub-grouping
 ```
 
-Tenant context is resolved on each request from the `X-Tenant` header or by looking up the request host in the `domains` table — subdomains and verified custom domains both work.
+Tenant context is resolved on each request from the `X-Tenant` header, from a host under `platform_domain` (its one label is the slug), or from a verified custom host in the `hostnames` table.
 
 ### Tenant SSO
 
@@ -713,12 +723,16 @@ php artisan neev:tenant:show          # Show tenant details
 php artisan neev:team:activate        # Activate a waitlisted team
 ```
 
-### Domains & Members
+### Hostnames, Email Domains & Members
 
 ```bash
-php artisan neev:domain:add           # Add a domain
-php artisan neev:domain:verify        # Verify a domain
-php artisan neev:domain:list          # List domains
+php artisan neev:hostname:add         # Add a custom host
+php artisan neev:hostname:verify      # Verify a custom host
+php artisan neev:hostname:primary     # Make a verified host the primary
+php artisan neev:hostname:list        # List custom hosts
+php artisan neev:email-domain:add     # Add an email domain
+php artisan neev:email-domain:verify  # Verify an email domain
+php artisan neev:email-domain:list    # List email domains
 php artisan neev:member:add           # Add a member
 php artisan neev:member:remove        # Remove a member
 php artisan neev:member:list          # List members
@@ -747,6 +761,7 @@ use Illuminate\Support\Facades\Schedule;
 Schedule::command('neev:clean-login-attempts')->daily();
 Schedule::command('neev:clean-access-tokens')->daily();
 Schedule::command('neev:download-geoip')->monthly();
+Schedule::job(new \Ssntpl\Neev\Jobs\VerifyAllDomainsJob)->daily(); // re-check custom hosts and email domains
 ```
 
 ---
@@ -772,15 +787,16 @@ Schedule::command('neev:download-geoip')->monthly();
 | `teams` | Teams/organizations |
 | `team_user` | Team-user membership pivot table |
 | `team_invitations` | Pending invitations |
-| `domains` | Email domain federation |
-| `domain_rules` | Domain security rules |
+| `hostnames` | Custom hosts an owner is served at (unique across owners) |
+| `email_domains` | Email domains whose users join an owner |
+| `retired_slugs` | Slugs renamed away from, never reissued |
+| `domains` | Deprecated, read-only; removed next release |
 
 ### Tenant Tables
 
 | Table | Description |
 |-------|-------------|
 | `tenants` | Tenant organizations (isolated identity mode) |
-| `domains` | Custom tenant domains and domain federation |
 | `team_auth_settings` | Per-team auth/SSO config |
 | `tenant_auth_settings` | Per-tenant auth/SSO config (isolated mode) |
 

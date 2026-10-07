@@ -5,12 +5,9 @@ namespace Ssntpl\Neev\Tests\Unit\Models;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
-use Ssntpl\Neev\Database\Factories\DomainFactory;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Enums\OtpPurpose;
-use Ssntpl\Neev\Models\Domain;
-use Ssntpl\Neev\Models\DomainRule;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\MultiFactorAuth;
 use Ssntpl\Neev\Models\OTP;
@@ -362,39 +359,6 @@ class SimpleModelsTest extends TestCase
         $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\BelongsTo::class, $invitation->team());
         $this->assertInstanceOf(Team::class, $invitation->team);
         $this->assertSame($team->id, $invitation->team->id);
-    }
-
-    // =================================================================
-    // DomainRule Model
-    // =================================================================
-
-    public function test_domain_rule_domain_relationship(): void
-    {
-        $domain = DomainFactory::new()->create();
-
-        $rule = DomainRule::create([
-            'domain_id' => $domain->id,
-            'name' => 'mfa_required',
-            'value' => 'true',
-        ]);
-
-        $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\BelongsTo::class, $rule->domain());
-        $this->assertInstanceOf(Domain::class, $rule->domain);
-        $this->assertSame($domain->id, $rule->domain->id);
-    }
-
-    public function test_domain_rule_fillable_fields(): void
-    {
-        $domain = DomainFactory::new()->create();
-
-        $rule = DomainRule::create([
-            'domain_id' => $domain->id,
-            'name' => 'password_policy',
-            'value' => 'strict',
-        ]);
-
-        $this->assertSame('password_policy', $rule->name);
-        $this->assertSame('strict', $rule->value);
     }
 
     // =================================================================

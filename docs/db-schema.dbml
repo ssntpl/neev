@@ -5,6 +5,7 @@ Table tenants {
   id bigint [pk, increment]
   name varchar
   slug varchar [unique]
+  primary_hostname_id bigint [null, note: 'canonical custom host; null falls back to the oldest verified host, then the platform subdomain']
   activated_at timestamp [null]
   inactive_reason varchar [null]
   created_at timestamp
@@ -146,7 +147,8 @@ Table teams {
   tenant_id bigint [null, ref: > tenants.id]
   user_id bigint [ref: > users.id, note: 'owner']
   name varchar
-  slug varchar [unique, null]
+  slug varchar [null]
+  primary_hostname_id bigint [null, note: 'canonical custom host; null falls back to the oldest verified host, then the platform subdomain']
   is_public boolean [default: true]
   activated_at timestamp [null]
   inactive_reason varchar [null]
@@ -154,7 +156,7 @@ Table teams {
   updated_at timestamp
 
   indexes {
-    (tenant_id, name, user_id) [unique, note: 'one owner cannot repeat a team name within a tenant; NULL tenant_id rows are not covered, per SQL NULL semantics']
+    (tenant_id, slug) [unique, note: 'unique per tenant in isolated mode; NULL tenant_id rows (shared mode) are checked by Team\'s save, per SQL NULL semantics']
     slug
   }
 }
@@ -211,20 +213,65 @@ Table domains {
     (domain, verified_at)
   }
 
-  Note: 'Polymorphic owner: Team or Tenant'
+  Note: 'Deprecated (RFC 006): read-only, kept for this release so upgrades can copy rows into hostnames and email_domains. Neev no longer writes to it, and the Domain model refuses to save or delete. Removed in the next release. is_primary no longer picks the primary host: primary_hostname_id does'
 }
 
-Table domain_rules {
+Table hostnames {
   id bigint [pk, increment]
-  domain_id bigint [ref: > domains.id]
-  name varchar
-  value varchar [null]
+  owner_type varchar [note: 'any model: team, tenant, or the app\'s own']
+  owner_id bigint
+  host varchar [unique, note: 'canonical: lowercase, no trailing dot']
+  status varchar [default: 'pending', note: 'pending | verified | failed | disabled']
+  verification_token varchar [null, note: 'proven by a TXT record at _neev-host.<host>']
+  verified_at timestamp [null, note: 'set while the host serves']
+  verification_failed_at timestamp [null, note: 'first re-check that missed the record']
   created_at timestamp
   updated_at timestamp
 
   indexes {
-    (name, domain_id) [unique]
+    (owner_type, owner_id)
   }
+
+  Note: 'RFC 006: a custom host an owner is served at. Platform subdomains are derived from the slug and never stored'
+}
+
+Table email_domains {
+  id bigint [pk, increment]
+  owner_type varchar [note: 'any model: team, tenant, or the app\'s own']
+  owner_id bigint
+  domain varchar [note: 'canonical: lowercase, no trailing dot']
+  status varchar [default: 'pending', note: 'pending | verified | failed | disabled']
+  verification_strategy varchar [default: 'dns', note: 'dns | manual (verified from the CLI; not re-checked)']
+  verification_token varchar [null, note: 'proven by a TXT record at _neev-email.<domain>']
+  verified_at timestamp [null, note: 'set while the domain federates and enforces']
+  verification_failed_at timestamp [null, note: 'first re-check that missed the record']
+  enforce boolean [default: false, note: 'only one owner\'s verified row may enforce a domain']
+  created_at timestamp
+  updated_at timestamp
+
+  indexes {
+    (owner_type, owner_id)
+    (owner_type, owner_id, domain) [unique, note: 'unique per owner only: several owners may verify one domain']
+    (domain, verified_at)
+  }
+
+  Note: 'RFC 006: an email domain whose users belong to the owner'
+}
+
+Table retired_slugs {
+  id bigint [pk, increment]
+  owner_type varchar [note: 'morph class of the model that retired it']
+  owner_id bigint
+  slug varchar
+  created_at timestamp [note: 'when it was retired; the old host serves for neev.slug.retired_host_days after this']
+  updated_at timestamp
+
+  indexes {
+    (owner_type, owner_id)
+    (owner_type, slug)
+  }
+
+  Note: 'RFC 006: a slug its owner renamed away from. Never issued to another owner of the same kind; the owner may take it back, which deletes the row'
 }
 
 Table team_auth_settings {
@@ -278,3 +325,5 @@ Table magic_link_tokens {
 
 // Cross-table refs that can't be inline
 Ref: users.default_team_id > teams.id
+Ref: teams.primary_hostname_id > hostnames.id [delete: set null]
+Ref: tenants.primary_hostname_id > hostnames.id [delete: set null]

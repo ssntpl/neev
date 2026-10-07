@@ -186,7 +186,7 @@
                                             {{$team->user_id === $user->id ? 'Owner' : 'Member'}}
                                         </td>
                                         <td class="px-4 py-2 text-end">
-                                            @if ($team->user_id !== $user->id && !$team->hasVerifiedDomainFor($user->email))
+                                            @if ($team->user_id !== $user->id && !$team->managesAccountOf($user->email))
                                                 <form method="POST" action="{{ route('teams.leave') }}" x-data>
                                                     @csrf
                                                     @method('DELETE')

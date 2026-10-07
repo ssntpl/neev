@@ -15,7 +15,7 @@ Complete reference for all Neev configuration options in `config/neev.php`.
 Enable multi-tenant isolation. When enabled:
 - Users are scoped to a tenant (isolated identity)
 - The same email can exist in different tenants
-- The tenant is resolved before authentication (X-Tenant header, subdomain, or custom domain via the `domains` table)
+- The tenant is resolved before authentication (X-Tenant header, platform subdomain from the slug, or a verified custom host in the `hostnames` table)
 
 ### Team Management
 
@@ -29,7 +29,9 @@ Enable team/organization sub-grouping. Teams are optional in both tenant and non
 - Team switching is enabled
 - Requires `teams`, `memberships`, `team_invitations` tables
 - The team routes are registered — `/teams/*` and `/account/teams` on the web,
-  `/neev/teams/*`, `/neev/domains/*` and `/neev/changeTeamOwner` on the API
+  `/neev/teams/*`, `/neev/hostnames/{id}/*`, `/neev/email-domains/{id}/*` and
+  `/neev/changeTeamOwner` on the API (`/neev/hostnames/current` is registered
+  in every mode)
 
 With `team => false` those routes are never registered, so the paths answer 404
 and `route('teams.create')` throws. Wrap any link to them in
@@ -46,14 +48,14 @@ The two flags combine into four valid modes:
 
 The `neev:install` wizard asks exactly these two questions and sets the flags for you.
 
-> **Where did `identity_strategy` and `tenant_isolation` go?** They were collapsed into the single `tenant` flag: `tenant = true` always means isolated identity with strict scoping (no longer configurable). Subdomain suffix and custom-domain options were removed — *resolution* simply looks up the request host in the `domains` table, and the consuming app creates domain records however it wants. `platform_domain` below is not a resolution setting: it decides only whether a claimed domain has to prove ownership by DNS. See [Architecture](./architecture.md) and [docs/config-refactor.md](./config-refactor.md) for the rationale.
+> **Where did `identity_strategy` and `tenant_isolation` go?** They were collapsed into the single `tenant` flag: `tenant = true` always means isolated identity with strict scoping (no longer configurable). Subdomain suffix and custom-domain options were removed — a request host under `platform_domain` resolves by its slug, and any other host by its verified row in `hostnames`. See [Architecture](./architecture.md) and [docs/config-refactor.md](./config-refactor.md) for the rationale.
 
 ---
 
-## Platform Domains
+## Platform Domain
 
-The DNS zones this installation itself owns — the ones you hand tenant and team
-subdomains out under.
+The DNS zone this installation itself owns — the one tenant and team subdomains
+are served under.
 
 ```php
 'platform_domain' => 'otper.com',
@@ -63,39 +65,62 @@ Set it from the environment with `NEEV_PLATFORM_DOMAIN`. One zone — a tenant h
 one canonical host, so a list would leave "which host is `acme`'s?"
 ambiguous.
 
-A tenant's subdomain **is its slug**. Team `acme` is issued `acme.otper.com` and
-nothing else, so `POST {prefix}/tenant-domains` takes exactly that one claim on
-trust:
+A subdomain **is its owner's slug**, derived on every request and never stored.
+Team `acme` is served at `acme.otper.com` and nothing else. A request on that
+host resolves to the slug's owner with no `hostnames` row: a tenant in isolated
+mode, a team in shared mode. Renaming the slug moves the subdomain with it; the
+old host keeps serving for [`slug.retired_host_days`](#team-slugs).
 
-| Claimed by team `acme` | With `platform_domain => 'otper.com'` |
+| Host | With `platform_domain => 'otper.com'` |
 |---|---|
-| `acme.otper.com` | Its own — verified immediately |
-| `app.otper.com` | Not its slug — DNS verification |
-| `other.otper.com` | Another team's slug — DNS verification |
-| `eu.acme.otper.com` | Not its slug — DNS verification |
-| `otper.com` | The apex is yours, not a tenant's — DNS verification |
-| `evil-otper.com` | Somebody else's — DNS verification |
-| `ssntpl.in` | Somebody else's — DNS verification |
+| `acme.otper.com` | Served for whoever holds slug `acme` now |
+| `eu.acme.otper.com` | Names no slug — resolves to nobody |
+| `otper.com` | The apex names no owner |
+| `evil-otper.com` | Not under the zone — a custom host |
+| `ssntpl.in` | A custom host |
 
-Anchoring the claim to the claimant's own identity is the point. Auto-verifying
-*anything* under the zone would hand `app.otper.com` to whichever team owner
-asked for it first: their team becomes the resolved context for every request to
-that host, and the uniqueness rule then locks you out of your own hostname.
+Nothing under the zone can be claimed as a custom host: `claimHost()`, the API
+and `neev:hostname:add` refuse it. Platform subdomains have no TXT record and
+are never re-checked. Custom hosts outside the zone go in `hostnames` and are
+proven by DNS (see [DNS Verification](#dns-verification)).
 
-The decision is made from the host and the claiming team. Nothing in the request
-influences it, because a verified claim reserves the domain installation-wide and
-governs which team `@that-domain` signups join — letting a caller assert its own
-domain was verified would hand any team owner a takeover of any domain.
-
-The second half of this is [`slug.reserved`](#team-slugs): a host is only
-claimable if some team holds the matching slug, so reserving `app` is what makes
-`app.otper.com` unclaimable. Reserve the brand names you would not want in front
+The second half of this is [`slug.reserved`](#team-slugs): a subdomain belongs
+to whoever holds the matching slug, so reserving `app` is what keeps
+`app.otper.com` yours. Reserve the brand names you would not want in front
 of your domain, too — a tenant slug of `google` yields `google.otper.com` on your
 certificate and your domain, which is a convincing thing to put in a phishing
 email.
 
-Leave it unset and nothing auto-verifies: every domain goes through DNS. That is
-the right default for an installation that hands out no subdomains of its own.
+Leave it unset if the installation hands out no subdomains. Owners are then
+reached only through the `X-Tenant` header or a verified custom host.
+
+---
+
+## DNS Verification
+
+```php
+'dns_verification' => [
+    'unverify_after_failed_days' => 7,
+    'legacy_record' => env('NEEV_DNS_LEGACY_RECORD', true),
+],
+```
+
+A custom host is proven with a TXT record at `_neev-host.<host>` and is unique
+across every owner. An email domain is proven with one at
+`_neev-email.<domain>`. `VerifyAllDomainsJob` re-checks both; schedule it
+daily.
+
+| Option | Description |
+|--------|-------------|
+| `unverify_after_failed_days` | Days a verified row's record may be missing before it is unverified (`DomainUnverified`): a host stops serving, an email domain stops federating, enforcing and deactivating. Publishing the record again restores it. Still missing at twice this, the row is deleted (`DomainRemoved`), freeing the host for another owner and giving back the accounts an email domain deactivated. `0` never unverifies or deletes. |
+| `legacy_record` | Lets a row copied from the deprecated `domains` table also pass on the record published for it there, `_neev-verification.<name>`. Checked only when the row's own record misses. Set `NEEV_DNS_LEGACY_RECORD=false` once the new records are published. Removed with `domains` in the next release. |
+
+The old record proves a host and an email domain at once, which is why it is
+kept for this release only. Publish `_neev-host` and `_neev-email` records for
+copied rows before turning it off.
+
+An email domain verified from the CLI (`--force`, `--skip-verification`) is
+`manual` and is not re-checked.
 
 ---
 
@@ -164,7 +189,7 @@ App-wide social login providers. Uncomment providers you want to enable. Each re
 'relying_party_id' => parse_url(config('app.url'), PHP_URL_HOST),
 ```
 
-The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host of `app.url`. This is the relying party for the hosts the platform serves itself — the ones that resolve no tenant or team context. Every **verified host of a resolved context** is its own relying party instead, whether it is a custom domain (`acme.com`) or a subdomain of this one (`acme.example.com`), resolved per request by `RelyingPartyResolver`; such a host needs no `allowed_origins` entry, and a credential enrolled on it is a different credential from one enrolled here. See [Supported Domains](./authentication.md#supported-domains).
+The domain that passkeys are bound to (e.g. `example.com`). Defaults to the host of `app.url`. This is the relying party for the hosts the platform serves itself — the ones that resolve no tenant or team context. Every **host of a resolved context** is its own relying party instead, whether it is a verified custom host (`acme.com`) or its platform subdomain (`acme.example.com`, derived from the slug), resolved per request by `RelyingPartyResolver`; such a host needs no `allowed_origins` entry, and a credential enrolled on it is a different credential from one enrolled here. See [Supported Domains](./authentication.md#supported-domains).
 
 ### WebAuthn Allowed Origins
 
@@ -178,7 +203,7 @@ Origins permitted to complete WebAuthn ceremonies. List every allowed origin for
 
 The list applies on **every** relying party — a tenant's verified custom domain is added to it, never substituted for it. That is where native-app origins go: an Android app's `android:apk-key-hash:…` facet listed once here works on the platform domain and on every tenant's domain. See [Origins](./authentication.md#origins).
 
-Subdomain matching is **off on every relying party** and there is no config key to turn it on — a compromised sibling host would otherwise be able to complete a ceremony as any user. List your own operational hosts (`app.`, `login.`) here verbatim; a tenant's own hosts, platform subdomain or custom domain, are admitted from its verified `domains` rows and need no entry. To widen the check, override `allowSubdomains()` in a subclass of `RelyingPartyResolver` — see [Origins](./authentication.md#origins).
+Subdomain matching is **off on every relying party** and there is no config key to turn it on — a compromised sibling host would otherwise be able to complete a ceremony as any user. List your own operational hosts (`app.`, `login.`) here verbatim; a tenant's own hosts need no entry: its platform subdomain is derived from its slug, and its custom hosts are admitted from its verified `hostnames` rows. To widen the check, override `allowSubdomains()` in a subclass of `RelyingPartyResolver` — see [Origins](./authentication.md#origins).
 
 ---
 
@@ -496,12 +521,14 @@ first — see [Password History](./security.md#password-history).
 
 ## Team Slugs
 
-Only used when `team => true`.
+Used for team slugs when `team => true`, and for tenant slugs: `reserved` and
+`retired_host_days` apply to both.
 
 ```php
 'slug' => [
     'min_length' => 2,
     'max_length' => 63,
+    'retired_host_days' => 90,
     'reserved' => ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn', 'assets', 'static'],
 ],
 ```
@@ -510,10 +537,11 @@ Only used when `team => true`.
 |--------|-------------|
 | `min_length` | Minimum slug length |
 | `max_length` | Maximum slug length (63 for DNS compliance) |
+| `retired_host_days` | Days a renamed owner's old subdomain keeps serving. A browser navigation there gets a 302 to the current host; other requests are served in place with `X-Tenant-Slug`. The old slug itself is never issued to another owner, however long this is |
 | `reserved` | Slugs that cannot be used by teams |
 
 A slug is also the host handed out under
-[`platform_domain`](#platform-domains), so this list is what keeps your own
+[`platform_domain`](#platform-domain), so this list is what keeps your own
 operational names out of tenants' hands: reserving `app` is what makes
 `app.otper.com` unclaimable.
 
@@ -550,6 +578,13 @@ return [
     // Identity
     'tenant' => false,
     'team' => true,
+
+    // Platform subdomains and DNS re-verification
+    'platform_domain' => env('NEEV_PLATFORM_DOMAIN'),
+    'dns_verification' => [
+        'unverify_after_failed_days' => 7,
+        'legacy_record' => env('NEEV_DNS_LEGACY_RECORD', true),
+    ],
 
     // Routes
     'route_prefix' => env('NEEV_ROUTE_PREFIX', 'neev'),
@@ -626,6 +661,7 @@ return [
     'slug' => [
         'min_length' => 2,
         'max_length' => 63,
+        'retired_host_days' => 90,
         'reserved' => ['www', 'api', 'admin', 'app', 'mail', 'ftp', 'cdn', 'assets', 'static'],
     ],
 
@@ -642,6 +678,8 @@ return [
 
 | Variable | Description | Default |
 |----------|-------------|---------|
+| `NEEV_PLATFORM_DOMAIN` | DNS zone tenant and team subdomains are served under | unset (no subdomains) |
+| `NEEV_DNS_LEGACY_RECORD` | Accept the old `_neev-verification` record for rows copied from `domains` | `true` |
 | `NEEV_ROUTE_PREFIX` | Prefix for machine-facing routes (API, OAuth, SSO, csrf-cookie) | `neev` |
 | `NEEV_UI` | Frontend starter kit: `blade` or unset (headless) | unset (headless) |
 | `NEEV_JWT_SECRET` | Secret for signing MFA JWTs | Falls back to `APP_KEY` |
@@ -656,7 +694,8 @@ The following keys no longer exist in `config/neev.php`. Where behaviour moved, 
 
 | Removed key | Replacement |
 |-------------|-------------|
-| `identity_strategy`, `tenant_isolation`, `tenant_isolation_options` | Single `tenant` flag; domain resolution via `domains` table |
+| `identity_strategy`, `tenant_isolation`, `tenant_isolation_options` | Single `tenant` flag; host resolution via `platform_domain` and the `hostnames` table |
+| `platform_domains` (list) | `platform_domain` (one zone) |
 | `tenant_auth`, `tenant_auth_options` | Per-entity settings in `tenant_auth_settings` / `team_auth_settings` DB tables |
 | `email_verified` | Opt-in `neev-verified-email` middleware alias (`EnsureEmailIsVerified`) |
 | `require_company_email`, `free_email_domains`, `domain_federation` | Removed from Neev (app-level or separate package concern) |

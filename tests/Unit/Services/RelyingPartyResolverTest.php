@@ -5,10 +5,11 @@ namespace Ssntpl\Neev\Tests\Unit\Services;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Ssntpl\Neev\Database\Factories\DomainFactory;
+use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
+use Ssntpl\Neev\Database\Factories\HostnameFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
-use Ssntpl\Neev\Models\Domain;
+use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\Services\RelyingPartyResolver;
 use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Tests\TestCase;
@@ -26,7 +27,10 @@ class RelyingPartyResolverTest extends TestCase
     protected function setUp(): void
     {
         parent::setUp();
-        config(['neev.relying_party_id' => 'example.com']);
+        config([
+            'neev.relying_party_id' => 'example.com',
+            'neev.platform_domain' => 'example.com',
+        ]);
         $this->tenantResolver = app(TenantResolver::class);
         $this->resolver = new RelyingPartyResolver($this->tenantResolver);
     }
@@ -69,7 +73,7 @@ class RelyingPartyResolverTest extends TestCase
         return (new RelyingPartyResolver($this->tenantResolver))->rpId();
     }
 
-    /** A team owning one verified domain. */
+    /** A team owning one verified hostname. */
     private function teamOwning(string $host): object
     {
         $team = TeamFactory::new()->create();
@@ -78,26 +82,35 @@ class RelyingPartyResolverTest extends TestCase
         return $team;
     }
 
-    private function domainFor(object $owner, string $host, bool $primary = false): Domain
+    /**
+     * A team served at `<slug>.example.com`: a platform subdomain follows the
+     * slug and holds no row.
+     */
+    private function teamAt(string $slug, array $attributes = []): object
     {
-        return DomainFactory::new()->verified()->create([
-            'owner_type' => $owner->getContextType(),
-            'owner_id' => $owner->getKey(),
-            'domain' => $host,
-            'is_primary' => $primary,
-        ]);
+        return TeamFactory::new()->create(['slug' => $slug] + $attributes);
     }
 
-    // ---------------------------------------------------------------
-    // The context's domain
-    // ---------------------------------------------------------------
-
-    public function test_the_contexts_domain_is_the_relying_party(): void
+    private function domainFor(object $owner, string $host, bool $primary = false): Hostname
     {
-        $this->enableTeams();
-        $this->teamOwning('acme.com');
+        $hostname = HostnameFactory::new()->forOwner($owner)->verified()->create(['host' => $host]);
 
-        $this->assertSame('acme.com', $this->forHost('acme.com'));
+        if ($primary) {
+            $owner->makePrimaryHostname($hostname);
+        }
+
+        return $hostname;
+    }
+
+    private function pendingDomainFor(object $owner, string $host): Hostname
+    {
+        return HostnameFactory::new()->forOwner($owner)->create(['host' => $host]);
+    }
+
+    /** A verified email domain: federation, not a host anything is served at. */
+    private function federate(object $owner, string $domain): void
+    {
+        EmailDomainFactory::new()->forOwner($owner)->verified()->create(['domain' => $domain]);
     }
 
     /**
@@ -157,10 +170,8 @@ class RelyingPartyResolverTest extends TestCase
     {
         $this->enableTeams();
         $team = TeamFactory::new()->create();
-        DomainFactory::new()->create([
-            'owner_type' => $team->getContextType(), 'owner_id' => $team->getKey(),
-            'domain' => 'acme.com', 'is_primary' => true,
-        ]);
+        $hostname = $this->pendingDomainFor($team, 'acme.com');
+        $team->forceFill(['primary_hostname_id' => $hostname->id])->save();
 
         $this->assertSame('example.com', $this->forHost('acme.com'));
     }
@@ -173,22 +184,20 @@ class RelyingPartyResolverTest extends TestCase
     {
         $this->enableTeams();
         $team = $this->teamOwning('acme.com');
-        DomainFactory::new()->create([
-            'owner_type' => $team->getContextType(), 'owner_id' => $team->getKey(),
-            'domain' => 'acme.io', 'is_primary' => true,
-        ]);
+        $hostname = $this->pendingDomainFor($team, 'acme.io');
+        $team->forceFill(['primary_hostname_id' => $hostname->id])->save();
 
         $this->assertSame('acme.com', $this->forHost('acme.com'));
     }
 
-    public function test_a_revoked_domain_stops_granting_a_relying_party(): void
+    public function test_a_disabled_domain_stops_granting_a_relying_party(): void
     {
         $this->enableTeams();
         $this->teamOwning('acme.com');
 
         $this->assertSame('acme.com', $this->forHost('acme.com'));
 
-        Domain::where('domain', 'acme.com')->update(['verified_at' => null]);
+        Hostname::where('host', 'acme.com')->first()->disable();
 
         $this->resolveOn('acme.com');
         $this->assertSame('example.com', (new RelyingPartyResolver($this->tenantResolver))->rpId());
@@ -218,10 +227,10 @@ class RelyingPartyResolverTest extends TestCase
      * against a credential enrolled on a sibling's, with the browser showing
      * the platform's name throughout.
      */
-    public function test_a_verified_platform_subdomain_is_its_own_relying_party(): void
+    public function test_a_platform_subdomain_is_its_own_relying_party(): void
     {
         $this->enableTeams();
-        $this->teamOwning('acme.example.com');
+        $this->teamAt('acme');
 
         $this->assertSame('acme.example.com', $this->forHost('acme.example.com'));
     }
@@ -230,7 +239,7 @@ class RelyingPartyResolverTest extends TestCase
     public function test_a_platform_host_with_no_context_keeps_the_configured_relying_party(): void
     {
         $this->enableTeams();
-        $this->teamOwning('acme.example.com');
+        $this->teamAt('acme');
 
         $this->assertSame('example.com', $this->forHost('app.example.com'));
     }
@@ -346,8 +355,8 @@ class RelyingPartyResolverTest extends TestCase
     }
 
     /**
-     * In isolated mode a team's domain resolves that team's tenant, so the
-     * relying party is read off the tenant the domain routes to.
+     * In isolated mode a team's hostname resolves that team's tenant, and the
+     * relying party is the host the tenant was reached on.
      */
     public function test_tenants_and_teams_resolves_through_the_tenant(): void
     {
@@ -356,9 +365,9 @@ class RelyingPartyResolverTest extends TestCase
         $tenant = TenantFactory::new()->create();
         $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
         $this->domainFor($team, 'acme.com');
-        $this->domainFor($tenant, 'acme.com');
 
         $this->assertSame('acme.com', $this->forHost('acme.com'));
+        $this->assertTrue($tenant->is($this->tenantResolver->resolvedContext()));
     }
 
     /**
@@ -386,7 +395,7 @@ class RelyingPartyResolverTest extends TestCase
         $this->enableTeams();
         $tenant = TenantFactory::new()->create();
         $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
-        $this->domainFor($team, 'acme.com')->forceFill(['verified_at' => null])->save();
+        $this->pendingDomainFor($team, 'acme.com');
 
         $this->assertSame('example.com', $this->forHost('acme.com'));
     }
@@ -527,11 +536,11 @@ class RelyingPartyResolverTest extends TestCase
      * platform subdomain, and the only origin admitted beyond the configured
      * list is that same host.
      */
-    public function test_a_verified_platform_subdomain_is_an_explicit_origin(): void
+    public function test_a_platform_subdomain_is_an_explicit_origin(): void
     {
         $this->enableTeams();
         config(['neev.allowed_origins' => ['https://example.com']]);
-        $this->teamOwning('acme.example.com');
+        $this->teamAt('acme');
         $this->resolveOn('acme.example.com');
 
         $this->assertSame('acme.example.com', $this->resolver->rpId());
@@ -541,58 +550,53 @@ class RelyingPartyResolverTest extends TestCase
         );
     }
 
-    /** One tenant's verified subdomain does not admit a sibling. */
+    /** One tenant's subdomain does not admit a sibling. */
     public function test_a_sibling_platform_subdomain_is_not_an_allowed_origin(): void
     {
         $this->enableTeams();
-        $this->teamOwning('acme.example.com');
+        $this->teamAt('acme');
+        $this->teamAt('other');
         $this->resolveOn('acme.example.com');
 
         $this->assertNotContains('https://other.example.com', $this->resolver->allowedOrigins());
     }
 
-    public function test_an_unverified_platform_subdomain_is_not_an_allowed_origin(): void
+    public function test_an_unverified_hostname_is_not_an_allowed_origin(): void
     {
         $this->enableTeams();
-        $team = $this->teamOwning('acme.example.com');
-        DomainFactory::new()->create([
-            'owner_type' => $team->getContextType(),
-            'owner_id' => $team->getKey(),
-            'domain' => 'pending.example.com',
-            'verified_at' => null,
-        ]);
+        $team = $this->teamAt('acme');
+        $this->pendingDomainFor($team, 'pending.acme.com');
         $this->resolveOn('acme.example.com');
 
-        $this->assertNotContains('https://pending.example.com', $this->resolver->allowedOrigins());
+        $this->assertNotContains('https://pending.acme.com', $this->resolver->allowedOrigins());
     }
 
     /**
-     * Hosts in the platform's zone all share the configured relying party, so
-     * only the one the request names is admitted — a sibling the same context
+     * Only the host the request names is admitted — another the same context
      * happens to hold is not, or a ceremony run there would complete against a
      * credential enrolled here.
      */
     public function test_only_the_platform_host_the_request_names_is_admitted(): void
     {
         $this->enableTeams();
-        $team = $this->teamOwning('acme.example.com');
-        $this->domainFor($team, 'eu.acme.example.com');
+        $team = $this->teamAt('acme');
+        $this->domainFor($team, 'eu.acme.com');
         $this->resolveOn('acme.example.com');
 
         $origins = $this->resolver->allowedOrigins();
         $this->assertContains('https://acme.example.com', $origins);
-        $this->assertNotContains('https://eu.acme.example.com', $origins);
+        $this->assertNotContains('https://eu.acme.com', $origins);
     }
 
     /**
-     * The sharp case: platform subdomains are verified on sight, so one tenant
-     * must never have another's host admitted for the shared relying party.
+     * The sharp case: platform subdomains need no proof, so one tenant must
+     * never have another's host admitted.
      */
     public function test_another_tenants_platform_host_is_never_admitted(): void
     {
         $this->enableTeams();
-        $this->teamOwning('victim.example.com');
-        $this->teamOwning('evil.example.com');
+        $this->teamAt('victim');
+        $this->teamAt('evil');
 
         $this->resolveOn('victim.example.com');
 
@@ -601,13 +605,12 @@ class RelyingPartyResolverTest extends TestCase
 
     /**
      * A client calling an API elsewhere with `X-Tenant` names its own origin,
-     * and that is the host admitted — not whatever platform-zone rows the
-     * context holds.
+     * and that is the host admitted.
      */
     public function test_platform_origins_follow_the_origin_not_the_context(): void
     {
         $this->enableTeams();
-        $team = $this->teamOwning('acme.example.com');
+        $team = $this->teamAt('acme');
 
         $this->resolveOn('api.example.com', $team, origin: 'acme.example.com');
 
@@ -621,7 +624,7 @@ class RelyingPartyResolverTest extends TestCase
     public function test_an_origin_the_context_does_not_hold_admits_nothing(): void
     {
         $this->enableTeams();
-        $team = $this->teamOwning('acme.example.com');
+        $team = $this->teamAt('acme');
 
         $this->resolveOn('api.example.com', $team);
 
@@ -637,8 +640,7 @@ class RelyingPartyResolverTest extends TestCase
     {
         $this->enableTeams();
         config(['neev.allowed_origins' => ['https://example.com']]);
-        $team = TeamFactory::new()->create();
-        $this->domainFor($team, 'acme.example.com');
+        $team = $this->teamAt('acme');
         $this->domainFor($team, 'acme.com', primary: true);
 
         $this->resolveOn('acme.com');
@@ -651,16 +653,18 @@ class RelyingPartyResolverTest extends TestCase
     }
 
     /**
-     * A platform-zone primary is unusable from `acme.com`, so the tenant's own
-     * domain takes the relying party there.
+     * With no primary the platform subdomain is the canonical host, which is
+     * unusable from `acme.com`, so the tenant's own hostname takes the
+     * relying party there.
      */
-    public function test_a_verified_custom_domain_takes_the_relying_party_from_a_platform_primary(): void
+    public function test_a_verified_custom_domain_is_its_own_relying_party(): void
     {
         $this->enableTeams();
         config(['neev.allowed_origins' => ['https://example.com']]);
-        $team = TeamFactory::new()->create();
-        $this->domainFor($team, 'acme.example.com', primary: true);
+        $team = $this->teamAt('acme');
         $this->domainFor($team, 'acme.com');
+
+        $this->assertSame('acme.com', $team->canonicalHost(), 'A verified custom host wins over the platform host.');
 
         $this->resolveOn('acme.com');
 
@@ -677,29 +681,33 @@ class RelyingPartyResolverTest extends TestCase
     // ---------------------------------------------------------------
 
     /**
-     * `domains` is primarily the federation registry: `acme.com` may be there
-     * only so `@acme.com` staff auto-join, with nothing served on it. Taking
-     * it would throw `SecurityError` on the host the team is reached on.
+     * An email domain is federation only: `acme.com` may be verified so
+     * `@acme.com` staff auto-join, with nothing served on it. Taking it would
+     * throw `SecurityError` on the host the team is reached on.
      */
     public function test_a_federated_domain_does_not_displace_the_serving_host(): void
     {
         $this->enableTeams();
-        $team = TeamFactory::new()->create();
-        $this->domainFor($team, 'acme.example.com');
-        $this->domainFor($team, 'acme.com');
+        $team = $this->teamAt('acme');
+        $this->federate($team, 'acme.com');
 
         $this->assertSame('acme.example.com', $this->forHost('acme.example.com'));
     }
 
-    /** Marking it primary does not change that. */
-    public function test_a_primary_federated_domain_does_not_displace_it_either(): void
+    /**
+     * Nor is it a relying party of its own: it routes nothing, and a context
+     * named by header on it holds no hostname for it.
+     */
+    public function test_a_federated_domain_is_never_a_relying_party(): void
     {
         $this->enableTeams();
-        $team = TeamFactory::new()->create();
-        $this->domainFor($team, 'acme.example.com');
-        $this->domainFor($team, 'acme.com', primary: true);
+        $team = $this->teamAt('acme');
+        $this->federate($team, 'acme.com');
 
-        $this->assertSame('acme.example.com', $this->forHost('acme.example.com'));
+        $this->assertSame('example.com', $this->forHost('acme.com'));
+
+        $this->resolveOn('api.platform.test', $team, origin: 'acme.com');
+        $this->assertSame('example.com', $this->resolver->rpId());
     }
 
     /** The origins stay whole too: the platform host, not the federated one. */
@@ -707,9 +715,8 @@ class RelyingPartyResolverTest extends TestCase
     {
         $this->enableTeams();
         config(['neev.allowed_origins' => ['https://example.com']]);
-        $team = TeamFactory::new()->create();
-        $this->domainFor($team, 'acme.example.com');
-        $this->domainFor($team, 'acme.com');
+        $team = $this->teamAt('acme');
+        $this->federate($team, 'acme.com');
 
         $this->resolveOn('acme.example.com');
 
@@ -729,9 +736,8 @@ class RelyingPartyResolverTest extends TestCase
     {
         $this->enableTeams();
         config(['app.name' => 'Platform']);
-        $team = TeamFactory::new()->create(['name' => 'Acme Corp']);
-        $this->domainFor($team, 'acme.example.com');
-        $this->domainFor($team, 'acme.com');
+        $team = $this->teamAt('acme', ['name' => 'Acme Corp']);
+        $this->federate($team, 'acme.com');
 
         $this->resolveOn('acme.example.com');
 
@@ -739,13 +745,12 @@ class RelyingPartyResolverTest extends TestCase
         $this->assertSame('Acme Corp', $this->resolver->rpName());
     }
 
-    /** The other half: on the custom domain that domain takes it, unpromoted. */
+    /** The other half: on a custom hostname that host takes it, unpromoted. */
     public function test_a_request_served_on_the_custom_domain_still_uses_it(): void
     {
         $this->enableTeams();
         config(['neev.allowed_origins' => ['https://example.com']]);
-        $team = TeamFactory::new()->create();
-        $this->domainFor($team, 'acme.example.com');
+        $team = $this->teamAt('acme');
         $this->domainFor($team, 'acme.com');
 
         $this->resolveOn('acme.com');
@@ -773,8 +778,7 @@ class RelyingPartyResolverTest extends TestCase
     public function test_a_header_resolved_context_uses_the_browsers_origin(): void
     {
         $this->enableTeams();
-        $team = TeamFactory::new()->create();
-        $this->domainFor($team, 'acme.example.com');
+        $team = $this->teamAt('acme');
         $this->domainFor($team, 'acme.com');
 
         $this->resolveOn('api.platform.test', $team, origin: 'acme.com');
@@ -789,8 +793,7 @@ class RelyingPartyResolverTest extends TestCase
     public function test_a_header_resolved_context_on_its_platform_host_uses_that_host(): void
     {
         $this->enableTeams();
-        $team = TeamFactory::new()->create();
-        $this->domainFor($team, 'acme.example.com');
+        $team = $this->teamAt('acme');
         $this->domainFor($team, 'acme.com');
 
         $this->resolveOn('api.platform.test', $team, origin: 'acme.example.com');
@@ -807,8 +810,8 @@ class RelyingPartyResolverTest extends TestCase
     public function test_one_tenants_platform_host_cannot_stand_in_for_another(): void
     {
         $this->enableTeams();
-        $this->teamOwning('victim.example.com');
-        $evil = $this->teamOwning('evil.example.com');
+        $this->teamAt('victim');
+        $evil = $this->teamAt('evil');
 
         $this->resolveOn('evil.example.com', $evil);
 
