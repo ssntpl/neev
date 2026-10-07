@@ -4,11 +4,39 @@ namespace Ssntpl\Neev\Traits;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Support\Facades\DB;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
+use Ssntpl\Neev\Scopes\TeamTenantScope;
 
 trait HasTeams
 {
+    /**
+     * Deleting a user would let the database cascade their teams away
+     * without Eloquent, so the teams' slugs would not retire (RetiresSlugs)
+     * and TeamDeleted would not fire. Delete them through the model first.
+     * A soft delete keeps the user's row, and so their teams.
+     */
+    public static function bootHasTeams(): void
+    {
+        static::deleting(function (self $user) {
+            if (method_exists($user, 'isForceDeleting') && ! $user->isForceDeleting()) {
+                return;
+            }
+
+            $user->ownedTeams()->withoutGlobalScope(TeamTenantScope::class)->get()
+                ->each(fn (Team $team) => $team->delete());
+        });
+    }
+
+    /**
+     * Delete the user and the teams they own together.
+     */
+    public function delete()
+    {
+        return DB::transaction(fn () => parent::delete());
+    }
+
     /**
      * Get the user's default team — the team to land on after login
      * when no team context is provided in the request.

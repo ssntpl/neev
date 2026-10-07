@@ -54,9 +54,13 @@ class UserAuthController extends Controller
                 return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
             }
             $invitation = TeamInvitation::find($request->id);
+            // The account registers in the tenant this request resolved, so
+            // an invitation to another tenant's team could never be accepted
+            // here: say so now rather than after the form is filled in.
             if (!$invitation
                 || !$invitation->tokenMatches((string) $request->token)
-                || $invitation->isExpired()) {
+                || $invitation->isExpired()
+                || !$invitation->teamInTenant(app(TenantResolver::class)->currentId())) {
                 return back()->withErrors(['message' => 'Invalid or expired invitation link.']);
             }
             return view('neev::auth.register', ['id' => $request->id, 'token' => $request->token, 'email' => $invitation->email]);

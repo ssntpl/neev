@@ -32,12 +32,6 @@ class HostnameApiTest extends TestCase
         $app['config']->set('neev.team', true);
     }
 
-    protected function setUp(): void
-    {
-        parent::setUp();
-        $this->enableTenantIsolation();
-    }
-
     protected function tearDown(): void
     {
         FakeDns::reset();
@@ -47,17 +41,10 @@ class HostnameApiTest extends TestCase
 
     protected function authenticatedUser(): array
     {
-        // Create a team to serve as the tenant context
+        // Shared mode: the user is a platform user, and a member of a team
+        // of their own.
         $team = TeamFactory::new()->create();
-
-        // Set tenant context so TenantScope can resolve queries
-        $resolver = app(TenantResolver::class);
-        $resolver->setCurrentTenant($team);
-
-        // Create user with proper tenant_id
-        $user = User::factory()->create(['tenant_id' => $team->id]);
-
-        // Add the user as a member of the tenant team (required by EnsureTenantMembership)
+        $user = User::factory()->create();
         $team->allUsers()->attach($user, ['joined' => true]);
 
         $token = $user->createLoginToken(60);
@@ -299,6 +286,22 @@ class HostnameApiTest extends TestCase
             ->assertCreated();
 
         $this->assertTrue(Hostname::forHost('app.example.com')->sole()->isOwnedBy($team));
+    }
+
+    /** In isolated mode a team's host would never route (RFC 006 Q5). */
+    public function test_a_team_cannot_add_a_host_in_isolated_mode(): void
+    {
+        $this->enableTenantIsolation();
+        [$user, $token] = $this->authenticatedUser();
+        $team = TeamFactory::new()->create(['user_id' => $user->id]);
+        $team->allUsers()->attach($user, ['joined' => true]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->postJson('/neev/teams/' . $team->id . '/hostnames', ['host' => 'app.example.com'])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['host' => 'add it to the tenant']);
+
+        $this->assertSame(0, Hostname::count());
     }
 
     public function test_add_duplicate_host_fails(): void
@@ -861,6 +864,7 @@ class HostnameApiTest extends TestCase
     public function test_current_returns_a_tenant_context(): void
     {
         // Under isolation the resolved context is a Tenant, not a Team.
+        $this->enableTenantIsolation();
         $tenant = Tenant::create(['name' => 'Acme', 'slug' => 'acme-' . uniqid()]);
 
         $resolver = Mockery::mock(TenantResolver::class)->shouldIgnoreMissing();

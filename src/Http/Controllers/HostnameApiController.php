@@ -6,6 +6,7 @@ use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 use Ssntpl\Neev\Exceptions\HostnameTakenException;
 use Ssntpl\Neev\Http\Controllers\Concerns\AuthorizesDomainOwners;
 use Ssntpl\Neev\Models\Hostname;
@@ -107,7 +108,7 @@ class HostnameApiController extends Controller
 
         try {
             $hostname = $owner->claimHost($request->host);
-        } catch (HostnameTakenException $e) {
+        } catch (HostnameTakenException|InvalidArgumentException $e) {
             throw ValidationException::withMessages(['host' => $e->getMessage()]);
         }
 

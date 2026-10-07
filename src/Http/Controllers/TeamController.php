@@ -321,13 +321,14 @@ class TeamController extends Controller
 
                 // As in the API twin: for a signed-in account the proof that
                 // the invitation reached this inbox is a verified address.
+                $team = $invitation && $user ? $invitation->teamFor($user) : null;
                 if (!$invitation
                     || !$user
                     || $user->email !== $invitation->email
-                    || !$user->hasVerifiedEmail()) {
+                    || !$user->hasVerifiedEmail()
+                    || !$team) {
                     return back()->withErrors(['message' => 'You cannot perform this action on this team.']);
                 }
-                $team = $invitation->team;
                 if ($request->action == 'reject') {
                     $invitation->delete();
                     return back()->with('status', 'Invitation Revoked Successfully');

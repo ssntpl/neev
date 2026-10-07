@@ -353,14 +353,15 @@ class TeamApiController extends Controller
                 // somebody typed, and registration hands out a token for it
                 // straight away, so without this an attacker could register
                 // an invited address and accept in its name.
+                $team = $invitation?->teamFor($user);
                 if (!$invitation
                     || $user->email !== $invitation->email
-                    || !$user->hasVerifiedEmail()) {
+                    || !$user->hasVerifiedEmail()
+                    || !$team) {
                     return response()->json([
                         'message' => 'Invitation not found',
                     ], 400);
                 }
-                $team = $invitation->team;
                 if ($request->action == 'reject') {
                     $invitation->delete();
                     return response()->json([

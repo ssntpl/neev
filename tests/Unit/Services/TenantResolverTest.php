@@ -77,6 +77,25 @@ class TenantResolverTest extends TestCase
         $this->assertSame($team->id, $context->getContextId());
     }
 
+    /**
+     * In isolated mode a team is a path inside its tenant, not a host (RFC 006
+     * Q5): a verified hostname it holds resolves neither it nor its tenant.
+     */
+    public function test_isolated_mode_ignores_a_team_owned_domain(): void
+    {
+        $this->enableTenantIsolation();
+        config(['neev.team' => true]);
+
+        $tenant = TenantFactory::new()->create(['slug' => 'acme']);
+        $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
+        HostnameFactory::new()->verified()->create([
+            'owner_type' => 'team', 'owner_id' => $team->id,
+            'host' => 'portal.acme.test',
+        ]);
+
+        $this->assertNull($this->resolver->resolve(Request::create('http://portal.acme.test/')));
+    }
+
     public function test_shared_mode_ignores_an_unverified_team_domain(): void
     {
         config(['neev.tenant' => false, 'neev.team' => true]);

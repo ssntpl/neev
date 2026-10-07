@@ -9,7 +9,9 @@ use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Schema;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
+use Ssntpl\Neev\Database\Factories\UserFactory;
 use Ssntpl\Neev\Events\SlugChanged;
+use Ssntpl\Neev\Events\TeamDeleted;
 use Ssntpl\Neev\Exceptions\SlugUnavailableException;
 use Ssntpl\Neev\Models\RetiredSlug;
 use Ssntpl\Neev\Models\Team;
@@ -98,6 +100,73 @@ class RetiredSlugTest extends TestCase
 
         $this->assertSame('acme', $team->fresh()->slug);
         $this->assertSame(['acme-corp'], RetiredSlug::pluck('slug')->all());
+    }
+
+    public function test_deleting_a_team_retires_its_slug(): void
+    {
+        $team = TeamFactory::new()->create(['slug' => 'acme']);
+        $id = $team->id;
+
+        $team->delete();
+
+        $retired = RetiredSlug::sole();
+        $this->assertSame('team', $retired->owner_type);
+        $this->assertSame($id, $retired->owner_id);
+        $this->assertSame('acme', $retired->slug);
+        $this->assertSame('acme-1', SlugHelper::generate('Acme'));
+
+        $this->expectException(SlugUnavailableException::class);
+
+        TeamFactory::new()->create(['slug' => 'acme']);
+    }
+
+    public function test_deleting_a_renamed_team_keeps_its_old_slugs_retired(): void
+    {
+        $team = TeamFactory::new()->create(['slug' => 'acme']);
+        $team->update(['slug' => 'acme-corp']);
+
+        $team->delete();
+
+        $this->assertEqualsCanonicalizing(['acme', 'acme-corp'], RetiredSlug::pluck('slug')->all());
+        $other = TeamFactory::new()->create(['slug' => 'other']);
+
+        foreach (['acme', 'acme-corp'] as $slug) {
+            try {
+                $other->update(['slug' => $slug]);
+                $this->fail("Another team took the deleted team's {$slug}.");
+            } catch (SlugUnavailableException) {
+            }
+        }
+    }
+
+    public function test_deleting_a_user_retires_the_slugs_of_the_teams_they_own(): void
+    {
+        Event::fake([TeamDeleted::class]);
+        $user = UserFactory::new()->create();
+        $team = TeamFactory::new()->create(['slug' => 'acme', 'user_id' => $user->id]);
+        TeamFactory::new()->create(['slug' => 'kept']);
+
+        $user->delete();
+
+        $this->assertModelMissing($team);
+        $this->assertSame(['acme'], RetiredSlug::pluck('slug')->all());
+        Event::assertDispatched(TeamDeleted::class, fn (TeamDeleted $e) => $e->team->is($team));
+
+        $this->expectException(SlugUnavailableException::class);
+
+        TeamFactory::new()->create(['slug' => 'acme']);
+    }
+
+    public function test_deleting_a_tenant_retires_its_slug(): void
+    {
+        TenantFactory::new()->create(['slug' => 'acme'])->delete();
+
+        $this->assertSame('tenant', RetiredSlug::sole()->owner_type);
+        $this->assertSame('acme-1', SlugHelper::generateForTenant('Acme'));
+
+        $this->expectException(SlugUnavailableException::class);
+
+        TenantFactory::new()->create(['slug' => 'acme']);
     }
 
     public function test_a_generated_slug_skips_a_retired_one(): void

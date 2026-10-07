@@ -5,6 +5,7 @@ namespace Ssntpl\Neev\Tests\Feature\Teams;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
@@ -223,6 +224,22 @@ class TeamWebAuthorizationTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertDatabaseMissing('team_invitations', ['id' => $invitation->id]);
+    }
+
+    public function test_a_platform_user_cannot_accept_an_invitation_to_a_tenants_team(): void
+    {
+        $this->enableTenantIsolation();
+        $global = User::factory()->create();
+        $tenant = TenantFactory::new()->create();
+        $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
+        $invitation = $team->invitations()->create(['email' => $global->email, 'expires_at' => now()->addDay()]);
+
+        $this->actingAs($global)
+            ->from(config('neev.home'))
+            ->put(route('teams.invite.action'), ['invitation_id' => $invitation->id, 'action' => 'accept'])
+            ->assertSessionHasErrors('message');
+
+        $this->assertDatabaseMissing('team_user', ['team_id' => $team->id, 'user_id' => $global->id]);
     }
 
     // -----------------------------------------------------------------

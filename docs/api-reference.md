@@ -1978,6 +1978,11 @@ Or for email invitations:
 }
 ```
 
+This answers `400 Invitation not found` unless the invitation is addressed to
+the caller's verified email and, under tenant isolation, its team belongs to
+the caller's own tenant — an invitation to another tenant's team is never
+accepted, nor rejected, from outside it.
+
 ---
 
 ### Leave Team
@@ -2280,6 +2285,7 @@ Publish `dns_record`, then call [Verify Hostname](#verify-hostname).
 | 422 | `A host under the platform domain follows the slug and cannot be added.` |
 | 422 | `This team has already added this host.` |
 | 422 | `This host cannot be added.` — another owner holds the host, verified or not. The message does not say so, since that owner may be in another tenant |
+| 422 | `A team cannot hold a host when tenants are enabled; add it to the tenant instead.` — under tenant isolation only a tenant's host routes; use [`POST /neev/tenant/hostnames`](#tenant-hostnames-and-email-domains) |
 | 429 | Rate limit reached |
 
 ---

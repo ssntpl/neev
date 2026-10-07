@@ -274,7 +274,8 @@ lost mail, a re-login after logout) is not locked out for the remainder of it.
 In tenant mode the link is built on a host the tenant is served at — the
 verified custom host the request came in on, else the tenant's canonical host
 (its primary hostname, else its oldest verified one, else its platform
-subdomain), else a verified hostname of one of its teams. A tenant with **no**
+subdomain). A hostname of one of its teams is never used: under tenant
+isolation a team's host resolves nothing. A tenant with **no**
 such host — no `platform_domain` and no verified hostname — still gets the
 platform host, where the tenant-scoped token cannot be found and the link is
 dead; a warning is logged when that happens. Set `platform_domain` or verify a
@@ -484,11 +485,10 @@ sends `X-Tenant`, as it must for everything else to be scoped correctly, sends
 > has no host origin — a native app, whose origin is an app facet — keeps the configured relying party,
 > the only one it can hold platform assets for.
 
-**The row the request resolved through counts, whoever owns it.** With both tenants and teams on,
-a team-owned host routes through that team's tenant, so the resolved context holds no row naming the
-host — reading only its rows would drop the ceremony to `relying_party_id`, which the browser on that
-host then refuses. The resolving row is taken first, and `rp.name` is its owner's name (the team's,
-not the tenant's it routes to).
+**Only the resolved context's own hosts count.** A host resolves only to its owner, and only to the
+owner kind the mode routes on — a tenant under isolation, a team in shared mode — so the relying party
+is the context's verified hostname equal to the origin, and `rp.name` is the context's name. A team's
+hostname under tenant isolation resolves nothing, so it is never a relying party.
 
 **An email domain never names a relying party.** `email_domains` says who joins, not where anyone
 signs in: a team reached at `acme.example.com` federates `acme.com` so that `@acme.com` staff

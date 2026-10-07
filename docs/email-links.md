@@ -132,6 +132,37 @@ class AppEmailLinks extends EmailLinks
 `page()` carries the signed URL's query across to your path, so your page can
 forward it to `GET {prefix}/email/verify` and act on the result.
 
+### Tenant users and a separate frontend
+
+Under tenant isolation a tenant's user exists only where that tenant resolves,
+and an invitee to a tenant's team must register there to join it. The
+defaults build every link on `base()` (or, for a signed link, the host of the
+request that sent it), which suits one frontend for everyone. Where your
+frontend serves each tenant at its own host, send those links there: the URL
+builders receive what you need — the user (and so `tenant_id`), or the
+invitation (and so its team and tenant).
+
+```php
+class AppEmailLinks extends EmailLinks
+{
+    public function invitationUrl(int|string $invitationId, string $token, DateTimeInterface $expiresAt): string
+    {
+        $tenant = TeamInvitation::find($invitationId)?->team()->withoutTenantScope()->first()?->tenant;
+        $host = $tenant?->canonicalHost();
+        $root = $host !== null ? 'https://' . $host : $this->base();
+
+        return $root . '/register?' . http_build_query(['invitation_id' => $invitationId, 'token' => $token]);
+    }
+}
+```
+
+Take the host from the tenant's records (`canonicalHost()`: its verified
+custom host, else its platform subdomain; null when it has neither, so fall
+back to `base()`), never from the request, so a
+spoofed `Host` cannot send a link elsewhere. A signed link is checked against
+the URL it is followed on, so keep a link that posts back to the API — the
+headless password reset does — signed for the host your frontend posts to.
+
 ### Changing what a followed link answers
 
 The response hooks are separate from the URL builders, so you can keep the

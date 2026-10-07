@@ -379,6 +379,17 @@ https://yourapp.com/register?id=1&hash=abc123&signature=...
 
 When the user registers, they're automatically added to the team.
 
+Under tenant isolation an invitation is accepted only by a user of the team's
+own tenant (`TeamInvitation::teamFor($user)`, or `teamInTenant($tenantId)` for
+an account not created yet), whether registering or signed in. So an invitee to
+a tenant's team must register on that tenant's host — one made on the platform
+host is a platform user, and the invitation is refused as `Invitation not
+found` (or the registration's invalid-invitation `400`). The Blade registration
+page refuses such a link before showing the form, with `Invalid or expired
+invitation link.`, rather than after it is filled in. Under
+a headless frontend, send the link there by overriding
+`EmailLinks::invitationUrl()` (see [Email Links](./email-links.md)).
+
 ---
 
 ## Join Requests
@@ -721,6 +732,12 @@ A hostname says "this team is served at this host". Rows live in `hostnames`
 platform subdomain is its slug under `neev.platform_domain` and is derived, not
 written (shared mode only; in isolated mode the tenant has the subdomain).
 
+Custom hosts for teams are a shared-mode feature. Under tenant isolation a team
+is a path inside its tenant and only the tenant's host routes, so claiming a
+host for a team throws `InvalidArgumentException` (`A team cannot hold a host
+when tenants are enabled; add it to the tenant instead.`) — `422` on `host`
+over the API, the page's error in Blade, a failure from `neev:hostname:add`.
+
 ### Who may claim a host
 
 A host is **unique across every owner**. A claim by another owner, verified or
@@ -783,8 +800,11 @@ the index cannot stop two nulls, so the save checks it instead.
 Slugs can change but are **never reissued**. Renaming a team retires its old
 slug in `retired_slugs` for good: in shared mode the platform subdomain is the
 slug, and a slug handed to someone else would hand them a host that SSO redirect
-URIs, emailed links and password managers still trust. In isolated mode a team
-slug retires within its tenant only. The team may take its own old slug back.
+URIs, emailed links and password managers still trust. Deleting a team retires
+the slug it held the same way, so a new team cannot pick up a deleted one's
+subdomain. In isolated mode a team slug retires within its tenant only, and a
+deleted team's retirements stop counting, since its slug names no host there.
+The team may take its own old slug back.
 
 Saving a slug another team holds, or one another team has retired, throws
 `Ssntpl\Neev\Exceptions\SlugUnavailableException`
@@ -796,7 +816,10 @@ update what still points at the old host. The old platform host keeps serving,
 with a `302` for page navigations, for `neev.slug.retired_host_days` (90 by
 default); the slug itself stays retired after that.
 
-Only model saves are guarded. A query-builder update bypasses all of this.
+Only model saves and deletes are guarded. A query-builder update or delete, or
+a database cascade, bypasses all of this. Deleting a user therefore deletes the
+teams they own through the model first, rather than leaving them to the
+`teams.user_id` cascade.
 
 ---
 
@@ -981,7 +1004,7 @@ Roles are stored in laravel-acl's polymorphic role assignment table, not on this
 |--------|------|-------------|
 | id | bigint | Primary key |
 | owner_type | string | Polymorphic owner type (`team` or `tenant`) |
-| owner_id | bigint | The owner that gave the slug up |
+| owner_id | bigint | The owner that gave the slug up, by renaming or being deleted |
 | slug | string | The retired slug |
 | created_at | timestamp | When it was retired |
 | updated_at | timestamp | Last update time |

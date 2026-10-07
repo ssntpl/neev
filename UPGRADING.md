@@ -11,6 +11,65 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
+## 0.7.0 → Unreleased
+
+**Under tenant isolation a team's hostname no longer routes (action required
+if a team holds a host while `neev.tenant` is on).**
+A host now resolves only the owner kind the mode routes on: a tenant in
+isolated mode, a team in shared mode
+([RFC 006 §6 Q5](docs/rfcs/006-hostnames-vs-email-domains.md)). In 0.7.0 a
+team's host resolved the team's tenant; now it resolves nothing, and
+`claimHost()`, `POST /teams/{team}/hostnames` (`422` on `host`) and
+`neev:hostname:add` refuse a team while `neev.tenant` is on.
+
+- **Move each team-owned `Hostname` to the team's tenant**: release it from
+  the team and claim it for the tenant, keeping its verification columns, or
+  re-verify it there. A team's row left in place serves nothing and keeps the
+  tenant from claiming the host, since a host is unique across every owner.
+  If it was the team's primary, make it the tenant's (`primary_hostname_id`).
+- Shared mode is unchanged.
+
+**`neev:tenant:create --owner` creates the owner inside the tenant (action
+required if you script it in isolated mode).**
+Under tenant isolation `--owner` now takes an email and creates that user in
+the new tenant (`tenant_id` set), owning its first team; the old behaviour
+attached an existing user, who could only be a platform user and could not
+sign in to the tenant.
+
+- **Pass an email, not a user ID**: a user ID is refused. A platform user with
+  the same email is a separate account and is left alone.
+- **`--owner-name`** sets the new owner's name (default: the part of the email
+  before the `@`). It is refused without `--owner` and in shared mode.
+- The owner has no password; they sign in with a login link.
+- Shared mode is unchanged: `--owner` still picks an existing user by ID or
+  email.
+
+**`Tenant::hasMember()` counts only `tenant_id`.**
+Membership of one of the tenant's teams no longer makes a user a member of the
+tenant, and `EnsureTenantMembership` follows it. Such a user could not sign in
+to the tenant anyway, so no sign-in changes; check any code of your own that
+called `hasMember()` for a user of another tenant or a platform user.
+
+**Deleting a team or tenant retires its slug.**
+A deleted owner's slug is now recorded in `retired_slugs`, like a renamed one's,
+so it is never issued to another owner. Nothing to migrate, but owners deleted
+before this release left no row, and their slugs stay free. If you know them
+(from an audit log or backup) and their subdomains may still be trusted
+somewhere, reserve them with a row each: `owner_type` the morph class (`team`
+or `tenant`), `owner_id` the deleted ID, `slug` the slug. A model that deletes
+through the query builder, or by a database cascade, still bypasses this.
+
+**Invitations are accepted only inside their team's tenant.**
+Under tenant isolation an invitation to another tenant's team, opened on a
+different tenant's host or on the platform, now answers `Invitation not found`
+(API), the Blade page's error, or registration's invalid-invitation `400`
+instead of a `400`/`500` crash. Send invitees to the team's own tenant host.
+Code that reads `$invitation->team` for a user may use
+`TeamInvitation::teamFor($user)`, or `teamInTenant($tenantId)` before the
+account exists.
+
+---
+
 ## 0.6.9 → 0.7.0
 
 **Domains are split into `hostnames` and `email_domains`, and your app copies
@@ -36,6 +95,8 @@ For each `domains` row with an owner:
 - **A host the app is served at**: create a `Hostname` with the owner, `host`,
   the same verification columns and `status`. A host is unique across every
   owner; where two owners verified one, give it to the owner that serves it.
+  Under tenant isolation give a team's host to the team's tenant; see
+  [0.7.0 → Unreleased](#070--unreleased).
 - **Both**: create both. Don't make a host an email domain only because it is
   verified; that is the bug this change removes.
 - **`is_primary`**, on a row that became a hostname: set the owner's

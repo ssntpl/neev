@@ -4,6 +4,8 @@ namespace Ssntpl\Neev\Commands\Tenant;
 
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Console\PromptsForMissingInput;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Ssntpl\Neev\Commands\Concerns\ResolvesTenantContext;
 use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\Models\RetiredSlug;
@@ -20,13 +22,15 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
     use ResolvesTenantContext;
 
     /**
-     * The owner named by --owner, resolved before anything is created.
+     * The owner named by --owner, resolved before anything is created. Shared
+     * mode only: under isolation the owner is created inside the new tenant.
      */
     protected ?object $owner = null;
 
     protected $signature = 'neev:tenant:create {name : The name of the tenant or team}
                             {--slug= : Custom slug (auto-generated from name if omitted)}
-                            {--owner= : Owner user ID or email}
+                            {--owner= : Owner user ID or email; under isolation, the email of an owner to create in the tenant}
+                            {--owner-name= : Name for an owner created in the tenant (defaults to the part of the email before the @)}
                             {--domain= : Custom host to serve it at, proven by DNS}
                             {--activate : Activate the team immediately}';
 
@@ -78,7 +82,15 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
             }
         }
 
-        if ($ownerRef = $this->option('owner')) {
+        if (($ownerRef = $this->option('owner')) && $this->isIsolated()) {
+            // A user belongs to one tenant, and this tenant does not exist
+            // yet, so no user can be its member. Picking an existing one
+            // could only pick a platform user, who would then sit in the
+            // tenant's team without being able to sign in to the tenant.
+            if (! filter_var($ownerRef, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = "Under tenant isolation the owner is created inside the new tenant, so --owner takes an email: {$ownerRef}";
+            }
+        } elseif ($ownerRef) {
             $this->owner = ctype_digit($ownerRef)
                 ? User::getClass()::find((int) $ownerRef)
                 : User::findByEmail($ownerRef);
@@ -86,6 +98,14 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
             if (! $this->owner) {
                 $errors[] = "Owner not found: {$ownerRef}";
             }
+        }
+
+        // Only an owner created in the tenant is given a name; anywhere else
+        // the option would be dropped without a word.
+        if ($this->option('owner-name') && ! ($this->isIsolated() && $ownerRef)) {
+            $errors[] = $this->isIsolated()
+                ? '--owner-name names the owner --owner creates, so it needs --owner.'
+                : '--owner-name applies under tenant isolation only: in shared mode --owner picks an existing user, who keeps their name.';
         }
 
         if ($domain = $this->option('domain')) {
@@ -132,14 +152,31 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
     {
         $slug = $this->option('slug') ?: SlugHelper::generateForTenant($name);
 
-        $tenant = Tenant::getClass()::create([
-            'name' => $name,
-            'slug' => $slug,
-        ]);
+        $ownerEmail = $this->option('owner');
 
-        $this->info("Tenant created: {$tenant->name} (slug: {$tenant->slug}, ID: {$tenant->id})");
+        // One transaction, so a failure creating the owner or their team
+        // leaves no ownerless tenant behind.
+        $tenant = $owner = $team = null;
 
-        if ($owner = $this->owner) {
+        DB::transaction(function () use ($name, $slug, $ownerEmail, &$tenant, &$owner, &$team): void {
+            $tenant = Tenant::getClass()::create([
+                'name' => $name,
+                'slug' => $slug,
+            ]);
+
+            if (! $ownerEmail) {
+                return;
+            }
+
+            // forceCreate, because tenant_id is deliberately not fillable. The
+            // owner is the tenant's own user, so they can sign in on its host;
+            // a platform user of the same email is a different account.
+            $owner = User::getClass()::forceCreate([
+                'name' => $this->option('owner-name') ?: Str::before($ownerEmail, '@'),
+                'email' => $ownerEmail,
+                'tenant_id' => $tenant->id,
+            ]);
+
             $teamData = [
                 'name' => $name,
                 'slug' => SlugHelper::generate($name),
@@ -156,9 +193,16 @@ class CreateTenantCommand extends Command implements PromptsForMissingInput
             // platform, invisible once that tenant is resolved.
             $team = Team::getClass()::forceCreate($teamData);
             $team->allUsers()->attach($owner->id, ['joined' => true]);
+        });
 
+        $this->info("Tenant created: {$tenant->name} (slug: {$tenant->slug}, ID: {$tenant->id})");
+
+        if ($owner !== null) {
             $this->info("Team created: {$team->name} (ID: {$team->id})");
-            $this->info("Owner: {$owner->name} (ID: {$owner->id})");
+            $this->info("Owner: {$owner->name} <{$owner->email}> (ID: {$owner->id}), created in the tenant");
+            if ($host = PlatformHost::for($tenant->slug)) {
+                $this->line("The owner has no password yet: they sign in at https://{$host} with a login link.");
+            }
         }
 
         if ($domain = $this->option('domain')) {

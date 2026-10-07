@@ -8,14 +8,16 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 
 /**
- * A slug its owner has renamed away from (RFC 006 §6 Q1). The owner is any
+ * A slug its owner has renamed away from (RFC 006 §6 Q1), or held when it was
+ * deleted. The owner is any
  * model using RetiresSlugs: a team, a tenant, or one of the application's own.
  *
  * A platform subdomain is derived from the slug, so a slug handed to someone
  * else would hand them a host that SSO redirect URIs, OAuth allowlists, emailed
  * links and password managers still trust. The row is therefore kept forever:
  * the old slug is never issued to another owner. Its own owner may take it
- * back, which deletes the row. `created_at` is when it was retired, and the
+ * back, which deletes the row; a deleted owner's old host resolves nobody.
+ * `created_at` is when it was retired, and the
  * old host serves for `neev.slug.retired_host_days` after that; the
  * reservation itself never ends.
  *

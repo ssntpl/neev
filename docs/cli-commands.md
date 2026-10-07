@@ -149,21 +149,22 @@ Create a new tenant or team.
 # Shared mode — creates a team
 php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --activate
 
-# Isolated mode — creates a tenant (and a default team if --owner is provided)
-php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --domain=app.acme.com
+# Isolated mode — creates a tenant; --owner creates its owner inside it, with a default team
+php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --owner-name="Ada Admin" --domain=app.acme.com
 ```
 
 | Argument / Option | Description |
 |-------------------|-------------|
 | `name` | Name of the tenant or team (prompted if omitted) |
 | `--slug=` | Custom slug (auto-generated from name if omitted) |
-| `--owner=` | Owner by user ID or email address |
+| `--owner=` | Shared mode: an existing user, by ID or email. Isolated mode: the email of an owner to create in the new tenant |
+| `--owner-name=` | Isolated mode, with `--owner`: the new owner's name. Optional — defaults to the part of the email before the `@` |
 | `--domain=` | Claim a custom host for it (shows the DNS TXT record to publish) |
 | `--activate` | Activate the team immediately |
 
 **Shared mode**: Creates a `Team` with the given owner. If `--activate` is passed, sets `activated_at`.
 
-**Isolated mode**: Creates a `Tenant`. If `--owner` is provided, also creates a default team with the owner attached. If `--domain` is provided, claims it as a host of the tenant.
+**Isolated mode**: Creates a `Tenant`. If `--owner` is provided, also creates the owner as a user **of the new tenant** (its `tenant_id` set) and a default team they own and have joined, all in one transaction. A user belongs to one tenant and this one is new, so `--owner` takes an email, not an existing user: an existing user could only be a platform user, who cannot sign in to the tenant. A platform user with the same email is a separate account and is left alone. The owner has no password; they sign in with a login link. When `platform_domain` is set, the command prints the sign-in URL, `https://{slug}.{platform_domain}`. If `--domain` is provided, claims it as a host of the tenant.
 
 **`--domain`** claims the host in either mode. It is pending until its TXT record is checked and is not made primary: run `neev:hostname:verify`, then `neev:hostname:primary`, as the command prints.
 
@@ -172,7 +173,9 @@ php artisan neev:tenant:create "Acme Corp" --owner=admin@acme.com --domain=app.a
 - Shared mode with `neev.team` off — refuses outright.
 - Isolated mode with `neev.team` off and `--owner` given — refuses, because the owner is held by a team.
 
-**Every option is checked before the first row is written**, so a bad value leaves nothing behind: an unknown `--owner`, an invalid or already-taken `--slug`, or a `--domain` that is under `platform_domain` or already claimed by any owner. All problems are reported together:
+**Options that would be ignored are refused.** `--owner-name` names the owner the command creates, so it is refused without `--owner`, and in shared mode, where `--owner` picks an existing user who keeps their name. Nothing is created; leave it out to name the owner from their email.
+
+**Every option is checked before the first row is written**, so a bad value leaves nothing behind: an unknown `--owner` (shared mode), an `--owner` that is not an email (isolated mode), an invalid or already-taken `--slug`, or a `--domain` that is under `platform_domain` or already claimed by any owner. All problems are reported together:
 
 ```
 Nothing was created. Fix the following and run the command again:
@@ -251,7 +254,7 @@ Run interactively without the owner options and the command asks for them, the w
 
 Non-interactive runs (`--no-interaction`, CI) still require `--owner-type` and `--owner-id`.
 
-The command refuses a host the owner already holds, a host another owner has claimed (verified or not), and any host under `platform_domain`. On success it prints the TXT record to publish, `_neev-host.{host}`, and its token. The host does not serve until it is verified.
+The command refuses a host the owner already holds, a host another owner has claimed (verified or not), any host under `platform_domain`, and, under tenant isolation, any host for a team — only a tenant's host routes there, so add it to the tenant. On success it prints the TXT record to publish, `_neev-host.{host}`, and its token. The host does not serve until it is verified.
 
 ### `neev:hostname:verify`
 

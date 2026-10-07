@@ -122,10 +122,12 @@ class RegistrationService
     protected function acceptInvitation(User $user, $invitationId, ?string $token): void
     {
         $invitation = TeamInvitation::find($invitationId);
+        $team = $invitation?->teamFor($user);
         if (!$invitation
             || !$invitation->tokenMatches($token)
             || $invitation->isExpired()
-            || $user->email !== $invitation->email) {
+            || $user->email !== $invitation->email
+            || !$team) {
             throw new InvalidInvitationException();
         }
 
@@ -133,7 +135,6 @@ class RegistrationService
         // owned — the same standard as clicking a verification mail.
         $user->markEmailAsVerified();
 
-        $team = $invitation->team;
         $team->users()->attach($user, ['joined' => true]);
         if ($invitation->role) {
             $user->assignRole($invitation->role, $team);

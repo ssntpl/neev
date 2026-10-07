@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING: under tenant isolation a team's hostname no longer routes** — a host resolves only the owner kind the mode routes on ([RFC 006 §6 Q5](./docs/rfcs/006-hostnames-vs-email-domains.md)): a tenant in isolated mode, a team in shared mode. In 0.7.0 a team's host resolved its tenant; it now resolves nothing, and `claimHost()` refuses a team while `neev.tenant` is on (the API answers `422` on `host`). Move such a host to the tenant, as [UPGRADING](./UPGRADING.md#070--unreleased) describes
+- **BREAKING: `neev:tenant:create --owner` creates the owner inside the tenant** — under tenant isolation `--owner` takes an email and creates that user with the new tenant's `tenant_id`, then makes them the owner of its first team; `--owner-name` sets the name, which defaults to the part of the email before the `@`; it is refused without `--owner` or in shared mode, where it would be ignored. A user ID is refused. It used to pick an existing user, who could only be a platform user, and so could not sign in to the tenant they owned. Shared mode is unchanged
+- **`Tenant::hasMember()` counts only the user's `tenant_id`** — a member of one of the tenant's teams is no longer a member of the tenant through it. Such a user could never sign in to the tenant, since users are tenant-scoped, so no sign-in changes
+
+### Fixed
+
+- **Deleting a team or tenant freed its slug** — only a rename retired a slug, so a deleted owner's slug, and with it its platform subdomain, could go straight to a new owner while SSO redirect URIs, OAuth allowlists and emailed links still trusted it. Deleting a model that uses `RetiresSlugs` now retires the slug it held (soft deletes included), under the same slug lock a save takes. Deleting a user deletes the teams they own through the model first, in one transaction, rather than leaving them to the `teams.user_id` cascade, so their slugs retire and `TeamDeleted` fires for each. Slugs freed by deletions before this release are not reserved; see [UPGRADING](./UPGRADING.md#070--unreleased)
+- **Accepting an invitation to another tenant's team crashed** — the invitation row is not tenant-scoped, but its team is, so on another tenant's host, or on the platform, the team came back `null`: the API answered a generic `400` and registration a `500`. Under tenant isolation an invitation is accepted only by a user of the team's own tenant (`TeamInvitation::teamFor($user)`, or `teamInTenant($tenantId)` for an account not created yet); anyone else gets `Invitation not found`, the Blade page's error, or the registration's invalid-invitation `400`, and nothing is written. The Blade registration page refuses such a link before showing the form, rather than after it is submitted
+
 ## [0.7.0] - 2026-10-07
 
 ### Added

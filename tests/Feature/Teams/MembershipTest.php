@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Ssntpl\Neev\Database\Factories\EmailDomainFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Mail\TeamInvitation;
 use Ssntpl\Neev\Mail\TeamJoinRequest;
 use Ssntpl\Neev\Models\Membership;
@@ -362,6 +363,27 @@ class MembershipTest extends TestCase
     // -----------------------------------------------------------------
     // PUT /neev/teams/inviteUser — accept/reject via invitation_id
     // -----------------------------------------------------------------
+
+    /**
+     * A platform user cannot accept an invitation to a tenant's team: they
+     * are not in that tenant, and could not sign in to it if they were added.
+     */
+    public function test_a_platform_user_cannot_accept_an_invitation_to_a_tenants_team(): void
+    {
+        $this->enableTenantIsolation();
+        [$global, $token] = $this->authenticatedUser();
+        $tenant = TenantFactory::new()->create();
+        $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
+        $invitation = $team->invitations()->create(['email' => $global->email, 'expires_at' => now()->addDay()]);
+
+        $this->withHeader('Authorization', 'Bearer ' . $token)
+            ->putJson('/neev/teams/inviteUser', ['invitation_id' => $invitation->id, 'action' => 'accept'])
+            ->assertStatus(400)
+            ->assertJsonPath('message', 'Invitation not found');
+
+        $this->assertDatabaseMissing('team_user', ['team_id' => $team->id, 'user_id' => $global->id]);
+        $this->assertDatabaseHas('team_invitations', ['id' => $invitation->id]);
+    }
 
     public function test_invite_action_with_nonexistent_invitation_id_returns_error(): void
     {

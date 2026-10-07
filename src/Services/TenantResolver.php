@@ -158,23 +158,7 @@ class TenantResolver
                 return null;
             }
 
-            if ($isIsolated) {
-                if ($domain->owner_type === 'tenant') {
-                    return ['context_type' => 'tenant', 'context_id' => $owner->getKey()];
-                }
-
-                // Domain owned by a team — resolve the team's tenant
-                $tenant = $owner->tenant ?? null;
-                if ($tenant) {
-                    return ['context_type' => 'tenant', 'context_id' => $tenant->getKey()];
-                }
-            } else {
-                if ($domain->owner_type === 'team') {
-                    return ['context_type' => 'team', 'context_id' => $owner->getKey()];
-                }
-            }
-
-            return null;
+            return ['context_type' => $domain->owner_type, 'context_id' => $owner->getKey()];
         });
 
         if ($cachedContext) {
@@ -272,16 +256,17 @@ class TenantResolver
     }
 
     /**
-     * The verified hostname this host resolves through, if its owner is a
-     * kind the active mode routes on: shared mode routes a team, and isolated
-     * mode a tenant, or a team through that team's tenant. A host is unique,
-     * so there is at most one.
+     * The verified hostname this host resolves through, if its owner is the
+     * kind the active mode routes on: a tenant in isolated mode, a team in
+     * shared mode (RFC 006 Q5). In isolated mode a team is a path inside its
+     * tenant, so a host it holds routes nothing. A host is unique, so there
+     * is at most one.
      */
     protected function domainForMode(string $host, bool $isIsolated): ?Hostname
     {
         return Hostname::forHost($host)
             ->verified()
-            ->whereIn('owner_type', $isIsolated ? ['tenant', 'team'] : ['team'])
+            ->where('owner_type', $isIsolated ? 'tenant' : 'team')
             ->first();
     }
 

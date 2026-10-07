@@ -80,4 +80,38 @@ class TeamInvitation extends Model
     {
         return $this->belongsTo(Team::getClass(), 'team_id');
     }
+
+    /**
+     * The invited team, if this user may join it; null otherwise.
+     *
+     * Under isolation a user belongs to one tenant and joins only that
+     * tenant's teams. The row itself is not tenant-scoped, so an invitation
+     * to another tenant's team can be named from anywhere: its team is then
+     * hidden by the team tenant scope, or sits in a tenant the user is not
+     * in. Either way there is nothing to join.
+     */
+    public function teamFor($user): ?Team
+    {
+        return $this->teamInTenant($user->tenant_id);
+    }
+
+    /**
+     * The invited team, if a user of this tenant (null: a platform user) may
+     * join it; null otherwise. For a user not created yet, such as a visitor
+     * opening the registration form, pass the tenant they would be created in.
+     */
+    public function teamInTenant(?int $tenantId): ?Team
+    {
+        $team = $this->team;
+
+        if ($team === null) {
+            return null;
+        }
+
+        if (config('neev.tenant', false) && $team->tenant_id !== $tenantId) {
+            return null;
+        }
+
+        return $team;
+    }
 }
