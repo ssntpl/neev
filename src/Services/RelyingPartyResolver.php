@@ -27,9 +27,6 @@ class RelyingPartyResolver
     /** Resolved once per request (the resolver is request-scoped). */
     protected ?string $host = null;
 
-    /** The verified row a custom host came from; its owner is read lazily. */
-    protected ?Hostname $domain = null;
-
     protected bool $settled = false;
 
     public function __construct(protected TenantResolver $tenants)
@@ -77,11 +74,7 @@ class RelyingPartyResolver
      */
     public function rpName(): string
     {
-        // The domain may belong to a team that routes through the resolved
-        // tenant, and the name to show is the one that owns the host.
-        $context = $this->host() !== null
-            ? ($this->domain->owner ?? $this->tenants->resolvedContext())
-            : null;
+        $context = $this->host() !== null ? $this->tenants->resolvedContext() : null;
 
         // The context interfaces declare no name; Team and Tenant carry one as
         // an Eloquent attribute, and a custom context may not.
@@ -131,11 +124,9 @@ class RelyingPartyResolver
     }
 
     /**
-     * The relying party: the verified hostname equal to the request's origin,
-     * else `configured()`. The row the request resolved through is taken
-     * first, because it need not belong to the resolved context — in tenant
-     * mode a team-owned host routes through that team's tenant. The match is
-     * exact: a row covers the host it names and no other.
+     * The relying party: the resolved context's verified hostname equal to
+     * the request's origin, else `configured()`. The match is exact: a row
+     * covers the host it names and no other.
      *
      * A platform subdomain is taken from the slug, not a row: the context's
      * current one. A retired one is never a relying party, so a ceremony on
@@ -148,7 +139,6 @@ class RelyingPartyResolver
     protected function settle(): void
     {
         $this->host = null;
-        $this->domain = null;
 
         $context = $this->tenants->resolvedContext();
 
@@ -171,26 +161,23 @@ class RelyingPartyResolver
             return;
         }
 
-        // The row the request resolved through, which is not always among the
-        // context's own: in tenant mode a team-owned host routes through that
-        // team's tenant, so the tenant holds no row naming it. It is still the
-        // host the browser is on, so it is still the relying party.
+        // The row the request resolved through is the context's own, so a
+        // ceremony on that host needs no second read.
         $resolved = $this->tenants->currentHostname();
 
         if ($resolved !== null && $resolved->isVerified() && $resolved->host === $origin) {
             $this->host = $origin;
-            $this->domain = $resolved;
 
             return;
         }
 
-        $this->domain = Hostname::forHost($origin)
+        $owned = Hostname::forHost($origin)
             ->verified()
             ->where('owner_type', $context->getContextType())
             ->where('owner_id', $context->getContextId())
-            ->first();
+            ->exists();
 
-        $this->host = $this->domain !== null ? $origin : null;
+        $this->host = $owned ? $origin : null;
     }
 
     /**

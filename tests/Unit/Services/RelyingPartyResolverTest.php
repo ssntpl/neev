@@ -355,10 +355,10 @@ class RelyingPartyResolverTest extends TestCase
     }
 
     /**
-     * In isolated mode a team's hostname resolves that team's tenant, and the
-     * relying party is the host the tenant was reached on.
+     * In isolated mode a team is a path inside its tenant, not a host (RFC 006
+     * Q5): its verified hostname resolves nothing, so it is no relying party.
      */
-    public function test_tenants_and_teams_resolves_through_the_tenant(): void
+    public function test_a_team_owned_domain_resolves_nothing_in_isolated_mode(): void
     {
         $this->enableTenantIsolation();
         $this->enableTeams();
@@ -366,26 +366,8 @@ class RelyingPartyResolverTest extends TestCase
         $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
         $this->domainFor($team, 'acme.com');
 
-        $this->assertSame('acme.com', $this->forHost('acme.com'));
-        $this->assertTrue($tenant->is($this->tenantResolver->resolvedContext()));
-    }
-
-    /**
-     * The team alone holds the row, and it routes to the tenant, so the tenant
-     * has no row of its own naming the host. The row the request resolved
-     * through is still the host the browser is on, and still the relying
-     * party — reading only the tenant's rows would drop it to `configured()`,
-     * which its browser then refuses.
-     */
-    public function test_a_team_owned_domain_is_the_relying_party_under_its_tenant(): void
-    {
-        $this->enableTenantIsolation();
-        $this->enableTeams();
-        $tenant = TenantFactory::new()->create();
-        $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
-        $this->domainFor($team, 'acme.com');
-
-        $this->assertSame('acme.com', $this->forHost('acme.com'));
+        $this->assertSame('example.com', $this->forHost('acme.com'));
+        $this->assertNull($this->tenantResolver->resolvedContext());
     }
 
     /** An unverified row routes nothing, so it grants nothing either. */
@@ -471,23 +453,6 @@ class RelyingPartyResolverTest extends TestCase
         config(['app.name' => 'Platform']);
         $team = $this->teamOwning('acme.com');
         $team->forceFill(['name' => 'Acme Corp'])->save();
-        $this->resolveOn('acme.com');
-
-        $this->assertSame('Acme Corp', $this->resolver->rpName());
-    }
-
-    /**
-     * The row's owner is the team, not the tenant it routes through, and the
-     * name authenticators show is the one that owns the host users are on.
-     */
-    public function test_rp_name_is_the_owning_teams_under_its_tenant(): void
-    {
-        $this->enableTenantIsolation();
-        $this->enableTeams();
-        config(['app.name' => 'Platform']);
-        $tenant = TenantFactory::new()->create(['name' => 'Acme Holdings']);
-        $team = TeamFactory::new()->create(['tenant_id' => $tenant->id, 'name' => 'Acme Corp']);
-        $this->domainFor($team, 'acme.com');
         $this->resolveOn('acme.com');
 
         $this->assertSame('Acme Corp', $this->resolver->rpName());

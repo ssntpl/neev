@@ -3,6 +3,8 @@
 namespace Ssntpl\Neev\Tests\Feature\Auth;
 
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\TeamInvitation;
 use Ssntpl\Neev\Models\User;
@@ -269,6 +271,73 @@ class RegistrationTest extends TestCase
         $this->assertNotNull($user->email_verified_at);
 
         // Invitation should be deleted
+        $this->assertDatabaseMissing('team_invitations', ['id' => $invitation->id]);
+    }
+
+    /**
+     * Registering on the platform with an invitation to a tenant's team makes
+     * a platform user, who cannot join that tenant's team. Refused cleanly —
+     * it used to crash on the team the tenant scope hid, with a 500.
+     */
+    public function test_register_on_the_platform_via_a_tenant_teams_invitation_is_refused(): void
+    {
+        $this->enableTeams();
+        $this->enableTenantIsolation();
+
+        $tenant = TenantFactory::new()->create();
+        $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
+        $plainToken = TeamInvitation::generateToken();
+        $invitation = $team->invitations()->create([
+            'email' => 'invitee@example.com',
+            'token' => $plainToken,
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $this->postJson('/neev/register', [
+            'name' => 'Invited User',
+            'email' => 'invitee@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'invitation_id' => $invitation->id,
+            'token' => $plainToken,
+        ])->assertStatus(400);
+
+        $this->assertSame(0, User::withoutTenantScope()->where('email', 'invitee@example.com')->count());
+        $this->assertDatabaseHas('team_invitations', ['id' => $invitation->id]);
+    }
+
+    /**
+     * The flow the tenant-host link exists for: registering on the tenant's
+     * platform subdomain creates the account in the tenant, which then joins
+     * the invited team.
+     */
+    public function test_register_on_the_tenant_host_via_its_teams_invitation_joins_the_team(): void
+    {
+        $this->enableTeams();
+        $this->enableTenantIsolation();
+        config(['neev.platform_domain' => 'otper.test']);
+
+        $tenant = TenantFactory::new()->create(['slug' => 'acme']);
+        $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
+        $plainToken = TeamInvitation::generateToken();
+        $invitation = $team->invitations()->create([
+            'email' => 'invitee@example.com',
+            'token' => $plainToken,
+            'expires_at' => now()->addDays(7),
+        ]);
+
+        $this->postJson('https://acme.otper.test/neev/register', [
+            'name' => 'Invited User',
+            'email' => 'invitee@example.com',
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'invitation_id' => $invitation->id,
+            'token' => $plainToken,
+        ])->assertOk();
+
+        $user = User::withoutTenantScope()->where('email', 'invitee@example.com')->sole();
+        $this->assertSame($tenant->id, $user->tenant_id);
+        $this->assertTrue($team->allUsers()->where('users.id', $user->id)->wherePivot('joined', true)->exists());
         $this->assertDatabaseMissing('team_invitations', ['id' => $invitation->id]);
     }
 

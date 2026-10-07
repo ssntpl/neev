@@ -379,6 +379,14 @@ https://yourapp.com/register?id=1&hash=abc123&signature=...
 
 When the user registers, they're automatically added to the team.
 
+Under tenant isolation an invitation is accepted only by a user of the team's
+own tenant (`TeamInvitation::teamFor()`), whether registering or signed in. So
+an invitee to a tenant's team must register on that tenant's host — one made on
+the platform host is a platform user, and the invitation is refused as
+`Invitation not found` (or the registration's invalid-invitation `400`). Under
+a headless frontend, send the link there by overriding
+`EmailLinks::invitationUrl()` (see [Email Links](./email-links.md)).
+
 ---
 
 ## Join Requests
@@ -720,6 +728,12 @@ A hostname says "this team is served at this host". Rows live in `hostnames`
 (model `Ssntpl\Neev\Models\Hostname`). Only custom hosts are stored: a team's
 platform subdomain is its slug under `neev.platform_domain` and is derived, not
 written (shared mode only; in isolated mode the tenant has the subdomain).
+
+Custom hosts for teams are a shared-mode feature. Under tenant isolation a team
+is a path inside its tenant and only the tenant's host routes, so claiming a
+host for a team throws `InvalidArgumentException` (`A team cannot hold a host
+when tenants are enabled; add it to the tenant instead.`) — `422` on `host`
+over the API, the page's error in Blade, a failure from `neev:hostname:add`.
 
 ### Who may claim a host
 

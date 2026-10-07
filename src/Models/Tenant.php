@@ -19,6 +19,7 @@ use Ssntpl\Neev\Contracts\ResolvableContextInterface;
 use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Events\TenantCreated;
 use Ssntpl\Neev\Scopes\TeamTenantScope;
+use Ssntpl\Neev\Scopes\TenantScope;
 use Ssntpl\Neev\Support\SlugHelper;
 use Ssntpl\Neev\Traits\HasEmailDomains;
 use Ssntpl\Neev\Traits\HasHostnames;
@@ -209,19 +210,16 @@ class Tenant extends Model implements ContextContainerInterface, IdentityProvide
     // HasMembersInterface
     // -----------------------------------------------------------------
 
+    /**
+     * Whether the user belongs to this tenant through tenant_id on the users
+     * table. Membership of the tenant's teams does not count.
+     */
     public function hasMember($user): bool
     {
-        // Direct tenant membership (via tenant_id on users table)
-        if ($this->members()->where('users.id', $user->id)->exists()) {
-            return true;
-        }
-
-        // Indirect membership via tenant's teams
-        return $this->teams()
-            ->whereHas('allUsers', function ($query) use ($user) {
-                $query->where('users.id', $user->id)
-                    ->where('joined', true);
-            })
+        // Read unscoped, as Team::hasUser() does: the answer must not depend
+        // on which tenant, if any, the current request resolved.
+        return $this->members()->withoutGlobalScope(TenantScope::class)
+            ->where('users.id', $user->id)
             ->exists();
     }
 

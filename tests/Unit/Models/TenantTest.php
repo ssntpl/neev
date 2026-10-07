@@ -13,11 +13,14 @@ use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\Tenant;
 use Ssntpl\Neev\Models\TenantAuthSettings;
 use Ssntpl\Neev\Models\User;
+use Ssntpl\Neev\Services\TenantResolver;
 use Ssntpl\Neev\Tests\TestCase;
+use Ssntpl\Neev\Tests\Traits\WithNeevConfig;
 
 class TenantTest extends TestCase
 {
     use RefreshDatabase;
+    use WithNeevConfig;
 
     protected function defineEnvironment($app): void
     {
@@ -285,7 +288,7 @@ class TenantTest extends TestCase
     // HasMembersInterface — hasMember()
     // -----------------------------------------------------------------
 
-    public function test_has_member_returns_true_for_joined_user_in_tenant_team(): void
+    public function test_has_member_returns_false_for_joined_user_in_tenant_team(): void
     {
         $tenant = TenantFactory::new()->create();
         $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
@@ -296,7 +299,7 @@ class TenantTest extends TestCase
             'action' => 'request_to_user',
         ]);
 
-        $this->assertTrue($tenant->hasMember($user));
+        $this->assertFalse($tenant->hasMember($user));
     }
 
     public function test_has_member_returns_false_for_non_member(): void
@@ -320,6 +323,37 @@ class TenantTest extends TestCase
         ]);
 
         $this->assertFalse($tenant->hasMember($user));
+    }
+
+    public function test_has_member_returns_true_for_user_scoped_to_tenant(): void
+    {
+        $tenant = TenantFactory::new()->create();
+        $user = User::factory()->create(['tenant_id' => $tenant->id]);
+
+        $this->assertTrue($tenant->hasMember($user));
+    }
+
+    public function test_has_member_finds_direct_member_with_no_tenant_resolved(): void
+    {
+        $tenant = TenantFactory::new()->create();
+        $user = User::factory()->create(['tenant_id' => $tenant->id]);
+
+        $this->enableTenantIsolation();
+
+        $this->assertTrue($tenant->hasMember($user));
+    }
+
+    public function test_has_member_finds_direct_member_while_another_tenant_is_resolved(): void
+    {
+        $tenant = TenantFactory::new()->create();
+        $other = TenantFactory::new()->create();
+        $user = User::factory()->create(['tenant_id' => $tenant->id]);
+
+        $this->enableTenantIsolation();
+
+        $isMember = app(TenantResolver::class)->runInContext($other, fn () => $tenant->hasMember($user));
+
+        $this->assertTrue($isMember);
     }
 
     // -----------------------------------------------------------------

@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Ssntpl\Neev\Database\Factories\MultiFactorAuthFactory;
 use Ssntpl\Neev\Database\Factories\TeamFactory;
+use Ssntpl\Neev\Database\Factories\TenantFactory;
 use Ssntpl\Neev\Enums\OtpPurpose;
 use Ssntpl\Neev\Models\Membership;
 use Ssntpl\Neev\Models\MultiFactorAuth;
@@ -359,6 +360,36 @@ class SimpleModelsTest extends TestCase
         $this->assertInstanceOf(\Illuminate\Database\Eloquent\Relations\BelongsTo::class, $invitation->team());
         $this->assertInstanceOf(Team::class, $invitation->team);
         $this->assertSame($team->id, $invitation->team->id);
+    }
+
+    public function test_team_invitation_team_for_returns_the_team_in_shared_mode(): void
+    {
+        $team = TeamFactory::new()->create();
+        $invitation = TeamInvitation::create(['team_id' => $team->id, 'email' => 'test@example.com']);
+
+        $this->assertTrue($team->is($invitation->teamFor(User::factory()->create())));
+    }
+
+    /** Under isolation a user joins only their own tenant's teams. */
+    public function test_team_invitation_team_for_is_null_across_tenants(): void
+    {
+        config(['neev.tenant' => true]);
+        $tenant = TenantFactory::new()->create();
+        $other = TenantFactory::new()->create();
+        $team = TeamFactory::new()->create(['tenant_id' => $tenant->id]);
+        $invitation = TeamInvitation::create(['team_id' => $team->id, 'email' => 'test@example.com']);
+
+        $inTenant = User::withoutTenantScope()->forceCreate(['name' => 'A', 'email' => 'a@x.test', 'tenant_id' => $tenant->id]);
+        $inOther = User::withoutTenantScope()->forceCreate(['name' => 'B', 'email' => 'b@x.test', 'tenant_id' => $other->id]);
+        $platform = User::withoutTenantScope()->forceCreate(['name' => 'C', 'email' => 'c@x.test']);
+
+        // Read with the tenant resolved, so the team is visible to the scope
+        // and only the tenant check can refuse.
+        app(\Ssntpl\Neev\Services\TenantResolver::class)->runInContext($tenant, function () use ($invitation, $team, $inTenant, $inOther, $platform) {
+            $this->assertTrue($team->is($invitation->teamFor($inTenant)));
+            $this->assertNull($invitation->fresh()->teamFor($inOther));
+            $this->assertNull($invitation->fresh()->teamFor($platform));
+        });
     }
 
     // =================================================================

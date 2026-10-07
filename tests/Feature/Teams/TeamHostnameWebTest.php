@@ -85,6 +85,20 @@ class TeamHostnameWebTest extends TestCase
         $this->assertFalse($hostname->isVerified());
     }
 
+    /** In isolated mode a team's host would never route (RFC 006 Q5). */
+    public function test_a_team_cannot_claim_a_host_in_isolated_mode(): void
+    {
+        config(['neev.tenant' => true]);
+        [$team, $owner] = $this->teamWithOwner();
+
+        $this->actingAs($owner)
+            ->from(route('teams.hostnames', $team->id))
+            ->post(route('teams.hostnames.store', $team->id), ['host' => 'app.acme.com'])
+            ->assertSessionHasErrors('message');
+
+        $this->assertSame(0, Hostname::count());
+    }
+
     public function test_a_host_under_the_platform_zone_or_held_by_another_team_is_refused(): void
     {
         [$team, $owner] = $this->teamWithOwner();

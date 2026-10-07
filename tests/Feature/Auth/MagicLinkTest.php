@@ -897,12 +897,11 @@ class MagicLinkTest extends TestCase
     // -----------------------------------------------------------------
 
     /**
-     * A tenant reached only through a team-owned hostname holds no hostname
-     * of its own. The token is scoped to the tenant, so a link mailed to the
-     * platform host could never find it: on that host no tenant resolves and
-     * the scope narrows the lookup to `tenant_id IS NULL`.
+     * A team's hostname resolves nothing in isolated mode (RFC 006 Q5), so it
+     * could never redeem the tenant-scoped token: a tenant named by header
+     * with no host of its own gets the platform host, never its team's.
      */
-    public function test_tenant_reached_through_a_team_domain_gets_links_on_that_host(): void
+    public function test_a_tenant_named_by_header_never_gets_links_on_its_teams_hosts(): void
     {
         $this->enableTenantIsolation();
 
@@ -910,47 +909,61 @@ class MagicLinkTest extends TestCase
         $tenant = TenantFactory::new()->create(['slug' => 'globex']);
         $team = TeamFactory::new()->create(['user_id' => $owner->id, 'tenant_id' => $tenant->id]);
         HostnameFactory::new()->forOwner($team)->verified()->create(['host' => 'portal.acme.test']);
-
-        $resolver = app(TenantResolver::class);
-        $this->assertNotNull($resolver->resolve(Request::create('https://portal.acme.test/login')));
-        $this->assertSame('tenant', $resolver->resolvedContext()->getContextType());
-
-        $link = app(MagicLinkManager::class)->generate($owner);
-
-        // Scheme follows the configured app URL; the host is what matters here.
-        $this->assertStringContainsString('://portal.acme.test/login-link', $link['url']);
-        $this->assertSame($tenant->id, $link['model']->tenant_id);
-    }
-
-    /**
-     * The branch the fix exists for: no host resolved the request (X-Tenant
-     * header, or CLI/queued generation) and the tenant has no canonical host,
-     * so a verified hostname of one of its teams is the only host that can
-     * redeem the tenant-scoped token.
-     */
-    public function test_a_tenant_named_by_header_gets_links_on_one_of_its_teams_hosts(): void
-    {
-        $this->enableTenantIsolation();
-
-        $owner = User::factory()->create();
-        $tenant = TenantFactory::new()->create(['slug' => 'globex']);
-        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'tenant_id' => $tenant->id]);
-        HostnameFactory::new()->forOwner($team)->verified()->create(['host' => 'portal.acme.test']);
-
-        // Another tenant's team holds a verified hostname too; it must never be chosen.
-        $otherOwner = User::factory()->create();
-        $otherTenant = TenantFactory::new()->create(['slug' => 'initech']);
-        $otherTeam = TeamFactory::new()->create(['user_id' => $otherOwner->id, 'tenant_id' => $otherTenant->id]);
-        HostnameFactory::new()->forOwner($otherTeam)->verified()->create(['host' => 'portal.initech.test']);
 
         $resolver = app(TenantResolver::class);
         $resolver->resolve(Request::create('http://localhost/api', 'GET', [], [], [], ['HTTP_X_TENANT' => 'globex']));
-        $this->assertNull($resolver->currentHostname(), 'A header-resolved tenant has no current hostname.');
 
         $link = app(MagicLinkManager::class)->generate($owner);
 
-        $this->assertStringContainsString('://portal.acme.test/login-link', $link['url']);
-        $this->assertStringNotContainsString('initech', $link['url']);
+        $this->assertStringNotContainsString('portal.acme.test', $link['url']);
+        $this->assertStringStartsWith(app(EmailLinks::class)->base() . '/', $link['url']);
+    }
+
+    /**
+     * Shared mode never mails a link to a team's host. Anyone may ask for a
+     * link to any address naming any team; a team host is served by whoever
+     * runs its DNS, and a shared-mode token is redeemable anywhere, so the
+     * team owner would receive a victim's token.
+     */
+    public function test_shared_mode_never_mails_a_link_to_a_team_host_named_by_header(): void
+    {
+        config(['neev.tenant' => false, 'neev.team' => true]);
+        Mail::fake();
+
+        $attacker = User::factory()->create();
+        $team = TeamFactory::new()->create(['user_id' => $attacker->id, 'slug' => 'evil']);
+        $this->verifiedHost($team, 'evil.test', primary: true);
+        $victim = $this->createUser();
+
+        $this->withHeader('X-Tenant', 'evil')
+            ->postJson('/neev/sendLoginLink', ['email' => $victim->email])
+            ->assertOk();
+
+        Mail::assertSent(LoginUsingLink::class, function (LoginUsingLink $mail) use ($victim) {
+            return $mail->hasTo($victim->email)
+                && !str_contains($mail->url, 'evil.test')
+                && str_starts_with($mail->url, app(EmailLinks::class)->base() . '/');
+        });
+    }
+
+    /** The same request sent to the team's own host is refused its host too. */
+    public function test_shared_mode_never_mails_a_link_to_the_team_host_the_request_came_in_on(): void
+    {
+        config(['neev.tenant' => false, 'neev.team' => true]);
+        Mail::fake();
+
+        $attacker = User::factory()->create();
+        $team = TeamFactory::new()->create(['user_id' => $attacker->id]);
+        $this->verifiedHost($team, 'evil.test');
+        $victim = $this->createUser();
+
+        $this->postJson('https://evil.test/neev/sendLoginLink', ['email' => $victim->email])
+            ->assertOk();
+
+        Mail::assertSent(LoginUsingLink::class, function (LoginUsingLink $mail) {
+            return !str_contains($mail->url, 'evil.test')
+                && str_starts_with($mail->url, app(EmailLinks::class)->base() . '/');
+        });
     }
 
     /** With no verified host anywhere, the platform host is all that is left — and it is logged. */
@@ -979,8 +992,7 @@ class MagicLinkTest extends TestCase
         $owner = User::factory()->create();
         $tenant = TenantFactory::new()->create(['slug' => 'globex']);
         $this->verifiedHost($tenant, 'globex.test', primary: true);
-        $team = TeamFactory::new()->create(['user_id' => $owner->id, 'tenant_id' => $tenant->id]);
-        HostnameFactory::new()->forOwner($team)->verified()->create(['host' => 'portal.acme.test']);
+        $this->verifiedHost($tenant, 'portal.acme.test');
 
         app(TenantResolver::class)->resolve(Request::create('https://portal.acme.test/login'));
 

@@ -36,6 +36,9 @@ For each `domains` row with an owner:
 - **A host the app is served at**: create a `Hostname` with the owner, `host`,
   the same verification columns and `status`. A host is unique across every
   owner; where two owners verified one, give it to the owner that serves it.
+  Under tenant isolation only a tenant's host routes, so give a team's host
+  to the team's tenant; a team's own row would resolve nothing and keep the
+  tenant from claiming the host.
 - **Both**: create both. Don't make a host an email domain only because it is
   verified; that is the bug this change removes.
 - **`is_primary`**, on a row that became a hostname: set the owner's

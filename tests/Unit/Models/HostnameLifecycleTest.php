@@ -147,6 +147,26 @@ class HostnameLifecycleTest extends TestCase
         TeamFactory::new()->create()->claimHost('app.acme.com');
     }
 
+    /**
+     * In isolated mode a team is a path inside its tenant (RFC 006 Q5), so a
+     * host it held would never route; the tenant may still claim one.
+     */
+    public function test_a_team_cannot_claim_a_host_in_isolated_mode(): void
+    {
+        config(['neev.tenant' => true]);
+        $team = TeamFactory::new()->create();
+
+        try {
+            $team->claimHost('app.acme.com');
+            $this->fail('A team claimed a host in isolated mode.');
+        } catch (InvalidArgumentException $e) {
+            $this->assertStringContainsString('add it to the tenant', $e->getMessage());
+        }
+
+        $this->assertSame(0, Hostname::count());
+        $this->assertTrue(TenantFactory::new()->create()->claimHost('app.acme.com')->exists);
+    }
+
     public function test_nothing_under_the_platform_zone_can_be_claimed(): void
     {
         $team = TeamFactory::new()->create(['slug' => 'acme']);

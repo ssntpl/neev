@@ -85,10 +85,19 @@ trait HasHostnames
      * returned row.
      *
      * @throws HostnameTakenException when another owner holds the host
-     * @throws InvalidArgumentException for a host under the platform domain
+     * @throws InvalidArgumentException for a host under the platform domain,
+     *                                  or a team's host in isolated mode
      */
     public function claimHost(string $host): Hostname
     {
+        // In isolated mode a team is a path inside its tenant, not a host
+        // (RFC 006 Q5): the resolver would never route a host it held.
+        if ($this instanceof ContextContainerInterface
+            && $this->getContextType() === 'team'
+            && config('neev.tenant', false)) {
+            throw new InvalidArgumentException('A team cannot hold a host when tenants are enabled; add it to the tenant instead.');
+        }
+
         $host = Hostname::canonicalHost($host);
 
         if ($host === '') {

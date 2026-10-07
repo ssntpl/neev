@@ -13,9 +13,7 @@ use Ssntpl\Neev\Events\MagicLinkRejected;
 use Ssntpl\Neev\Exceptions\MagicLinkBindingException;
 use Ssntpl\Neev\Exceptions\MagicLinkChannelException;
 use Ssntpl\Neev\Exceptions\MagicLinkThrottledException;
-use Ssntpl\Neev\Models\Hostname;
 use Ssntpl\Neev\Models\MagicLinkToken;
-use Ssntpl\Neev\Models\Team;
 use Ssntpl\Neev\Models\User;
 use Ssntpl\Neev\Services\EmailLinks;
 use Ssntpl\Neev\Services\TenantResolver;
@@ -596,11 +594,18 @@ class MagicLinkManager
      * Host, and trusting that header would mail the bearer token to a host the
      * attacker controls.
      *
-     * Falls back to EmailLinks in shared mode, when the tenant has no verified
-     * domain, and whenever there is no resolved tenant (CLI / queued
-     * generation). EmailLinks is the single place a host app says where its own
-     * pages live, so magic links land wherever the rest of Neev's mailed links
-     * do — there is no per-channel host to keep in step with it.
+     * Shared mode always uses EmailLinks, never a team's host. Users there are
+     * installation-wide and the token is not team-scoped, while a team's
+     * custom host is served by whoever runs its DNS. Anyone may ask for a
+     * link to any address naming any team (X-Tenant, or the team's own
+     * host), so a team host here would mail a victim's token to a server the
+     * team owner controls, to be redeemed on the real platform.
+     *
+     * Also falls back to EmailLinks when the tenant has no verified host, and
+     * whenever there is no resolved tenant (CLI / queued generation).
+     * EmailLinks is the single place a host app says where its own pages
+     * live, so magic links land wherever the rest of Neev's mailed links do —
+     * there is no per-channel host to keep in step with it.
      */
     protected function webBaseUrl(): string
     {
@@ -637,15 +642,13 @@ class MagicLinkManager
      * A verified host the resolved tenant can be reached at.
      *
      * Only hosts the tenant is known to be served at qualify — its platform
-     * subdomain, or a hostname it, or one of its teams, has proven control of
-     * — never the request's Host header. In order of preference: the verified
-     * hostname this request resolved through (that is where the user is, and
-     * it resolves back to the same tenant the token is scoped to); the
-     * tenant's canonical host, which prefers a verified custom host over the
-     * platform subdomain; and in isolated mode a verified hostname of one
-     * of its teams, since a tenant reached only through its teams' hosts holds
-     * none of its own. A link mailed to any other host could never find the
-     * tenant-scoped token.
+     * subdomain, or a hostname it has proven control of — never the request's
+     * Host header. In order of preference: the verified hostname this request
+     * resolved through (that is where the user is, and it resolves back to
+     * the same tenant); then the tenant's canonical host, which prefers a
+     * verified custom host over the platform subdomain. A team's hostname
+     * never qualifies: under isolation it resolves nothing (RFC 006 Q5), so a
+     * link mailed there could never find the tenant-scoped token.
      */
     protected function verifiedTenantHost(): ?string
     {
@@ -668,24 +671,7 @@ class MagicLinkManager
         // On a platform subdomain, current or retired, the link goes to the
         // canonical host: a verified custom host if the tenant has one, else
         // its current subdomain.
-        if (method_exists($context, 'canonicalHost') && ($host = $context->canonicalHost()) !== null) {
-            return $host;
-        }
-
-        if ($context->getContextType() !== 'tenant') {
-            return null;
-        }
-
-        $teamIds = Team::getClass()::withoutTenantScope()
-            ->where('tenant_id', $context->getContextId())
-            ->pluck('id');
-
-        return Hostname::query()
-            ->verified()
-            ->where('owner_type', 'team')
-            ->whereIn('owner_id', $teamIds)
-            ->orderBy('id')
-            ->value('host');
+        return method_exists($context, 'canonicalHost') ? $context->canonicalHost() : null;
     }
 
     /**

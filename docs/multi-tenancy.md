@@ -105,7 +105,7 @@ When `tenant => true`:
 - Each user belongs to a tenant via a nullable `tenant_id` column on the `users` table (`NULL` = platform-level user)
 - The `users` table has a unique constraint on `(tenant_id, email)`, so the same email can exist in different tenants
 - Neev's User model includes the `BelongsToTenant` trait, so all user queries are automatically scoped to the resolved tenant via the `TenantScope` global scope
-- The `EnsureTenantMembership` middleware validates that the authenticated user belongs to the resolved tenant — directly via `tenant_id`, or indirectly through membership in one of the tenant's teams
+- The `EnsureTenantMembership` middleware validates that the authenticated user belongs to the resolved tenant, through `tenant_id` only (`Tenant::hasMember()`). Membership of one of the tenant's teams does not make a user a member of the tenant; a user of another tenant, or a platform user, could not sign in to it anyway, since users are tenant-scoped
 
 The `tenant_id` column is included in the base migrations — no additional setup is required beyond enabling the config.
 
@@ -306,7 +306,7 @@ A host says nothing about who has addresses there, and an email domain is never 
 
 Over the API, `GET|POST {prefix}/tenant/hostnames` list and add the hosts of the tenant the request resolved to, and `{prefix}/hostnames/{id}` (`verify`, `token`, `primary`, `DELETE`) manages each one; see [Tenant Hostnames and Email Domains](./api-reference.md#tenant-hostnames-and-email-domains). A tenant's row is reachable only from that tenant. Neev checks only that the caller belongs to the tenant: which members may manage its hosts is yours to decide, with your own middleware on these routes in a published `routes/neev.php`. The old `/tenant-domains` API is gone.
 
-They can also be managed in code or from the CLI. Team-owned hosts have their own endpoints (`{prefix}/teams/{team}/hostnames`, see the [Teams Guide](./teams.md)); in tenant mode a team's host resolves to the team's tenant.
+They can also be managed in code or from the CLI. Team-owned hosts have their own endpoints (`{prefix}/teams/{team}/hostnames`, see the [Teams Guide](./teams.md)), but under tenant isolation only a tenant's host routes ([RFC 006 §6 Q5](./rfcs/006-hostnames-vs-email-domains.md)): a team is a path inside its tenant, so it cannot claim a host — add the host to the tenant instead.
 
 ```php
 $hostname = $tenant->claimHost('app.acme.com');   // pending claim
