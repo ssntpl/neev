@@ -11,7 +11,7 @@ changes see [CHANGELOG.md](./CHANGELOG.md).
 
 ---
 
-## 0.6.8 → Unreleased
+## 0.6.9 → 0.7.0
 
 **Domains are split into `hostnames` and `email_domains`, and your app copies
 the old rows (action required if you use domains).**
@@ -281,6 +281,10 @@ group) answers them:
   made on. Users sign in another way on the new host and register a new
   passkey there. The old host is not a relying party even while it serves.
   Listen for `SlugChanged` to warn the owner before or after a rename.
+
+---
+
+## 0.6.8 → 0.6.9
 
 **A new reset email lifts the wrong-code lock (action required if your reset
 screen tells a locked-out user to wait).**

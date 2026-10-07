@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-07
+
 ### Added
 
 - **`hostnames` and `email_domains` tables** ([RFC 006](./docs/rfcs/006-hostnames-vs-email-domains.md)) — a host a team or tenant is served at and an email domain whose users join it were one `domains` row; they need opposite rules, so they are now two tables. A host is unique across every owner (`hostnames.host`); several owners may verify one email domain. Models `Hostname` and `EmailDomain`, with a polymorphic owner that may be any model, including the app's own; `primary_hostname_id` on `teams` and `tenants` points at the canonical host. The migrations create the tables empty, and Neev reads only them from this release, so copy your `domains` rows as described in [UPGRADING](./UPGRADING.md) before serving traffic
@@ -52,6 +54,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A renamed owner's platform subdomain kept routing to it for good** — its `domains` row stayed verified after the slug changed. The platform host now follows the slug, and the old one serves only for `neev.slug.retired_host_days`
 - **`is_primary` chose which domain's `enforce` applied** — the canonical host and the invitation policy shared one flag. The primary is `primary_hostname_id`, and enforcement follows every verified email domain
 - **The nightly re-check failed every platform subdomain** — they have no TXT record, so `DomainVerificationFailed` fired for each one every night. Platform subdomains are no longer rows and are never checked
+
+## [0.6.9] - 2026-10-06
+
+### Fixed
+
 - **Anyone could lock an account's reset code for an hour** — the 10-wrong-codes-per-hour limit is keyed by account, so a stranger posting 10 wrong codes with someone else's email had that account's own code refused with `429` (`Too many incorrect codes.`) until the window passed; only a completed reset cleared it, and the link was the one way in. `sendPasswordReset()` now clears the wrong-code count, so requesting a new email — which only the owner receives — brings a code that works. The 3-emails-per-15-minutes cap and the 5 guesses per code still bound what a stranger can try
 - **The Blade `POST /account/password/reset-link` sent a link-only mail outside the reset limits** — the signed-in route built its own `VerifyUserEmail` with no code and counted against nothing, so an owner locked out by a stranger's guesses had the link as their only way back, and the route was bounded by its 5-per-minute throttle alone. It now calls `sendPasswordReset()`: the mail carries the code beside the link (the app-owned template decides which to show), the send counts toward the 3-emails-per-15-minutes cap and a fourth is refused with the same message flashed on `message`, and a successful send lifts the wrong-code lock. The code it mails had nowhere to be entered — the forgot-password page sends a signed-in user home — so the security page now shows a code and new-password form in place of the current-password form, posting to `user-password.update` with the account's `email`; **Back** returns to the current-password form, whose *Don't remember your current password?* line switches to the code form while a code is out and mails one otherwise. The form shows while the account holds a code that can still reset the password (new `AuthService::hasPasswordResetOtp()`, passed to the view as `$password_reset_code_pending`), whether it was sent from this page or the forgot-password page: it survives a refresh and a rejected code or password, and goes once the code is spent, expires, runs out of guesses, or the password changes another way. A signed-in owner who resets with the code is returned to `/account/security` with the status, as the link already did, instead of being sent to `/login`. Apps that ejected `account/security.blade.php` need to re-publish it or add the form to get a code field
 - **A method turned off in `neev.multi_factor_auth` could still be enrolled** — `POST /neev/mfa/add` and the Blade `multi.auth` route accepted `authenticator` or `email` whatever the config listed, so a direct POST added a factor the app had disabled. `supportsMultiFactorAuth()` now also requires the method to be enabled, and both endpoints refuse it before asking for confirmation (`400 Auth was not added.` on the API; the same error flashed on the Blade route). A pending setup started before the method was turned off is refused the same way when its code is submitted — `verifyMfaSetup()` checks the config too, so `POST /neev/mfa/setup/verify` and the Blade `action=verify` step cannot finish it. New `multiFactorAuthSetupError()` on `HasMultiAuth` holds both reasons a code cannot complete a setup — the method turned off (`Auth was not added.`) or the setup discarded (`No setup is in progress for this method. Start it again.`) — and both endpoints answer with it before the code is checked, so neither is reported as a wrong code. Factors already active are untouched
@@ -646,7 +653,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Comprehensive Blade views and email templates
 - Artisan commands for installation, GeoIP download, and cleanup
 
-[Unreleased]: https://github.com/ssntpl/neev/compare/v0.6.8...HEAD
+[Unreleased]: https://github.com/ssntpl/neev/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/ssntpl/neev/compare/v0.6.9...v0.7.0
+[0.6.9]: https://github.com/ssntpl/neev/compare/v0.6.8...v0.6.9
 [0.6.8]: https://github.com/ssntpl/neev/compare/v0.6.7...v0.6.8
 [0.6.7]: https://github.com/ssntpl/neev/compare/v0.6.6...v0.6.7
 [0.6.6]: https://github.com/ssntpl/neev/compare/v0.6.5...v0.6.6
